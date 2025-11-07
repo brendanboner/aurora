@@ -1,0 +1,7 @@
+{
+  "version": "topics.v1",
+  "type": "object",
+  "properties": {
+    "topics": { "type": "array" }
+  }
+}
