@@ -1,1 +1,0 @@
-Return JSON per schema topics.v1 listing broad topic areas relevant to standards and alliances.

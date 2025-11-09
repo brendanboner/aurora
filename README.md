@@ -1,212 +1,159 @@
-# AURORA — Standards & Industry Intelligence Navigator
+# Aurora: 
 
-AURORA is a UI-driven, knowledge-graph–backed prototype that helps teams track activity across standards bodies, alliances, and academic organizations, and delivers personalized synopses of relevant events, working groups, and documents.
+Description goes here
 
-- Frontend: React + Vite (TypeScript)
-- Backend: TypeScript (Express)
-- DB: Postgres + Neo4j
-- Deployment: Docker / Docker Compose
+## 🏗️ Architecture Overview
 
-## Quick Start
-1) Copy `.env.example` to `.env` and set values.
-2) docker compose -f ops/docker-compose.yml up --build
-3) Frontend: http://localhost:5173
-   Backend:  http://localhost:8080
-   Neo4j:    http://localhost:7474
+Aurora follows a microservices architecture with two main processing services and shared infrastructure libraries:
 
-
----
-## Repository Structure
-
-```
-/aurora
-  /frontend             # React app (Overview, Profile, Admin)
-  /backend              # REST API, RBAC, LLM orchestration, validators
-  /graph                # Neo4j: schema.cql, constraints, seed loaders
-  /db                   # Postgres: schema.sql, migrations, seed
-  /ingestion            # Fetchers/parsers for web + file uploads
-  /llm                  # Prompt templates, JSON schemas, guards
-  /ops                  # Dockerfiles, docker-compose, k8s (optional)
-  /scripts              # Admin CLI utilities
-  /tests                # Unit/integration tests
+```mermaid
+graph TB
+    Web[Web Sources] --> Retriever[Retriever Service]
+    Retriever --> RabbitMQ[(RabbitMQ Queue)]
+    RabbitMQ --> Digester[Digester Service]
+    Digester --> Neo4j[(Neo4j Knowledge Graph)]
+    
+    subgraph "Shared Libraries"
+        RMQClient[rabbitmq-client]
+        Neo4jClient[neo4j-client]
+    end
 ```
 
----
+### 📦 Components
 
-## Quick Start (Containers)
+#### Core Services
 
-### 1. Prerequisites
-- Docker + Docker Compose
-- (Optional) Node 18+ if running services outside containers
+1. **[Retriever Service](./retriever/)** - Web scraping microservice
+   - Scrapes documents from public websites (currently Wi-Fi Alliance)
+   - Extracts text content from HTML and PDFs
+   - Publishes structured data to RabbitMQ queues
 
-### 2. Environment Variables
-Create a `.env` file at the repo root:
+2. **[Digester Service](./digester/)** - Document processing microservice
+   - Consumes messages from RabbitMQ
+   - Extracts metadata using LLM (OpenAI/Anthropic)
+   - Validates and normalizes extracted data
+   - Builds knowledge graph in Neo4j
 
-```
-# Postgres
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-POSTGRES_DB=aurora
-POSTGRES_USER=aurora
-POSTGRES_PASSWORD=aurora
+#### Shared Libraries
 
-# Neo4j
-NEO4J_URI=bolt://neo4j:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=devpassword
+3. **[rabbitmq-client](./rabbitmq-client/)** - Messaging library
+   - Standardized RabbitMQ producer/consumer interface
+   - Automatic JSON serialization
+   - Used by both services for messaging
 
-# Backend
-PORT=8080
-JWT_SECRET=change-me
-ALLOWED_ORIGINS=http://localhost:5173
+4. **[neo4j-client](./neo4j-client/)** - Graph database library
+   - Neo4j connection management
+   - Graph node models (Resource, Topic, Standard, etc.)
+   - Repository patterns for CRUD operations
 
-# LLM Provider
-LLM_PROVIDER=openai
-LLM_API_KEY=sk-...
+#### Infrastructure
 
-# Optional
-DATA_DIR=/data
-```
+5. **[common/make-utils.mk](./common/make-utils.mk)** - Shared Docker utilities
+   - Common Makefile targets for all services
+   - Container and network name generation
+   - Dependency management (RabbitMQ, Neo4j)
 
-### 3. Start the system
+## 🚀 Quick Start
 
-```
-docker compose -f ops/docker-compose.yml up --build
-```
+### Prerequisites
 
-Services:
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8080
-- Neo4j Browser: http://localhost:7474
-- Postgres: localhost:5432 (db: `aurora`, user: `aurora`, pass: `aurora`)
+- Docker
+- Make
+- Environment variables configured (see Environment Setup below)
 
----
+### Environment Setup
 
-## Components
+Copy the environment template and configure your settings:
 
-### Frontend (React)
-- Views:
-  - Overview: followed bodies/WGs, headlines, events, participation
-  - Profile: topic sliders (1–10), preferred bodies, working groups
-  - Admin: initialization workflows, interest regeneration, yearly events export
-
-Run:
-```
-cd frontend
-npm install
-npm run dev
+```bash
+cp .env.example .env
 ```
 
----
+Edit `.env` with your specific configuration values. The template includes all required environment variables with descriptions for:
+- Docker network settings
+- RabbitMQ connection details
+- Neo4j database configuration  
+- Azure OpenAI API credentials
+- Port mappings and logging levels
 
-### Backend (API + Orchestration)
-- Tech: Node.js + TypeScript with Zod/JSON Schema
-- Stores:
-  - Postgres: auth, user state, event participation, cached LLM output
-  - Neo4j: topics, bodies, working groups, events, document relationships
-- Functions:
-  - Authentication + RBAC
-  - CRUD for topics, bodies, working groups, events, headlines
-  - LLM Orchestration (initialization, interest modeling, summaries)
+See [.env.example](./.env.example) for the complete configuration template.
 
-Run:
-```
-cd backend
-npm install
-npm run dev
-```
+### Running Services
 
----
+Each service can be deployed in two modes:
 
-## Data Model
+#### 🔒 Isolated Mode (Recommended for Development)
+Each service runs with its own isolated infrastructure:
 
-### Postgres (transactional)
-- users
-- user_topic_preferences
-- user_body_preferences
-- user_working_group_preferences
-- events
-- headlines
-- user_event_status
-- daily_synopsis
+```bash
+# Deploy retriever with isolated RabbitMQ
+cd retriever
+make deploy-isolated
 
-### Neo4j (knowledge graph)
-Nodes:
-- TopicArea
-- Body {type}
-- WorkingGroup
-- Event
-- Document
-
-Relationships:
-- (:Body)-[:HAS_WG]->(:WorkingGroup)
-- (:WorkingGroup)-[:ABOUT {weight}]->(:TopicArea)
-- (:Document)-[:ASSOCIATED_WITH]->(:WorkingGroup|Body|TopicArea)
-- (:Event)-[:RELATED_TO]->(:WorkingGroup|Body|TopicArea)
-
----
-
-## LLM JSON Schema Contracts
-- topics.v1
-- bodies.v1
-- working-groups.v1
-- user-interests.v1
-- daily-synopsis.v1
-- events-yearly.v1
-
-All LLM responses must match schema and version.
-
----
-
-## Local Development (without containers)
-
-### Backend
-```
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=5432
-export POSTGRES_DB=aurora
-export POSTGRES_USER=aurora
-export POSTGRES_PASSWORD=aurora
-
-export NEO4J_URI=bolt://localhost:7687
-export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=devpassword
-
-cd backend
-npm install
-npm run migrate
-npm run start:dev
+# Deploy digester with isolated RabbitMQ + Neo4j  
+cd digester
+make deploy-isolated
 ```
 
-### Frontend
+**Benefits:**
+- Complete isolation between services
+- No dependency conflicts
+- Easy to debug individual services
+- Each service gets its own ports
+
+#### 🌐 Shared Mode (Production-like)
+Services share common infrastructure:
+
+```bash
+# Deploy retriever using shared infrastructure
+cd retriever  
+make deploy-local
+
+# Deploy digester using shared infrastructure
+cd digester
+make deploy-local
 ```
-cd frontend
-npm install
-npm run dev
+
+**Benefits:**
+- Resource efficient
+- Services communicate through shared queues
+- More production-like setup
+
+## 🛠️ Makefile Commands
+
+Each service provides these common commands:
+
+```bash
+# See all available commands
+make help
+
+# Deploy service in isolated environment
+make deploy-isolated
+
+# Deploy service using shared infrastructure  
+make deploy-local
+
+# Clean isolated environments (affects ALL services)
+make clean-isolated
+
+# Clean shared infrastructure (use with caution)
+make clean-shared
+
+# Nuclear option - remove everything
+make nuke
 ```
 
----
+## 📚 Service Documentation
 
-## Tests
-```
-npm run test
-```
+- [Retriever Service Details](./retriever/README.md)
+- [Digester Service Details](./digester/README.md)  
+- [RabbitMQ Client Library](./rabbitmq-client/README.md)
+- [Neo4j Client Library](./neo4j-client/README.md)
 
-Tests include:
-- API routes
-- JSON schema validation
-- RBAC enforcement
-- Graph linkage tests
+## 🚦 Current Status
 
----
-
-## Security Notes (Prototype)
-- JWT-based login for prototype (SSO later)
-- Secrets via `.env` or container env
-- Rate limiting on LLM routes
-- Admin actions audited and idempotent
-
----
-
-## License
-Internal prototype. Not for external distribution.
+**Implemented:**
+- ✅ Wi-Fi Alliance scraper
+- ✅ PDF content extraction
+- ✅ RabbitMQ messaging
+- ✅ Docker containerization

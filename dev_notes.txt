@@ -1,0 +1,36 @@
+# Aurora Project - Development Notes
+
+## 🚧 Current Issues & Technical Debt
+
+### Infrastructure
+- [ ] Make RabbitMQ queues persistent
+- [ ] Consider enterprise Neo4j for production deployment
+
+### Data Processing
+- [ ] Only handle PDFs currently - need support for other document formats
+- [ ] Implement duplicate resource detection in retriever service
+
+### Security
+- [ ] Implement prompt injection prevention for LLM processing
+
+## 🎯 Architecture Decisions & Questions
+
+### Message Queue Design
+- **Question**: Publish to separate data source queues or all in one queue?
+- **Current**: Single queue for all scraped content
+- **Consider**: Separate queues per data source for better isolation
+
+### Scraper Architecture  
+- **Question**: Should scrapers have API interface with scheduler calling endpoints, or is this unnecessary complexity?
+- **Current**: Direct execution model
+- **Consider**: API-based triggering for better orchestration
+
+## 🔄 Performance & Optimization
+
+### Retriever Service
+- [ ] Implement intelligent pagination - check if all resources on page are new before fetching next page
+
+## 💡 Future Features
+
+### Data Sources
+- [ ] Add more datasources as needed

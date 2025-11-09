@@ -1,2 +1,0 @@
-CREATE CONSTRAINT example_unique IF NOT EXISTS
-FOR (n:Example) REQUIRE n.id IS UNIQUE;
