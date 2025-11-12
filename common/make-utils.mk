@@ -37,7 +37,9 @@ SERVICE_IMAGE := $(SERVICE_NAME)-image
 .PHONY: clean-isolated
 clean-isolated:
 	@echo "🧹 Cleaning ALL isolated environments..."
+	@echo "🛑 Stopping"
 	@docker ps -a --filter "name=-isolated" --format "{{.Names}}" | xargs -r docker stop 2>/dev/null || true
+	@echo "🗑️  Removing"
 	@docker ps -a --filter "name=-isolated" --format "{{.Names}}" | xargs -r docker rm 2>/dev/null || true
 	@docker network ls --filter "name=-isolated" --format "{{.Name}}" | xargs -r docker network rm 2>/dev/null || true
 	@echo "✅ All isolated environments cleaned"

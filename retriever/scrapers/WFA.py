@@ -6,13 +6,14 @@ from typing import List, Optional
 import logging
 import json
 import io
-import PyPDF2
+import pypdf
 
 from .base import BaseScraper, Resource
 from settings import settings
 
 class WFAScraper(BaseScraper):
     DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx']
+    scraper_name = "wfa"  # Used for JSON file naming
     
     def __init__(self):
         super().__init__()
@@ -49,15 +50,15 @@ class WFAScraper(BaseScraper):
                 if not extracted_title.endswith('..'):
                     title = extracted_title
             
-            # Extract resource type from span element with class "resources-type"
-            resource_type_element = card.find('span', class_='resources-type')
-            resource_type = resource_type_element.get_text(strip=True).lower() if resource_type_element else ''
+            # Extract category from span element with class "resources-type"
+            category_element = card.find('span', class_='resources-type')
+            category = category_element.get_text(strip=True).lower() if category_element else ''
             
             resources.append(Resource(
                 title=title or 'Title to be extracted',
                 url=url,
-                resource_type=resource_type,
-                source='wi-fi-alliance'
+                category=category,
+                datasource_id='wfa_resource_page'
             ))
         
         return resources
@@ -221,8 +222,8 @@ class WFAScraper(BaseScraper):
                     pdf_bytes = await response.read()
                     pdf_file = io.BytesIO(pdf_bytes)
                     
-                    # Extract text using PyPDF2
-                    pdf_reader = PyPDF2.PdfReader(pdf_file)
+                    # Extract text using pypdf
+                    pdf_reader = pypdf.PdfReader(pdf_file)
                     text_content = []
                     
                     for page_num in range(len(pdf_reader.pages)):
@@ -276,7 +277,7 @@ class WFAScraper(BaseScraper):
             scraped_data = self._format_resource_for_logging(scraped_resource)
             logging.debug(f"Scraped resource:\n{json.dumps(scraped_data, indent=2, ensure_ascii=False)}")
             
-            self.publish_to_rabbitmq(scraped_resource)
+            self.publish_message(scraped_resource)
             
             # Be respectful - add delay between requests
             await asyncio.sleep(settings.scraper_delay)
@@ -299,7 +300,7 @@ class WFAScraper(BaseScraper):
                 scraped_data = self._format_resource_for_logging(scraped_resource)
                 logging.debug(f"Progress {i}/{len(resources)} - Scraped resource:\n{json.dumps(scraped_data, indent=2, ensure_ascii=False)}")
             
-            # self.publish_to_rabbitmq(scraped_resource)
+            self.publish_message(scraped_resource)
             
             # Be respectful - add delay between requests
             await asyncio.sleep(settings.scraper_delay)

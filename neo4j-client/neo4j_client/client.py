@@ -3,6 +3,9 @@
 from neo4j import GraphDatabase
 from typing import Dict, Any, List, Optional
 import logging
+import json
+from pathlib import Path
+from .models import Organization, DataSource
 
 
 logger = logging.getLogger(__name__)
@@ -102,21 +105,31 @@ class Neo4jClient:
             return session.execute_write(_transaction)
     
     def create_constraints(self):
-        """Create unique constraints for all node types."""
+        """Create unique constraints for all node types based on the latest models."""
         constraints = [
-            "CREATE CONSTRAINT resource_url IF NOT EXISTS FOR (r:Resource) REQUIRE r.url IS UNIQUE",
-            "CREATE CONSTRAINT topic_name IF NOT EXISTS FOR (t:Topic) REQUIRE t.name IS UNIQUE",
-            "CREATE CONSTRAINT standard_name IF NOT EXISTS FOR (s:Standard) REQUIRE s.name IS UNIQUE",
-            "CREATE CONSTRAINT standard_edition_name IF NOT EXISTS FOR (se:StandardEdition) REQUIRE se.name IS UNIQUE",
-            "CREATE CONSTRAINT organization_name IF NOT EXISTS FOR (o:Organization) REQUIRE o.name IS UNIQUE",
-            "CREATE CONSTRAINT datasource_name IF NOT EXISTS FOR (ds:DataSource) REQUIRE ds.name IS UNIQUE",
+            # Resource: url_hash is unique
+            "CREATE CONSTRAINT resource_url_hash IF NOT EXISTS FOR (r:Resource) REQUIRE r.url_hash IS UNIQUE",
+            # Topic: topic_id is unique
+            "CREATE CONSTRAINT topic_id IF NOT EXISTS FOR (t:Topic) REQUIRE t.topic_id IS UNIQUE",
+            # Organization: org_id is unique
+            "CREATE CONSTRAINT organization_org_id IF NOT EXISTS FOR (o:Organization) REQUIRE o.org_id IS UNIQUE",
+            # DataSource: source_id is unique
+            "CREATE CONSTRAINT datasource_source_id IF NOT EXISTS FOR (ds:DataSource) REQUIRE ds.source_id IS UNIQUE",
+            # Standard: standard_id is unique
+            "CREATE CONSTRAINT standard_standard_id IF NOT EXISTS FOR (s:Standard) REQUIRE s.standard_id IS UNIQUE",
+            # StandardEdition: edition_id is unique
+            "CREATE CONSTRAINT standard_edition_id IF NOT EXISTS FOR (se:StandardEdition) REQUIRE se.edition_id IS UNIQUE",
+            # Person: name is unique
             "CREATE CONSTRAINT person_name IF NOT EXISTS FOR (p:Person) REQUIRE p.name IS UNIQUE",
+            # Team: name is unique
             "CREATE CONSTRAINT team_name IF NOT EXISTS FOR (t:Team) REQUIRE t.name IS UNIQUE",
+            # Project: name is unique
             "CREATE CONSTRAINT project_name IF NOT EXISTS FOR (p:Project) REQUIRE p.name IS UNIQUE",
+            # Skill: name is unique
             "CREATE CONSTRAINT skill_name IF NOT EXISTS FOR (s:Skill) REQUIRE s.name IS UNIQUE",
+            # Tag: name is unique
             "CREATE CONSTRAINT tag_name IF NOT EXISTS FOR (t:Tag) REQUIRE t.name IS UNIQUE",
         ]
-        
         for constraint in constraints:
             try:
                 self.execute_write(constraint)
@@ -125,61 +138,7 @@ class Neo4jClient:
             except Exception as e:
                 # Constraint might already exist
                 self.logger.debug(f"Constraint creation skipped: {e}")
-        
         self.logger.info("Constraints setup complete")
-    
-    def initialize_base_data(self, organizations: Optional[List[Dict[str, str]]] = None, 
-                            data_sources: Optional[List[Dict[str, str]]] = None):
-        """
-        Initialize base organizations and data sources.
-        
-        Args:
-            organizations: List of organization dicts with 'name' and 'description'
-            data_sources: List of data source dicts with 'name', 'url', and 'source_type'
-        """
-        # Default organizations if none provided
-        if organizations is None:
-            organizations = [
-                {"name": "Wi-Fi Alliance", "description": "Global network of companies that brings Wi-Fi technology to users"},
-                {"name": "IEEE", "description": "Institute of Electrical and Electronics Engineers"},
-                {"name": "IETF", "description": "Internet Engineering Task Force"},
-                {"name": "3GPP", "description": "3rd Generation Partnership Project"},
-            ]
-        
-        # Default data sources if none provided
-        if data_sources is None:
-            data_sources = [
-                {"name": "wi-fi-alliance", "url": "https://www.wi-fi.org", "source_type": "organization_website"},
-                {"name": "ieee-standards", "url": "https://standards.ieee.org", "source_type": "standards_body"},
-                {"name": "ietf-rfcs", "url": "https://www.ietf.org/rfc", "source_type": "standards_body"},
-            ]
-        
-        # Create organizations
-        for org in organizations:
-            query = """
-            MERGE (o:Organization {name: $name})
-            ON CREATE SET 
-                o.description = $description,
-                o.created_at = datetime()
-            RETURN o
-            """
-            self.execute_write(query, org)
-            self.logger.info(f"Created/updated organization: {org['name']}")
-        
-        # Create data sources
-        for ds in data_sources:
-            query = """
-            MERGE (ds:DataSource {name: $name})
-            ON CREATE SET 
-                ds.url = $url,
-                ds.source_type = $source_type,
-                ds.created_at = datetime()
-            RETURN ds
-            """
-            self.execute_write(query, ds)
-            self.logger.info(f"Created/updated data source: {ds['name']}")
-        
-        self.logger.info("Base data initialization complete")
     
     def clear_database(self, confirm: bool = False):
         """

@@ -23,7 +23,7 @@ class MetadataValidator:
             True if valid, raises ValueError if invalid
         """
         required_fields = [
-            "title", "url", "resource_type", "source", "summary"
+            "title", "url", "category", "datasource_id", "summary", "scraped_at", "content_hash"
         ]
         
         # Check required fields
@@ -36,7 +36,6 @@ class MetadataValidator:
         # Validate list fields
         list_fields = [
             "topics", "standards", "standard_editions",
-            "key_technologies", "industry_sectors", "use_cases"
         ]
         
         for field in list_fields:

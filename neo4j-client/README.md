@@ -72,11 +72,11 @@ repo = GraphRepository(client)
 resource_data = {
     "title": "Wi-Fi 6E Technical Overview",
     "url": "https://example.com/wifi6e",
-    "resource_type": "white paper",
+    "category": "white paper",
     "summary": "Comprehensive overview of Wi-Fi 6E technology...",
     "source": "wi-fi-alliance",
     "publish_date": "2024-01-15",
-    "timestamp": 1699123456.78,
+    "scraped_at": 1699123456.78,
     "key_technologies": ["Wi-Fi 6E", "6 GHz"],
     "industry_sectors": ["Telecommunications"],
     "use_cases": ["High-bandwidth applications"]

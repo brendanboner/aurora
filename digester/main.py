@@ -10,7 +10,7 @@ from typing import Dict, Any
 
 from settings import settings
 from utils.logger import setup_logger
-from rabbitmq_client import RabbitMQConsumer
+from rabbitmq_client import RabbitMQConsumer, RabbitMQProducer
 from llm import MetadataExtractor
 from normalization import MetadataValidator, MetadataNormalizer
 from neo4j_client import Neo4jClient, GraphRepository
@@ -32,6 +32,17 @@ class DocumentDigester:
             user=settings.rabbitmq_user,
             password=settings.rabbitmq_password,
             queue=settings.rabbitmq_queue,
+            logger_instance=logger
+        )
+        
+        # Initialize DLQ producer for failed messages
+        dlq_name = f"{settings.rabbitmq_queue}-dlq"
+        self.dlq_producer = RabbitMQProducer(
+            host=settings.rabbitmq_host,
+            port=settings.rabbitmq_port,
+            user=settings.rabbitmq_user,
+            password=settings.rabbitmq_password,
+            queue=dlq_name,
             logger_instance=logger
         )
         
@@ -61,13 +72,42 @@ class DocumentDigester:
         # Create constraints
         self.neo4j_client.create_constraints()
         
-        # Initialize base data (organizations and data sources)
-        self.neo4j_client.initialize_base_data()
-        
         # Create repository with logger
         self.graph_repository = GraphRepository(self.neo4j_client, logger_instance=logger)
         
+        # Initialize base data (organizations and data sources)
+        self.graph_repository.initialize_base_data()
+        
         logger.info("Knowledge graph initialized successfully")
+    
+    def send_to_dlq(self, message: Dict[str, Any], error: str) -> bool:
+        """
+        Send a message to the Dead Letter Queue.
+        
+        Args:
+            message: The original message that failed
+            error: Error message describing why it failed
+            
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        try:
+            title = message.get("title", "Unknown")
+            
+            # Add error metadata
+            dlq_message = {
+                **message,
+                "dlq_error": error,
+                "dlq_timestamp": __import__('datetime').datetime.now().isoformat()
+            }
+            
+            self.dlq_producer.publish(dlq_message)
+            logger.info(f"Sent document to DLQ: {title} - Reason: {error}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send message to DLQ: {e}", exc_info=True)
+            return False
     
     def process_message(self, message: Dict[str, Any]) -> bool:
         """
@@ -79,6 +119,7 @@ class DocumentDigester:
         Returns:
             True if successful, False otherwise
         """
+        
         try:
             title = message.get("title", "Unknown")
             logger.info(f"Processing document: {title}")
@@ -97,17 +138,31 @@ class DocumentDigester:
             
             # Step 4: Extract entities
             logger.info("Step 4: Extracting entities...")
-            entities = self.normalizer.extract_entities(normalized_metadata)
+            resource, topics, standards, standard_editions, datasource_id = self.normalizer.extract_entities(normalized_metadata)
             
             # Step 5: Insert into knowledge graph
             logger.info("Step 5: Inserting into knowledge graph...")
-            self.graph_repository.insert_entities(entities)
+            self.graph_repository.insert_entities(
+                resource=resource,
+                topics=topics,
+                standards=standards,
+                standard_editions=standard_editions,
+                datasource_id=datasource_id
+            )
             
             logger.info(f"Successfully processed document: {title}")
             return True
+        
+        except ValueError as e:
+            # Validation errors (including normalization failures) - send to DLQ
+            title = message.get("title", "Unknown")
+            logger.error(f"Validation error for document '{title}': {e}")
+            self.send_to_dlq(message, str(e))
+            return True  # Return True to acknowledge and remove from main queue
             
         except Exception as e:
             logger.error(f"Failed to process message: {e}", exc_info=True)
+            # Return False to requeue for retry on other errors
             return False
     
     def run(self):
@@ -138,6 +193,13 @@ class DocumentDigester:
             self.rabbitmq_consumer.stop()
         except Exception as e:
             logger.error(f"Error stopping RabbitMQ consumer: {e}")
+        
+        try:
+            # Close DLQ producer if connection exists
+            if self.dlq_producer.connection and self.dlq_producer.connection.is_open:
+                self.dlq_producer.connection.close()
+        except Exception as e:
+            logger.error(f"Error closing DLQ producer connection: {e}")
         
         try:
             self.neo4j_client.close()

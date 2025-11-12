@@ -10,18 +10,27 @@ export
 # Include shared Docker utilities (auto-generates container/network names)
 include ../common/make-utils.mk
 
-.PHONY: help deploy-isolated deploy-local clean-isolated clean-shared nuke validate-env \
-        ensure-network ensure-rabbitmq ensure-neo4j wait-for-rabbitmq wait-for-neo4j
+.PHONY: help deploy-isolated deploy-shared clean-isolated clean-shared nuke validate-env \
+	ensure-network ensure-rabbitmq ensure-neo4j wait-for-rabbitmq wait-for-neo4j \
+	load_isolated_queue load_shared_queue build-load-test-image
 
 # Default target
 help:
 	@echo "Aurora Digester - Available commands:"
 	@echo ""
-	@echo "  make deploy-isolated - Deploy digester in isolated environment (own network + deps)"
-	@echo "  make deploy-local    - Deploy digester on shared network (reuses existing deps)"
-	@echo "  make clean-isolated  - Clean ALL isolated environments (all services)"
-	@echo "  make clean-shared   - Clean shared resources (use with caution)"
-	@echo "  make nuke           - 💥 Nuke everything (containers + images + system prune)"
+	@echo "  Deployment:"
+	@echo "    make deploy-isolated        - Deploy digester in isolated environment (own network + deps)"
+	@echo "    make deploy-shared          - Deploy digester on shared network (reuses existing deps)"
+	@echo ""
+	@echo "  Testing:"
+	@echo "    make load_isolated_queue    - Load test messages into isolated RabbitMQ queue"
+	@echo "    make load_shared_queue      - Load test messages into shared RabbitMQ queue"
+	@echo "                                  Optional: FILE=<filename> or FILE=all (default: wfa_public.json)"
+	@echo ""
+	@echo "  Cleanup:"
+	@echo "    make clean-isolated         - Clean ALL isolated environments (all services)"
+	@echo "    make clean-shared           - Clean shared resources (use with caution)"
+	@echo "    make nuke                   - 💥 Nuke everything (containers + images + system prune)"
 
 # Validate environment variables
 validate-env:
@@ -54,6 +63,7 @@ deploy-isolated: validate-env clean-isolated
 		--name $(ISOLATED_NEO4J_CONTAINER) \
 		--network $(ISOLATED_NETWORK) \
 		-p $(ISOLATED_NEO4J_HTTP_PORT):7474 \
+		-p $(ISOLATED_NEO4J_BOLT_PORT):7687 \
 		-e NEO4J_AUTH=$(NEO4J_USER)/$(NEO4J_PASSWORD) \
 		-e NEO4J_PLUGINS='["apoc"]' \
 		$(NEO4J_IMAGE)
@@ -84,8 +94,8 @@ deploy-isolated: validate-env clean-isolated
 		$(SERVICE_IMAGE)
 
 # Deploy on shared network (checks for existing dependencies)
-deploy-local: validate-env ensure-rabbitmq ensure-neo4j
-	@echo "🌐 Deploying in LOCAL mode (shared network)..."
+deploy-shared: validate-env ensure-rabbitmq ensure-neo4j
+	@echo "🌐 Deploying in SHARED mode (shared network)..."
 	@echo "🚀 Building and running digester..."
 	@cd .. && docker build -f digester/Dockerfile -t $(SERVICE_IMAGE) .
 	@docker run --rm --name $(SHARED_SERVICE_CONTAINER) \
@@ -109,3 +119,56 @@ deploy-local: validate-env ensure-rabbitmq ensure-neo4j
 		-e CHUNK_OVERLAP=$(CHUNK_OVERLAP) \
 		-e LOG_LEVEL=$(LOG_LEVEL) \
 		$(SERVICE_IMAGE)
+
+
+
+#==============================================================================
+# TEST DATA LOADING
+#==============================================================================
+
+# Default test message file
+TEST_FILE ?= all
+
+# Image name for load test messages container
+LOAD_TEST_IMAGE := load-test-messages
+
+
+# Load test messages into isolated RabbitMQ queue
+load_isolated_queue:
+	@echo "🔍 Checking if isolated RabbitMQ is running..."
+	@if ! docker ps --filter "name=$(ISOLATED_RABBITMQ_CONTAINER)" --filter "status=running" --format "{{.Names}}" | grep -q "^$(ISOLATED_RABBITMQ_CONTAINER)$$"; then \
+		echo "❌ Isolated RabbitMQ is not running!"; \
+		echo "💡 Start it with: make deploy-isolated"; \
+		exit 1; \
+	fi
+	@$(MAKE) wait-for-rabbitmq RABBITMQ_CONTAINER=$(ISOLATED_RABBITMQ_CONTAINER)
+	@echo "✅ Isolated RabbitMQ is ready"
+	@cd .. && docker build -f digester/test_queue/Dockerfile -t $(LOAD_TEST_IMAGE) .
+	@echo "📤 Loading messages from: $(TEST_FILE)"
+	docker run --rm \
+		--network $(ISOLATED_NETWORK) \
+		$(LOAD_TEST_IMAGE) \
+		--host $(ISOLATED_RABBITMQ_CONTAINER) \
+		--port 5672 \
+		--user $(RABBITMQ_USER) \
+		--password $(RABBITMQ_PASSWORD) \
+		--queue $(RABBITMQ_QUEUE) \
+		--file $(TEST_FILE); 
+	@echo "✅ Test messages loaded into isolated queue!"
+
+# Load test messages into shared RabbitMQ queue
+load_shared_queue: ensure-rabbitmq
+	@echo "📨 Loading test messages into shared RabbitMQ queue..."
+	@echo "✅ Shared RabbitMQ is ready"
+	@cd .. && docker build -f digester/test_queue/Dockerfile -t $(LOAD_TEST_IMAGE) .
+	@echo "📤 Loading messages from: $(TEST_FILE)"
+	docker run --rm \
+		--network $(DOCKER_NETWORK) \
+		$(LOAD_TEST_IMAGE) \
+		--host $(RABBITMQ_HOST) \
+		--port 5672 \
+		--user $(RABBITMQ_USER) \
+		--password $(RABBITMQ_PASSWORD) \
+		--queue $(RABBITMQ_QUEUE) \
+		--file $(TEST_FILE);
+	@echo "✅ Test messages loaded into shared queue!"

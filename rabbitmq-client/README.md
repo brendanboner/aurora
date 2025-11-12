@@ -75,11 +75,11 @@ producer.connect()
 message = {
     "title": "Document Title",
     "url": "https://example.com/doc",
-    "resource_type": "white paper",
+    "category": "white paper",
     "content": "Document content...",
     "publish_date": "2024-01-15",
     "source": "wi-fi-alliance",
-    "timestamp": 1699123456.78
+    "scraped_at": 1699123456.78
 }
 
 producer.publish(message)

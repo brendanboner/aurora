@@ -10,15 +10,16 @@ export
 # Include shared Docker utilities (auto-generates container/network names)
 include ../common/make-utils.mk
 
-.PHONY: help deploy-isolated deploy-local clean-isolated clean-shared nuke validate-env \
-        ensure-network ensure-rabbitmq wait-for-rabbitmq
+.PHONY: help deploy-isolated deploy-shared clean-isolated clean-shared nuke validate-env \
+        ensure-network ensure-rabbitmq wait-for-rabbitmq run-json check-venv
 
 # Default target
 help:
 	@echo "Aurora Retriever - Available commands:"
 	@echo ""
 	@echo "  make deploy-isolated - Deploy retriever in isolated environment (own network + deps)"
-	@echo "  make deploy-local    - Deploy retriever on shared network (reuses existing deps)"
+	@echo "  make deploy-shared    - Deploy retriever on shared network (reuses existing deps)"
+	@echo "  make run-json        - Run retriever locally with JSON output (generates test messages)"
 	@echo "  make clean-isolated  - Clean ALL isolated environments (all services)"
 	@echo "  make clean-shared   - Clean shared resources (use with caution)"
 	@echo "  make nuke           - 💥 Nuke everything (containers + images + system prune)"
@@ -59,8 +60,8 @@ deploy-isolated: validate-env clean-isolated
 		$(SERVICE_IMAGE)
 
 # Deploy on shared network (checks for existing dependencies)
-deploy-local: validate-env ensure-rabbitmq
-	@echo "🌐 Deploying in LOCAL mode (shared network)..."
+deploy-shared: validate-env ensure-rabbitmq
+	@echo "🌐 Deploying in SAHRED mode (shared network)..."
 	@echo "🚀 Building and running retriever..."
 	@cd .. && docker build -f retriever/Dockerfile -t $(SERVICE_IMAGE) .
 	@docker run --rm --name $(SHARED_SERVICE_CONTAINER) \
@@ -72,3 +73,27 @@ deploy-local: validate-env ensure-rabbitmq
 		-e RABBITMQ_QUEUE=$(RABBITMQ_QUEUE) \
 		-e LOG_LEVEL=$(LOG_LEVEL) \
 		$(SERVICE_IMAGE)
+
+# Check venv & requirements creating and installing if missing
+check-requirements: 
+	@echo "🔍 Ensuring virtual environment exists..."
+	@if [ ! -d "venv" ]; then \
+		echo "❌ Virtual environment not found. Creating venv..."; \
+		python3 -m venv venv; \
+		echo "✅ Virtual environment created"; \
+	else \
+		echo "✅ Virtual environment exists"; \
+	fi
+	@venv/bin/pip show beautifulsoup4 > /dev/null 2>&1 || \
+		(echo "❌ Requirements not installed in venv. Installing..." && cd .. && retriever/venv/bin/pip install -r retriever/requirements.txt)
+	@echo "✅ All requirements installed (in venv)"
+
+# Run locally with JSON output (for generating test messages)
+run-json: check-venv check-requirements
+	@echo "🚀 Running retriever locally with JSON output..."
+	@echo "📝 Output Mode: json"
+	@echo "📄 JSON Output: $(JSON_OUTPUT_FILE)"
+	@echo ""
+	@OUTPUT_MODE=json venv/bin/python main.py
+	@echo ""
+	@echo "✅ Test messages generated: $(JSON_OUTPUT_FILE)"

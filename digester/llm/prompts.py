@@ -6,8 +6,8 @@ METADATA_EXTRACTION_PROMPT = """You are a metadata extraction expert. Analyze th
 Document Information:
 - Title: {title}
 - URL: {url}
-- Resource Type: {resource_type}
-- Source: {source}
+- Category: {category}
+- Datasource ID: {datasource_id}
 - Publish Date: {publish_date}
 
 Content (may be partial):
@@ -16,25 +16,40 @@ Content (may be partial):
 Extract the following metadata in JSON format:
 
 1. **summary**: A concise 2-3 sentence summary of the document's main purpose and content
-2. **topics**: List of relevant topics/subjects covered (e.g., "Wi-Fi 6E", "Network Security", "IoT Connectivity")
-3. **standards**: List of technical standards mentioned (e.g., "IEEE 802.11ax", "WPA3", "Wi-Fi 6")
-4. **standard_editions**: List of specific standard versions or editions (e.g., "802.11ax-2021", "WPA3-Personal")
-5. **key_technologies**: List of key technologies discussed
-6. **industry_sectors**: List of industry sectors relevant to this content
-7. **use_cases**: List of practical applications or use cases mentioned
+2. **topics**: List of top 5 most relevant topics/subjects covered with confidence and relevance scores
+   - Maximum 5 topics per resource
+   - Each topic should have: name, confidence (0.0-1.0), relevance (0.0-1.0)
+   - confidence: How confident you are the content relates to this topic (0.0 = not confident, 1.0 = very confident)
+   - relevance: How relevant this topic is to the document (0.0 = not relevant, 1.0 = very relevant)
+3. **standards**: List of technical standards mentioned with confidence scores
+   - Each standard should have: name, confidence (0.0-1.0)
+   - confidence: How confident you are this standard is mentioned or referenced
+4. **standard_editions**: List of specific standard versions or editions with confidence scores
+   - Each edition should have: name, confidence (0.0-1.0)
 
 Return ONLY valid JSON in this exact format:
 {{
   "summary": "...",
-  "topics": ["topic1", "topic2", ...],
-  "standards": ["standard1", "standard2", ...],
-  "standard_editions": ["edition1", "edition2", ...],
-  "key_technologies": ["tech1", "tech2", ...],
-  "industry_sectors": ["sector1", "sector2", ...],
-  "use_cases": ["usecase1", "usecase2", ...]
+  "topics": [
+    {{"name": "topic1", "confidence": 0.95, "relevance": 0.85}},
+    {{"name": "topic2", "confidence": 0.78, "relevance": 0.92}}
+  ],
+  "standards": [
+    {{"name": "standard1", "confidence": 0.90}},
+    {{"name": "standard2", "confidence": 0.85}}
+  ],
+  "standard_editions": [
+    {{"name": "edition1", "confidence": 0.88}},
+    {{"name": "edition2", "confidence": 0.75}}
+  ]
 }}
 
-Be specific and accurate. If a field has no relevant information, use an empty array [].
+Important guidelines:
+- Limit topics to maximum 5 most relevant items
+- Be specific and accurate
+- All confidence and relevance scores must be between 0.0 and 1.0
+- If a field has no relevant information, use an empty array []
+- Only include a standard edition if the edition/version is explicitly mentioned in the content. General standard references are included under standards.
 """
 
 
@@ -50,15 +65,28 @@ Create a unified metadata extraction that:
 2. Creates a comprehensive summary that captures the full document scope
 3. Removes duplicates and near-duplicates
 4. Keeps only the most relevant and accurate information
+5. Limits topics to maximum 5 most relevant items
+6. For topics/standards with multiple confidence/relevance scores, average them appropriately
 
 Return ONLY valid JSON in this exact format:
 {{
   "summary": "...",
-  "topics": ["topic1", "topic2", ...],
-  "standards": ["standard1", "standard2", ...],
-  "standard_editions": ["edition1", "edition2", ...],
-  "key_technologies": ["tech1", "tech2", ...],
-  "industry_sectors": ["sector1", "sector2", ...],
-  "use_cases": ["usecase1", "usecase2", ...]
+  "topics": [
+    {{"name": "topic1", "confidence": 0.95, "relevance": 0.85}},
+    {{"name": "topic2", "confidence": 0.78, "relevance": 0.92}}
+  ],
+  "standards": [
+    {{"name": "standard1", "confidence": 0.90}},
+    {{"name": "standard2", "confidence": 0.85}}
+  ],
+  "standard_editions": [
+    {{"name": "edition1", "confidence": 0.88}},
+    {{"name": "edition2", "confidence": 0.75}}
+  ]
 }}
+
+Important guidelines:
+- Limit topics to maximum 5 most relevant items
+- Ensure all confidence scores are between 0.0 and 1.0
+- For duplicate topics/standards, merge them and average their scores
 """

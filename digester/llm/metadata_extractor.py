@@ -1,4 +1,5 @@
 import json
+import hashlib
 from typing import Dict, Any, List
 from settings import settings
 from utils.logger import setup_logger
@@ -68,8 +69,8 @@ class MetadataExtractor:
         prompt = METADATA_EXTRACTION_PROMPT.format(
             title=message.get("title", "Unknown"),
             url=message.get("url", ""),
-            resource_type=message.get("resource_type", ""),
-            source=message.get("source", ""),
+            category=message.get("category", ""),
+            datasource_id=message.get("datasource_id", ""),
             publish_date=message.get("publish_date", ""),
             content=content_chunk
         )
@@ -129,20 +130,22 @@ class MetadataExtractor:
             
         Returns:
             Extracted metadata dictionary
+            
+        Raises:
+            ValueError: If message has no content
         """
         content = message.get("content", "")
         
         if not content:
-            logger.warning("No content in message, returning empty metadata")
-            return {
-                "summary": "",
-                "topics": [],
-                "standards": [],
-                "standard_editions": [],
-                "key_technologies": [],
-                "industry_sectors": [],
-                "use_cases": []
-            }
+            title = message.get("title", "Unknown")
+            raise ValueError(f"No content in message for document: {title}")
+        
+        # Compute SHA-256 hash of the full content for deduplication/identity
+        try:
+            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        except Exception:
+            # Fallback in the unlikely event encoding fails
+            content_hash = None
         
         # Chunk content
         chunks = self.chunk_content(content)
@@ -170,11 +173,14 @@ class MetadataExtractor:
         final_metadata.update({
             "title": message.get("title"),
             "url": message.get("url"),
-            "resource_type": message.get("resource_type"),
-            "source": message.get("source"),
+            "category": message.get("category"),
+            "datasource_id": message.get("datasource_id"),  # source from retriever is the datasource_id
             "publish_date": message.get("publish_date"),
-            "timestamp": message.get("timestamp")
+            "scraped_at": message.get("scraped_at")
         })
+        
+        # Add computed content hash
+        final_metadata["content_hash"] = content_hash
         
         logger.info(f"Metadata extraction complete for: {message.get('title', 'Unknown')}")
         return final_metadata

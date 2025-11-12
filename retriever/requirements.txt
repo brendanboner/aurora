@@ -7,7 +7,7 @@ frozenlist==1.8.0
 idna==3.11
 multidict==6.7.0
 propcache==0.4.1
-PyPDF2==3.0.1
+pypdf>=3.9.0
 soupsieve==2.8
 typing_extensions==4.15.0
 yarl==1.22.0

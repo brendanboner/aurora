@@ -22,7 +22,6 @@ from .models import (
     Insight,
     Digest,
     Tag,
-    IngestionEvent,
     Event,
 )
 
@@ -49,6 +48,5 @@ __all__ = [
     "Insight",
     "Digest",
     "Tag",
-    "IngestionEvent",
     "Event",
 ]

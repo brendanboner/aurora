@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     scraper_delay: float = 0.5  # Delay between requests in seconds
     scraper_max_redirects: int = 10
     
+    # Output Configuration
+    output_mode: str = "rabbitmq"  # Options: "rabbitmq" or "json"
+    json_output_file: str = "{scraper}_test_messages.json"  # Default uses scraper name; can override via env var
+    
     # Logging
     log_level: str = "INFO"
     

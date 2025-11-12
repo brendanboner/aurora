@@ -30,9 +30,15 @@ The Aurora Retriever is designed to:
 
 ## Prerequisites
 
+**For Docker Deployment:**
 - Docker
 - Make
 - Environment variables configured (see Environment Setup below)
+
+**For Local Development:**
+- Python 3.10+
+- Virtual environment (automatically created by `make run-local`)
+- Environment variables configured in `.env`
 
 ## Environment Setup
 
@@ -53,13 +59,43 @@ See [../.env.example](../.env.example) for the complete configuration template.
 
 ## Deployment
 
-### Quick Start
+### Local Development (No Docker)
+
+Run the retriever directly on your machine:
+
+```bash
+# First time setup
+cd retriever
+python3 -m venv venv
+source venv/bin/activate
+
+# Run with automatic checks
+make run-local
+```
+
+The `run-local` command will:
+1. ✅ Check if virtual environment exists (creates if missing)
+2. ✅ Verify virtual environment is activated
+3. ✅ Check and install requirements if needed
+4. ✅ Validate environment variables from `.env`
+5. 🚀 Run the scraper
+
+**To generate test messages locally:**
+```bash
+# Set output mode in .env or via environment variable
+OUTPUT_MODE=json make run-local
+# Creates: wfa_test_messages.json
+```
+
+### Docker Deployment
+
+#### Shared
 
 From the retriever directory:
 
 ```bash
 # Deploy using shared infrastructure (recommended)
-make deploy-local
+make deploy-shared
 ```
 
 This will:
@@ -68,7 +104,7 @@ This will:
 3. Build the retriever Docker image
 4. Deploy the scraper container with proper networking
 
-### Development Mode
+#### Isolation
 
 For complete isolation during development:
 
@@ -98,11 +134,11 @@ Scraped resources are published to RabbitMQ as JSON messages with the following 
 {
   "title": "Wi-Fi CERTIFIED 7: Next Evolution of Wi-Fi",
   "url": "https://www.wi-fi.org/news-events/newsroom/wi-fi-certified-7-next-evolution-of-wi-fi",
-  "resource_type": "article",
+  "category": "article",
   "content": "Full extracted text content from the webpage or PDF...",
   "publish_date": "2024-01-15",
-  "source": "wi-fi-alliance",
-  "timestamp": 1699123456.789
+  "datasource_id": "wi-fi-alliance",
+  "scraped_at": 1699123456.789
 }
 ```
 
@@ -110,11 +146,11 @@ Scraped resources are published to RabbitMQ as JSON messages with the following 
 
 - **title**: Document/article title
 - **url**: Original resource URL
-- **resource_type**: Type classification (article, white paper, specification, etc.)
+- **category**: Type classification (article, white paper, specification, etc.)
 - **content**: Full text extracted from HTML or PDF
 - **publish_date**: Publication date (ISO format when available)
-- **source**: Source identifier (currently "wi-fi-alliance") 
-- **timestamp**: Unix timestamp when the resource was published
+- **datasource_id**: Source identifier (currently "wi-fi-alliance") 
+- **scraped_at**: Unix timestamp when the resource was scraped_at
 
 ## Monitoring & Management
 

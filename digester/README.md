@@ -44,11 +44,11 @@ The service expects messages in the following JSON format:
 {
   "title": "Document Title",
   "url": "https://example.com/resource",
-  "resource_type": "white paper",
+  "category": "white paper",
   "content": "Extracted text content...",
   "publish_date": "2024-01-15",
   "source": "wi-fi-alliance",
-  "timestamp": 1699123456.78
+  "scraped_at": 1699123456.78
 }
 ```
 
@@ -123,15 +123,59 @@ make deploy-isolated
 
 This creates a completely isolated environment with its own RabbitMQ and Neo4j instances on different ports.
 
+## Loading Test Messages
+
+For testing and isolated deployments, you can populate the RabbitMQ queue with test messages from the `test_messages/` directory.
+
+### Quick Start
+
+```bash
+# Load all test messages into the isolated RabbitMQ after starting in isolation
+make load_isolated_queue
+
+# Load messages into shared RabbitMQ
+make load_shared_queue
+
+```
+
+### Advanced Usage
+
+Select a specific test file:
+(default is TEST_FILE=all  which will load all json message files)
+```bash
+make load-type-queue TEST_FILE=wfa_public.json
+```
+
+### Test Message Format
+
+Test message files should be in JSON or JSONL format. The loader supports:
+
+**JSON Array** (`*.json`):
+```json
+[
+  {
+    "title": "Document Title",
+    "url": "https://example.com/resource",
+    "category": "white paper",
+    "content": "Document content...",
+    "publish_date": "2024-01-15",
+    "datasource_id": "source_id",
+    "scraped_at": 1699123456.78
+  }
+]
+```
+
 ## Available Commands
 
 ```bash
-make help             # Show all available commands
-make deploy-local     # Deploy on shared network (development)
-make deploy-isolated  # Deploy with isolated infrastructure (development)
-make clean-isolated   # Clean ALL isolated environments (all services)
-make clean-shared     # Clean shared resources (use with caution)
-make nuke            # Remove everything (containers + images + cleanup)
+make help                         # Show all available commands
+make deploy-local                 # Deploy on shared network (development)
+make deploy-isolated              # Deploy with isolated infrastructure (development)
+make load_isolated_queue          # Load all test messages into the isolated RabbitMQ after starting in isolation
+make load_shared_queue            # make load_shared_queue
+make clean-isolated               # Clean ALL isolated environments (all services)
+make clean-shared                 # Clean shared resources (use with caution)
+make nuke                         # Remove everything (containers + images + cleanup)
 ```
 
 ## Configuration
