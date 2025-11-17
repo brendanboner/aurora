@@ -5,6 +5,7 @@
 ### Infrastructure
 - [ ] Make RabbitMQ queues persistent
 - [ ] Consider enterprise Neo4j for production deployment
+- [ ] Make logging consistent across all services
 
 ### Data Processing
 - [ ] Only handle PDFs currently - need support for other document formats
@@ -16,8 +17,9 @@
 - [ ] Should we only store https urls?
 - [ ] Retriever Needs to add doctype to the message and chance resource type to category
 - [ ] Need to add in back off tries for message digestions that fail
+- [ ] Need to sanitize node and relationship creation to prevent field injection attacks
 
-- [ ] In a reconciliation stwp we will likely need to address standards nodes and keep them up to date
+- [ ] In a reconciliation step we will likely need to address topic conformance nodes and keep them up to date
 
 ### Security
 - [ ] Implement prompt injection prevention for LLM processing

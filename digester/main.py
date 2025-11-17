@@ -7,6 +7,9 @@ validates and normalizes the data, and inserts it into a Neo4j knowledge graph.
 
 import sys
 from typing import Dict, Any
+import re
+from datetime import datetime
+from dateutil.parser import parse as date_parse
 
 from settings import settings
 from utils.logger import setup_logger
@@ -32,7 +35,9 @@ class DocumentDigester:
             user=settings.rabbitmq_user,
             password=settings.rabbitmq_password,
             queue=settings.rabbitmq_queue,
-            logger_instance=logger
+            logger_instance=logger,
+            max_workers=settings.rabbitmq_max_workers,
+            heartbeat=settings.rabbitmq_heartbeat
         )
         
         # Initialize DLQ producer for failed messages
@@ -70,7 +75,7 @@ class DocumentDigester:
         self.neo4j_client.connect()
         
         # Create constraints
-        self.neo4j_client.create_constraints()
+        self.neo4j_client.setup_schema()
         
         # Create repository with logger
         self.graph_repository = GraphRepository(self.neo4j_client, logger_instance=logger)
@@ -98,7 +103,7 @@ class DocumentDigester:
             dlq_message = {
                 **message,
                 "dlq_error": error,
-                "dlq_timestamp": __import__('datetime').datetime.now().isoformat()
+                "dlq_timestamp": datetime.now().isoformat()
             }
             
             self.dlq_producer.publish(dlq_message)
@@ -108,6 +113,50 @@ class DocumentDigester:
         except Exception as e:
             logger.error(f"Failed to send message to DLQ: {e}", exc_info=True)
             return False
+    
+    def validate_message(self, message: Dict[str, Any]) -> None:
+        """
+        Validate the presence and correctness of required fields in the message.
+
+        Args:
+            message: The message to validate.
+
+        Raises:
+            ValueError: If any required field is missing or invalid.
+        """
+
+        # Ensure keys are present
+        required_fields = ["title", "url", "category", "content", "datasource_id", "scraped_at", "publish_date"]
+        missing_fields = [field for field in required_fields if field not in message]
+        if missing_fields:
+            raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")
+
+        # Only publish_date can be null; if present, must be a non-empty string and valid date/datetime
+        if message["publish_date"] is not None:
+            if not isinstance(message["publish_date"], str) or not message["publish_date"].strip():
+                logger.warning("publish_date is not a valid string, setting to null.")
+                message["publish_date"] = None
+            else:
+                try:
+                    date_parse(message["publish_date"])
+                except Exception:
+                    logger.warning("publish_date could not be parsed, setting to null.")
+                    message["publish_date"] = None
+
+        # scraped_at must be a valid Unix timestamp (int or float, positive)
+        scraped_at = message["scraped_at"]
+        if not (isinstance(scraped_at, (int, float)) and scraped_at > 0):
+            raise ValueError("Field 'scraped_at' must be a valid Unix timestamp (positive integer or float).")
+
+        # url must be a valid URL string
+        url_pattern = re.compile(r'^https?://[^\s]+$')
+        if not isinstance(message["url"], str) or not url_pattern.match(message["url"]):
+            raise ValueError("Field 'url' must be a valid URL string.")
+
+        # All other fields must be valid non-empty strings
+        for field in ["title", "category", "content", "datasource_id"]:
+            if not isinstance(message[field], str) or not message[field].strip():
+                raise ValueError(f"Field '{field}' must be a non-empty string.")
     
     def process_message(self, message: Dict[str, Any]) -> bool:
         """
@@ -121,36 +170,25 @@ class DocumentDigester:
         """
         
         try:
-            title = message.get("title", "Unknown")
-            logger.info(f"Processing document: {title}")
-            
-            # Step 1: Extract metadata using LLM
-            logger.info("Step 1: Extracting metadata with LLM...")
-            metadata = self.metadata_extractor.extract_metadata(message)
-            
-            # Step 2: Validate metadata
-            logger.info("Step 2: Validating metadata...")
-            self.validator.validate_metadata(metadata)
-            
-            # Step 3: Normalize metadata
+
+            logger.info("Step 1: Validate RabbitMQ message...")
+            self.validate_message(message)
+
+            logger.info("Step 2: Extracting and validating metadata nodes from content...")
+            metadata = self.metadata_extractor.extract_metadata(message)            
+
             logger.info("Step 3: Normalizing metadata...")
-            normalized_metadata = self.normalizer.normalize_metadata(metadata)
-            
-            # Step 4: Extract entities
-            logger.info("Step 4: Extracting entities...")
-            resource, topics, standards, standard_editions, datasource_id = self.normalizer.extract_entities(normalized_metadata)
-            
-            # Step 5: Insert into knowledge graph
-            logger.info("Step 5: Inserting into knowledge graph...")
-            self.graph_repository.insert_entities(
-                resource=resource,
-                topics=topics,
-                standards=standards,
-                standard_editions=standard_editions,
-                datasource_id=datasource_id
-            )
-            
-            logger.info(f"Successfully processed document: {title}")
+            models = self.normalizer.normalize_metadata(metadata)
+
+            logger.info("Step 4: Deduping nodes...")
+            deduped_models = self.graph_repository.deduplicate_nodes(models)
+
+            logger.info("Step 5: Inserting entities into knowledge graph...")
+            stats = self.graph_repository.insert_entities(deduped_models)
+
+            logger.info(f"Successfully processed document: {message.get('title')}")
+            logger.info(f"Insert stats: {stats}")
+
             return True
         
         except ValueError as e:
@@ -175,7 +213,10 @@ class DocumentDigester:
             
             # Start consuming messages
             logger.info("Starting message consumption from RabbitMQ...")
-            self.rabbitmq_consumer.consume(self.process_message)
+            self.rabbitmq_consumer.consume(
+                self.process_message,
+                prefetch_count=settings.rabbitmq_prefetch_count
+            )
             
         except KeyboardInterrupt:
             logger.info("Received shutdown signal...")

@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     rabbitmq_password: str = "password"
     rabbitmq_queue: str = "scraped_content"
     
+    # RabbitMQ Threading Configuration
+    rabbitmq_max_workers: int = 4  # Number of worker threads (0 = single-threaded)
+    rabbitmq_heartbeat: int = 180  # Heartbeat interval in seconds (3 minutes)
+    
+    @property
+    def rabbitmq_prefetch_count(self) -> int:
+        """Calculate prefetch count based on max_workers."""
+        return max(1, self.rabbitmq_max_workers * 2)
+    
     # Neo4j Configuration
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"

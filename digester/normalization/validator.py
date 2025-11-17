@@ -14,51 +14,45 @@ class MetadataValidator:
     @staticmethod
     def validate_metadata(metadata: Dict[str, Any]) -> bool:
         """
-        Validate that metadata contains required fields and correct types.
-        
-        Args:
-            metadata: The metadata dictionary to validate
-            
-        Returns:
-            True if valid, raises ValueError if invalid
+        Validate the new structured metadata format with nodes and relationships.
+        Raises ValueError if any required field is missing.
         """
-        required_fields = [
-            "title", "url", "category", "datasource_id", "summary", "scraped_at", "content_hash"
-        ]
-        
-        # Check required fields
-        for field in required_fields:
-            if field not in metadata:
-                raise ValueError(f"Missing required field: {field}")
-            if not metadata[field]:
-                raise ValueError(f"Field cannot be empty: {field}")
-        
-        # Validate list fields
-        list_fields = [
-            "topics", "standards", "standard_editions",
-        ]
-        
-        for field in list_fields:
-            if field in metadata:
-                if not isinstance(metadata[field], list):
-                    raise ValueError(f"Field must be a list: {field}")
-                # Ensure all items are strings
-                metadata[field] = [str(item).strip() for item in metadata[field] if item]
-        
-        # Validate URL format
-        url = metadata.get("url", "")
-        if not (url.startswith("http://") or url.startswith("https://")):
-            logger.warning(f"Invalid URL format: {url}")
-        
-        # Validate publish_date if present
-        if "publish_date" in metadata and metadata["publish_date"]:
-            try:
-                MetadataValidator.parse_date(metadata["publish_date"])
-            except Exception as e:
-                logger.warning(f"Invalid publish_date: {metadata['publish_date']}, error: {e}")
-                metadata["publish_date"] = None
-        
-        logger.info("Metadata validation passed")
+        # Check top-level keys
+        if "nodes" not in metadata or "relationships" not in metadata:
+            raise ValueError("Missing 'nodes' or 'relationships' in metadata")
+
+        # Validate resource node
+        resource = metadata["nodes"].get("resource")
+        required_resource_fields = ["summary", "importance", "importance_explanation"]
+        for field in required_resource_fields:
+            if field not in resource:
+                raise ValueError(f"Missing required field in resource: {field} in metadata")
+
+        # Validate topics
+        for topic in metadata["nodes"].get("topics", []):
+            for field in ["name", "classification"]:
+                if field not in topic:
+                    raise ValueError(f"Missing required field in topic: {field} in metadata")
+
+        # Validate people
+        for person in metadata["nodes"].get("people", []):
+            if "name" not in person:
+                raise ValueError("Missing required field in person: name in metadata")
+
+        # Validate organizations
+        for org in metadata["nodes"].get("organizations", []):
+            for field in ["name", "org_type"]:
+                if field not in org:
+                    raise ValueError(f"Missing required field in organization: {field} in metadata")
+
+        # Validate relationships
+        required_rel_fields = ["relationship_type", "source_identifier", "target_identifier", "confidence", "evidence"]
+        for rel in metadata.get("relationships", []):
+            for field in required_rel_fields:
+                if field not in rel:
+                    raise ValueError(f"Missing required field in relationship: {field} in metadata")
+
+        logger.info("Structured metadata validation passed")
         return True
     
     @staticmethod

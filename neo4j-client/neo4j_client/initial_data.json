@@ -3,31 +3,31 @@
     {
       "org_id": "wfa",
       "name": "Wi-Fi Alliance",
-      "type": "alliance",
+      "org_type": "alliance",
       "homepage_url": "https://www.wi-fi.org/"
     },
     {
       "org_id": "wba",
       "name": "Wireless Broadband Alliance",
-      "type": "alliance",
+      "org_type": "alliance",
       "homepage_url": "https://wballiance.com/"
     },
     {
       "org_id": "ieee",
       "name": "IEEE",
-      "type": "standards body",
+      "org_type": "standards body",
       "homepage_url": "https://www.ieee.org/"
     },
     {
       "org_id": "ietf",
       "name": "IETF",
-      "type": "standards body",
+      "org_type": "standards body",
       "homepage_url": "https://www.ietf.org/"
     },
     {
       "org_id": "3gpp",
       "name": "3GPP",
-      "type": "standards body",
+      "org_type": "standards body",
       "homepage_url": "https://www.3gpp.org/"
     }
   ],

@@ -1,10 +1,22 @@
 """Node and Relationship models for Neo4j knowledge graph."""
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, ClassVar
 from datetime import datetime
+import logging
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 import re
 import hashlib
+from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger(__name__)
+
+# Lazy initialization for SentenceTransformer embedding model
+_embedding_model = None
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+    return _embedding_model
 
 
 def slugify(text: str) -> str:
@@ -24,12 +36,42 @@ def slugify(text: str) -> str:
 
 class Node(BaseModel):
     """Base class for graph nodes."""
-    
-    created_at: datetime = Field(default_factory=datetime.now)
+
+    node_label: str # e.g. "Topic"
+    id_field: str # e.g. "topic_id"
+
+    embedding: List[float] = Field( 
+        default_factory=list,
+        description="Embedding vector for the topic"
+    )
+
+    TRUNCATE: ClassVar[Dict[str, int]] = {}
+
+
+    # Build Node embedding
+    @model_validator(mode='after')
+    def set_embedding(self):
+        self.embedding = self.build_embedding()
+        return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _truncate_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        caps = getattr(cls, "TRUNCATE", {})
+        if not caps or not isinstance(data, dict):
+            return data
+
+        for name, max_len in caps.items():
+            value = data.get(name)
+            if isinstance(value, str) and len(value) > max_len:
+                data[name] = value[:max_len]
+                logger.warning(f"Truncated field '{name}' to max length {max_len}")
+
+        return data
     
     model_config = ConfigDict(
         # Allow extra fields for flexibility (like **kwargs)
-        extra="allow",
+        extra="ignore",
         # Use arbitrary types (for datetime, etc.)
         arbitrary_types_allowed=True
     )
@@ -39,176 +81,108 @@ class Node(BaseModel):
         Convert node to dictionary for Neo4j.
         Excludes None values and converts datetime to ISO format.
         """
-        data = self.model_dump(exclude_none=True)
+        data = self.model_dump(exclude=["node_label", "id_field", "datasource_id"])
         # Convert datetime to ISO string for Neo4j
         if 'created_at' in data and isinstance(data['created_at'], datetime):
             data['created_at'] = data['created_at'].isoformat()
         return data
+
+    def get_embedding_fields(self) -> List[str]:
+        """
+        Returns a list of field names to include in the embedding text.
+        Subclasses should override to specify relevant fields.
+        """
+        # By default, include all string fields except 'created_at'
+        return [name for name, field in self.__fields__.items()
+                if field.annotation == str and name != "created_at"]
+
+    def get_embedding_text(self) -> str:
+        """
+        Returns a string suitable for generating embeddings, combining relevant fields.
+        """
+        parts = []
+        for field_name in self.get_embedding_fields():
+            value = getattr(self, field_name, None)
+            if value:
+                if isinstance(value, list):
+                    parts.extend([str(v) for v in value if v])
+                else:
+                    parts.append(str(value))
+        return " | ".join(parts)
+
+    def build_embedding(self) -> List[float]:
+        """
+        Generate embedding vector for the node using SentenceTransformer.
+        """
+        embedding_text = self.get_embedding_text()
+        logger.info(f"Generating embedding for text: {embedding_text}")
+        embedding_model = get_embedding_model()
+        embedding_vector = embedding_model.encode(
+            embedding_text,
+            convert_to_numpy=True,
+            normalize_embeddings=True  
+        ).tolist()
+        return embedding_vector
 
 
 class Relationship(BaseModel):
     """Base class for graph relationships."""
     
-    created_at: datetime = Field(default_factory=datetime.now)
-    
     model_config = ConfigDict(
-        extra="allow",
+        extra="ignore",
         arbitrary_types_allowed=True
     )
     
+    # Class-level metadata - override these in subclasses
+    # These should be set in each subclass to define relationship structure
+    source_node_label: str  # e.g., "Resource"
+    source_id_field: str    # e.g., "url_hash"
+    target_node_label: str  # e.g., "Topic"
+    target_id_field: str    # e.g., "topic_id"
+    relationship_label: str  # e.g., "RELATES_TO"
+    
+    # Instance-level data - required on instantiation
+    source_id: str # e.g. the actual source node's id value
+    target_id: str # e.g. the actual target node's id value
+
+    TRUNCATE: ClassVar[Dict[str, int]] = {}
+
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert relationship to dictionary for Neo4j.
-        Excludes None values and converts datetime to ISO format.
+        Excludes None values, metadata fields, and converts datetime to ISO format.
+        Only includes instance data (source_id, target_id, and relationship-specific fields).
         """
-        data = self.model_dump(exclude_none=True)
+        data = self.model_dump(exclude={"source_id", "target_id", "source_node_label", "source_id_field", "target_node_label", "target_id_field", "relationship_label"})
         # Convert datetime to ISO string for Neo4j
         if 'created_at' in data and isinstance(data['created_at'], datetime):
             data['created_at'] = data['created_at'].isoformat()
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def _truncate_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        caps = getattr(cls, "TRUNCATE", {})
+        if not caps or not isinstance(data, dict):
+            return data
 
-class Resource(Node):
-    """Resource node - represents a document/resource."""
+        for name, max_len in caps.items():
+            value = data.get(name)
+            if isinstance(value, str) and len(value) > max_len:
+                data[name] = value[:max_len]
+                logger.warning(f"Truncated field '{name}' to max length {max_len}")
 
-    url_hash: str = Field(
-        default="",
-        description="SHA256 hash of the URL - serves as unique identifier (auto-generated)"
-    )
-
-    url: str = Field(
-        ...,
-        description="URL where the resource can be accessed"
-    )
-    
-    title: str = Field(
-        ...,
-        max_length=500,
-        description="Title of the resource"
-    )
-    
-    content_hash: str = Field(
-        ...,
-        description="SHA256 hash of the actual content to detect changes"
-    )
-    
-    doc_type: str = Field(
-        ...,
-        description="Document type (e.g., 'pdf', 'docx', 'html', 'txt')"
-    )
-    
-    category: str = Field(
-        ...,
-        description="Resource category (e.g., 'blog', 'press release', 'paper', 'whitepaper', 'article')"
-    )
-    
-    publish_date: Optional[str] = Field(
-        None,
-        description="Publication date of the resource"
-    )
-
-    scraped_at: datetime = Field(
-        ...,
-        description="Timestamp when the resource metadata was last updated"
-    )
-    
-    language: str = Field(
-        default="en",
-        description="ISO 639-1 language code (e.g., 'en', 'es', 'fr', 'de')"
-    )
-    
-    summary: str = Field(
-        default="",
-        description="Brief summary or abstract of the resource"
-    )
-    
-    access_notes: Optional[str] = Field(
-        None,
-        description="Notes about access barriers (e.g., 'requires login', 'paywall', 'registration required')"
-    )
-    
-    resource_vector: Optional[List[float]] = Field(
-        None,
-        description="Semantic embedding vector for similarity matching and recommendations"
-    )
-
-    @model_validator(mode='after')
-    def generate_url_hash(self):
-        url_str = str(self.url)
-        self.url_hash = hashlib.sha256(url_str.encode('utf-8')).hexdigest()
-        return self
-
-
-class Topic(Node):
-    """
-    Topic node - represents a subject or topic in the knowledge graph.
-    
-    Topics represent areas of knowledge, technical concepts, or subject matter.
-    They can be organized hierarchically through SUBTOPIC_OF relationships.
-    
-    The topic_id is automatically generated from the name if not provided.
-    """
-
-    topic_id: str = Field(
-        default="",
-        description="Unique slugified identifier generated from name (e.g., 'wi-fi-6e', 'network-security')"
-    )
-    
-    name: str = Field(
-        ...,
-        description="Human-readable topic name (e.g., 'Wi-Fi 6E', 'Network Security')"
-    )
-    
-    aliases: List[str] = Field(
-        default_factory=list,
-        description="Alternative names or synonyms for this topic (e.g., ['802.11ax', 'High Efficiency Wireless'])"
-    )
-    
-    topic_vector: Optional[List[float]] = Field(
-        None,
-        description="Semantic embedding vector for similarity matching and recommendations"
-    )
-    
-    @model_validator(mode='after')
-    def validate_id(self):
-        if (not self.topic_id) and self.name:
-            self.topic_id = slugify(self.name)
-        return self
-
-
-class Organization(Node):
-    """Organization node - represents an organization."""
-    
-    org_id: str = Field(
-        default="",
-        description="Unique identifier for the organization (auto-generated from name if not provided)"
-    )
-    
-    name: str = Field(
-        ...,
-        description="Name of the organization"
-    )
-    
-    type: str = Field(
-        ...,
-        description="Organization type (e.g., 'standards body', 'consortium', 'vendor', 'non-profit', 'academic')"
-    )
-    
-    homepage_url: Optional[str] = Field(
-        None,
-        description="Organization's homepage URL"
-    )
-    
-    @model_validator(mode='after')
-    def validate_id(self):
-        if (not self.org_id) and self.name:
-            self.org_id = slugify(self.name)
-        return self
+        return data
 
 
 class DataSource(Node):
     """DataSource node - represents a data source."""
+
+    node_label: str = "DataSource"
+    id_field: str = "source_id"
     
+    # Unique identifier for the data source
     source_id: str = Field(
         default="",
         description="Unique identifier for the data source (auto-generated from name if not provided)"
@@ -235,91 +209,238 @@ class DataSource(Node):
             self.source_id = slugify(self.name)
         return self
 
+class Resource(Node):
+    """Resource node - represents a document/resource."""
 
-class Standard(Node):
-    """Standard node - represents a technical standard."""
-    
-    standard_id: str = Field(
+    node_label: str = "Resource"
+    id_field: str = "url_hash"
+
+    # Unique identifier for the resource
+    url_hash: str = Field(
         default="",
-        description="Unique identifier for the standard (auto-generated from identifier if not provided)"
+        description="SHA256 hash of the URL - serves as unique identifier (auto-generated)"
+    )
+
+    url: str = Field(
+        ...,
+        description="URL where the resource can be accessed"
     )
     
-    identifier: str = Field(
+    title: str = Field(
         ...,
-        description="Canonical external ID for the standard (e.g., 'IEEE 802.11ax', 'RFC 9000')"
+        max_length=500,
+        description="Title of the resource"
+    )
+
+    summary: str = Field(
+        default="",
+        description="Brief summary or abstract of the resource"
+    )
+    
+    content_hash: str = Field(
+        ...,
+        description="SHA256 hash of the actual content to detect changes"
+    )
+    
+    doc_type: str = Field(
+        ...,
+        description="Document type (e.g., 'pdf', 'docx', 'html', 'txt')"
+    )
+    
+    category: str = Field(
+        ...,
+        description="Resource category (e.g., 'blog', 'press release', 'paper', 'whitepaper', 'article')"
+    )
+
+    scraped_at: datetime = Field(
+        ...,
+        description="Timestamp when the resource metadata was last updated"
+    )
+
+    importance: Optional[float] = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="How important or urgent the document is (0.0-1.0)"
+    )
+
+    datasource_id: str = Field(
+        ...,
+        description="Unique identifier for the data source (e.g., 'api', 'webpage', 'sharepoint', 'rss', 'database')"
+    )
+
+    importance_explanation: Optional[str] = Field(
+        ...,
+        description="Brief explanation of the importance score"
+    )
+    
+    extreme_impact: Optional[str] = Field(
+        None,
+        description="Impact and outcomes on Extreme Networks company, products, services, clients"
+    )
+    
+    publish_date: Optional[str] = Field(
+        None,
+        description="Publication date of the resource"
+    )
+    
+    language: str = Field(
+        default="en",
+        description="ISO 639-1 language code (e.g., 'en', 'es', 'fr', 'de')"
+    )
+    
+    access_notes: Optional[str] = Field(
+        None,
+        description="Notes about access barriers (e.g., 'requires login', 'paywall', 'registration required')"
+    )
+
+    TRUNCATE = {
+        "title": 500
+    }  
+
+    # Generate url_hash after initialization
+    @model_validator(mode='after')
+    def generate_url_hash(self):
+        url_str = str(self.url)
+        self.url_hash = hashlib.sha256(url_str.encode('utf-8')).hexdigest()
+        return self
+
+    def get_embedding_fields(self) -> List[str]:
+        # Specify fields relevant for Topic embeddings
+        return ["title", "summary"]
+
+
+class Topic(Node):
+    """
+    Topic node - represents a subject or topic in the knowledge graph.
+    
+    Topics represent areas of knowledge, technical concepts, or subject matter.
+    They can be organized hierarchically through SUBTOPIC_OF relationships.
+    
+    The topic_id is automatically generated from the name if not provided.
+    """
+
+    node_label: str = "Topic"    
+    id_field: str = "topic_id"
+
+    # Unique identifier for the topic
+    topic_id: str = Field(
+        default="",
+        description="Unique slugified identifier generated from name (e.g., 'wi-fi-6e', 'network-security')"
     )
     
     name: str = Field(
         ...,
-        description="Human-readable name of the standard"
+        description="Human-readable topic name (e.g., 'Wi-Fi 6E', 'Network Security')"
+    )
+    
+    classification: str = Field(
+        ...,
+        description="Topic classification (e.g., 'standard', 'certification', 'regulation', 'framework', 'technology', etc.)"
+    )
+    
+    identifier: Optional[str] = Field(
+        None,
+        description="Canonical identifier for the topic (e.g., 'IEEE 802.11be', 'ISO/IEC 27001')"
+    )
+    
+    issuer: Optional[str] = Field(
+        None,
+        description="Organization that issues/maintains this topic (e.g., 'ISO', 'Wi-Fi Alliance', 'NIST')"
     )
     
     aliases: List[str] = Field(
         default_factory=list,
-        description="Alternative names or identifiers for this standard (e.g., ['Wi-Fi 6', '802.11ax'])"
+        description="Alternative names or synonyms for this topic (e.g., ['802.11ax', 'High Efficiency Wireless'])"
     )
-    
+
+    # Build slugified topic_id from name if not provided
     @model_validator(mode='after')
     def validate_id(self):
-        if (not self.standard_id) and self.name:
-            self.standard_id = slugify(self.name)
+        if (not self.topic_id) and self.name:
+            self.topic_id = slugify(self.name)
         return self
 
+    def get_embedding_fields(self) -> List[str]:
+        # Specify fields relevant for Topic embeddings
+        return ["name", "identifier", "aliases"]
 
-class StandardEdition(Node):
-    """Standard Edition node - represents a specific version of a standard."""
+
+class Organization(Node):
+    """Organization node - represents an organization."""
+
+    node_label: str = "Organization"
+    id_field: str = "org_id"
     
-    edition_id: str = Field(
+    # Unique identifier for the organization
+    org_id: str = Field(
         default="",
-        description="Unique identifier for the edition (auto-generated from identifier and version if not provided)"
+        description="Unique identifier for the organization (auto-generated from name if not provided)"
     )
-
+    
     name: str = Field(
         ...,
-        description="Human-readable name of the standard"
+        description="Name of the organization"
     )
-    
-    identifier: str = Field(
+
+    org_type: str = Field(
         ...,
-        description="Base identifier of the standard (e.g., 'IEEE 802.11ax', 'RFC 9000')"
+        description="Organization type (e.g., 'standards body', 'consortium', 'vendor', 'non-profit', 'academic')"
     )
     
-    version: str = Field(
-        ...,
-        description="Version of this edition (e.g., '2021', '2023', 'rev1')"
+    aliases: List[str] = Field(
+        default_factory=list,
+        description="Alternative names for this organization"
     )
     
-    status: Optional[str] = Field(
+    homepage_url: Optional[str] = Field(
         None,
-        description="Status of this edition (e.g., 'current', 'deprecated', 'draft', 'obsolete')"
-    )
-    
-    published_at: Optional[str] = Field(
-        None,
-        description="Publication date of this edition"
-    )
-    
-    url: Optional[str] = Field(
-        None,
-        description="URL to the official document for this edition"
+        description="Organization's homepage URL"
     )
     
     @model_validator(mode='after')
     def validate_id(self):
-        if (not self.edition_id) and self.name:
-            self.edition_id = slugify(self.name)
+        if (not self.org_id) and self.name:
+            self.org_id = slugify(self.name)
         return self
 
-
-# To be reworked
+    def get_embedding_fields(self) -> List[str]:
+        # Specify fields relevant for Organization embeddings
+        return ["name", "org_type", "aliases"]
 
 class Person(Node):
     """Person node - represents an individual."""
-    
-    name: str
-    email: str = ""
-    title: str = ""
 
+    node_label: str = "Person"
+    id_field: str = "person_id"
+    
+    # Unique identifier for the person
+    person_id: str = Field(
+        default="",
+        description="Unique identifier for the person (auto-generated from name if not provided)"
+    )
+    
+    name: str = Field(
+        ...,
+        description="Name of the person"
+    )
+    
+    email: Optional[str] = Field(
+        None,
+        description="Email address of the person"
+    )
+    
+    @model_validator(mode='after')
+    def validate_id(self):
+        if (not self.person_id) and self.name:
+            self.person_id = slugify(self.name)
+        return self
+
+    def get_embedding_fields(self) -> List[str]:
+        # Specify fields relevant for Person embeddings
+        return ["name", "email"]
+
+# TODO
 
 class Team(Node):
     """Team node - represents a team or group."""
@@ -387,33 +508,125 @@ class Event(Node):
 
 class ResourceRelatesToTopic(Relationship):
     """Resource - relates to -> Topic"""
-    relevance_score: Optional[float] = Field(None, ge=0.0, le=1.0)
-    confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
+    source_node_label: str = "Resource"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "Topic"
+    target_id_field: str = "topic_id"
+    relationship_label: str = "RELATES_TO"
+    
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+    relevance: float = Field(..., ge=0.0, le=1.0, description="Relevance score (0.0-1.0)")
+    evidence: str = Field(..., description="Direct quote from content supporting this relationship")
+    stance: str = Field(
+        ..., 
+        description="Stance of the resource toward the topic",
+        pattern="^(descriptive|supportive|critical|concerned|directive|mixed|speculative)$"
+    )
+    stance_score: float = Field(..., ge=0.0, le=1.0, description="Stance score (0 to 1.0)")
 
-class ResourceIngestedFrom(Relationship):
-    """Resource - ingested_from -> DataSource"""
-    pass
+    TRUNCATE = {
+        "evidence": 240
+    }   
 
-class ResourceReferencesStandard(Relationship):
-    """Resource - references standard -> Standard"""
-    confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
+class ResourceMentionsPerson(Relationship):
+    """Resource - mentions -> Person"""
+    source_node_label: str = "Resource"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "Person"
+    target_id_field: str = "person_id"
+    relationship_label: str = "MENTIONS"
+    
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+    role: Optional[str] = Field(None, description="Role of the person in the context")
+    evidence: str = Field(..., description="Direct quote from content mentioning this person")
 
-class ResourceReferencesEdition(Relationship):
-    """Resource - references edition -> StandardEdition"""
-    confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
+    TRUNCATE = {
+        "evidence": 240
+    }  
+
+class ResourceMentionsOrganization(Relationship):
+    """Resource - mentions -> Organization"""
+    source_node_label: str = "Resource"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "Organization"
+    target_id_field: str = "org_id"
+    relationship_label: str = "MENTIONS"
+    
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+    evidence: str = Field(..., description="Direct quote from content mentioning this organization")
+
+    TRUNCATE = {
+        "evidence": 240
+    }  
+
+class PersonAffiliatedWithOrganization(Relationship):
+    """Person - affiliated with -> Organization"""
+    source_node_label: str = "Person"
+    source_id_field: str = "person_id"
+    target_node_label: str = "Organization"
+    target_id_field: str = "org_id"
+    relationship_label: str = "AFFILIATED_WITH"
+    
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+    role: Optional[str] = Field(None, description="Role or position of the person in the organization")
+    evidence: str = Field(..., description="Direct quote from content supporting this affiliation")
+
+    TRUNCATE = {
+        "evidence": 240
+    }  
+
+class PersonConnectedToTopic(Relationship):
+    """Person - connected to -> Topic"""
+    source_node_label: str = "Person"
+    source_id_field: str = "person_id"
+    target_node_label: str = "Topic"
+    target_id_field: str = "topic_id"
+    relationship_label: str = "CONNECTED_TO"
+    
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+    affiliation: Optional[str] = Field(None, description="Nature of the connection or affiliation")
+    evidence: str = Field(..., description="Direct quote from content supporting this connection")
+
+    TRUNCATE = {
+        "evidence": 240
+    }  
+
+class OrganizationAssociatedWithTopic(Relationship):
+    """Organization - associated with -> Topic"""
+    source_node_label: str = "Organization"
+    source_id_field: str = "org_id"
+    target_node_label: str = "Topic"
+    target_id_field: str = "topic_id"
+    relationship_label: str = "ASSOCIATED_WITH"
+    
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+    affiliation: Optional[str] = Field(None, description="Nature of the association or affiliation")
+    evidence: str = Field(..., description="Direct quote from content supporting this association")
+
+    TRUNCATE = {
+        "evidence": 240
+    }  
+
+class ResourceIngestedFromDataSource(Relationship):
+    """Resource - ingested from -> DataSource"""
+    source_node_label: str = "Resource"
+    source_id_field: str = "url"
+    target_node_label: str = "DataSource"
+    target_id_field: str = "source_id"
+    relationship_label: str = "INGESTED_FROM"
+
+class DataSourceBelongsToOrganization(Relationship):
+    """DataSource - belongs to -> Organization"""
+    source_node_label: str = "DataSource"
+    source_id_field: str = "source_id"
+    target_node_label: str = "Organization"
+    target_id_field: str = "org_id"
+    relationship_label: str = "BELONGS_TO"
 
 class TopicSubtopicOf(Relationship):
     """Topic - subtopic of -> Topic"""
-    pass
-
-class DataSourceBelongsTo(Relationship):
-    """DataSource - belongs to -> Organization"""
-    pass
-
-class EditionVersionOf(Relationship):
-    """StandardEdition - version of -> Standard"""
-    pass
-
-class EditionSupersedes(Relationship):
-    """StandardEdition - supersedes -> StandardEdition"""
-    pass
+    source_node_label: str = "Topic"
+    source_id_field: str = "topic_id"
+    target_node_label: str = "Topic"
+    target_id_field: str = "topic_id"
+    relationship_label: str = "SUBTOPIC_OF"

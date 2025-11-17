@@ -10,8 +10,6 @@ from .models import (
     Node,
     Resource,
     Topic,
-    Standard,
-    StandardEdition,
     Organization,
     DataSource,
     Person,
@@ -23,6 +21,15 @@ from .models import (
     Digest,
     Tag,
     Event,
+    ResourceRelatesToTopic,
+    ResourceMentionsPerson,
+    ResourceMentionsOrganization,
+    PersonAffiliatedWithOrganization,
+    PersonConnectedToTopic,
+    OrganizationAssociatedWithTopic,
+    ResourceIngestedFromDataSource,
+    DataSourceBelongsToOrganization,
+    TopicSubtopicOf,
 )
 
 __version__ = "0.1.0"
@@ -31,13 +38,10 @@ __all__ = [
     # Client
     "Neo4jClient",
     "GraphRepository",
-    
     # Models
     "Node",
     "Resource",
     "Topic",
-    "Standard",
-    "StandardEdition",
     "Organization",
     "DataSource",
     "Person",
@@ -49,4 +53,13 @@ __all__ = [
     "Digest",
     "Tag",
     "Event",
+    "ResourceRelatesToTopic",
+    "ResourceMentionsPerson",
+    "ResourceMentionsOrganization",
+    "PersonAffiliatedWithOrganization",
+    "PersonConnectedToTopic",
+    "OrganizationAssociatedWithTopic",
+    "ResourceIngestedFromDataSource",
+    "DataSourceBelongsToOrganization",
+    "TopicSubtopicOf",
 ]

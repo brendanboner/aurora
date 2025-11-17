@@ -5,7 +5,6 @@ from typing import Dict, Any, List, Optional
 import logging
 import json
 from pathlib import Path
-from .models import Organization, DataSource
 
 
 logger = logging.getLogger(__name__)
@@ -104,8 +103,8 @@ class Neo4jClient:
         with self.driver.session(database=self.database) as session:
             return session.execute_write(_transaction)
     
-    def create_constraints(self):
-        """Create unique constraints for all node types based on the latest models."""
+    def setup_schema(self):
+        """Create schema for the neo4j database including constraints and indexes."""
         constraints = [
             # Resource: url_hash is unique
             "CREATE CONSTRAINT resource_url_hash IF NOT EXISTS FOR (r:Resource) REQUIRE r.url_hash IS UNIQUE",
@@ -115,12 +114,8 @@ class Neo4jClient:
             "CREATE CONSTRAINT organization_org_id IF NOT EXISTS FOR (o:Organization) REQUIRE o.org_id IS UNIQUE",
             # DataSource: source_id is unique
             "CREATE CONSTRAINT datasource_source_id IF NOT EXISTS FOR (ds:DataSource) REQUIRE ds.source_id IS UNIQUE",
-            # Standard: standard_id is unique
-            "CREATE CONSTRAINT standard_standard_id IF NOT EXISTS FOR (s:Standard) REQUIRE s.standard_id IS UNIQUE",
-            # StandardEdition: edition_id is unique
-            "CREATE CONSTRAINT standard_edition_id IF NOT EXISTS FOR (se:StandardEdition) REQUIRE se.edition_id IS UNIQUE",
-            # Person: name is unique
-            "CREATE CONSTRAINT person_name IF NOT EXISTS FOR (p:Person) REQUIRE p.name IS UNIQUE",
+            # Person: person_id is unique
+            "CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.person_id IS UNIQUE",
             # Team: name is unique
             "CREATE CONSTRAINT team_name IF NOT EXISTS FOR (t:Team) REQUIRE t.name IS UNIQUE",
             # Project: name is unique
@@ -129,6 +124,18 @@ class Neo4jClient:
             "CREATE CONSTRAINT skill_name IF NOT EXISTS FOR (s:Skill) REQUIRE s.name IS UNIQUE",
             # Tag: name is unique
             "CREATE CONSTRAINT tag_name IF NOT EXISTS FOR (t:Tag) REQUIRE t.name IS UNIQUE",
+
+            # Vector indexes for embeddings (using Neo4j vector search)
+            # Resource embedding
+            "CREATE VECTOR INDEX resource_embedding_index IF NOT EXISTS FOR (r:Resource) ON r.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            # Topic embedding
+            "CREATE VECTOR INDEX topic_embedding_index IF NOT EXISTS FOR (t:Topic) ON t.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            # Organization embedding
+            "CREATE VECTOR INDEX organization_embedding_index IF NOT EXISTS FOR (o:Organization) ON o.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            # DataSource embedding
+            "CREATE VECTOR INDEX datasource_embedding_index IF NOT EXISTS FOR (ds:DataSource) ON ds.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            # Person embedding
+            "CREATE VECTOR INDEX person_embedding_index IF NOT EXISTS FOR (p:Person) ON p.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
         ]
         for constraint in constraints:
             try:

@@ -4,10 +4,9 @@ from typing import Dict, Any, List
 from settings import settings
 from utils.logger import setup_logger
 from .prompts import METADATA_EXTRACTION_PROMPT, METADATA_MERGE_PROMPT
-
+from normalization import MetadataValidator
 
 logger = setup_logger(__name__, settings.log_level)
-
 
 class MetadataExtractor:
     """Extract metadata from document content using Azure OpenAI."""
@@ -134,18 +133,11 @@ class MetadataExtractor:
         Raises:
             ValueError: If message has no content
         """
-        content = message.get("content", "")
-        
-        if not content:
-            title = message.get("title", "Unknown")
-            raise ValueError(f"No content in message for document: {title}")
+        content = message.get("content")
         
         # Compute SHA-256 hash of the full content for deduplication/identity
-        try:
-            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        except Exception:
-            # Fallback in the unlikely event encoding fails
-            content_hash = None
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
         
         # Chunk content
         chunks = self.chunk_content(content)
@@ -168,19 +160,22 @@ class MetadataExtractor:
         # Merge metadata from all chunks
         logger.info("Merging metadata from all chunks")
         final_metadata = self.merge_metadata(message.get("title", "Unknown"), chunks_metadata)
+
+        logger.info(f"Validating LLM metadata structure...")
+        MetadataValidator().validate_metadata(final_metadata)
         
         # Add original message fields
-        final_metadata.update({
+        final_metadata["nodes"]["resource"].update({
             "title": message.get("title"),
             "url": message.get("url"),
             "category": message.get("category"),
             "datasource_id": message.get("datasource_id"),  # source from retriever is the datasource_id
             "publish_date": message.get("publish_date"),
-            "scraped_at": message.get("scraped_at")
+            "scraped_at": message.get("scraped_at"),
+            "content_hash": content_hash,
         })
         
-        # Add computed content hash
-        final_metadata["content_hash"] = content_hash
+        logger.info(f"Extracted metadata: \n%s", json.dumps(final_metadata, indent=2))
         
         logger.info(f"Metadata extraction complete for: {message.get('title', 'Unknown')}")
         return final_metadata

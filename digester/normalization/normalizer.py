@@ -1,193 +1,281 @@
 from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
-import json
 import ast
 from utils.logger import setup_logger
 from settings import settings
-from neo4j_client.models import (
-    Resource, Topic, Standard, StandardEdition,
-    ResourceRelatesToTopic, ResourceReferencesStandard, ResourceReferencesEdition
-)
+from neo4j_client.models import *
 
 
 logger = setup_logger(__name__, settings.log_level)
 
 
 class MetadataNormalizer:
+    RELATIONSHIP_TYPE_MAP = {
+        "RESOURCE_RELATES_TO_TOPIC": ResourceRelatesToTopic,
+        "RESOURCE_MENTIONS_PERSON": ResourceMentionsPerson,
+        "RESOURCE_MENTIONS_ORGANIZATION": ResourceMentionsOrganization,
+        "PERSON_AFFILIATED_WITH_ORGANIZATION": PersonAffiliatedWithOrganization,
+        "PERSON_CONNECTED_TO_TOPIC": PersonConnectedToTopic,
+        "ORGANIZATION_ASSOCIATED_WITH_TOPIC": OrganizationAssociatedWithTopic,
+    }
+
+    # Define normalization cases for each relationship type
+    RELATIONSHIP_CASE_MAP = {
+        "RESOURCE_RELATES_TO_TOPIC": {"source": "title", "target": "lower"},
+        "RESOURCE_MENTIONS_PERSON": {"source": "title", "target": "title"},
+        "RESOURCE_MENTIONS_ORGANIZATION": {"source": "title", "target": "title"},
+        "PERSON_AFFILIATED_WITH_ORGANIZATION": {"source": "title", "target": "title"},
+        "PERSON_CONNECTED_TO_TOPIC": {"source": "title", "target": "lower"},
+        "ORGANIZATION_ASSOCIATED_WITH_TOPIC": {"source": "title", "target": "lower"},
+    }
+    @staticmethod
+    def normalize_string_field(value: Any, case: str = "lower"):
+        """
+        Normalize a string field or list of string fields from LLM output.
+        - Handles both single strings and lists of strings
+        - Converts to string if not already
+        - Strips leading/trailing whitespace
+        - Collapses multiple spaces
+        - Normalizes case: 'upper', 'lower', 'title', 'sentence'
+        - Returns empty string for None (or empty list for list input)
+        - Filters out None/empty values from lists
+        
+        Args:
+            value: The input value to normalize (str, List[str], or Any)
+            case: Case normalization ('upper', 'lower', 'title', 'sentence')
+            
+        Returns:
+            Normalized string, or list of normalized strings if input was a list
+        """
+        # Handle None
+        if value is None:
+            return ""
+        
+        # Handle list of strings
+        if isinstance(value, list):
+            normalized_list = []
+            for item in value:
+                if item is None:
+                    continue
+                if not isinstance(item, str):
+                    item = str(item)
+                item = item.strip()
+                item = " ".join(item.split())
+                
+                # Apply case normalization
+                if case == "upper":
+                    item = item.upper()
+                elif case == "lower":
+                    item = item.lower()
+                elif case == "title":
+                    item = item.title()
+                elif case == "sentence":
+                    if item:
+                        item = item[0].upper() + item[1:].lower()
+                
+                # Only add non-empty strings
+                if item:
+                    normalized_list.append(item)
+            
+            return normalized_list
+        
+        # Handle single string
+        if not isinstance(value, str):
+            value = str(value)
+        value = value.strip()
+        value = " ".join(value.split())
+        if case == "upper":
+            value = value.upper()
+        elif case == "lower":
+            value = value.lower()
+        elif case == "title":
+            value = value.title()
+        elif case == "sentence":
+            if value:
+                value = value[0].upper() + value[1:].lower()
+        return value
     """Normalize extracted metadata."""
     
     @staticmethod
     def normalize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Normalize metadata by cleaning and standardizing values.
+        Build and validate models from the new metadata structure.
+        Models will normalize and validate fields on creation.
         
         Args:
-            metadata: The metadata dictionary to normalize
+            metadata: The metadata dictionary with 'nodes' and 'relationships' keys
             
         Returns:
-            Normalized metadata dictionary
+            Dictionary with validated models
         """
-        normalized = metadata.copy()
+        # Validate top-level structure
+        if "nodes" not in metadata:
+            raise ValueError("Missing 'nodes' key in metadata")
         
-        # Normalize string fields
-        string_fields = ["title", "summary", "category", "datasource_id"]
-        for field in string_fields:
-            if field in normalized and normalized[field]:
-                normalized[field] = normalized[field].strip()
+        if "relationships" not in metadata:
+            raise ValueError("Missing 'relationships' key in metadata")
         
-        # Normalize list fields - remove duplicates and empty names
-        list_fields = [
-            "topics", "standards", "standard_editions"
-        ]
+        nodes = metadata.get("nodes", {})
+
+        # Build Resource models
+        resource_data = nodes.get("resource", {})
+        try:
+            resource_model = Resource(
+                url=resource_data.get("url"),
+                title=MetadataNormalizer.normalize_string_field(resource_data.get("title"), case="title"),
+                summary=MetadataNormalizer.normalize_string_field(resource_data.get("summary"), case="sentence"),
+                content_hash=resource_data.get("content_hash"),
+                doc_type=MetadataNormalizer.normalize_string_field(resource_data.get("doc_type", "unknown")),
+                category=MetadataNormalizer.normalize_string_field(resource_data.get("category", "unknown")),
+                scraped_at=resource_data.get("scraped_at", ""),
+                importance=resource_data.get("importance", 0.0),
+                importance_explanation=MetadataNormalizer.normalize_string_field(resource_data.get("importance_explanation", "unknown"), case="sentence"),
+                extreme_impact=MetadataNormalizer.normalize_string_field(resource_data.get("extreme_impact", None), case="sentence"),
+                publish_date=resource_data.get("publish_date", "unknown"),
+                access_notes=MetadataNormalizer.normalize_string_field(resource_data.get("access_notes", None), case="sentence"),
+                datasource_id=resource_data.get("datasource_id")
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to create Resource model: {e}")
         
-        for field in list_fields:
-            if field in normalized and normalized[field]:
-                cleaned_items = []
-                seen_names = set()
-                
-                for item in normalized[field]:
-                    
-                    # First, check if item is a string representation of a dict
-                    if isinstance(item, str):
-                        try:
-                            # Try to parse as JSON first
-                            item = json.loads(item)
-                            logger.info(f"Converted JSON string to dict: {item}")
-                        except (json.JSONDecodeError, ValueError):
-                            try:
-                                # Fallback to ast.literal_eval for Python dict strings
-                                item = ast.literal_eval(item)
-                                logger.info(f"Converted Python dict string to dict: {item}")
-                            except (ValueError, SyntaxError):
-                                # If parsing fails, raise exception to retry message
-                                error_msg = f"Failed to parse item in field '{field}': {item}. Expected dict format."
-                                logger.error(error_msg)
-                                raise ValueError(error_msg)
-                    
-                    if isinstance(item, dict):
-                        # Normalize the name field
-                        name = item.get("name", "").strip()
-                        
-                        # Skip items with empty names or duplicate names
-                        if name and name not in seen_names:
-                            # Create normalized dict with cleaned name
-                            normalized_item = {"name": name}
-                            
-                            # Preserve other fields (confidence, relevance, etc.)
-                            for key, value in item.items():
-                                if key != "name":
-                                    normalized_item[key] = value
-                            
-                            cleaned_items.append(normalized_item)
-                            seen_names.add(name)
-                    else:
-                        # Item is not a dict and couldn't be converted - raise exception
-                        error_msg = f"Invalid item type in field '{field}': {type(item)}. Expected dict, got: {item}"
-                        logger.error(error_msg)
-                        raise ValueError(error_msg)
-                
-                normalized[field] = cleaned_items
+        # Build Topic models - models will handle validation and normalization
+        topic_models = []
+        for topic_data in nodes.get("topics", []):
+            try:
+                topic = Topic(
+                    name=MetadataNormalizer.normalize_string_field(topic_data.get("name"), case="lower"),
+                    classification=MetadataNormalizer.normalize_string_field(topic_data.get("classification")),
+                    identifier=MetadataNormalizer.normalize_string_field(topic_data.get("identifier", None)),
+                    issuer=MetadataNormalizer.normalize_string_field(topic_data.get("issuer", None)),
+                    aliases=MetadataNormalizer.normalize_string_field(topic_data.get("aliases", []), case="title")
+                )
+                topic_models.append(topic)
+            except Exception as e:
+                logger.warning(f"Failed to create Topic model for {topic_data.get('name')}: {e}")
+        
+        # Build Organization models
+        org_models = []
+        for org_data in nodes.get("organizations", []):
+            try:
+                org = Organization(
+                    name=MetadataNormalizer.normalize_string_field(org_data.get("name"), case="title"),
+                    org_type=MetadataNormalizer.normalize_string_field(org_data.get("org_type")),
+                    aliases=MetadataNormalizer.normalize_string_field(org_data.get("aliases", []), case="title"),
+                    homepage_url=MetadataNormalizer.normalize_string_field(org_data.get("homepage_url", None))
+                )
+                org_models.append(org)
+            except Exception as e:
+                logger.warning(f"Failed to create Organization model for {org_data.get('name')}: {e}")
+
+        # Build Person models
+        person_models = []
+        for person_data in nodes.get("people", []):
+            try:
+                person = Person(
+                    name=MetadataNormalizer.normalize_string_field(person_data.get("name"), case="title"),
+                    email=MetadataNormalizer.normalize_string_field(person_data.get("email", None))
+                )
+                person_models.append(person)
+            except Exception as e:
+                logger.warning(f"Failed to create Person model for {person_data.get('name')}: {e}")
+        
+        logger.info(f"Built models: 1 resource, {len(topic_models)} topics, {len(person_models)} people, {len(org_models)} organizations")
+        
+        # Normalize Relationships
+        relationships = metadata.get("relationships", [])
+        # Build lookup maps for node identifiers to unique id fields
+        resource_url_hash = resource_model.url_hash if resource_model else None
+        topic_id_map = {t.name: getattr(t, t.id_field) for t in topic_models}
+        person_id_map = {p.name: getattr(p, p.id_field) for p in person_models}
+        org_id_map = {o.name: getattr(o, o.id_field) for o in org_models}
+
+        relationship_models = []
+        for rel_data in relationships:
+            rel_type = rel_data.get("relationship_type")
+            source_identifier = rel_data.get("source_identifier")
+            target_identifier = rel_data.get("target_identifier")
+
+            # Normalize identifiers to match the normalized names in the lookup maps
+            # BUT don't normalize URLs - keep them as-is
+            def normalize_identifier(identifier, target_case="title"):
+                """Normalize identifier only if it's not a URL."""
+                if not identifier:
+                    return None
+                # Check if it's a URL (simple heuristic: starts with http:// or https://)
+                if isinstance(identifier, str) and (identifier.startswith('http://') or identifier.startswith('https://')):
+                    return identifier  # Don't normalize URLs
+                return MetadataNormalizer.normalize_string_field(identifier, case=target_case)
+            
+            # Get normalization cases from RELATIONSHIP_CASE_MAP, fallback to defaults
+            case_map = MetadataNormalizer.RELATIONSHIP_CASE_MAP.get(rel_type, {})
+            source_case = case_map.get("source")
+            target_case = case_map.get("target")
+            
+            normalized_source_identifier = normalize_identifier(source_identifier, source_case)
+            normalized_target_identifier = normalize_identifier(target_identifier, target_case)
+
+            # Map source_id
+            if rel_type.startswith("RESOURCE_"):
+                source_id = resource_url_hash
+            elif rel_type.startswith("PERSON_"):
+                source_id = person_id_map.get(normalized_source_identifier)
+                if not source_id:
+                    logger.warning(f"Person not found for source_identifier '{source_identifier}' (normalized: '{normalized_source_identifier}'). Available: {list(person_id_map.keys())}")
+            elif rel_type.startswith("ORGANIZATION_"):
+                source_id = org_id_map.get(normalized_source_identifier)
+                if not source_id:
+                    logger.warning(f"Organization not found for source_identifier '{source_identifier}' (normalized: '{normalized_source_identifier}'). Available: {list(org_id_map.keys())}")
+            elif rel_type.startswith("TOPIC_"):
+                source_id = topic_id_map.get(normalized_source_identifier)
+                if not source_id:
+                    logger.warning(f"Topic not found for source_identifier '{source_identifier}' (normalized: '{normalized_source_identifier}'). Available: {list(topic_id_map.keys())}")
             else:
-                normalized[field] = []
-        
-        # Normalize datasource_id name (lowercase, replace spaces with hyphens)
-        if "datasource_id" in normalized:
-            normalized["datasource_id"] = normalized["datasource_id"].lower().replace(" ", "-")
-        
-        # Normalize resource type
-        if "category" in normalized:
-            normalized["category"] = normalized["category"].lower().replace(" ", "-")
-        
-        logger.info("Metadata normalization complete")
-        return normalized
-    
-    @staticmethod
-    def extract_entities(metadata: Dict[str, Any]) -> Tuple[
-        Resource, 
-        List[Tuple[Topic, ResourceRelatesToTopic]], 
-        List[Tuple[Standard, ResourceReferencesStandard]], 
-        List[Tuple[StandardEdition, ResourceReferencesEdition]],
-        Optional[str]
-    ]:
-        """
-        Extract entities (Resources, Topics, Standards, Standard Editions) from metadata.
-        
-        Args:
-            metadata: The normalized metadata with topics/standards as dicts containing scores
+                source_id = source_identifier
+
+            # Map target_id
+            if rel_type.endswith("_TO_TOPIC") or rel_type.endswith("_CONNECTED_TO_TOPIC") or rel_type.endswith("_ASSOCIATED_WITH_TOPIC") or rel_type == "RESOURCE_RELATES_TO_TOPIC":
+                target_id = topic_id_map.get(normalized_target_identifier)
+                if not target_id:
+                    logger.warning(f"Topic not found for target_identifier '{target_identifier}' (normalized: '{normalized_target_identifier}'). Available: {list(topic_id_map.keys())}")
+            elif rel_type.endswith("_TO_PERSON") or rel_type == "RESOURCE_MENTIONS_PERSON":
+                target_id = person_id_map.get(normalized_target_identifier)
+                if not target_id:
+                    logger.warning(f"Person not found for target_identifier '{target_identifier}' (normalized: '{normalized_target_identifier}'). Available: {list(person_id_map.keys())}")
+            elif rel_type.endswith("_TO_ORGANIZATION") or rel_type == "RESOURCE_MENTIONS_ORGANIZATION" or rel_type == "PERSON_AFFILIATED_WITH_ORGANIZATION":
+                target_id = org_id_map.get(normalized_target_identifier)
+                if not target_id:
+                    logger.warning(f"Organization not found for target_identifier '{target_identifier}' (normalized: '{normalized_target_identifier}'). Available: {list(org_id_map.keys())}")
+            elif rel_type.endswith("_TO_RESOURCE"):
+                target_id = resource_url_hash
+            else:
+                target_id = target_identifier
+
+            # Skip relationship if source or target couldn't be mapped
+            if not source_id or not target_id:
+                logger.warning(f"Skipping relationship {rel_type} due to missing source_id ({source_id}) or target_id ({target_id})")
+                continue
+
+            # Remove keys not needed in the model right before instantiation
+            rel_data.pop("relationship_type", None)
+            rel_data.pop("source_identifier", None)
+            rel_data.pop("target_identifier", None)
+            rel_data["source_id"] = source_id
+            rel_data["target_id"] = target_id
             
-        Returns:
-            Tuple of (resource, topics_with_rels, standards_with_rels, standard_editions_with_rels, datasource_name)
-            where each list contains tuples of (model, relationship_model) and datasource_name is optional
-        """
+            relationship_models.append(MetadataNormalizer.RELATIONSHIP_TYPE_MAP[rel_type](**rel_data))
 
-        # Convert scraped_at timestamp to datetime
-        scraped_at = metadata.get("scraped_at")
-        if scraped_at and isinstance(scraped_at, (int, float)):
-            scraped_at_dt = datetime.fromtimestamp(scraped_at)
-        else:
-            scraped_at_dt = datetime.now()
-        
-        # Extract data source name
-        datasource_id = metadata.get("datasource_id")
-        
-        # Create Resource entity
-        resource = Resource(
-            title=metadata.get("title", ""),
-            url=metadata.get("url", ""),
-            doc_type=metadata.get("category", "unknown"),  # Maps to doc_type
-            category=metadata.get("category", "unknown"),   # Maps to category
-            summary=metadata.get("summary", ""),
-            content_hash=metadata.get("content_hash", ""),
-            publish_date=metadata.get("publish_date", "unknown"),
-            scraped_at=scraped_at_dt,
-            language="en"  # Default, could be extracted from metadata if available
-        )
+        logger.info(f"Built {len(relationship_models)} relationship models")
 
-        # Create Topic entities with relationship properties
-        topics_with_rels = []
-        for topic_dict in metadata.get("topics", []):
-            topic = Topic(name=topic_dict.get("name", ""))
-            rel = ResourceRelatesToTopic(
-                confidence=topic_dict.get("confidence"),
-                relevance_score=topic_dict.get("relevance")
-            )
-            topics_with_rels.append((topic, rel))
-
-
-        # Create Standard entities with relationship properties
-        standards_with_rels = []
-        for standard_dict in metadata.get("standards", []):
-            standard = Standard(
-                identifier=standard_dict.get("name", ""),
-                name=standard_dict.get("name", "")
-            )
-            rel = ResourceReferencesStandard(
-                confidence=standard_dict.get("confidence")
-            )
-            standards_with_rels.append((standard, rel))
-
-        # Create Standard Edition entities with relationship properties
-        standard_editions_with_rels = []
-        for edition_dict in metadata.get("standard_editions", []):
-            logger.info(f"Processing Standard Edition: {edition_dict}")
-            logger.info(f"Type of Standard Edition: {type(edition_dict)}")
-            edition_name = edition_dict.get("name", "")
-            edition = StandardEdition(
-                name=edition_name,
-                identifier=edition_name,
-                version=MetadataNormalizer._extract_version(edition_name)
-            )
-            rel = ResourceReferencesEdition(
-                confidence=edition_dict.get("confidence")
-            )
-            standard_editions_with_rels.append((edition, rel))
-        
-        logger.info(f"Extracted entities: {len(topics_with_rels)} topics, "
-                   f"{len(standards_with_rels)} standards, "
-                   f"{len(standard_editions_with_rels)} standard editions, "
-                   f"datasource_id: {datasource_id}")
-        
-        return resource, topics_with_rels, standards_with_rels, standard_editions_with_rels, datasource_id
+        # Return structure with models and original metadata
+        return {
+            "nodes": {
+                "resource": resource_model,
+                "topics": topic_models,
+                "people": person_models,
+                "organizations": org_models
+            },
+            "relationships": relationship_models
+        }
     
     @staticmethod
     def _extract_version(edition_name: str) -> str:

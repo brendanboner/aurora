@@ -127,7 +127,7 @@ deploy-shared: validate-env ensure-rabbitmq ensure-neo4j
 #==============================================================================
 
 # Default test message file
-TEST_FILE ?= all
+TEST_FILE ?= wfa_public.json
 
 # Image name for load test messages container
 LOAD_TEST_IMAGE := load-test-messages

@@ -1,8 +1,8 @@
 # RabbitMQ Client (shared library)
--e rabbitmq-client
+# -e rabbitmq-client
 
 # Neo4j Client (shared library)
--e neo4j-client
+# -e neo4j-client
 
 # LLM
 openai>=1.54.0  # Includes Azure OpenAI support
@@ -14,3 +14,4 @@ pydantic-settings>=2.6.0
 
 # Utilities
 python-dateutil>=2.9.0
+sentence-transformers

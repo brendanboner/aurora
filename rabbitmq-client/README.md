@@ -128,6 +128,8 @@ producer.close()
 - ✅ Queue auto-declaration (durable)
 - ✅ Prefetch control (QoS)
 - ✅ Optional logger injection
+- ✅ **Multi-threaded processing** (NEW!)
+- ✅ **Configurable heartbeat** for long-running tasks
 
 ### RabbitMQProducer
 - ✅ Simple publish interface
@@ -137,6 +139,34 @@ producer.close()
 - ✅ Context manager support
 - ✅ Queue auto-declaration (durable)
 - ✅ Optional logger injection
+
+## Multi-threaded Processing (NEW)
+
+For long-running message processing tasks (e.g., LLM calls, API requests), enable multi-threaded processing:
+
+```python
+from rabbitmq_client import RabbitMQConsumer
+
+consumer = RabbitMQConsumer(
+    host="localhost",
+    queue="document_queue",
+    max_workers=4,      # Enable 4 worker threads
+    heartbeat=180       # 3 minute heartbeat (prevents timeout)
+)
+
+# Increase prefetch to keep workers busy
+consumer.consume(
+    callback=process_message,
+    prefetch_count=8    # Generally max_workers * 2
+)
+```
+
+**Benefits:**
+- Process multiple messages concurrently
+- Prevents connection timeouts during long processing
+- Better resource utilization for I/O-bound tasks
+
+**See**: `TECHNICAL_DETAILS.md` for implementation details and best practices.
 
 ## Configuration
 
@@ -155,7 +185,9 @@ consumer = RabbitMQConsumer(
     user=settings.rabbitmq_user,
     password=settings.rabbitmq_password,
     queue=settings.rabbitmq_queue,
-    logger_instance=your_logger  # Optional
+    logger_instance=your_logger,  # Optional
+    max_workers=settings.max_workers,  # Optional: enable multi-threading
+    heartbeat=settings.heartbeat  # Optional: increase for long tasks
 )
 ```
 

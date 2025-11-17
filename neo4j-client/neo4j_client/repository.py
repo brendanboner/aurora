@@ -3,6 +3,7 @@
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 import json
+import os
 from pathlib import Path
 from .client import Neo4jClient
 from .models import *
@@ -24,6 +25,31 @@ class GraphRepository:
         """
         self.client = client
         self.logger = logger_instance or logger
+        
+        # Initialize Azure OpenAI client for LLM duplicate checking
+        # Only initialize if environment variables are present
+        self.llm_client = None
+        try:
+            api_key = os.getenv('AZURE_OPENAI_API_KEY')
+            endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+            api_version = os.getenv('AZURE_OPENAI_API_VERSION', '2024-08-01-preview')
+            deployment = os.getenv('AZURE_OPENAI_DEPLOYMENT')
+            
+            if api_key and endpoint and deployment:
+                from openai import AzureOpenAI
+                self.llm_client = AzureOpenAI(
+                    api_key=api_key,
+                    api_version=api_version,
+                    azure_endpoint=endpoint
+                )
+                self.llm_deployment = deployment
+                self.logger.info(f"Initialized Azure OpenAI client for duplicate checking with deployment: {deployment}")
+            else:
+                self.logger.warning("Azure OpenAI credentials not found. LLM duplicate checking will be disabled.")
+        except ImportError:
+            self.logger.warning("openai package not installed. LLM duplicate checking will be disabled.")
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize Azure OpenAI client: {e}. LLM duplicate checking will be disabled.")
 
     def initialize_base_data(self):
         """
@@ -44,7 +70,7 @@ class GraphRepository:
         # Create organizations
         for org_dict in orgs:
             org = Organization(**org_dict)
-            self.create_organization(org)
+            self.create_node(org)
         
         # Create data sources and link to organizations
         for ds_dict in data_sources:
@@ -52,619 +78,848 @@ class GraphRepository:
             org_id = ds_dict.get("org_id")
             
             # Create the data source
-            self.create_datasource(ds)
+            self.create_node(ds)
             
             # Link data source to organization if org_id is provided
             if org_id:
-                belongs_to_rel = DataSourceBelongsTo()
-                self.link_datasource_to_organization(ds.source_id, org_id, belongs_to_rel)
+                ds_to_org_rel = DataSourceBelongsToOrganization(source_id=ds.source_id, target_id=org_id)
+                self.create_relationship(ds_to_org_rel)
         
         self.logger.info("Base data initialization complete")
-    
-    
-    # ========== Resource Operations ==========
-    
-    def create_resource(self, resource: Resource) -> Optional[Dict[str, Any]]:
-        """
-        Create or update a Resource node.
-        Explicitly sets required fields and dynamically handles optional ones.
-        
-        Args:
-            resource: Resource model instance
-        Returns:
-            Created/updated resource node data
-        """
-        resource_data = resource.to_dict()
-        
-        # Extract optional fields that may or may not be present
-        optional_fields = {
-            k: v for k, v in resource_data.items() 
-            if k in ['publish_date', 'access_notes', 'resource_vector', 'last_updated']
-        }
-        
-        query = """
-        MERGE (r:Resource {url: $url})
-        ON CREATE SET 
-            r.url_hash = $url_hash,
-            r.url = $url,
-            r.content_hash = $content_hash,
-            r.title = $title,
-            r.doc_type = $doc_type,
-            r.category = $category,
-            r.summary = $summary,
-            r.scraped_at = $scraped_at,
-            r.language = $language,
-            r += $optional_fields,
-            r.created_at = datetime()
-        ON MATCH SET
-            r.url_hash = $url_hash,
-            r.url = $url,
-            r.content_hash = $content_hash,
-            r.title = $title,
-            r.doc_type = $doc_type,
-            r.category = $category,
-            r.summary = $summary,
-            r.scraped_at = $scraped_at,
-            r.language = $language,
-            r += $optional_fields,
-            r.last_updated = datetime()
-        RETURN r
-        """
 
-        result = self.client.execute_write(query, {
-            "url": resource.url,
-            "url_hash": resource.url_hash,
-            "content_hash": resource.content_hash,
-            "title": resource.title,
-            "doc_type": resource.doc_type,
-            "category": resource.category,
-            "summary": resource.summary,
-            "scraped_at": resource.scraped_at.isoformat() if isinstance(resource.scraped_at, datetime) else resource.scraped_at,
-            "language": resource.language,
-            "optional_fields": optional_fields
-        })
-        self.logger.info(f"Created/updated Resource: {resource.title}")
-        return result[0] if result else None
-    
-    def get_resource(self, url: str) -> Optional[Dict[str, Any]]:
-        """Get a resource by URL."""
-        query = "MATCH (r:Resource {url: $url}) RETURN r"
-        result = self.client.execute_query(query, {"url": url})
-        return result[0] if result else None
-    
-    def list_resources(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """List resources with optional limit."""
-        query = "MATCH (r:Resource) RETURN r LIMIT $limit"
-        return self.client.execute_query(query, {"limit": limit})
-    
-    # ========== Topic Operations ==========
-    
-    def create_topic(self, topic: Topic) -> Optional[Dict[str, Any]]:
+    def create_node(self, node: Node) -> Optional[Dict[str, Any]]:
         """
-        Create or get a Topic node.
-        Explicitly sets required fields and dynamically handles optional ones.
+        General method to create or update any node type in Neo4j.
+        Uses the class name as the label and the first string field as the unique identifier.
+        Subclasses can override get_node_label and get_id_field for custom behavior.
+        
+        Special handling for Resource nodes:
+        - Automatically creates INGESTED_FROM relationship to the DataSource
         
         Args:
-            topic: Topic model instance
+            node: Node model instance
         Returns:
-            Created/updated topic node data
+            Created/updated node data
         """
-        topic_data = topic.to_dict()
-        
-        # Extract optional fields that may or may not be present
-        optional_fields = {
-            k: v for k, v in topic_data.items() 
-            if k in ['topic_vector']
-        }
-        
-        query = """
-        MERGE (t:Topic {topic_id: $topic_id})
-        ON CREATE SET 
-            t.name = $name,
-            t.aliases = $aliases,
-            t += $optional_fields,
-            t.created_at = datetime()
-        ON MATCH SET
-            t.name = $name,
-            t.aliases = $aliases,
-            t += $optional_fields,
-            t.last_updated = datetime()
-        RETURN t
-        """
-        result = self.client.execute_write(query, {
-            "topic_id": topic.topic_id,
-            "name": topic.name,
-            "aliases": topic.aliases,
-            "optional_fields": optional_fields
-        })
-        return result[0] if result else None
-    
-    def link_topic_to_parent(self, child_topic_id: str, parent_topic_id: str, relationship: TopicSubtopicOf):
-        """
-        Create SUBTOPIC_OF relationship between two topics (child -> parent).
-        Args:
-            child_topic_id: ID of the child topic
-            parent_topic_id: ID of the parent topic
-            relationship: TopicSubtopicOf relationship model with properties
-        """
-        rel_props = relationship.to_dict()
-        query = """
-        MATCH (child:Topic {topic_id: $child_topic_id})
-        MATCH (parent:Topic {topic_id: $parent_topic_id})
-        MERGE (child)-[rel:SUBTOPIC_OF]->(parent)
-        SET rel += $properties
-        RETURN rel
-        """
-        self.client.execute_write(query, {
-            "child_topic_id": child_topic_id,
-            "parent_topic_id": parent_topic_id,
-            "properties": rel_props
-        })
-    
-    def get_topic_hierarchy(self, topic_id: str) -> List[Dict[str, Any]]:
-        """
-        Get the full hierarchy chain from a topic to its root parent.
-        
-        Args:
-            topic_id: ID of the starting topic
-            
-        Returns:
-            List of topics from child to root parent
-        """
-        query = """
-        MATCH path = (t:Topic {topic_id: $topic_id})-[:SUBTOPIC_OF*0..]->(parent:Topic)
-        RETURN nodes(path) as hierarchy
-        ORDER BY length(path) DESC
-        LIMIT 1
-        """
-        result = self.client.execute_query(query, {"topic_id": topic_id})
-        return result[0].get('hierarchy', []) if result else []
-    
-    def get_topic_subtopics(self, topic_id: str, max_depth: int = 1) -> List[Dict[str, Any]]:
-        """
-        Get all subtopics of a topic up to a certain depth.
-        
-        Args:
-            topic_id: ID of the parent topic
-            max_depth: Maximum depth to traverse (1 = direct children only)
-            
-        Returns:
-            List of subtopic nodes
-        """
+        node_data = node.to_dict()
+        # Determine label and id field
+        label = node.node_label
+        id_field = node.id_field
+
+        # Prepare query and parameters
         query = f"""
-        MATCH (parent:Topic {{topic_id: $topic_id}})<-[:SUBTOPIC_OF*1..{max_depth}]-(subtopic:Topic)
-        RETURN subtopic
+        MERGE (n:{label} {{{id_field}: $id_value}})
+        ON CREATE SET n += $properties, n.created_at = datetime()
+        ON MATCH SET n += $properties, n.last_updated = datetime()
+        RETURN n
         """
-        return self.client.execute_query(query, {"topic_id": topic_id})
-    
-    def list_topics(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """List all topics."""
-        query = "MATCH (t:Topic) RETURN t LIMIT $limit"
-        return self.client.execute_query(query, {"limit": limit})
-    
-    # ========== Standard Operations ==========
-    
-    def create_standard(self, standard: Standard) -> Optional[Dict[str, Any]]:
-        """
-        Create or get a Standard node.
-        Explicitly sets required fields (no optional fields for Standard).
-        
-        Args:
-            standard: Standard model instance
-            
-        Returns:
-            Created/updated standard node data
-        """
-        query = """
-        MERGE (s:Standard {standard_id: $standard_id})
-        ON CREATE SET 
-            s.identifier = $identifier,
-            s.name = $name,
-            s.aliases = $aliases,
-            s.created_at = datetime()
-        ON MATCH SET
-            s.identifier = $identifier,
-            s.name = $name,
-            s.aliases = $aliases,
-            s.last_updated = datetime()
-        RETURN s
-        """
-        result = self.client.execute_write(query, {
-            "standard_id": standard.standard_id,
-            "identifier": standard.identifier,
-            "name": standard.name,
-            "aliases": standard.aliases
-        })
-        return result[0] if result else None
-    
-    def create_standard_edition(self, edition: StandardEdition) -> Optional[Dict[str, Any]]:
-        """
-        Create or get a Standard Edition node.
-        Explicitly sets required fields and dynamically handles optional ones.
-        
-        Args:
-            edition: StandardEdition model instance
-            
-        Returns:
-            Created/updated standard edition node data
-        """
-        edition_data = edition.to_dict()
-        
-        # Extract optional fields that may or may not be present
-        optional_fields = {
-            k: v for k, v in edition_data.items() 
-            if k in ['status', 'published_at', 'url']
+        params = {
+            "id_value": node_data[id_field],
+            "properties": node_data
         }
+        result = self.client.execute_write(query, params)
+        self.logger.info(f"Created/updated {label}: {node_data.get(id_field)}")
         
-        query = """
-        MERGE (se:StandardEdition {edition_id: $edition_id})
-        ON CREATE SET 
-            se.identifier = $identifier,
-            se.name = $name,
-            se.version = $version,
-            se += $optional_fields,
-            se.created_at = datetime()
-        ON MATCH SET
-            se.identifier = $identifier,
-            se.name = $name,
-            se.version = $version,
-            se += $optional_fields,
-            se.last_updated = datetime()
-        RETURN se
-        """
-        result = self.client.execute_write(query, {
-            "edition_id": edition.edition_id,
-            "identifier": edition.identifier,
-            "name": edition.name,
-            "version": edition.version,
-            "optional_fields": optional_fields
-        })
+        # For Resource nodes, automatically create the INGESTED_FROM relationship
+        if label == "Resource" and hasattr(node, 'datasource_id'):
+            datasource_id = getattr(node, 'datasource_id')
+            if datasource_id:
+                try:
+                    # Create the relationship using the url (not url_hash) as source_id
+                    # because ResourceIngestedFromDataSource uses 'url' as source_id_field
+                    ingested_rel = ResourceIngestedFromDataSource(
+                        source_id=node.url,
+                        target_id=datasource_id
+                    )
+                    self.create_relationship(ingested_rel)
+                except Exception as e:
+                    self.logger.warning(f"Failed to create INGESTED_FROM relationship for Resource: {e}")
+        
         return result[0] if result else None
-    
-    def list_standards(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """List all standards."""
-        query = "MATCH (s:Standard) RETURN s LIMIT $limit"
-        return self.client.execute_query(query, {"limit": limit})
-    
-    # ========== Organization Operations ==========
-    
-    def create_organization(self, org: Organization) -> Optional[Dict[str, Any]]:
-        """
-        Create or update an Organization node.
-        Explicitly sets required fields and dynamically handles optional ones.
-        
-        Args:
-            org: Organization model instance
-            
-        Returns:
-            Created/updated organization node data
-        """
-        org_data = org.to_dict()
-        
-        # Extract optional fields that may or may not be present
-        optional_fields = {
-            k: v for k, v in org_data.items() 
-            if k in ['homepage_url']
-        }
-        
-        query = """
-        MERGE (o:Organization {org_id: $org_id})
-        ON CREATE SET 
-            o.name = $name,
-            o.type = $type,
-            o += $optional_fields,
-            o.created_at = datetime()
-        ON MATCH SET
-            o.name = $name,
-            o.type = $type,
-            o += $optional_fields,
-            o.last_updated = datetime()
-        RETURN o
-        """
-        result = self.client.execute_write(query, {
-            "org_id": org.org_id,
-            "name": org.name,
-            "type": org.type,
-            "optional_fields": optional_fields
-        })
-        self.logger.info(f"Created/updated Organization: {org.name}")
-        return result[0] if result else None
-    
-    def get_organization(self, org_id: str) -> Optional[Dict[str, Any]]:
-        """Get an organization by org_id."""
-        query = "MATCH (o:Organization {org_id: $org_id}) RETURN o"
-        result = self.client.execute_query(query, {"org_id": org_id})
-        return result[0] if result else None
-    
-    def list_organizations(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """List all organizations."""
-        query = "MATCH (o:Organization) RETURN o LIMIT $limit"
-        return self.client.execute_query(query, {"limit": limit})
-    
-    # ========== DataSource Operations ==========
-    
-    def create_datasource(self, datasource: DataSource) -> Optional[Dict[str, Any]]:
-        """
-        Create or update a DataSource node.
-        Explicitly sets required fields and dynamically handles optional ones.
-        
-        Args:
-            datasource: DataSource model instance
-            
-        Returns:
-            Created/updated datasource node data
-        """
-        datasource_data = datasource.to_dict()
-        
-        # Extract optional fields that may or may not be present
-        optional_fields = {
-            k: v for k, v in datasource_data.items() 
-            if k in ['fetch_url']
-        }
-        
-        query = """
-        MERGE (ds:DataSource {source_id: $source_id})
-        ON CREATE SET 
-            ds.name = $name,
-            ds.source_type = $source_type,
-            ds += $optional_fields,
-            ds.created_at = datetime()
-        ON MATCH SET
-            ds.name = $name,
-            ds.source_type = $source_type,
-            ds += $optional_fields,
-            ds.last_updated = datetime()
-        RETURN ds
-        """
-        result = self.client.execute_write(query, {
-            "source_id": datasource.source_id,
-            "name": datasource.name,
-            "source_type": datasource.source_type,
-            "optional_fields": optional_fields
-        })
-        self.logger.info(f"Created/updated DataSource: {datasource.name}")
-        return result[0] if result else None
-    
-    def get_datasource(self, source_id: str) -> Optional[Dict[str, Any]]:
-        """Get a data source by source_id."""
-        query = "MATCH (ds:DataSource {source_id: $source_id}) RETURN ds"
-        result = self.client.execute_query(query, {"source_id": source_id})
-        return result[0] if result else None
-    
-    def list_datasources(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """List all data sources."""
-        query = "MATCH (ds:DataSource) RETURN ds LIMIT $limit"
-        return self.client.execute_query(query, {"limit": limit})
-    
-    # ========== Relationship Operations ==========
 
-    def link_datasource_to_organization(self, source_id: str, org_id: str, relationship: DataSourceBelongsTo):
+
+    def create_relationship(self, relationship: Relationship):
         """
-        Create BELONGS_TO relationship between DataSource and Organization.
+        Generic method to create any relationship between two nodes.
+        Uses metadata from the relationship class to automatically determine
+        node labels, ID fields, and relationship type.
+        
+        The source_id and target_id in the relationship should contain the actual
+        unique identifier values for matching the nodes (e.g., url for Resource,
+        topic_id for Topic, org_id for Organization, person_id for Person, etc.).
         
         Args:
-            source_id: ID of the data source
-            org_id: ID of the organization
-            relationship: DataSourceBelongsTo relationship model with properties
+            relationship: Any Relationship model instance (contains source_id, target_id, and metadata)
+            
+        Example:
+            rel = ResourceRelatesToTopic(
+                source_id=resource.url,  # matches Resource.url
+                target_id=topic.topic_id,  # matches Topic.topic_id
+                confidence=0.95,
+                relevance=0.85,
+                evidence="Direct quote from the document",
+                stance="supportive",
+                stance_score=0.7
+            )
+            repo.create_relationship(rel)
+            
+            rel = PersonAffiliatedWithOrganization(
+                source_id=person.person_id,  # matches Person.person_id
+                target_id=org.org_id,  # matches Organization.org_id
+                confidence=0.95,
+                role="Chief Technology Officer",
+                evidence="Jane Smith serves as CTO at..."
+            )
+            repo.create_relationship(rel)
         """
         rel_props = relationship.to_dict()
-        query = """
-        MATCH (ds:DataSource {source_id: $source_id})
-        MATCH (o:Organization {org_id: $org_id})
-        MERGE (ds)-[rel:BELONGS_TO]->(o)
-        SET rel += $properties
+        
+        query = f"""
+        MATCH (source:{relationship.source_node_label} {{{relationship.source_id_field}: $source_id}})
+        MATCH (target:{relationship.target_node_label} {{{relationship.target_id_field}: $target_id}})
+        MERGE (source)-[rel:{relationship.relationship_label}]->(target)
+        ON CREATE SET rel += $properties, rel.created_at = datetime()
+        ON MATCH SET rel += $properties, rel.last_updated = datetime()
         RETURN rel
         """
+        
         self.client.execute_write(query, {
-            "source_id": source_id,
-            "org_id": org_id,
+            "source_id": relationship.source_id,
+            "target_id": relationship.target_id,
             "properties": rel_props
         })
-        self.logger.info(f"Linked DataSource '{source_id}' to Organization '{org_id}'")
+        self.logger.info(
+            f"Created {relationship.relationship_label} relationship from "
+            f"{relationship.source_node_label}('{relationship.source_id}') to "
+            f"{relationship.target_node_label}('{relationship.target_id}')"
+        )
     
-    def link_resource_to_topic(self, resource_url: str, topic_id: str, relationship: ResourceRelatesToTopic):
+    # ========== Deduplication Operations ==========
+    
+    def deduplicate_nodes(
+        self, 
+        nodes_dict: Dict[str, Any],
+        k_neighbors: int = 5,
+        similarity_threshold: float = 0.85,
+        llm_review_threshold: float = 0.65
+    ) -> Dict[str, Any]:
         """
-        Create RELATES_TO relationship between Resource and Topic.
+        Deduplicate nodes (topics, people, organizations) before insertion.
+        
+        Process:
+        1. Check if node exists by ID (Neo4j MERGE handles this)
+        2. Find k nearest neighbors using vector similarity
+        3. Score potential duplicates using additional features
+        4. Handle duplicates based on score:
+           - Above similarity_threshold: Automatic duplicate
+           - Between llm_review_threshold and similarity_threshold: Send to LLM for review
+           - Below llm_review_threshold: New node
+        5. Update relationships to point to existing nodes when duplicates found
+        6. Return deduplicated nodes with updated relationships
+        
         Args:
-            resource_url: URL of the resource
-            topic_id: ID of the topic (slugified identifier)
-            relationship: ResourceRelatesToTopic relationship model with properties
+            nodes_dict: Dictionary with structure:
+                {
+                    "nodes": {
+                        "resource": resource_model,
+                        "topics": [topic_models],
+                        "people": [person_models],
+                        "organizations": [org_models]
+                    },
+                    "relationships": [relationship_models]
+                }
+            k_neighbors: Number of nearest neighbors to check
+            similarity_threshold: Minimum similarity score for automatic duplicate (default: 0.85)
+            llm_review_threshold: Minimum similarity score to trigger LLM review (default: 0.65)
+            
+        Returns:
+            Dictionary with deduplicated nodes, updated relationships, and merge information
         """
-        rel_props = relationship.to_dict()
-        query = """
-        MATCH (r:Resource {url: $resource_url})
-        MATCH (t:Topic {topic_id: $topic_id})
-        MERGE (r)-[rel:RELATES_TO]->(t)
-        SET rel += $properties
-        RETURN rel
-        """
-        self.client.execute_write(query, {
-            "resource_url": resource_url,
-            "topic_id": topic_id,
-            "properties": rel_props
-        })
-    
-    def link_resource_to_standard(self, resource_url: str, standard_id: str, relationship: ResourceReferencesStandard):
-        """
-        Create REFERENCES_STANDARD relationship between Resource and Standard.
-        Args:
-            resource_url: URL of the resource
-            standard_id: ID of the standard (standard_id field)
-            relationship: ResourceReferencesStandard relationship model with properties
-        """
-        rel_props = relationship.to_dict()
-        query = """
-        MATCH (r:Resource {url: $resource_url})
-        MATCH (s:Standard {standard_id: $standard_id})
-        MERGE (r)-[rel:REFERENCES_STANDARD]->(s)
-        SET rel += $properties
-        RETURN rel
-        """
-        self.client.execute_write(query, {
-            "resource_url": resource_url,
-            "standard_id": standard_id,
-            "properties": rel_props
-        })
-    
-    def link_resource_to_standard_edition(self, resource_url: str, edition_id: str, relationship: ResourceReferencesEdition):
-        """
-        Create REFERENCES_EDITION relationship between Resource and Standard Edition.
-        Args:
-            resource_url: URL of the resource
-            edition_id: ID of the standard edition (edition_id field)
-            relationship: ResourceReferencesEdition relationship model with properties
-        """
-        rel_props = relationship.to_dict()
-        query = """
-        MATCH (r:Resource {url: $resource_url})
-        MATCH (se:StandardEdition {edition_id: $edition_id})
-        MERGE (r)-[rel:REFERENCES_EDITION]->(se)
-        SET rel += $properties
-        RETURN rel
-        """
-        self.client.execute_write(query, {
-            "resource_url": resource_url,
-            "edition_id": edition_id,
-            "properties": rel_props
-        })
-    
-    def link_standard_edition_to_standard(self, edition_name: str, standard_name: str, relationship: EditionVersionOf):
-        """
-        Create VERSION_OF relationship between Standard Edition and Standard.
-        Args:
-            edition_name: Name of the standard edition
-            standard_name: Name of the standard
-            relationship: EditionVersionOf relationship model with properties
-        """
-        rel_props = relationship.to_dict()
-        query = """
-        MATCH (se:StandardEdition {name: $edition_name})
-        MATCH (s:Standard {name: $standard_name})
-        MERGE (se)-[rel:VERSION_OF]->(s)
-        SET rel += $properties
-        RETURN rel
-        """
-        self.client.execute_write(query, {
-            "edition_name": edition_name,
-            "standard_name": standard_name,
-            "properties": rel_props
-        })
-    
-    def link_resource_to_datasource(self, resource_url: str, datasource_id: str, relationship: ResourceIngestedFrom):
-        """
-        Create INGESTED_FROM relationship between Resource and DataSource.
-        Args:
-            resource_url: URL of the resource
-            datasource_id: ID of the data source (source_id field)
-            relationship: ResourceIngestedFrom relationship model with properties
-        """
-        rel_props = relationship.to_dict()
-        query = """
-        MATCH (r:Resource {url: $resource_url})
-        MATCH (ds:DataSource {source_id: $datasource_id})
-        MERGE (r)-[rel:INGESTED_FROM]->(ds)
-        SET rel += $properties
-        RETURN rel
-        """
-        self.client.execute_write(query, {
-            "resource_url": resource_url,
-            "datasource_id": datasource_id,
-            "properties": rel_props
-        })
-    
-    # ========== Bulk Insert Operations ==========
+
+        nodes = nodes_dict.get("nodes", {})
+        relationships = nodes_dict.get("relationships", [])
+        
+        # Track ID mappings: new_id -> existing_id for duplicates
+        id_mappings = {
+            "Topic": {},      # topic_id -> existing_topic_id
+            "Person": {},     # person_id -> existing_person_id
+            "Organization": {}  # org_id -> existing_org_id
+        }
+        
+        result = {
+            "nodes": {
+                "resource": nodes.get("resource"),
+                "topics": [],
+                "people": [],
+                "organizations": []
+            },
+            "relationships": [],
+            "duplicates_found": {
+                "topics": [],
+                "people": [],
+                "organizations": []
+            }
+        }
+        
+        # Deduplicate topics
+        if nodes.get("topics"):
+            result["nodes"]["topics"], result["duplicates_found"]["topics"], topic_mappings = \
+                self._deduplicate_node_list(
+                    nodes["topics"], 
+                    "Topic", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Topic"] = topic_mappings
+        
+        # Deduplicate people
+        if nodes.get("people"):
+            result["nodes"]["people"], result["duplicates_found"]["people"], person_mappings = \
+                self._deduplicate_node_list(
+                    nodes["people"], 
+                    "Person", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Person"] = person_mappings
+        
+        # Deduplicate organizations
+        if nodes.get("organizations"):
+            result["nodes"]["organizations"], result["duplicates_found"]["organizations"], org_mappings = \
+                self._deduplicate_node_list(
+                    nodes["organizations"], 
+                    "Organization", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Organization"] = org_mappings
+        
+
+        self.logger.info(f"ID MAPPINGS: {id_mappings}")
+
+
+        # Update relationships to point to existing nodes
+        remapped_relationships = self._remap_relationships(relationships, id_mappings)
+
+        self.logger.info(f"Deduplication complete. Found {len(result['duplicates_found']['topics'])} duplicate topics, {len(result['duplicates_found']['people'])} duplicate people, and {len(result['duplicates_found']['organizations'])} duplicate organizations.")
+        
+        # Return same structure as input, with duplicates removed and relationships updated
+        return {
+            "nodes": {
+                "resource": result["nodes"]["resource"],
+                "topics": result["nodes"]["topics"],
+                "people": result["nodes"]["people"],
+                "organizations": result["nodes"]["organizations"]
+            },
+            "relationships": remapped_relationships
+        }
     
     def insert_entities(
         self,
-        resource: Resource,
-        topics: Optional[List[Tuple[Topic, ResourceRelatesToTopic]]] = None,
-        standards: Optional[List[Tuple[Standard, ResourceReferencesStandard]]] = None,
-        standard_editions: Optional[List[Tuple[StandardEdition, ResourceReferencesEdition]]] = None,
-        datasource_id: Optional[str] = None
-    ):
+        entities_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
-        Insert all entities and relationships into the graph.
-        This is a type-safe method for bulk inserting a complete set of entities.
-        Creates relationships with confidence and relevance scores from metadata.
+        Insert deduplicated nodes and relationships into the graph.
+        
+        This function takes the output from deduplicate_nodes() and creates/updates
+        all nodes and relationships in Neo4j. Nodes are inserted first, then relationships.
         
         Args:
-            resource: Resource model instance
-            topics: List of tuples (Topic model, ResourceRelatesToTopic relationship)
-            standards: List of tuples (Standard model, ResourceReferencesStandard relationship)
-            standard_editions: List of tuples (StandardEdition model, ResourceReferencesEdition relationship)
-            datasource_id: ID of the data source (optional)
-        """
-        # Create Resource node
-        self.create_resource(resource)
-        
-        # Link to DataSource if provided
-        if datasource_id:
-            try:
-                source_rel = ResourceIngestedFrom()
-                self.link_resource_to_datasource(resource.url, datasource_id, source_rel)
-                self.logger.info(f"Linked resource to data source: {datasource_id}")
-            except Exception as e:
-                self.logger.warning(f"Could not link to data source {datasource_id}: {e}")
-        
-        # Create and link Topics with scores
-        if topics:
-            for topic, rel in topics:
-                self.create_topic(topic)
-                self.link_resource_to_topic(resource.url, topic.topic_id, rel)
-            self.logger.info(f"Linked {len(topics)} topics to resource with scores")
-        
-        # Create and link Standards with confidence
-        if standards:
-            for standard, rel in standards:
-                self.create_standard(standard)
-                self.link_resource_to_standard(resource.url, standard.standard_id, rel)
-            self.logger.info(f"Linked {len(standards)} standards to resource with confidence")
-        
-        # Create and link Standard Editions with confidence
-        if standard_editions:
-            for edition, rel in standard_editions:
-                self.create_standard_edition(edition)
-                self.link_resource_to_standard_edition(resource.url, edition.edition_id, rel)
-            self.logger.info(f"Linked {len(standard_editions)} standard editions to resource with confidence")
-    
-    # ========== Query Operations ==========
-    
-    def get_resource_with_relationships(self, url: str) -> Optional[Dict[str, Any]]:
-        """
-        Get a resource with all its relationships.
-        
+            entities_dict: Dictionary with structure (output from deduplicate_nodes):
+                {
+                    "nodes": {
+                        "resource": resource_model,
+                        "topics": [topic_models],
+                        "people": [person_models],
+                        "organizations": [org_models]
+                    },
+                    "relationships": [relationship_models]
+                }
+                
         Returns:
-            Dictionary with resource and related entities
+            Dictionary with insertion statistics:
+                {
+                    "nodes_created": {
+                        "resource": 1,
+                        "topics": 5,
+                        "people": 3,
+                        "organizations": 2
+                    },
+                    "relationships_created": 15,
+                    "success": True
+                }
         """
-        query = """
-        MATCH (r:Resource {url: $url})
-        OPTIONAL MATCH (r)-[:COVERS_TOPIC]->(t:Topic)
-        OPTIONAL MATCH (r)-[:REFERENCES_STANDARD]->(s:Standard)
-        OPTIONAL MATCH (r)-[:REFERENCES_EDITION]->(se:StandardEdition)
-        OPTIONAL MATCH (r)-[:FROM_SOURCE]->(ds:DataSource)
-        RETURN r, 
-               collect(DISTINCT t) as topics,
-               collect(DISTINCT s) as standards,
-               collect(DISTINCT se) as standard_editions,
-               collect(DISTINCT ds) as data_sources
+        nodes = entities_dict.get("nodes", {})
+        relationships = entities_dict.get("relationships", [])
+        
+        stats = {
+            "nodes_created": {
+                "resource": 0,
+                "topics": 0,
+                "people": 0,
+                "organizations": 0
+            },
+            "relationships_created": 0,
+            "success": False
+        }
+        
+        try:
+            # Insert resource node
+            if nodes.get("resource"):
+                self.logger.info(f"Inserting resource node...")
+                self.create_node(nodes["resource"])
+                stats["nodes_created"]["resource"] = 1
+            
+            # Insert topic nodes
+            if nodes.get("topics"):
+                self.logger.info(f"Inserting {len(nodes['topics'])} topic nodes...")
+                for topic in nodes["topics"]:
+                    self.create_node(topic)
+                    stats["nodes_created"]["topics"] += 1
+            
+            # Insert person nodes
+            if nodes.get("people"):
+                self.logger.info(f"Inserting {len(nodes['people'])} person nodes...")
+                for person in nodes["people"]:
+                    self.create_node(person)
+                    stats["nodes_created"]["people"] += 1
+            
+            # Insert organization nodes
+            if nodes.get("organizations"):
+                self.logger.info(f"Inserting {len(nodes['organizations'])} organization nodes...")
+                for org in nodes["organizations"]:
+                    self.create_node(org)
+                    stats["nodes_created"]["organizations"] += 1
+            
+            # Insert relationships
+            if relationships:
+                self.logger.info(f"Inserting {len(relationships)} relationships...")
+                for rel in relationships:
+                    self.create_relationship(rel)
+                    stats["relationships_created"] += 1
+            
+            stats["success"] = True
+            
+            self.logger.info(
+                f"Entity insertion complete. "
+                f"Nodes: {stats['nodes_created']['resource']} resource, "
+                f"{stats['nodes_created']['topics']} topics, "
+                f"{stats['nodes_created']['people']} people, "
+                f"{stats['nodes_created']['organizations']} organizations. "
+                f"Relationships: {stats['relationships_created']}"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to insert entities: {e}", exc_info=True)
+            stats["success"] = False
+            raise
+        
+        return stats
+    
+    def _deduplicate_node_list(
+        self, 
+        nodes: List[Node], 
+        node_label: str,
+        k_neighbors: int,
+        similarity_threshold: float,
+        llm_review_threshold: float
+    ) -> Tuple[List[Node], List[Dict[str, Any]], Dict[str, str]]:
         """
-        result = self.client.execute_query(query, {"url": url})
+        Deduplicate a list of nodes of the same type.
+        
+        Args:
+            nodes: List of node models to deduplicate
+            node_label: Label of the node type (e.g., "Topic", "Person")
+            k_neighbors: Number of nearest neighbors to check
+            similarity_threshold: Minimum similarity score for automatic duplicate
+            llm_review_threshold: Minimum similarity score to trigger LLM review
+            
+        Returns:
+            Tuple of (deduplicated_nodes, duplicates_info, id_mappings)
+            where:
+            - deduplicated_nodes: nodes that passed deduplication
+            - duplicates_info: confirmed duplicates (score >= similarity_threshold or LLM confirmed)
+            - id_mappings: dict of {new_id: existing_id} for confirmed duplicates
+        """
+        deduplicated = []
+        duplicates_info = []
+        id_mappings = {}  # new_id -> existing_id
+        
+        for node in nodes:
+            node_id = getattr(node, node.id_field)
+            
+            # Check if node exists by ID
+            existing_node = self._get_node_by_id(node, node_label)
+            
+            if existing_node:
+                # Node exists by ID - this is handled by MERGE, but we log it
+                self.logger.info(f"{node_label} with ID {node_id} already exists")
+                deduplicated.append(node)
+                continue
+            
+            # Find similar nodes using vector similarity
+            similar_nodes = self._find_similar_nodes(node, node_label, k_neighbors)
+            self.logger.info(f"Similar nodes for {node_label} '{getattr(node, 'name', node_id)}': {len(similar_nodes)} found")
+            
+            if not similar_nodes:
+                # No similar nodes found, keep as new
+                deduplicated.append(node)
+                continue
+            
+            # Score potential duplicates
+            best_match, best_score = self._score_duplicates(node, similar_nodes, node_label)
+            self.logger.info(f"Best match for {node_label} '{getattr(node, 'name', node_id)}': {best_match.get('name', 'N/A')} with score {best_score:.3f}")
+            
+            is_duplicate = False
+            action = ""
+            
+            if best_score >= similarity_threshold:
+                # HIGH CONFIDENCE: Automatic duplicate
+                is_duplicate = True
+                action = "auto_merge"
+                self.logger.info(
+                    f"AUTOMATIC DUPLICATE found for {node_label}: "
+                    f"new='{getattr(node, 'name', node_id)}' (id={node_id}) "
+                    f"existing='{best_match.get('name', best_match.get(node.id_field))}' (id={best_match.get(node.id_field)}) "
+                    f"(score={best_score:.3f})"
+                )
+                
+            elif best_score >= llm_review_threshold:
+                # MEDIUM CONFIDENCE: Use LLM to decide
+                self.logger.info(
+                    f"LLM REVIEW for {node_label}: "
+                    f"new='{getattr(node, 'name', node_id)}' (id={node_id}) "
+                    f"existing='{best_match.get('name', best_match.get(node.id_field))}' (id={best_match.get(node.id_field)}) "
+                    f"(score={best_score:.3f})"
+                )
+                
+                # Call LLM to make the decision
+                is_duplicate = self._llm_check_duplicate(node, best_match, node_label)
+                action = "llm_confirmed_merge" if is_duplicate else "llm_rejected_merge"
+                
+                if is_duplicate:
+                    self.logger.info(
+                        f"LLM CONFIRMED DUPLICATE for {node_label}: "
+                        f"new='{getattr(node, 'name', node_id)}' -> existing='{best_match.get('name', best_match.get(node.id_field))}'"
+                    )
+                else:
+                    self.logger.info(
+                        f"LLM REJECTED DUPLICATE for {node_label}: "
+                        f"treating '{getattr(node, 'name', node_id)}' as new node"
+                    )
+            else:
+                # LOW CONFIDENCE: Treat as new node
+                self.logger.info(
+                    f"NEW NODE: {node_label} '{getattr(node, 'name', node_id)}' "
+                    f"(best match score {best_score:.3f} below threshold {llm_review_threshold:.3f})"
+                )
+            
+            # Handle the duplicate decision
+            if is_duplicate:
+                existing_id = best_match.get(node.id_field)
+                id_mappings[node_id] = existing_id
+                
+                duplicates_info.append({
+                    "new_node": node,
+                    "new_id": node_id,
+                    "existing_node": best_match,
+                    "existing_id": existing_id,
+                    "similarity_score": best_score,
+                    "action": action
+                })
+                # Don't add to deduplicated list - we'll use the existing node
+            else:
+                # Not a duplicate - add as new node
+                deduplicated.append(node)
+        
+        return deduplicated, duplicates_info, id_mappings
+    
+    def _get_node_by_id(self, node: Node, node_label: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if a node exists in the graph by its ID field.
+        
+        Args:
+            node: Node model instance
+            node_label: Label of the node type
+            
+        Returns:
+            Existing node data or None
+        """
+        id_field = node.id_field
+        id_value = getattr(node, id_field)
+        
+        query = f"MATCH (n:{node_label} {{{id_field}: $id_value}}) RETURN n"
+        result = self.client.execute_query(query, {"id_value": id_value})
+        
         return result[0] if result else None
     
-    def search_resources_by_topic(self, topic_name: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """Find all resources covering a specific topic."""
-        query = """
-        MATCH (r:Resource)-[:COVERS_TOPIC]->(t:Topic {name: $topic_name})
-        RETURN r
-        LIMIT $limit
+    def _find_similar_nodes(
+        self, 
+        node: Node, 
+        node_label: str, 
+        k: int
+    ) -> List[Dict[str, Any]]:
         """
-        return self.client.execute_query(query, {"topic_name": topic_name, "limit": limit})
+        Find k most similar nodes using vector similarity search.
+        
+        Args:
+            node: Node model instance with embedding
+            node_label: Label of the node type
+            k: Number of neighbors to return
+            
+        Returns:
+            List of similar nodes with similarity scores
+        """
+        if not node.embedding:
+            self.logger.warning(f"Node has no embedding, cannot find similar nodes")
+            return []
+        
+        # Use Neo4j vector index for similarity search
+        query = f"""
+        CALL db.index.vector.queryNodes('{node_label.lower()}_embedding_index', $k, $embedding)
+        YIELD node, score
+        RETURN node, score
+        ORDER BY score DESC
+        """
+        
+        try:
+            results = self.client.execute_query(query, {
+                "k": k,
+                "embedding": node.embedding
+            })
+            return results
+        except Exception as e:
+            self.logger.warning(f"Vector similarity search failed: {e}")
+            return []
     
-    def search_resources_by_standard(self, standard_name: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """Find all resources referencing a specific standard."""
-        query = """
-        MATCH (r:Resource)-[:REFERENCES_STANDARD]->(s:Standard {name: $standard_name})
-        RETURN r
-        LIMIT $limit
+    def _score_duplicates(
+        self, 
+        new_node: Node, 
+        similar_nodes: List[Dict[str, Any]],
+        node_label: str
+    ) -> Tuple[Optional[Dict[str, Any]], float]:
         """
-        return self.client.execute_query(query, {"standard_name": standard_name, "limit": limit})
+        Score potential duplicates using multiple features.
+        
+        Scoring considers:
+        - Vector similarity (from search results) - 50% base weight
+        - Name/identifier exact match or similarity - 30% base weight
+        - Aliases overlap (for Topics and Organizations) - 20% weight if available
+        - Email match (for People) - 20% weight if available
+        
+        When type-specific features aren't available, their weight is redistributed to name similarity.
+        
+        Args:
+            new_node: New node to check
+            similar_nodes: List of similar nodes from vector search
+            node_label: Type of node being compared
+            
+        Returns:
+            Tuple of (best_matching_node, best_score)
+        """
+        if not similar_nodes:
+            return None, 0.0
+        
+        best_match = None
+        best_score = 0.0
+        
+        for item in similar_nodes:
+            existing_node = item.get('node', {})
+            vector_score = item.get('score', 0.0)
+            
+            # Start with vector similarity score
+            total_score = vector_score * 0.5  # 50% weight
+            
+            # Calculate name similarity
+            name_score = self._calculate_name_similarity(new_node, existing_node, node_label)
+            
+            # Add type-specific features and adjust weights
+            if node_label == "Topic" or node_label == "Organization":
+                # Check if aliases are available
+                has_aliases = (
+                    len(getattr(new_node, 'aliases', [])) > 0 or 
+                    len(existing_node.get('aliases', [])) > 0
+                )
+                
+                if has_aliases:
+                    # Use base weights: name 30%, aliases 20%
+                    alias_score = self._calculate_alias_overlap(new_node, existing_node)
+                    total_score += name_score * 0.3
+                    total_score += alias_score * 0.2
+                else:
+                    # No aliases, give all 50% to name similarity
+                    total_score += name_score * 0.5
+            
+            elif node_label == "Person":
+                # Check if email is available
+                has_email = (
+                    getattr(new_node, 'email', None) is not None and
+                    existing_node.get('email') is not None
+                )
+                
+                if has_email:
+                    # Use base weights: name 30%, email 20%
+                    email_score = self._calculate_email_match(new_node, existing_node)
+                    total_score += name_score * 0.3
+                    total_score += email_score * 0.2
+                else:
+                    # No email, give all 50% to name similarity
+                    total_score += name_score * 0.5
+            else:
+                # Default: just use name similarity
+                total_score += name_score * 0.5
+            
+            if total_score > best_score:
+                best_score = total_score
+                best_match = existing_node
+        
+        return best_match, best_score
+    
+    def _calculate_name_similarity(
+        self, 
+        new_node: Node, 
+        existing_node: Dict[str, Any],
+        node_label: str
+    ) -> float:
+        """
+        Calculate name similarity between two nodes.
+        
+        Returns:
+            Similarity score between 0.0 and 1.0
+        """
+        new_name = getattr(new_node, 'name', '').lower().strip()
+        existing_name = existing_node.get('name', '').lower().strip()
+        
+        if not new_name or not existing_name:
+            return 0.0
+        
+        # Exact match
+        if new_name == existing_name:
+            return 1.0
+        
+        # Simple token-based similarity
+        new_tokens = set(new_name.split())
+        existing_tokens = set(existing_name.split())
+        
+        if not new_tokens or not existing_tokens:
+            return 0.0
+        
+        intersection = len(new_tokens & existing_tokens)
+        union = len(new_tokens | existing_tokens)
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def _calculate_alias_overlap(
+        self, 
+        new_node: Node, 
+        existing_node: Dict[str, Any]
+    ) -> float:
+        """
+        Calculate overlap between aliases of two nodes.
+        
+        Returns:
+            Overlap score between 0.0 and 1.0
+        """
+        new_aliases = set(a.lower().strip() for a in getattr(new_node, 'aliases', []))
+        existing_aliases = set(a.lower().strip() for a in existing_node.get('aliases', []))
+        
+        # Also include the main name in aliases
+        if hasattr(new_node, 'name'):
+            new_aliases.add(getattr(new_node, 'name').lower().strip())
+        if 'name' in existing_node:
+            existing_aliases.add(existing_node['name'].lower().strip())
+        
+        if not new_aliases or not existing_aliases:
+            return 0.0
+        
+        intersection = len(new_aliases & existing_aliases)
+        union = len(new_aliases | existing_aliases)
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def _calculate_email_match(
+        self, 
+        new_node: Node, 
+        existing_node: Dict[str, Any]
+    ) -> float:
+        """
+        Calculate email match between two Person nodes.
+        
+        Returns:
+            1.0 for exact match, 0.0 otherwise
+        """
+        new_email = getattr(new_node, 'email', '').lower().strip()
+        existing_email = existing_node.get('email', '').lower().strip()
+        
+        if not new_email or not existing_email:
+            return 0.0
+        
+        return 1.0 if new_email == existing_email else 0.0
+    
+    def _remap_relationships(
+        self, 
+        relationships: List[Relationship],
+        id_mappings: Dict[str, Dict[str, str]]
+    ) -> List[Relationship]:
+        """
+        Remap relationships to point to existing nodes when duplicates are found.
+        
+        Args:
+            relationships: List of relationship models
+            id_mappings: Nested dict with structure:
+                {
+                    "Topic": {new_topic_id: existing_topic_id, ...},
+                    "Person": {new_person_id: existing_person_id, ...},
+                    "Organization": {new_org_id: existing_org_id, ...}
+                }
+                
+        Returns:
+            List of relationships with remapped source_id and target_id
+        """
+        remapped_relationships = []
+        
+        for rel in relationships:
+            # Check if source needs remapping
+            source_label = rel.source_node_label
+            source_id = rel.source_id
+            
+            if source_label in id_mappings and source_id in id_mappings[source_label]:
+                old_source_id = source_id
+                new_source_id = id_mappings[source_label][source_id]
+                rel.source_id = new_source_id
+                self.logger.info(
+                    f"Remapped {rel.relationship_label} source: "
+                    f"{source_label}({old_source_id}) -> {source_label}({new_source_id})"
+                )
+            
+            # Check if target needs remapping
+            target_label = rel.target_node_label
+            target_id = rel.target_id
+            
+            if target_label in id_mappings and target_id in id_mappings[target_label]:
+                old_target_id = target_id
+                new_target_id = id_mappings[target_label][target_id]
+                rel.target_id = new_target_id
+                self.logger.info(
+                    f"Remapped {rel.relationship_label} target: "
+                    f"{target_label}({old_target_id}) -> {target_label}({new_target_id})"
+                )
+            
+            remapped_relationships.append(rel)
+        
+        return remapped_relationships
+
+    def _llm_check_duplicate(
+        self,
+        new_node: Node,
+        existing_node: Dict[str, Any],
+        node_label: str
+    ) -> bool:
+        """
+        Use LLM to determine if two nodes are duplicates when confidence is uncertain.
+        
+        Args:
+            new_node: New node being considered
+            existing_node: Existing node from the database
+            node_label: Type of node (Topic, Person, Organization)
+            
+        Returns:
+            True if nodes are duplicates, False otherwise
+        """
+        # Check if LLM client is available
+        if not self.llm_client:
+            self.logger.warning(
+                f"LLM client not available. Cannot perform LLM duplicate check for {node_label}. "
+                "Defaulting to treating nodes as different."
+            )
+            return False
+        
+        self.logger.info(f"Performing LLM duplicate check for {node_label}")
+        
+        # Prepare comparison data
+        new_data = {
+            "name": getattr(new_node, 'name', ''),
+            "aliases": getattr(new_node, 'aliases', []),
+        }
+        
+        existing_data = {
+            "name": existing_node.get('name', ''),
+            "aliases": existing_node.get('aliases', []),
+        }
+        
+        # Add type-specific fields
+        if node_label == "Topic":
+            new_data.update({
+                "classification": getattr(new_node, 'classification', ''),
+                "identifier": getattr(new_node, 'identifier', ''),
+                "issuer": getattr(new_node, 'issuer', '')
+            })
+            existing_data.update({
+                "classification": existing_node.get('classification', ''),
+                "identifier": existing_node.get('identifier', ''),
+                "issuer": existing_node.get('issuer', '')
+            })
+        elif node_label == "Person":
+            new_data["email"] = getattr(new_node, 'email', '')
+            existing_data["email"] = existing_node.get('email', '')
+        elif node_label == "Organization":
+            new_data["org_type"] = getattr(new_node, 'org_type', '')
+            existing_data["org_type"] = existing_node.get('org_type', '')
+        
+        prompt = f"""
+            
+            You are a data deduplication expert. Determine if these two {node_label} entries refer to the same entity.
+
+            New Entry:
+            {json.dumps(new_data, indent=2)}
+
+            Existing Entry:
+            {json.dumps(existing_data, indent=2)}
+
+            Consider:
+            - Name variations and abbreviations
+            - Aliases and alternative names
+            - Context-specific identifiers
+            - Common naming patterns in this domain
+            - A difference in classification, identifier, issuer, org_type, email does not explicitly mean they are different entities if other details align closely. These are just context clues.
+
+            Respond with ONLY 'YES' if they are the same entity, or 'NO' if they are different entities.
+            
+            """
+        
+        try:
+            response = self.llm_client.chat.completions.create(
+                model=self.llm_deployment,
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "You are a data deduplication expert. Respond with only 'YES' or 'NO'."
+                    },
+                    {
+                        "role": "user", 
+                        "content": prompt
+                    }
+                ],
+                temperature=0,  # Use deterministic output
+                max_tokens=10   # Only need a single word response
+            )
+            
+            answer = response.choices[0].message.content.strip().upper()
+            is_duplicate = answer == "YES"
+            
+            self.logger.info(
+                f"LLM response for {node_label} duplicate check: {answer} "
+                f"(new='{new_data.get('name')}', existing='{existing_data.get('name')}')"
+            )
+            
+            return is_duplicate
+            
+        except Exception as e:
+            self.logger.error(
+                f"LLM duplicate check failed for {node_label}: {e}. "
+                "Defaulting to treating nodes as different."
+            )
+            return False
