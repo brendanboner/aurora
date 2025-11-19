@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurora-backend"
+version = "0.1.0"
+description = "Aurora RAG Backend API"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "psycopg2-binary",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "openai",
+    "neo4j-client",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.sql"]

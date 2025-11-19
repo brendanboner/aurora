@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+import argparse
+import requests
+import sys
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="aurora",
+        description="CLI client for Aurora backend (knowledge graph + LLM).",
+    )
+    parser.add_argument("--user-id", type=int, required=True, help="User id")
+    parser.add_argument("question", nargs="+", help="Natural language question")
+    args = parser.parse_args()
+
+    question = " ".join(args.question)
+
+    try:
+        resp = requests.post(
+            "http://localhost:8000/query",
+            json={"user_id": args.user_id, "question": question},
+            timeout=60,
+        )
+    except requests.RequestException as e:
+        print(f"Error contacting backend: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if resp.status_code != 200:
+        print(f"Backend error {resp.status_code}: {resp.text}", file=sys.stderr)
+        sys.exit(1)
+
+    data = resp.json()
+
+    print("\n=== Answer ===\n")
+    print(data["answer"])
+    print("\n=== Filters ===")
+    print(data["filters"])
+    print("\n=== Documents ===")
+    for d in data["documents"]:
+        print(f"- {d.get('publish_date')}: {d.get('title')}")
+        print(f"  {d.get('url')}")
+        print()
+
+
+if __name__ == "__main__":
+    main()

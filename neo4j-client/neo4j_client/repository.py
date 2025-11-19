@@ -923,3 +923,143 @@ class GraphRepository:
                 "Defaulting to treating nodes as different."
             )
             return False
+
+    # ========== Query Operations for LLM frontend ==========
+
+    def get_recent_resources(
+        self,
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        organisations: Optional[List[str]] = None,
+        people: Optional[List[str]] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch recent Resource nodes with optional filters on topics, organisations, and people.
+
+        Dates should be ISO-8601 strings (YYYY-MM-DD). We'll prefer publish_date if present,
+        otherwise fall back to scraped_at.
+
+        Returns a list of dicts:
+            {
+              "resource": { ... Resource properties ... },
+              "topics": [ {topic props}, ... ],
+              "people": [ {person props}, ... ],
+              "organisations": [ {org props}, ... ],
+              "datasources": [ {ds props}, ... ]
+            }
+        """
+        topics = topics or []
+        organisations = organisations or []
+        people = people or []
+
+        params = {
+            "start": start,
+            "end": end,
+            "topics": topics,
+            "organisations": organisations,
+            "people": people,
+            "limit": limit,
+        }
+
+        query = """
+        WITH
+          $topics        AS topics_param,
+          $organisations AS orgs_param,
+          $people        AS people_param,
+          $start         AS start_param,
+          $end           AS end_param,
+          $limit         AS limit_param
+
+        MATCH (r:Resource)
+        OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+        OPTIONAL MATCH (r)-[:MENTIONS]->(p:Person)
+        OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+
+        WITH r,
+             collect(DISTINCT t)  AS topics,
+             collect(DISTINCT p)  AS people,
+             collect(DISTINCT o)  AS orgs,
+             collect(DISTINCT ds) AS datasources,
+             topics_param,
+             orgs_param,
+             people_param,
+             start_param,
+             end_param,
+             limit_param
+
+        WHERE
+          (
+            start_param IS NULL
+            OR
+            (
+              r.publish_date IS NOT NULL
+              AND date(r.publish_date) >= date(start_param)
+            )
+            OR
+            (
+              r.publish_date IS NULL
+              AND r.scraped_at IS NOT NULL
+              AND datetime(r.scraped_at) >= datetime(start_param)
+            )
+          )
+          AND
+          (
+            end_param IS NULL
+            OR
+            (
+              r.publish_date IS NOT NULL
+              AND date(r.publish_date) <= date(end_param)
+            )
+            OR
+            (
+              r.publish_date IS NULL
+              AND r.scraped_at IS NOT NULL
+              AND datetime(r.scraped_at) <= datetime(end_param)
+            )
+          )
+          AND
+          (
+            size(topics_param) = 0
+            OR any(tp IN topics WHERE
+              toLower(tp.name) IN [x IN topics_param | toLower(x)]
+              OR tp.topic_id IN topics_param
+            )
+          )
+          AND
+          (
+            size(orgs_param) = 0
+            OR any(org IN orgs WHERE
+              toLower(org.name) IN [x IN orgs_param | toLower(x)]
+              OR org.org_id IN orgs_param
+            )
+          )
+          AND
+          (
+            size(people_param) = 0
+            OR any(pr IN people WHERE
+              toLower(pr.name) IN [x IN people_param | toLower(x)]
+              OR pr.person_id IN people_param
+            )
+          )
+
+        WITH r, topics, people, orgs, datasources
+        ORDER BY
+          coalesce(
+            date(r.publish_date),
+            date(datetime(r.scraped_at))
+          ) DESC
+
+        LIMIT $limit
+
+        RETURN
+          r          AS resource,
+          topics     AS topics,
+          people     AS people,
+          orgs       AS organisations,
+          datasources AS datasources
+        """
+
+        return self.client.execute_query(query, params)

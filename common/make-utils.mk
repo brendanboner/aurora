@@ -27,7 +27,7 @@ SHARED_SERVICE_CONTAINER := aurora-$(SERVICE_NAME)
 
 # Docker images
 SERVICE_IMAGE := $(SERVICE_NAME)-image
-
+	
 #==============================================================================
 # SHARED CLEANUP TARGETS
 # These can be called directly from service Makefiles

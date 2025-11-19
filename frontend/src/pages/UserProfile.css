@@ -1,0 +1,237 @@
+.profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 32px;
+  background: rgba(30, 30, 30, 0.8);
+  border: 1px solid #333;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+}
+
+.profile-info h1 {
+  margin: 0 0 8px 0;
+  font-size: 28px;
+  color: #e0e0e0;
+}
+
+.profile-email {
+  color: #888;
+  font-size: 16px;
+  margin: 0;
+}
+
+.profile-empty {
+  text-align: center;
+  padding: 80px 20px;
+  background: rgba(30, 30, 30, 0.8);
+  border: 1px solid #333;
+  border-radius: 12px;
+}
+
+.empty-icon {
+  font-size: 80px;
+  margin-bottom: 24px;
+  opacity: 0.5;
+}
+
+.profile-empty h2 {
+  margin: 0 0 12px 0;
+  color: #e0e0e0;
+}
+
+.profile-empty p {
+  color: #888;
+  font-size: 16px;
+}
+
+.profile-error {
+  padding: 16px;
+  background: rgba(245, 87, 108, 0.1);
+  border: 1px solid rgba(245, 87, 108, 0.3);
+  border-radius: 8px;
+  color: #ff8a9a;
+  margin-bottom: 24px;
+}
+
+.profile-success {
+  padding: 16px;
+  background: rgba(79, 172, 254, 0.1);
+  border: 1px solid rgba(79, 172, 254, 0.3);
+  border-radius: 8px;
+  color: #4facfe;
+  margin-bottom: 24px;
+}
+
+.profile-section {
+  background: rgba(30, 30, 30, 0.8);
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.profile-section h2 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  color: #e0e0e0;
+}
+
+.section-description {
+  color: #888;
+  font-size: 14px;
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+}
+
+.search-input {
+  margin-bottom: 20px;
+}
+
+.preferences-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.preference-item {
+  padding: 16px;
+  background: rgba(20, 20, 20, 0.6);
+  border: 2px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.preference-item:hover {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
+  transform: translateY(-2px);
+}
+
+.preference-item.selected {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.15);
+}
+
+.preference-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 4px;
+  padding-right: 24px;
+}
+
+.preference-meta {
+  font-size: 12px;
+  color: #888;
+}
+
+.preference-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #667eea;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.selected-count {
+  text-align: center;
+  padding: 12px;
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 8px;
+  color: #667eea;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.notification-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  padding: 12px;
+  background: rgba(20, 20, 20, 0.6);
+  border: 1px solid #333;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.checkbox-label:hover {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.checkbox-label input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.checkbox-label span {
+  color: #e0e0e0;
+  font-size: 14px;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  padding: 24px;
+}
+
+@media (max-width: 768px) {
+  .profile-header {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .preferences-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-actions {
+    flex-direction: column;
+  }
+
+  .profile-actions .btn {
+    width: 100%;
+  }
+}

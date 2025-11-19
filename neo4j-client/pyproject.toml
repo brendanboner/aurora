@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "neo4j>=5.26.0",
     "pydantic>=2.0.0",
+    "sentence-transformers>=2.0.0",
 ]
 
 [project.optional-dependencies]
