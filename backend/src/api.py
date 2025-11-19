@@ -7,8 +7,12 @@ from datetime import datetime
 from src.services.query_engine import run_query
 from src.services import postgres
 from src.services import graph_service
+from src.routes import admin
 
 app = FastAPI(title="Aurora Backend API")
+
+# Include admin routes
+app.include_router(admin.router)
 
 # Add CORS middleware
 app.add_middleware(

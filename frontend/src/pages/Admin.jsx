@@ -19,6 +19,11 @@ const Admin = ({ onUserChange, currentUser }) => {
   const [statistics, setStatistics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Monitoring state
+  const [queueStatus, setQueueStatus] = useState(null);
+  const [processingStatus, setProcessingStatus] = useState(null);
+  const [monitoringInterval, setMonitoringInterval] = useState(null);
 
   // User creation form
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -31,6 +36,17 @@ const Admin = ({ onUserChange, currentUser }) => {
 
   useEffect(() => {
     loadData();
+    
+    // Set up auto-refresh for monitoring tab
+    if (activeTab === 'monitoring') {
+      loadMonitoringData();
+      const interval = setInterval(loadMonitoringData, 5000); // Refresh every 5 seconds
+      setMonitoringInterval(interval);
+      return () => clearInterval(interval);
+    } else if (monitoringInterval) {
+      clearInterval(monitoringInterval);
+      setMonitoringInterval(null);
+    }
   }, [activeTab]);
 
   const loadData = async () => {
@@ -57,6 +73,19 @@ const Admin = ({ onUserChange, currentUser }) => {
       setError(err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMonitoringData = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/admin/dashboard');
+      const data = await response.json();
+      setQueueStatus(data.queue_status);
+      setProcessingStatus(data.processing_status);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading monitoring data:', err);
+      setError('Failed to load monitoring data');
     }
   };
 
@@ -124,6 +153,12 @@ const Admin = ({ onUserChange, currentUser }) => {
           onClick={() => setActiveTab('knowledge')}
         >
           📚 Knowledge Graph
+        </button>
+        <button
+          className={`tab ${activeTab === 'monitoring' ? 'active' : ''}`}
+          onClick={() => setActiveTab('monitoring')}
+        >
+          📊 System Monitoring
         </button>
       </div>
 
@@ -320,6 +355,160 @@ const Admin = ({ onUserChange, currentUser }) => {
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'monitoring' && (
+        <div className="admin-content">
+          <div className="monitoring-grid">
+            {/* Service Status Cards */}
+            <div className="monitoring-section">
+              <h2>Service Status</h2>
+              <div className="service-cards">
+                <div className={`service-card ${processingStatus?.retriever_active ? 'active' : 'inactive'}`}>
+                  <div className="service-header">
+                    <span className="service-icon">🔍</span>
+                    <span className="service-name">Retriever</span>
+                    <span className={`status-badge ${processingStatus?.retriever_active ? 'active' : 'inactive'}`}>
+                      {processingStatus?.retriever_active ? '● Active' : '○ Inactive'}
+                    </span>
+                  </div>
+                  {processingStatus?.retriever_current && (
+                    <div className="service-current">
+                      <div className="current-label">Currently Processing:</div>
+                      <div className="current-title">{processingStatus.retriever_current.title}</div>
+                      <div className="current-status">{processingStatus.retriever_current.stage}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className={`service-card ${processingStatus?.digester_active ? 'active' : 'inactive'}`}>
+                  <div className="service-header">
+                    <span className="service-icon">⚙️</span>
+                    <span className="service-name">Digester</span>
+                    <span className={`status-badge ${processingStatus?.digester_active ? 'active' : 'inactive'}`}>
+                      {processingStatus?.digester_active ? '● Active' : '○ Inactive'}
+                    </span>
+                  </div>
+                  {processingStatus?.digester_current && (
+                    <div className="service-current">
+                      <div className="current-label">Currently Processing:</div>
+                      <div className="current-title">{processingStatus.digester_current.title}</div>
+                      <div className="current-status">{processingStatus.digester_current.stage}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Queue Status */}
+            <div className="monitoring-section">
+              <h2>Queue Status</h2>
+              {queueStatus && (
+                <>
+                  <div className="queue-stats">
+                    <div className="queue-stat">
+                      <span className="stat-label">Queue:</span>
+                      <span className="stat-value">{queueStatus.queue_name}</span>
+                    </div>
+                    <div className="queue-stat">
+                      <span className="stat-label">Pending:</span>
+                      <span className="stat-value">{queueStatus.message_count}</span>
+                    </div>
+                    <div className="queue-stat">
+                      <span className="stat-label">Consumers:</span>
+                      <span className="stat-value">{queueStatus.consumer_count}</span>
+                    </div>
+                  </div>
+
+                  <div className="queue-resources">
+                    <h3>Resources in Queue ({queueStatus.resources.length} shown)</h3>
+                    {queueStatus.resources.length === 0 ? (
+                      <div className="empty-state">✓ Queue is empty</div>
+                    ) : (
+                      <div className="resources-table">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Title</th>
+                              <th>Category</th>
+                              <th>URL</th>
+                              <th>Date</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {queueStatus.resources.map((resource) => (
+                              <tr key={resource.position}>
+                                <td>{resource.position}</td>
+                                <td className="resource-title">{resource.title}</td>
+                                <td>
+                                  <span className="category-badge">{resource.category}</span>
+                                </td>
+                                <td className="resource-url">
+                                  <a href={resource.url} target="_blank" rel="noopener noreferrer">
+                                    🔗
+                                  </a>
+                                </td>
+                                <td>{resource.publish_date || 'N/A'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Recent Activity */}
+            <div className="monitoring-section">
+              <h2>Recent Activity</h2>
+              <div className="activity-columns">
+                <div className="activity-column">
+                  <h3>✓ Recently Completed</h3>
+                  {processingStatus?.recent_completed?.length === 0 ? (
+                    <div className="empty-state">No recent completions</div>
+                  ) : (
+                    <div className="activity-list">
+                      {processingStatus?.recent_completed?.map((item, index) => (
+                        <div key={index} className="activity-item completed">
+                          <div className="activity-title">{item.title}</div>
+                          <div className="activity-meta">
+                            <span>{item.category}</span>
+                            <span>{new Date(item.updated_at).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="activity-column">
+                  <h3>⚠️ Recently Failed</h3>
+                  {processingStatus?.recent_failed?.length === 0 ? (
+                    <div className="empty-state">No recent failures</div>
+                  ) : (
+                    <div className="activity-list">
+                      {processingStatus?.recent_failed?.map((item, index) => (
+                        <div key={index} className="activity-item failed">
+                          <div className="activity-title">{item.title}</div>
+                          <div className="activity-meta">
+                            <span>{item.category}</span>
+                            <span>{new Date(item.updated_at).toLocaleTimeString()}</span>
+                          </div>
+                          {item.error && (
+                            <div className="activity-error">{item.error}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
