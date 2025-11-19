@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from src.services.query_engine import run_query
 from src.services import postgres
@@ -50,8 +51,8 @@ class UserResponse(BaseModel):
     id: int
     email: str
     display_name: str | None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class UserPreferences(BaseModel):
