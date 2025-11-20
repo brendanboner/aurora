@@ -119,6 +119,16 @@
   gap: 8px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-info {
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  padding: 6px 12px;
+  background-color: rgba(137, 129, 229, 0.1);
+  border-radius: var(--radius-button);
+  font-weight: 500;
 }
 
 .btn.btn-sm {

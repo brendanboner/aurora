@@ -82,9 +82,20 @@ const UserProfile = ({ currentUser }) => {
     setDirty(true);
   };
 
-  const bulkSet = (type, values) => {
+  const bulkSet = (type, values, isSelectAll = false) => {
     setPreferences(prev => ({ ...prev, [type]: values }));
     setDirty(true);
+    
+    // Show feedback message
+    if (isSelectAll) {
+      const totalCount = type === 'topics' ? availableTopics.length 
+        : type === 'organisations' ? availableOrgs.length 
+        : availablePeople.length;
+      setSuccessMessage(values.length > 0 
+        ? `Selected all ${totalCount} ${type}` 
+        : `Deselected all ${type}`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+    }
   };
 
   const filteredTopics = availableTopics.filter(t => t.name?.toLowerCase().includes(topicSearch.toLowerCase()));
@@ -124,8 +135,11 @@ const UserProfile = ({ currentUser }) => {
               <p className="section-description">Select topics you're interested in.</p>
               <input className="input search-input" placeholder="Search topics..." value={topicSearch} onChange={e => setTopicSearch(e.target.value)} />
               <div className="bulk-actions">
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', availableTopics.map(t => t.id))}>Select All</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', [])}>Select None</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', availableTopics.map(t => t.id), true)} title={`Select all ${availableTopics.length} topics (including filtered)`}>Select All ({availableTopics.length})</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', [], true)} title="Deselect all topics">Select None</button>
+                {topicSearch && filteredTopics.length < availableTopics.length && (
+                  <span className="filter-info">{filteredTopics.length} of {availableTopics.length} shown</span>
+                )}
               </div>
               <div className="preferences-grid">
                 {filteredTopics.slice(0,100).map(topic => (
@@ -146,8 +160,11 @@ const UserProfile = ({ currentUser }) => {
               <p className="section-description">Select organisations you want to follow.</p>
               <input className="input search-input" placeholder="Search organisations..." value={orgSearch} onChange={e => setOrgSearch(e.target.value)} />
               <div className="bulk-actions">
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', availableOrgs.map(o => o.id))}>Select All</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', [])}>Select None</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', availableOrgs.map(o => o.id), true)} title={`Select all ${availableOrgs.length} organisations (including filtered)`}>Select All ({availableOrgs.length})</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', [], true)} title="Deselect all organisations">Select None</button>
+                {orgSearch && filteredOrgs.length < availableOrgs.length && (
+                  <span className="filter-info">{filteredOrgs.length} of {availableOrgs.length} shown</span>
+                )}
               </div>
               <div className="preferences-grid">
                 {filteredOrgs.slice(0,100).map(org => (
@@ -168,8 +185,11 @@ const UserProfile = ({ currentUser }) => {
               <p className="section-description">Select people you want to track.</p>
               <input className="input search-input" placeholder="Search people..." value={peopleSearch} onChange={e => setPeopleSearch(e.target.value)} />
               <div className="bulk-actions">
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', availablePeople.map(p => p.id))}>Select All</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', [])}>Select None</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', availablePeople.map(p => p.id), true)} title={`Select all ${availablePeople.length} people (including filtered)`}>Select All ({availablePeople.length})</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', [], true)} title="Deselect all people">Select None</button>
+                {peopleSearch && filteredPeople.length < availablePeople.length && (
+                  <span className="filter-info">{filteredPeople.length} of {availablePeople.length} shown</span>
+                )}
               </div>
               <div className="preferences-grid">
                 {filteredPeople.slice(0,100).map(person => (
