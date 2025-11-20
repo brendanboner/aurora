@@ -14,10 +14,28 @@
   border-bottom: none;
 }
 
+.chat-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.chat-header-text {
+  flex: 1;
+}
+
 .chat-header h1 {
   margin: 0 0 8px 0;
   font-size: 28px;
   color: var(--primary);
+}
+
+.new-chat-btn {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .chat-subtitle {

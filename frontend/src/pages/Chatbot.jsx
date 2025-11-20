@@ -143,20 +143,52 @@ const Chatbot = ({ currentUser, backendStatus }) => {
     }
   };
 
+  const handleNewChat = () => {
+    if (!currentUser) return;
+    
+    // Clear current messages and start fresh with welcome message
+    const welcomeMessage = {
+      role: 'assistant',
+      content: `Hello ${currentUser.display_name || currentUser.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
+      timestamp: new Date(),
+    };
+    
+    setMessages([welcomeMessage]);
+    setCurrentDocumentIndex({});
+    setError(null);
+    
+    // Clear the saved chat history for this user
+    const chatHistoryKey = `chatHistory_${currentUser.id}`;
+    localStorage.removeItem(chatHistoryKey);
+  };
+
   return (
     <div className="chatbot-container">
       <div className="chat-header">
-        <h1>Knowledge Assistant</h1>
-        {currentUser && (
-          <p className="chat-subtitle">
-            Chatting as <strong>{currentUser.display_name || currentUser.email}</strong>
-          </p>
-        )}
-        {!currentUser && (
-          <p className="chat-warning">
-            <Icon Component={WarningIcon} size={16} /> Please create or select a user in the Admin page to start chatting
-          </p>
-        )}
+        <div className="chat-header-content">
+          <div className="chat-header-text">
+            <h1>Knowledge Assistant</h1>
+            {currentUser && (
+              <p className="chat-subtitle">
+                Chatting as <strong>{currentUser.display_name || currentUser.email}</strong>
+              </p>
+            )}
+            {!currentUser && (
+              <p className="chat-warning">
+                <Icon Component={WarningIcon} size={16} /> Please create or select a user in the Admin page to start chatting
+              </p>
+            )}
+          </div>
+          {currentUser && messages.length > 1 && (
+            <button 
+              className="btn btn-secondary new-chat-btn" 
+              onClick={handleNewChat}
+              title="Start a new conversation"
+            >
+              <ChatIcon size={16} /> New Chat
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="messages-container">
