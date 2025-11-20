@@ -5,6 +5,8 @@ import time
 import logging
 from typing import Any, Dict, Optional
 from dataclasses import dataclass
+from datetime import datetime
+import redis
 
 from rabbitmq_client.producer import RabbitMQProducer
 from settings import settings
@@ -42,6 +44,21 @@ class BaseScraper:
         # Resolve JSON output file with scraper name placeholder
         self.json_file = settings.json_output_file.replace('{scraper}', self.scraper_name)
         
+        # Initialize Redis for monitoring
+        try:
+            self.redis_client = redis.Redis(
+                host=settings.redis_host,
+                port=settings.redis_port,
+                decode_responses=True,
+                socket_connect_timeout=5
+            )
+            # Test connection
+            self.redis_client.ping()
+            logging.info("Redis connection established for monitoring")
+        except Exception as e:
+            logging.warning(f"Failed to connect to Redis: {e}. Monitoring will be disabled.")
+            self.redis_client = None
+        
     async def __aenter__(self):
         """Async context manager entry"""
         self.session = aiohttp.ClientSession()
@@ -51,6 +68,39 @@ class BaseScraper:
         """Async context manager exit"""
         if self.session:
             await self.session.close()
+    
+    def update_heartbeat(self):
+        """Update retriever heartbeat timestamp in Redis."""
+        if self.redis_client:
+            try:
+                self.redis_client.set("retriever:heartbeat", datetime.now().timestamp())
+            except Exception as e:
+                logging.warning(f"Failed to update heartbeat: {e}")
+    
+    def update_current_processing(self, resource: Resource, stage: str):
+        """Update current processing status in Redis."""
+        if self.redis_client:
+            try:
+                processing_data = {
+                    "title": resource.title,
+                    "url": resource.url,
+                    "category": resource.category,
+                    "status": "retrieving",
+                    "stage": stage,
+                    "started_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat()
+                }
+                self.redis_client.set("retriever:current", json.dumps(processing_data))
+            except Exception as e:
+                logging.warning(f"Failed to update current processing: {e}")
+    
+    def clear_current_processing(self):
+        """Clear current processing status in Redis."""
+        if self.redis_client:
+            try:
+                self.redis_client.delete("retriever:current")
+            except Exception as e:
+                logging.warning(f"Failed to clear current processing: {e}")
     
     def _format_resource_for_logging(self, resource: Resource, content_limit: int = 50) -> Dict[str, Any]:
         """Helper method to format a resource for JSON logging"""

@@ -15,6 +15,8 @@ volumes:
     driver: local
   rabbitmq-data:
     driver: local
+  redis-data:
+    driver: local
 
 services:
   # =============================================================================
@@ -90,6 +92,23 @@ services:
       retries: 5
       start_period: 30s
 
+  redis:
+    image: redis:7-alpine
+    container_name: aurora-redis
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # =============================================================================
   # Application Services
   # =============================================================================
@@ -127,12 +146,27 @@ services:
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
       
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-user}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
+      
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
         condition: service_healthy
       neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
@@ -159,6 +193,10 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
       
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
       # Scraper
       SCRAPER_DELAY: ${SCRAPER_DELAY:-0.5}
       SCRAPER_MAX_REDIRECTS: ${SCRAPER_MAX_REDIRECTS:-10}
@@ -172,6 +210,8 @@ services:
       API_PORT: 8000
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
@@ -199,6 +239,10 @@ services:
       RABBITMQ_MAX_WORKERS: ${RABBITMQ_MAX_WORKERS:-4}
       RABBITMQ_HEARTBEAT: ${RABBITMQ_HEARTBEAT:-180}
       
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
       # Neo4j
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: ${NEO4J_USER:-neo4j}
@@ -223,6 +267,8 @@ services:
       rabbitmq:
         condition: service_healthy
       neo4j:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]

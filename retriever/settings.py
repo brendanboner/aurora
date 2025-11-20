@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     rabbitmq_password: str = "passsword"
     rabbitmq_queue: str = "scraped_content"
     
+    # Redis Configuration
+    redis_host: str = "redis"
+    redis_port: int = 6379
+    
     # Scraper Configuration
     scraper_delay: float = 0.5  # Delay between requests in seconds
     scraper_max_redirects: int = 10

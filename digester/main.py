@@ -19,6 +19,8 @@ from rabbitmq_client import RabbitMQConsumer, RabbitMQProducer
 from llm import MetadataExtractor
 from normalization import MetadataValidator, MetadataNormalizer
 from neo4j_client import Neo4jClient, GraphRepository
+import redis
+import json
 
 
 logger = setup_logger(__name__, settings.log_level)
@@ -66,6 +68,21 @@ class DocumentDigester:
             logger_instance=logger
         )
         self.graph_repository = None
+        
+        # Initialize Redis for monitoring
+        try:
+            self.redis_client = redis.Redis(
+                host=settings.redis_host,
+                port=settings.redis_port,
+                decode_responses=True,
+                socket_connect_timeout=5
+            )
+            # Test connection
+            self.redis_client.ping()
+            logger.info("Redis connection established for monitoring")
+        except Exception as e:
+            logger.warning(f"Failed to connect to Redis: {e}. Monitoring will be disabled.")
+            self.redis_client = None
         
         logger.info("Document Digester initialized")
     
@@ -115,6 +132,78 @@ class DocumentDigester:
         except Exception as e:
             logger.error(f"Failed to send message to DLQ: {e}", exc_info=True)
             return False
+    
+    def update_heartbeat(self):
+        """Update digester heartbeat timestamp in Redis."""
+        if self.redis_client:
+            try:
+                self.redis_client.set("digester:heartbeat", datetime.now().timestamp())
+            except Exception as e:
+                logger.warning(f"Failed to update heartbeat: {e}")
+    
+    def update_current_processing(self, message: Dict[str, Any], stage: str):
+        """Update current processing status in Redis."""
+        if self.redis_client:
+            try:
+                processing_data = {
+                    "title": message.get("title", "Unknown"),
+                    "url": message.get("url", ""),
+                    "category": message.get("category", "unknown"),
+                    "status": "processing",
+                    "stage": stage,
+                    "started_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat()
+                }
+                self.redis_client.set("digester:current", json.dumps(processing_data))
+            except Exception as e:
+                logger.warning(f"Failed to update current processing: {e}")
+    
+    def clear_current_processing(self):
+        """Clear current processing status in Redis."""
+        if self.redis_client:
+            try:
+                self.redis_client.delete("digester:current")
+            except Exception as e:
+                logger.warning(f"Failed to clear current processing: {e}")
+    
+    def record_completed(self, message: Dict[str, Any]):
+        """Record successfully completed document in Redis."""
+        if self.redis_client:
+            try:
+                completed_data = {
+                    "title": message.get("title", "Unknown"),
+                    "url": message.get("url", ""),
+                    "category": message.get("category", "unknown"),
+                    "status": "completed",
+                    "stage": "inserted",
+                    "started_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat()
+                }
+                # Keep last 20 completed items
+                self.redis_client.lpush("processing:completed", json.dumps(completed_data))
+                self.redis_client.ltrim("processing:completed", 0, 19)
+            except Exception as e:
+                logger.warning(f"Failed to record completed: {e}")
+    
+    def record_failed(self, message: Dict[str, Any], error: str):
+        """Record failed document in Redis."""
+        if self.redis_client:
+            try:
+                failed_data = {
+                    "title": message.get("title", "Unknown"),
+                    "url": message.get("url", ""),
+                    "category": message.get("category", "unknown"),
+                    "status": "failed",
+                    "stage": "error",
+                    "started_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat(),
+                    "error": error
+                }
+                # Keep last 20 failed items
+                self.redis_client.lpush("processing:failed", json.dumps(failed_data))
+                self.redis_client.ltrim("processing:failed", 0, 19)
+            except Exception as e:
+                logger.warning(f"Failed to record failure: {e}")
     
     def validate_message(self, message: Dict[str, Any]) -> None:
         """
@@ -172,36 +261,58 @@ class DocumentDigester:
         """
         
         try:
-
+            # Update heartbeat
+            self.update_heartbeat()
+            
             logger.info("Step 1: Validate RabbitMQ message...")
+            self.update_current_processing(message, "validating")
             self.validate_message(message)
 
             logger.info("Step 2: Extracting and validating metadata nodes from content...")
+            self.update_current_processing(message, "extracting metadata")
             metadata = self.metadata_extractor.extract_metadata(message)            
 
             logger.info("Step 3: Normalizing metadata...")
+            self.update_current_processing(message, "normalizing")
             models = self.normalizer.normalize_metadata(metadata)
 
             logger.info("Step 4: Deduping nodes...")
+            self.update_current_processing(message, "deduplicating")
             deduped_models = self.graph_repository.deduplicate_nodes(models)
 
             logger.info("Step 5: Inserting entities into knowledge graph...")
+            self.update_current_processing(message, "inserting into graph")
             stats = self.graph_repository.insert_entities(deduped_models)
 
             logger.info(f"Successfully processed document: {message.get('title')}")
             logger.info(f"Insert stats: {stats}")
+            
+            # Record success and clear current
+            self.record_completed(message)
+            self.clear_current_processing()
 
             return True
         
         except ValueError as e:
             # Validation errors (including normalization failures) - send to DLQ
             title = message.get("title", "Unknown")
-            logger.error(f"Validation error for document '{title}': {e}")
-            self.send_to_dlq(message, str(e))
+            error_msg = str(e)
+            logger.error(f"Validation error for document '{title}': {error_msg}")
+            
+            # Record failure
+            self.record_failed(message, error_msg)
+            self.clear_current_processing()
+            
+            self.send_to_dlq(message, error_msg)
             return True  # Return True to acknowledge and remove from main queue
             
         except Exception as e:
             logger.error(f"Failed to process message: {e}", exc_info=True)
+            
+            # Record failure
+            self.record_failed(message, str(e))
+            self.clear_current_processing()
+            
             # Return False to requeue for retry on other errors
             return False
     
