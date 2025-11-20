@@ -251,15 +251,18 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
     If the LLM is unavailable, produce a concise synthetic answer based on the
     document titles and dates so the UI still shows something useful.
     
+    For meta-queries (when docs is empty), the LLM will answer based on its knowledge
+    of the knowledge graph structure and general information.
+    
     Args:
         question: The user's natural language question
-        docs: Retrieved documents from the knowledge graph
+        docs: Retrieved documents from the knowledge graph (may be empty for meta-queries)
         user_preferences: Optional user preferences (topics, organisations, people)
     """
     client = get_azure_client()
     if client is None:
         if not docs:
-            return "No relevant documents found in the knowledge graph."
+            return "I cannot answer questions about the knowledge base without LLM access."
         parts = []
         for d in docs[:5]:
             date = _safe_datetime_to_string(d.get("publish_date"))
@@ -271,6 +274,38 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
         )
 
     deployment = getattr(client, "_deployment_name", None)
+    
+    # For meta-queries, docs will be empty - we'll ask the LLM to answer based on KB structure
+    if not docs:
+        try:
+            system_msg = {
+                "role": "system",
+                "content": (
+                    "You are an assistant that answers questions about a knowledge graph containing wireless standards, "
+                    "industry events, and technical documents. This knowledge graph includes:\n"
+                    "- Topics: technical standards (Wi-Fi 6, 802.11ax, 5G, 6 GHz band, etc.), spectrum policy, regulatory bodies\n"
+                    "- Organizations: Wi-Fi Alliance (WFA), IEEE, 3GPP, FCC, RSPG, industry companies\n"
+                    "- Document types: press releases, whitepapers, blog posts, articles, academic papers, podcasts, newsletters\n"
+                    "- File formats: PDF, HTML, video\n\n"
+                    "Answer questions about the knowledge base structure, available topics, organizations, and document types. "
+                    "Be helpful and informative, but acknowledge that specific counts may vary as the knowledge base grows."
+                ),
+            }
+            user_msg = {
+                "role": "user",
+                "content": question,
+            }
+            resp = client.chat.completions.create(
+                model=deployment,
+                messages=[system_msg, user_msg],
+                temperature=0.3,
+                max_tokens=500,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            log.error(f"LLM meta-query response failed: {e}")
+            return "I cannot provide information about the knowledge base structure at this time."
+    
     docs_ctx = []
     for d in docs[:10]:
         # Convert any datetime objects to strings for JSON serialization

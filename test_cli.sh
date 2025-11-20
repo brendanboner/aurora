@@ -101,36 +101,51 @@ run_test \
   "What has IEEE published recently?"
 
 # ----------------------------------------------------------------------
+# META-QUERY TESTS — Knowledge base structure queries (no documents)
+# ----------------------------------------------------------------------
+run_test \
+  "15. Meta-query: Count organizations" \
+  "How many organisations are in the knowledge base?"
+
+run_test \
+  "16. Meta-query: List available topics" \
+  "List all topics available"
+
+run_test \
+  "17. Meta-query: What document types" \
+  "What types of documents are in the knowledge base?"
+
+# ----------------------------------------------------------------------
 # USER STORY TESTS — Document analysis
 # ----------------------------------------------------------------------
 run_test \
-  "15. Summaries of documents about Wi-Fi 6E" \
+  "18. Summaries of documents about Wi-Fi 6E" \
   "Summarise recently published documents related to Wi-Fi 6E"
 
 run_test \
-  "16. Regulatory and policy updates" \
+  "19. Regulatory and policy updates" \
   "What are the latest regulatory or policy updates affecting Wi-Fi?"
 
 # ----------------------------------------------------------------------
 # USER STORY TESTS — Event and meeting queries
 # ----------------------------------------------------------------------
 run_test \
-  "17. What meetings happened related to Wi-Fi Alliance?" \
+  "20. What meetings happened related to Wi-Fi Alliance?" \
   "What meetings have taken place recently related to the Wi-Fi Alliance?"
 
 run_test \
-  "18. Upcoming events" \
+  "21. Upcoming events" \
   "Are there any upcoming workshops or webinars about wireless standards?"
 
 # ----------------------------------------------------------------------
 # USER STORY TESTS — Standard evolution
 # ----------------------------------------------------------------------
 run_test \
-  "19. Changes in IEEE 802.11 standards" \
+  "22. Changes in IEEE 802.11 standards" \
   "What has changed in the latest IEEE 802.11 standards?"
 
 run_test \
-  "20. Wi-Fi technology evolution" \
+  "23. Wi-Fi technology evolution" \
   "What are the key improvements in Wi-Fi 7 compared to Wi-Fi 6?"
 
 echo ""

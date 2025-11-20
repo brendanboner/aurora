@@ -70,12 +70,44 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     log.info(f"  Date range: {merged_filters.get('start_date')} to {merged_filters.get('end_date')}")
     log.info(f"  Result limit: {merged_filters.get('limit', 20)}")
     
-    # Step 4: Query Neo4j with merged filters
-    docs = query_documents_from_filters(merged_filters)
-    log.info(f"✓ Retrieved {len(docs)} documents from Neo4j knowledge graph")
+    # Detect if this is a meta-query about the knowledge base itself
+    # Meta-queries ask about stats, counts, or structure rather than content
+    question_lower = question.lower()
+    is_meta_query = any([
+        "how many" in question_lower and any(x in question_lower for x in ["topics", "organisations", "people", "documents", "resources"]),
+        "list all" in question_lower and any(x in question_lower for x in ["topics", "organisations", "people"]),
+        "what topics" in question_lower and "available" in question_lower,
+        "what organisations" in question_lower and "available" in question_lower,
+        "show me all" in question_lower and any(x in question_lower for x in ["topics", "organisations", "people"]),
+    ])
     
-    if not docs:
-        log.warning("✗ No documents found matching query and filters")
+    # Determine if we should retrieve documents
+    # Don't retrieve for meta-queries, but do retrieve if any filters were specified
+    has_filters = any([
+        merged_filters.get("topics"),
+        merged_filters.get("organisations"),
+        merged_filters.get("people"),
+        merged_filters.get("category"),
+        merged_filters.get("doc_type"),
+        merged_filters.get("start_date"),
+        merged_filters.get("end_date")
+    ])
+    
+    should_retrieve_docs = has_filters and not is_meta_query
+    
+    if should_retrieve_docs:
+        # Step 4: Query Neo4j with merged filters
+        docs = query_documents_from_filters(merged_filters)
+        log.info(f"✓ Retrieved {len(docs)} documents from Neo4j knowledge graph")
+        
+        if not docs:
+            log.warning("✗ No documents found matching query and filters")
+    else:
+        docs = []
+        if is_meta_query:
+            log.info("✓ Meta-query detected - skipping document retrieval")
+        else:
+            log.info("✓ No filters specified - answering without document context")
     
     # Step 5: Summarize documents with LLM, incorporating user preferences
     user_pref_context = {
@@ -87,12 +119,12 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     answer = summarise_documents(question, docs, user_pref_context)
     
     # Step 6: Prepare response with limited topic display for users with many preferences
-    formatted_docs = _format_documents_for_response(docs, max_topics_per_doc=10)
+    formatted_docs = _format_documents_for_response(docs, max_topics_per_doc=10) if docs else []
     
     return {
         "answer": answer,
         "filters": {
-            "applied": merged_filters,
+            "applied": merged_filters if should_retrieve_docs else {},
             "from_query": llm_filters,
             "from_preferences": {
                 "topics": pref_topics,
@@ -101,7 +133,8 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
             } if has_preferences else None
         },
         "documents": formatted_docs,
-        "document_count": len(docs)
+        "document_count": len(docs),
+        "is_meta_query": is_meta_query
     }
 
 
