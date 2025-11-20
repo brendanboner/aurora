@@ -10,6 +10,8 @@ from typing import Dict, Any
 import re
 from datetime import datetime
 from dateutil.parser import parse as date_parse
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from settings import settings
 from utils.logger import setup_logger
@@ -207,6 +209,9 @@ class DocumentDigester:
         """Run the document digester service."""
         try:
             logger.info("Starting Document Digester Service...")
+
+            # Start lightweight health server in background (port 8080)
+            self.start_health_server()
             
             # Initialize graph
             self.initialize_graph()
@@ -248,6 +253,30 @@ class DocumentDigester:
             logger.error(f"Error closing Neo4j connection: {e}")
         
         logger.info("Shutdown complete")
+
+    def start_health_server(self):
+        """Start a minimal HTTP health endpoint on /health (port 8080)."""
+        class HealthHandler(BaseHTTPRequestHandler):
+            def do_GET(self_inner):
+                if self_inner.path == "/health":
+                    self_inner.send_response(200)
+                    self_inner.send_header("Content-Type", "application/json")
+                    self_inner.end_headers()
+                    self_inner.wfile.write(b'{"status":"ok"}')
+                else:
+                    self_inner.send_response(404)
+                    self_inner.end_headers()
+
+            def log_message(self_inner, format, *args):  # suppress default stderr logging
+                return
+
+        try:
+            server = HTTPServer(("0.0.0.0", 8080), HealthHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            logger.info("Health server started on port 8080")
+        except Exception as e:
+            logger.warning(f"Failed to start health server: {e}")
 
 
 def main():

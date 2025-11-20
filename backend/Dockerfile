@@ -4,7 +4,8 @@ WORKDIR /app
 
 # Copy local client libraries and install
 COPY neo4j-client ./neo4j-client
-RUN pip install --no-cache-dir -e ./neo4j-client
+RUN pip install --no-cache-dir --upgrade pip && \
+	pip install --no-cache-dir ./neo4j-client
 
 # Copy backend and install as editable package
 COPY backend ./backend

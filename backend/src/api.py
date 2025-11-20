@@ -90,12 +90,18 @@ async def health_check():
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest) -> QueryResponse:
     """Process a natural language query."""
-    result = run_query(req.user_id, req.question)
-    return QueryResponse(
-        answer=result["answer"],
-        filters=result["filters"],
-        documents=[Document(**d) for d in result["documents"]],
-    )
+    try:
+        result = run_query(req.user_id, req.question)
+        return QueryResponse(
+            answer=result["answer"],
+            filters=result["filters"],
+            documents=[Document(**d) for d in result["documents"]],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Provide a structured error while preserving CORS headers.
+        raise HTTPException(status_code=500, detail=f"Query failed: {e}")
 
 
 # ========== User Management Endpoints ==========

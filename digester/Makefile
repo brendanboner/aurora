@@ -12,7 +12,8 @@ include ../common/make-utils.mk
 
 .PHONY: help deploy-isolated deploy-shared clean-isolated clean-shared nuke validate-env \
 	ensure-network ensure-rabbitmq ensure-neo4j wait-for-rabbitmq wait-for-neo4j \
-	load_isolated_queue load_shared_queue build-load-test-image
+	load_isolated_queue load_shared_queue build-load-test-image \
+	compose-up compose-down compose-restart
 
 # Default target
 help:
@@ -21,6 +22,9 @@ help:
 	@echo "  Deployment:"
 	@echo "    make deploy-isolated        - Deploy digester in isolated environment (own network + deps)"
 	@echo "    make deploy-shared          - Deploy digester on shared network (reuses existing deps)"
+	@echo "    make compose-up             - Start digester via root docker-compose (preferred shared)"
+	@echo "    make compose-down           - Stop digester service (docker-compose)"
+	@echo "    make compose-restart        - Restart digester service (docker-compose)"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make load_isolated_queue    - Load test messages into isolated RabbitMQ queue"
@@ -119,6 +123,26 @@ deploy-shared: validate-env ensure-rabbitmq ensure-neo4j
 		-e CHUNK_OVERLAP=$(CHUNK_OVERLAP) \
 		-e LOG_LEVEL=$(LOG_LEVEL) \
 		$(SERVICE_IMAGE)
+
+#=============================================================================
+# docker-compose integration (preferred path for shared deployment)
+#=============================================================================
+
+compose-up:
+	@echo "🔧 Starting digester via root docker-compose (build if needed)..."
+	@docker compose build digester
+	@docker compose up -d digester
+	@echo "✅ Digester running under docker-compose"
+
+compose-down:
+	@echo "🛑 Stopping digester service via docker-compose..."
+	@docker compose stop digester || true
+	@echo "✅ Digester service stopped"
+
+compose-restart:
+	@echo "🔁 Restarting digester service via docker-compose..."
+	@docker compose restart digester
+	@echo "✅ Digester service restarted"
 
 
 

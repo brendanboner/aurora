@@ -1,48 +1,87 @@
 import os
+import logging
 from typing import Any, Dict, List
 
 from neo4j_client.client import Neo4jClient
 from neo4j_client.repository import GraphRepository
 
+log = logging.getLogger("graph_service")
+
 _repo: GraphRepository | None = None
 
 
 def get_repo() -> GraphRepository:
+    """Return a connected GraphRepository with host fallbacks.
+
+    Attempts env-provided URI first, then common service names then localhost.
+    This prevents DNS issues when switching between docker-compose and ad-hoc
+    container runs. Logs failures but does not raise, allowing higher layers to
+    fallback gracefully.
+    """
     global _repo
     if _repo is not None:
         return _repo
 
-    uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    env_uri = os.getenv("NEO4J_URI")
+    candidates: List[str] = []
+    if env_uri:
+        candidates.append(env_uri)
+    # Add common service DNS names used in compose / make targets
+    for host in ["bolt://neo4j:7687", "bolt://aurora-neo4j:7687", "bolt://localhost:7687"]:
+        if host not in candidates:
+            candidates.append(host)
+
     user = os.getenv("NEO4J_USER", "neo4j")
     password = os.getenv("NEO4J_PASSWORD", "neo4j")
     database = os.getenv("NEO4J_DATABASE", "neo4j")
 
-    client = Neo4jClient(uri=uri, user=user, password=password, database=database)
+    last_error: Exception | None = None
+    for uri in candidates:
+        try:
+            client = Neo4jClient(uri=uri, user=user, password=password, database=database)
+            client.connect()
+            _repo = GraphRepository(client)
+            log.info(f"Connected to Neo4j via {uri}")
+            return _repo
+        except Exception as e:  # connection or DNS failure
+            last_error = e
+            log.warning(f"Neo4j connection attempt failed for {uri}: {e}")
+            continue
+
+    # All attempts failed: create repository with first candidate; operations will fail but higher layer has fallbacks
+    fallback_uri = candidates[0] if candidates else "bolt://localhost:7687"
+    log.error(f"All Neo4j connection attempts failed; using fallback URI {fallback_uri}. Last error: {last_error}")
+    client = Neo4jClient(uri=fallback_uri, user=user, password=password, database=database)
     _repo = GraphRepository(client)
     return _repo
 
 
 def query_documents_from_filters(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Use GraphRepository.get_recent_resources to fetch relevant docs for the filters.
-    """
-    repo = get_repo()
+    """Fetch relevant documents with graceful fallback if Neo4j unavailable.
 
-    rows = repo.get_recent_resources(
-        start=filters.get("start_date"),
-        end=filters.get("end_date"),
-        topics=filters.get("topics") or [],
-        organisations=filters.get("organisations") or [],
-        people=filters.get("people") or [],
-        limit=int(filters.get("limit") or 20),
-    )
+    Instead of raising connection errors (which surfaced as 500s in /query), we
+    now catch exceptions and return an empty list allowing the LLM layer to
+    still provide a response.
+    """
+    try:
+        repo = get_repo()
+        rows = repo.get_recent_resources(
+            start=filters.get("start_date"),
+            end=filters.get("end_date"),
+            topics=filters.get("topics") or [],
+            organisations=filters.get("organisations") or [],
+            people=filters.get("people") or [],
+            limit=int(filters.get("limit") or 20),
+        )
+    except Exception as e:
+        log.warning(f"Neo4j query failed; returning empty documents: {e}")
+        return []
 
     docs: List[Dict[str, Any]] = []
     for row in rows:
-        r = row["resource"]
+        r = row.get("resource", {})
         topics = [t.get("name") for t in row.get("topics", []) if t.get("name")]
         orgs = [o.get("name") for o in row.get("organisations", []) if o.get("name")]
-
         docs.append(
             {
                 "title": r.get("title"),

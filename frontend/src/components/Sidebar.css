@@ -11,10 +11,14 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .sidebar.open { width: 240px; }
 .sidebar.closed { width: 64px; }
+
+/* Allow sidebar content to scroll independently below header */
+.sidebar-nav { max-height: calc(100vh - 60px - 44px - 26px); }
 
 .hamburger-btn {
   width: 100%;

@@ -963,22 +963,31 @@ class GraphRepository:
             "limit": limit,
         }
 
+        # Safe date handling: Some publish_date values are non-ISO (e.g. 'November 6, 2025').
+        # Neo4j date() rejects those. We extract an ISO candidate only if it matches YYYY-MM-DD.
+        # Otherwise we treat publish_date as unusable for date comparisons and rely on scraped_at.
         query = """
         WITH
-          $topics        AS topics_param,
-          $organisations AS orgs_param,
-          $people        AS people_param,
-          $start         AS start_param,
-          $end           AS end_param,
-          $limit         AS limit_param
+            $topics        AS topics_param,
+            $organisations AS orgs_param,
+            $people        AS people_param,
+            $start         AS start_param,
+            $end           AS end_param,
+            $limit         AS limit_param
 
         MATCH (r:Resource)
+
+        WITH r,
+             (CASE WHEN r.publish_date =~ '\\d{4}-\\d{2}-\\d{2}' THEN r.publish_date ELSE NULL END) AS publish_date_iso,
+             topics_param, orgs_param, people_param, start_param, end_param, limit_param
+
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
         OPTIONAL MATCH (r)-[:MENTIONS]->(p:Person)
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
         OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
 
         WITH r,
+             publish_date_iso,
              collect(DISTINCT t)  AS topics,
              collect(DISTINCT p)  AS people,
              collect(DISTINCT o)  AS orgs,
@@ -991,75 +1000,48 @@ class GraphRepository:
              limit_param
 
         WHERE
-          (
-            start_param IS NULL
-            OR
             (
-              r.publish_date IS NOT NULL
-              AND date(r.publish_date) >= date(start_param)
+                start_param IS NULL
+                OR (
+                    publish_date_iso IS NOT NULL AND date(publish_date_iso) >= date(start_param)
+                )
+                OR (
+                    publish_date_iso IS NULL AND r.scraped_at IS NOT NULL AND datetime(r.scraped_at) >= datetime(start_param)
+                )
             )
-            OR
-            (
-              r.publish_date IS NULL
-              AND r.scraped_at IS NOT NULL
-              AND datetime(r.scraped_at) >= datetime(start_param)
+            AND (
+                end_param IS NULL
+                OR (
+                    publish_date_iso IS NOT NULL AND date(publish_date_iso) <= date(end_param)
+                )
+                OR (
+                    publish_date_iso IS NULL AND r.scraped_at IS NOT NULL AND datetime(r.scraped_at) <= datetime(end_param)
+                )
             )
-          )
-          AND
-          (
-            end_param IS NULL
-            OR
-            (
-              r.publish_date IS NOT NULL
-              AND date(r.publish_date) <= date(end_param)
+            AND (
+                size(topics_param) = 0 OR any(tp IN topics WHERE toLower(tp.name) IN [x IN topics_param | toLower(x)] OR tp.topic_id IN topics_param)
             )
-            OR
-            (
-              r.publish_date IS NULL
-              AND r.scraped_at IS NOT NULL
-              AND datetime(r.scraped_at) <= datetime(end_param)
+            AND (
+                size(orgs_param) = 0 OR any(org IN orgs WHERE toLower(org.name) IN [x IN orgs_param | toLower(x)] OR org.org_id IN orgs_param)
             )
-          )
-          AND
-          (
-            size(topics_param) = 0
-            OR any(tp IN topics WHERE
-              toLower(tp.name) IN [x IN topics_param | toLower(x)]
-              OR tp.topic_id IN topics_param
+            AND (
+                size(people_param) = 0 OR any(pr IN people WHERE toLower(pr.name) IN [x IN people_param | toLower(x)] OR pr.person_id IN people_param)
             )
-          )
-          AND
-          (
-            size(orgs_param) = 0
-            OR any(org IN orgs WHERE
-              toLower(org.name) IN [x IN orgs_param | toLower(x)]
-              OR org.org_id IN orgs_param
-            )
-          )
-          AND
-          (
-            size(people_param) = 0
-            OR any(pr IN people WHERE
-              toLower(pr.name) IN [x IN people_param | toLower(x)]
-              OR pr.person_id IN people_param
-            )
-          )
 
-        WITH r, topics, people, orgs, datasources
-        ORDER BY
-          coalesce(
-            date(r.publish_date),
-            date(datetime(r.scraped_at))
-          ) DESC
+        WITH r, publish_date_iso, topics, people, orgs, datasources
+        ORDER BY coalesce(
+                CASE WHEN publish_date_iso IS NOT NULL THEN date(publish_date_iso) ELSE NULL END,
+                date(datetime(r.scraped_at))
+            ) DESC
 
         LIMIT $limit
 
         RETURN
-          r          AS resource,
-          topics     AS topics,
-          people     AS people,
-          orgs       AS organisations,
-          datasources AS datasources
+            r           AS resource,
+            topics      AS topics,
+            people      AS people,
+            orgs        AS organisations,
+            datasources AS datasources
         """
 
         return self.client.execute_query(query, params)

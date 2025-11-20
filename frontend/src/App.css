@@ -1,6 +1,35 @@
 .app-layout { flex: 1; display: flex; }
 .main-content { flex:1; padding:0; min-height:calc(100vh - 60px); }
-.layout-inner { display:flex; height:100%; }
+.layout-inner { display:flex; height:calc(100vh - 60px); }
+/* Outer application shell margin and radius */
+.app-shell {
+  margin:13px;
+  border-radius: var(--radius-card);
+  overflow:hidden;
+}
+
+/* Ensure header respects shell rounding if header has background */
+.app-shell > header, .app-shell > .header, .app-shell > .app-header {
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
+}
+
+/* Sidebar column: fixed height below header with internal scroll */
+.sidebar-container {
+  height:100%;
+}
+.sidebar-container .sidebar {
+  height:100%;
+}
+
+/* Provide internal padding left so sidebar content aligns with header left edge while outer shell margin applies */
+.sidebar-container {
+  padding-left:0; /* outer margin handles gap */
+}
+
+/* When collapsed/open add consistent separation from page content */
+.sidebar-container.open { margin-right:24px; }
+.sidebar-container.closed { margin-right:16px; }
 .layout-inner.with-sidebar .page-container { flex:1; padding:24px; }
 .layout-inner.collapsed-sidebar .page-container { flex:1; padding:24px; }
 .sidebar-container { display:flex; }

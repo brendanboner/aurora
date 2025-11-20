@@ -6,14 +6,27 @@ import logging
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 import re
 import hashlib
-from sentence_transformers import SentenceTransformer
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:  # Optional dependency
+    SentenceTransformer = None  # type: ignore
+    logging.getLogger(__name__).warning(
+        "sentence_transformers not installed; embeddings generation disabled."
+    )
 
 logger = logging.getLogger(__name__)
 
 # Lazy initialization for SentenceTransformer embedding model
 _embedding_model = None
 def get_embedding_model():
+    """Return (and lazily initialize) the embedding model, if available.
+
+    If sentence_transformers is not installed we return None and downstream
+    embedding code will gracefully skip embedding generation.
+    """
     global _embedding_model
+    if SentenceTransformer is None:
+        return None
     if _embedding_model is None:
         _embedding_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
     return _embedding_model
@@ -111,18 +124,28 @@ class Node(BaseModel):
         return " | ".join(parts)
 
     def build_embedding(self) -> List[float]:
+        """Generate embedding vector for the node if embedding model available.
+
+        Returns empty list when embeddings are disabled (missing dependency) or
+        when there is no meaningful text to embed.
         """
-        Generate embedding vector for the node using SentenceTransformer.
-        """
-        embedding_text = self.get_embedding_text()
-        logger.info(f"Generating embedding for text: {embedding_text}")
+        embedding_text = self.get_embedding_text().strip()
+        if not embedding_text:
+            return []
         embedding_model = get_embedding_model()
-        embedding_vector = embedding_model.encode(
-            embedding_text,
-            convert_to_numpy=True,
-            normalize_embeddings=True  
-        ).tolist()
-        return embedding_vector
+        if embedding_model is None:
+            return []
+        try:
+            logger.info(f"Generating embedding for text: {embedding_text}")
+            embedding_vector = embedding_model.encode(
+                embedding_text,
+                convert_to_numpy=True,
+                normalize_embeddings=True
+            ).tolist()
+            return embedding_vector
+        except Exception as e:
+            logger.warning(f"Failed to generate embedding: {e}; returning empty list")
+            return []
 
 
 class Relationship(BaseModel):

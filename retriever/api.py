@@ -26,6 +26,11 @@ running_tasks = {}
 async def root():
     return {"message": "Aurora Scraper API", "status": "ready"}
 
+@app.get("/health")
+async def health():
+    """Simple health endpoint for container healthchecks."""
+    return {"status": "ok"}
+
 @app.get("/status")
 async def status():
     return {

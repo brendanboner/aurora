@@ -12,6 +12,7 @@ include ../common/make-utils.mk
 
 .PHONY: help deploy-isolated deploy-shared clean-isolated clean-shared nuke validate-env \
         ensure-network ensure-rabbitmq wait-for-rabbitmq run-json check-venv
+	compose-up compose-down compose-restart
 
 # Default target
 help:
@@ -19,6 +20,9 @@ help:
 	@echo ""
 	@echo "  make deploy-isolated - Deploy retriever in isolated environment (own network + deps)"
 	@echo "  make deploy-shared    - Deploy retriever on shared network (reuses existing deps)"
+	@echo "  make compose-up       - Start retriever via root docker-compose (preferred shared)"
+	@echo "  make compose-down     - Stop retriever service (docker-compose)"
+	@echo "  make compose-restart  - Restart retriever service (docker-compose)"
 	@echo "  make run-json        - Run retriever locally with JSON output (generates test messages)"
 	@echo "  make clean-isolated  - Clean ALL isolated environments (all services)"
 	@echo "  make clean-shared   - Clean shared resources (use with caution)"
@@ -73,6 +77,26 @@ deploy-shared: validate-env ensure-rabbitmq
 		-e RABBITMQ_QUEUE=$(RABBITMQ_QUEUE) \
 		-e LOG_LEVEL=$(LOG_LEVEL) \
 		$(SERVICE_IMAGE)
+
+#=============================================================================
+# docker-compose integration (preferred path for shared deployment)
+#=============================================================================
+
+compose-up:
+	@echo "🔧 Starting retriever via root docker-compose (build if needed)..."
+	@docker compose build retriever
+	@docker compose up -d retriever
+	@echo "✅ Retriever running under docker-compose"
+
+compose-down:
+	@echo "🛑 Stopping retriever service via docker-compose..."
+	@docker compose stop retriever || true
+	@echo "✅ Retriever service stopped"
+
+compose-restart:
+	@echo "🔁 Restarting retriever service via docker-compose..."
+	@docker compose restart retriever
+	@echo "✅ Retriever service restarted"
 
 # Check venv & requirements creating and installing if missing
 check-requirements: 
