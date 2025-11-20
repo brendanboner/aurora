@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     rabbitmq_password: str = "password"
     rabbitmq_queue: str = "scraped_content"
     
+    # Redis Configuration
+    redis_host: str = "redis"
+    redis_port: int = 6379
+    
     # RabbitMQ Threading Configuration
     rabbitmq_max_workers: int = 4  # Number of worker threads (0 = single-threaded)
     rabbitmq_heartbeat: int = 180  # Heartbeat interval in seconds (3 minutes)

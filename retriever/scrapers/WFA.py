@@ -270,6 +270,10 @@ class WFAScraper(BaseScraper):
         
         # Scrape all resources from the first page
         for resource in resources:
+            # Update heartbeat and tracking
+            self.update_heartbeat()
+            self.update_current_processing(resource, "scraping")
+            
             logging.info(f"Scraping resource: {resource.title} at ({resource.url})")
             scraped_resource = await self.scrape_resource(resource)
             
@@ -277,10 +281,14 @@ class WFAScraper(BaseScraper):
             scraped_data = self._format_resource_for_logging(scraped_resource)
             logging.debug(f"Scraped resource:\n{json.dumps(scraped_data, indent=2, ensure_ascii=False)}")
             
+            self.update_current_processing(scraped_resource, "publishing to queue")
             self.publish_message(scraped_resource)
             
             # Be respectful - add delay between requests
             await asyncio.sleep(settings.scraper_delay)
+        
+        # Clear current processing when done
+        self.clear_current_processing()
     
     async def run_full_scraper(self):
         """Full scraper execution - scrapes ALL pages for complete database population"""
@@ -292,6 +300,10 @@ class WFAScraper(BaseScraper):
         
         # Scrape all resources
         for i, resource in enumerate(resources, 1):
+            # Update heartbeat and tracking
+            self.update_heartbeat()
+            self.update_current_processing(resource, f"scraping ({i}/{len(resources)})")
+            
             logging.info(f"Scraping resource {i}/{len(resources)}: {resource.title}")
             scraped_resource = await self.scrape_resource(resource)
             
@@ -300,10 +312,14 @@ class WFAScraper(BaseScraper):
                 scraped_data = self._format_resource_for_logging(scraped_resource)
                 logging.debug(f"Progress {i}/{len(resources)} - Scraped resource:\n{json.dumps(scraped_data, indent=2, ensure_ascii=False)}")
             
+            self.update_current_processing(scraped_resource, f"publishing to queue ({i}/{len(resources)})")
             self.publish_message(scraped_resource)
             
             # Be respectful - add delay between requests
             await asyncio.sleep(settings.scraper_delay)
+        
+        # Clear current processing when done
+        self.clear_current_processing()
 
 
 # TODO:
