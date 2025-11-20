@@ -14,6 +14,21 @@ _client: Optional[AzureOpenAI] = None
 log = logging.getLogger("llm_service")
 
 
+def _safe_datetime_to_string(value: Any) -> str:
+    """Safely convert any datetime-like value to a string.
+    
+    Handles Neo4j DateTime, Python datetime, strings, and None.
+    Returns 'unknown date' for None values.
+    """
+    if value is None:
+        return "unknown date"
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
 def get_azure_client() -> Optional[AzureOpenAI]:
     """Return a cached AzureOpenAI client or None if env/config missing.
 
@@ -90,8 +105,10 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
         system_msg = {
             "role": "system",
             "content": (
-                "You are a query planner for a knowledge graph of standards, events, and documents. "
-                "Convert the user's question into a simple JSON filter object. "
+                "You are a query planner for a knowledge graph of wireless standards, industry events, and technical documents. "
+                "Your goal is to extract structured filters that will retrieve relevant documents from the knowledge graph. "
+                "When the user explicitly mentions an organization, topic, or technical standard, ensure it is captured in the filters. "
+                "Focus on high-level subjects and topics relevant to wireless communications, standards bodies, and industry organizations. "
                 "Always respond with JSON only."
             ),
         }
@@ -99,16 +116,22 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
             "role": "user",
             "content": (
                 f"User question:\n{question}\n\n"
-                "Return JSON with keys:\n"
+                "Extract filter information and return JSON with these keys:\n"
                 "{\n"
-                '  "start_date": string | null,  // YYYY-MM-DD\n'
-                '  "end_date": string | null,    // YYYY-MM-DD\n'
-                '  "topics": string[],           // topics mentioned\n'
-                '  "organisations": string[],    // orgs mentioned (e.g., WFA, Wi-Fi Alliance)\n'
-                '  "people": string[],           // people mentioned\n'
-                '  "limit": number               // max docs to consider (default 20)\n'
-                "}\n"
-                "Resolve relative times like 'last week' relative to today."
+                '  "start_date": string | null,  // YYYY-MM-DD format\n'
+                '  "end_date": string | null,    // YYYY-MM-DD format\n'
+                '  "topics": string[],           // Technical topics, standards (e.g., "Wi-Fi 6", "802.11ax", "5G", "Bluetooth")\n'
+                '  "organisations": string[],    // Industry orgs or companies (e.g., "Wi-Fi Alliance", "WFA", "IEEE", "3GPP")\n'
+                '  "people": string[],           // People or authors mentioned\n'
+                '  "limit": number               // max docs to retrieve (default 20, increase for broad queries)\n'
+                "}\n\n"
+                "Important guidelines:\n"
+                "- When user explicitly mentions an organization (e.g., 'Wi-Fi Alliance', 'WFA', 'IEEE'), include it in organisations\n"
+                "- When user mentions a specific technology or standard (e.g., 'Wi-Fi 6', '802.11', 'Bluetooth'), include it in topics\n"
+                "- Extract high-level subject matter relevant to wireless communications and standards\n"
+                "- Resolve relative dates like 'last week', 'this month' to ISO format (today's date: 2025-11-20)\n"
+                "- If the query is broad or exploratory, increase the limit (e.g., 30-50)\n"
+                "- Return empty arrays if no specific entities are mentioned"
             ),
         }
         resp = client.chat.completions.create(
@@ -121,8 +144,30 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
         content = resp.choices[0].message.content
         data = json.loads(content)
     except Exception as e:
-        log.error(f"LLM filter parsing failed, using fallback: {e}")
-        return parse_query_to_filters(question)  # recursion will hit heuristic path because client is cached or error persists
+        log.error(f"LLM filter parsing failed, using heuristic fallback: {e}")
+        # Use heuristic fallback instead of recursion to avoid infinite loop
+        dates = re.findall(r"\b(20\d{2}-\d{2}-\d{2})\b", question)
+        limit_match = re.search(r"\b(?:limit|top)\s+(\d{1,3})\b", question, re.IGNORECASE)
+        topics = []
+        organisations = []
+        people = []
+        lower_q = question.lower()
+        if "wifi" in lower_q or "wi-fi" in lower_q:
+            topics.append("Wi-Fi")
+        if "wfa" in lower_q or "wi-fi alliance" in lower_q:
+            organisations.append("Wi-Fi Alliance")
+        if "ieee" in lower_q:
+            organisations.append("IEEE")
+        data = {
+            "start_date": dates[0] if dates else None,
+            "end_date": dates[-1] if len(dates) > 1 else None,
+            "topics": topics,
+            "organisations": organisations,
+            "people": people,
+            "limit": int(limit_match.group(1)) if limit_match else 20,
+        }
+        log.info("Using heuristic filters due to LLM error: %s", data)
+        return data
 
     data.setdefault("start_date", None)
     data.setdefault("end_date", None)
@@ -130,22 +175,29 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
     data.setdefault("organisations", [])
     data.setdefault("people", [])
     data.setdefault("limit", 20)
+    
+    log.info(f"LLM extracted filters: {data}")
     return data
 
 
-def summarise_documents(question: str, docs: List[Dict[str, Any]]) -> str:
+def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferences: Optional[Dict[str, Any]] = None) -> str:
     """Summarise documents with LLM or fallback heuristic.
 
     If the LLM is unavailable, produce a concise synthetic answer based on the
     document titles and dates so the UI still shows something useful.
+    
+    Args:
+        question: The user's natural language question
+        docs: Retrieved documents from the knowledge graph
+        user_preferences: Optional user preferences (topics, organisations, people)
     """
     client = get_azure_client()
     if client is None:
         if not docs:
-            return "No relevant documents found."
+            return "No relevant documents found in the knowledge graph."
         parts = []
         for d in docs[:5]:
-            date = d.get("publish_date") or "unknown date"
+            date = _safe_datetime_to_string(d.get("publish_date"))
             title = d.get("title") or "Untitled"
             parts.append(f"- {title} ({date})")
         return (
@@ -156,24 +208,53 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]]) -> str:
     deployment = getattr(client, "_deployment_name", None)
     docs_ctx = []
     for d in docs[:10]:
+        # Convert any datetime objects to strings for JSON serialization
+        publish_date = d.get("publish_date")
+        if publish_date is not None:
+            publish_date = _safe_datetime_to_string(publish_date)
+            
         docs_ctx.append(
             {
                 "title": d.get("title"),
                 "url": d.get("url"),
-                "publish_date": d.get("publish_date"),
+                "publish_date": publish_date,
                 "summary": d.get("summary"),
                 "topics": d.get("topics", []),
                 "organisations": d.get("organisations", []),
             }
         )
+    
+    # Build system message with preference context if available
+    system_content = (
+        "You are an assistant that answers questions about wireless standards, industry events, and technical documents. "
+        "Your responses must be based ONLY on the provided documents from the knowledge graph. "
+        "Do not make up information or hallucinate details not present in the documents. "
+        "Be concise but specific, and highlight the most recent or important updates. "
+        "Reference specific documents when making claims."
+    )
+    
+    if user_preferences and any([
+        user_preferences.get("topics"),
+        user_preferences.get("organisations"),
+        user_preferences.get("people")
+    ]):
+        system_content += (
+            "\n\nThe user has expressed interest in: "
+        )
+        pref_parts = []
+        if user_preferences.get("topics"):
+            pref_parts.append(f"Topics: {', '.join(user_preferences['topics'][:10])}")
+        if user_preferences.get("organisations"):
+            pref_parts.append(f"Organizations: {', '.join(user_preferences['organisations'][:10])}")
+        if user_preferences.get("people"):
+            pref_parts.append(f"People: {', '.join(user_preferences['people'][:10])}")
+        system_content += "; ".join(pref_parts) + ". "
+        system_content += "Consider these preferences when prioritizing information in your response, but answer based on the query and documents provided."
+    
     try:
         system_msg = {
             "role": "system",
-            "content": (
-                "You are an assistant summarising standards and industry updates. "
-                "Use the provided documents to answer the user's question. "
-                "Be concise but specific, and highlight the most recent or important updates."
-            ),
+            "content": system_content,
         }
         user_msg = {
             "role": "user",
@@ -191,4 +272,15 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]]) -> str:
         return resp.choices[0].message.content.strip()
     except Exception as e:
         log.error(f"LLM summarisation failed; using fallback: {e}")
-        return summarise_documents(question, docs)  # recursion will hit heuristic path if client None or continues failing
+        # Return simple fallback instead of recursion to avoid infinite loop
+        if not docs:
+            return "No relevant documents found in the knowledge graph."
+        parts = []
+        for d in docs[:5]:
+            date = _safe_datetime_to_string(d.get("publish_date"))
+            title = d.get("title") or "Untitled"
+            parts.append(f"- {title} ({date})")
+        return (
+            "(Fallback summary – LLM error) Recent documents related to your question:\n"
+            + "\n".join(parts)
+        )

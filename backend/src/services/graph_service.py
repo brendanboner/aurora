@@ -7,6 +7,24 @@ from neo4j_client.repository import GraphRepository
 
 log = logging.getLogger("graph_service")
 
+
+def _convert_datetime_to_string(value: Any) -> str | None:
+    """Convert Neo4j DateTime objects to ISO format strings.
+    
+    Handles:
+    - Neo4j DateTime objects (have isoformat method)
+    - Python datetime objects (have isoformat method)
+    - Already-string values
+    - None values
+    """
+    if value is None:
+        return None
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value
+    return str(value)
+
 _repo: GraphRepository | None = None
 
 
@@ -82,11 +100,17 @@ def query_documents_from_filters(filters: Dict[str, Any]) -> List[Dict[str, Any]
         r = row.get("resource", {})
         topics = [t.get("name") for t in row.get("topics", []) if t.get("name")]
         orgs = [o.get("name") for o in row.get("organisations", []) if o.get("name")]
+        
+        # Convert DateTime objects to strings for API compatibility
+        publish_date = _convert_datetime_to_string(r.get("publish_date"))
+        if not publish_date:
+            publish_date = _convert_datetime_to_string(r.get("scraped_at"))
+        
         docs.append(
             {
                 "title": r.get("title"),
                 "url": r.get("url"),
-                "publish_date": r.get("publish_date") or r.get("scraped_at"),
+                "publish_date": publish_date,
                 "summary": r.get("summary", ""),
                 "topics": topics,
                 "organisations": orgs,

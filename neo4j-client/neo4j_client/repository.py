@@ -940,6 +940,12 @@ class GraphRepository:
 
         Dates should be ISO-8601 strings (YYYY-MM-DD). We'll prefer publish_date if present,
         otherwise fall back to scraped_at.
+        
+        The query now supports:
+        - Relevance-based ranking combining recency and filter match quality
+        - Matching by name OR aliases for topics and organisations
+        - More flexible matching that treats filters as relevance signals
+        - Returns most relevant and recent documents based on proximity to requested entities
 
         Returns a list of dicts:
             {
@@ -963,6 +969,7 @@ class GraphRepository:
             "limit": limit,
         }
 
+        # Enhanced query with better relevance ranking and alias matching
         # Safe date handling: Some publish_date values are non-ISO (e.g. 'November 6, 2025').
         # Neo4j date() rejects those. We extract an ISO candidate only if it matches YYYY-MM-DD.
         # Otherwise we treat publish_date as unusable for date comparisons and rely on scraped_at.
@@ -981,14 +988,16 @@ class GraphRepository:
              (CASE WHEN r.publish_date =~ '\\d{4}-\\d{2}-\\d{2}' THEN r.publish_date ELSE NULL END) AS publish_date_iso,
              topics_param, orgs_param, people_param, start_param, end_param, limit_param
 
-        OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
-        OPTIONAL MATCH (r)-[:MENTIONS]->(p:Person)
-        OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        // Collect related entities
+        OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
+        OPTIONAL MATCH (r)-[mp:MENTIONS]->(p:Person)
+        OPTIONAL MATCH (r)-[mo:MENTIONS]->(o:Organization)
         OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
 
         WITH r,
              publish_date_iso,
              collect(DISTINCT t)  AS topics,
+             collect(DISTINCT rt) AS topic_rels,
              collect(DISTINCT p)  AS people,
              collect(DISTINCT o)  AS orgs,
              collect(DISTINCT ds) AS datasources,
@@ -999,6 +1008,7 @@ class GraphRepository:
              end_param,
              limit_param
 
+        // Apply date filters
         WHERE
             (
                 start_param IS NULL
@@ -1018,21 +1028,81 @@ class GraphRepository:
                     publish_date_iso IS NULL AND r.scraped_at IS NOT NULL AND datetime(r.scraped_at) <= datetime(end_param)
                 )
             )
-            AND (
-                size(topics_param) = 0 OR any(tp IN topics WHERE toLower(tp.name) IN [x IN topics_param | toLower(x)] OR tp.topic_id IN topics_param)
-            )
-            AND (
-                size(orgs_param) = 0 OR any(org IN orgs WHERE toLower(org.name) IN [x IN orgs_param | toLower(x)] OR org.org_id IN orgs_param)
-            )
-            AND (
-                size(people_param) = 0 OR any(pr IN people WHERE toLower(pr.name) IN [x IN people_param | toLower(x)] OR pr.person_id IN people_param)
-            )
 
-        WITH r, publish_date_iso, topics, people, orgs, datasources
-        ORDER BY coalesce(
-                CASE WHEN publish_date_iso IS NOT NULL THEN date(publish_date_iso) ELSE NULL END,
-                date(datetime(r.scraped_at))
-            ) DESC
+        // Calculate relevance scores for filtering and ranking
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, limit_param,
+             
+             // Topic match score: check name, aliases, and identifiers
+             CASE 
+                WHEN size(topics_param) = 0 THEN 1.0
+                ELSE 
+                    toFloat(size([tp IN topics WHERE 
+                        toLower(tp.name) IN [x IN topics_param | toLower(x)] OR
+                        tp.topic_id IN topics_param OR
+                        any(alias IN tp.aliases WHERE toLower(alias) IN [x IN topics_param | toLower(x)]) OR
+                        (tp.identifier IS NOT NULL AND toLower(tp.identifier) IN [x IN topics_param | toLower(x)])
+                    ])) / size(topics_param)
+             END AS topic_match_score,
+             
+             // Organization match score: check name and aliases
+             CASE
+                WHEN size(orgs_param) = 0 THEN 1.0
+                ELSE
+                    toFloat(size([org IN orgs WHERE 
+                        toLower(org.name) IN [x IN orgs_param | toLower(x)] OR
+                        org.org_id IN orgs_param OR
+                        any(alias IN org.aliases WHERE toLower(alias) IN [x IN orgs_param | toLower(x)])
+                    ])) / size(orgs_param)
+             END AS org_match_score,
+             
+             // People match score: check name and email
+             CASE
+                WHEN size(people_param) = 0 THEN 1.0
+                ELSE
+                    toFloat(size([pr IN people WHERE 
+                        toLower(pr.name) IN [x IN people_param | toLower(x)] OR
+                        pr.person_id IN people_param OR
+                        (pr.email IS NOT NULL AND toLower(pr.email) IN [x IN people_param | toLower(x)])
+                    ])) / size(people_param)
+             END AS people_match_score,
+             
+             // Relationship quality score from confidence values
+             CASE
+                WHEN size(topic_rels) = 0 THEN 0.0
+                ELSE reduce(s = 0.0, rel IN topic_rels | s + coalesce(rel.confidence, 0.5)) / size(topic_rels)
+             END AS avg_topic_confidence
+
+        // Apply entity filters - only require match if filters are specified
+        WHERE
+            (size(topics_param) = 0 OR topic_match_score > 0.0)
+            AND (size(orgs_param) = 0 OR org_match_score > 0.0)
+            AND (size(people_param) = 0 OR people_match_score > 0.0)
+
+        // Calculate combined relevance score
+        WITH r, publish_date_iso, topics, people, orgs, datasources,
+             // Weighted relevance: 40% topic match, 30% org match, 20% people match, 10% relationship quality
+             (topic_match_score * 0.4 + org_match_score * 0.3 + people_match_score * 0.2 + avg_topic_confidence * 0.1) AS relevance_score,
+             
+             // Recency score: more recent documents get higher scores
+             CASE
+                WHEN publish_date_iso IS NOT NULL THEN 
+                    1.0 / (1.0 + duration.between(date(publish_date_iso), date()).days / 365.0)
+                WHEN r.scraped_at IS NOT NULL THEN
+                    1.0 / (1.0 + duration.between(datetime(r.scraped_at), datetime()).days / 365.0)
+                ELSE 0.1
+             END AS recency_score
+
+        // Final ranking: combine relevance and recency
+        // 70% relevance, 30% recency
+        WITH r, publish_date_iso, topics, people, orgs, datasources,
+             (relevance_score * 0.7 + recency_score * 0.3) AS final_score
+        
+        ORDER BY final_score DESC, 
+                 coalesce(
+                    CASE WHEN publish_date_iso IS NOT NULL THEN date(publish_date_iso) ELSE NULL END,
+                    date(datetime(r.scraped_at))
+                 ) DESC
 
         LIMIT $limit
 
