@@ -114,6 +114,26 @@
   margin-bottom: 16px;
 }
 
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.btn.btn-sm {
+  padding: 6px 12px;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-button);
+}
+
+.auto-save-indicator {
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  display: flex;
+  align-items: center;
+}
+
 .preference-item {
   padding: 16px;
   background-color: var(--card);

@@ -100,13 +100,15 @@ def get_all_people(limit: int = 1000) -> List[Dict[str, Any]]:
 def get_graph_statistics() -> Dict[str, Any]:
     """Get statistics about nodes in the knowledge graph."""
     repo = get_repo()
+    # Collect counts, including total relationships between any nodes.
     query = """
         MATCH (r:Resource) WITH count(r) as resources
         MATCH (t:Topic) WITH resources, count(t) as topics
         MATCH (o:Organization) WITH resources, topics, count(o) as organisations
         MATCH (p:Person) WITH resources, topics, organisations, count(p) as people
         MATCH (ds:DataSource) WITH resources, topics, organisations, people, count(ds) as datasources
-        RETURN resources, topics, organisations, people, datasources
+        MATCH ()-[rel]->() WITH resources, topics, organisations, people, datasources, count(rel) as relationships
+        RETURN resources, topics, organisations, people, datasources, relationships
     """
     results = repo.client.execute_query(query, {})
     return dict(results[0]) if results else {
@@ -114,5 +116,6 @@ def get_graph_statistics() -> Dict[str, Any]:
         "topics": 0,
         "organisations": 0,
         "people": 0,
-        "datasources": 0
+        "datasources": 0,
+        "relationships": 0
     }

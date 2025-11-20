@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, HourglassIcon, SaveIcon, ResetIcon, WarningIcon } from '../components/icons';
+import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, ResetIcon, WarningIcon } from '../components/icons';
 import {
   getUserPreferences,
   updateUserPreferences,
@@ -24,6 +25,7 @@ const UserProfile = ({ currentUser, onUserChange }) => {
   const [availablePeople, setAvailablePeople] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+    const [saving, setSaving] = useState(false); // auto-save spinner state
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -70,22 +72,32 @@ const UserProfile = ({ currentUser, onUserChange }) => {
   };
 
   const handleSavePreferences = async () => {
-    if (!currentUser) return;
-
-    setSaving(true);
-    setError(null);
-    setSuccessMessage('');
-    try {
-      const updated = await updateUserPreferences(currentUser.id, preferences);
-      setPreferences(updated);
-      setSuccessMessage('Preferences saved successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save preferences');
-    } finally {
-      setSaving(false);
-    }
-  };
+    // Track when initial data load finished to start auto-save
+    const [initialLoaded, setInitialLoaded] = useState(false);
+    // Debounced auto-save on preferences change
+    useEffect(() => {
+      if (!currentUser || !initialLoaded) return;
+      const timeout = setTimeout(async () => {
+        setSaving(true);
+        setError(null);
+        try {
+          const updated = await updateUserPreferences(currentUser.id, preferences);
+          setPreferences(updated);
+          setSuccessMessage('Preferences auto-saved');
+          setTimeout(() => setSuccessMessage(''), 2500);
+        } catch (err) {
+          setError(err.response?.data?.detail || 'Failed to auto-save preferences');
+        } finally {
+          setSaving(false);
+        }
+      }, 600); // debounce
+      return () => clearTimeout(timeout);
+    }, [preferences, currentUser, initialLoaded]);
+  setPreferences(prefs);
+  setAvailableTopics(topicsData.topics || []);
+  setAvailableOrgs(orgsData.organisations || []);
+  setAvailablePeople(peopleData.people || []);
+  setInitialLoaded(true);
 
   const togglePreference = (type, id) => {
     setPreferences((prev) => {
@@ -155,6 +167,21 @@ const UserProfile = ({ currentUser, onUserChange }) => {
               onChange={(e) => setTopicSearch(e.target.value)}
             />
             <div className="preferences-grid">
+                          <div className="bulk-actions">
+                            <button className="btn btn-secondary btn-sm" onClick={() => setPreferences(prev => ({ ...prev, topics: availableTopics.map(t => t.id) }))}>Select All</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setPreferences(prev => ({ ...prev, topics: [] }))}>Select None</button>
+                          </div>
+                          <div className="preferences-grid">
+                          <div className="bulk-actions">
+                            <button className="btn btn-secondary btn-sm" onClick={() => setPreferences(prev => ({ ...prev, organisations: availableOrgs.map(o => o.id) }))}>Select All</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setPreferences(prev => ({ ...prev, organisations: [] }))}>Select None</button>
+                          </div>
+                          <div className="preferences-grid">
+                          <div className="bulk-actions">
+                            <button className="btn btn-secondary btn-sm" onClick={() => setPreferences(prev => ({ ...prev, people: availablePeople.map(p => p.id) }))}>Select All</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setPreferences(prev => ({ ...prev, people: [] }))}>Select None</button>
+                          </div>
+                          <div className="preferences-grid">
               {filteredTopics.slice(0, 100).map((topic) => (
                 <div
                   key={topic.id}
@@ -286,16 +313,12 @@ const UserProfile = ({ currentUser, onUserChange }) => {
           </div>)}
 
           <div className="profile-actions">
-            <button
-              className="btn btn-primary"
-              onClick={handleSavePreferences}
-              disabled={saving}
-            >
-              {saving ? (<><HourglassIcon size={16} /> Saving...</>) : (<><SaveIcon size={16} /> Save Preferences</>)}
-            </button>
+          <div className="profile-actions">
             <button className="btn btn-secondary" onClick={loadData} disabled={saving}>
               <ResetIcon size={16} /> Reset
             </button>
+            {saving && <div className="auto-save-indicator">Saving...</div>}
+          </div>
           </div>
         </>
       )}

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from datetime import datetime
 
 from src.services.query_engine import run_query
@@ -74,6 +74,7 @@ class GraphStatistics(BaseModel):
     organisations: int
     people: int
     datasources: int
+    relationships: int
 
 
 # ========== Health Check ==========
@@ -180,7 +181,8 @@ async def get_preferences(user_id: int):
             raise HTTPException(status_code=404, detail="User not found")
         
         prefs = postgres.get_user_preferences(user_id)
-        return UserPreferences(**prefs)
+        prefs_dict = cast(Dict[str, Any], prefs)
+        return UserPreferences(**prefs_dict)
     except HTTPException:
         raise
     except Exception as e:
@@ -205,7 +207,8 @@ async def update_preferences(user_id: int, preferences: UserPreferences):
             notify_email=preferences.notify_email,
             notify_digest=preferences.notify_digest
         )
-        return UserPreferences(**result)
+        result_dict = cast(Dict[str, Any], result)
+        return UserPreferences(**result_dict)
     except HTTPException:
         raise
     except Exception as e:

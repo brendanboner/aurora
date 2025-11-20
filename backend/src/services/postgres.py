@@ -80,7 +80,7 @@ def delete_user(user_id: int) -> int:
 
 # ========== User Preferences ==========
 
-def get_user_preferences(user_id: int) -> Optional[Dict[str, Any]]:
+def get_user_preferences(user_id: int) -> Dict[str, Any]:
     """Get user preferences."""
     query = "SELECT * FROM user_preferences WHERE user_id = %s"
     result = fetchone(query, (user_id,))
