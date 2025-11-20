@@ -180,7 +180,7 @@ services:
       context: .
       dockerfile: retriever/Dockerfile
     container_name: aurora-retriever
-    restart: unless-stopped
+    restart: "no"  # Don't auto-restart - run manually or on schedule
     networks:
       - aurora-network
     ports:

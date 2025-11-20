@@ -6,6 +6,8 @@ const AdminMonitoring = () => {
   const [queueStatus, setQueueStatus] = useState(null);
   const [processingStatus, setProcessingStatus] = useState(null);
   const [error, setError] = useState(null);
+  const [queuePage, setQueuePage] = useState(1);
+  const queueItemsPerPage = 5;
 
   useEffect(() => {
     let interval;
@@ -132,30 +134,55 @@ const AdminMonitoring = () => {
                   {queueStatus.resources.length === 0 ? (
                     <div className="empty-state">Queue is empty</div>
                   ) : (
-                    <div className="resources-table">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Title</th>
-                            <th>Category</th>
-                            <th>URL</th>
-                            <th>Date</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {queueStatus.resources.map(resource => (
-                            <tr key={resource.position}>
-                              <td>{resource.position}</td>
-                              <td className="resource-title">{resource.title}</td>
-                              <td><span className="category-badge">{resource.category}</span></td>
-                              <td className="resource-url"><a href={resource.url} target="_blank" rel="noopener noreferrer"><LinkIcon size={14} /></a></td>
-                              <td>{resource.publish_date || 'N/A'}</td>
+                    <>
+                      <div className="resources-table">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Title</th>
+                              <th>Category</th>
+                              <th>URL</th>
+                              <th>Date</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {queueStatus.resources
+                              .slice((queuePage - 1) * queueItemsPerPage, queuePage * queueItemsPerPage)
+                              .map(resource => (
+                                <tr key={resource.position}>
+                                  <td>{resource.position}</td>
+                                  <td className="resource-title">{resource.title}</td>
+                                  <td><span className="category-badge">{resource.category}</span></td>
+                                  <td className="resource-url"><a href={resource.url} target="_blank" rel="noopener noreferrer"><LinkIcon size={14} /></a></td>
+                                  <td>{resource.publish_date || 'N/A'}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {queueStatus.resources.length > queueItemsPerPage && (
+                        <div className="pagination">
+                          <button 
+                            onClick={() => setQueuePage(p => Math.max(1, p - 1))}
+                            disabled={queuePage === 1}
+                            className="pagination-btn"
+                          >
+                            Previous
+                          </button>
+                          <span className="pagination-info">
+                            Page {queuePage} of {Math.ceil(queueStatus.resources.length / queueItemsPerPage)}
+                          </span>
+                          <button 
+                            onClick={() => setQueuePage(p => Math.min(Math.ceil(queueStatus.resources.length / queueItemsPerPage), p + 1))}
+                            disabled={queuePage >= Math.ceil(queueStatus.resources.length / queueItemsPerPage)}
+                            className="pagination-btn"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </>
