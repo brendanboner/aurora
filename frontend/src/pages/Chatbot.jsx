@@ -25,8 +25,23 @@ const Chatbot = ({ currentUser, backendStatus }) => {
   }, [messages]);
 
   useEffect(() => {
-    // Load chat history from localStorage
-    const savedMessages = localStorage.getItem('chatHistory');
+    // Load chat history from localStorage when currentUser changes
+    if (!currentUser) {
+      // Show welcome message when no user is selected
+      setMessages([
+        {
+          role: 'assistant',
+          content: 'Hello! I\'m Aurora, your knowledge management assistant. Please select or create a user to start chatting.',
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
+
+    // Load user-specific chat history
+    const chatHistoryKey = `chatHistory_${currentUser.id}`;
+    const savedMessages = localStorage.getItem(chatHistoryKey);
+    
     if (savedMessages) {
       try {
         const parsed = JSON.parse(savedMessages);
@@ -42,29 +57,30 @@ const Chatbot = ({ currentUser, backendStatus }) => {
         setMessages([
           {
             role: 'assistant',
-            content: 'Hello! I\'m Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.',
+            content: `Hello ${currentUser.display_name || currentUser.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
             timestamp: new Date(),
           },
         ]);
       }
     } else {
-      // Add welcome message if no history exists
+      // Add welcome message for new user chat history
       setMessages([
         {
           role: 'assistant',
-          content: 'Hello! I\'m Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.',
+          content: `Hello ${currentUser.display_name || currentUser.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
           timestamp: new Date(),
         },
       ]);
     }
-  }, []);
+  }, [currentUser]);
 
-  // Save messages to localStorage whenever they change
+  // Save messages to localStorage whenever they change (user-specific)
   useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem('chatHistory', JSON.stringify(messages));
+    if (currentUser && messages.length > 0) {
+      const chatHistoryKey = `chatHistory_${currentUser.id}`;
+      localStorage.setItem(chatHistoryKey, JSON.stringify(messages));
     }
-  }, [messages]);
+  }, [messages, currentUser]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
