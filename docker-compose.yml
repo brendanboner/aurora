@@ -180,7 +180,8 @@ services:
       context: .
       dockerfile: retriever/Dockerfile
     container_name: aurora-retriever
-    restart: "no"  # Don't auto-restart - run manually or on schedule
+    command: python api.py  # Run API server instead of direct scraping
+    restart: unless-stopped  # Keep API server running
     networks:
       - aurora-network
     ports:

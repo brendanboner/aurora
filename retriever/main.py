@@ -14,7 +14,7 @@ async def main():
     async with WFAScraper() as scraper:
         # Use run_scraper() for daily updates (first page only)
         # Use run_full_scraper() for complete database population (all pages)
-        await scraper.run_scraper()
+        await scraper.run_full_scraper()
 
 if __name__ == "__main__":
     asyncio.run(main())

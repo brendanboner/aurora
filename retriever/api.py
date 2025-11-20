@@ -1,13 +1,31 @@
 # Scraper API Service - HTTP endpoint to trigger scraping
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from scrapers.WFA import WFAScraper
 from typing import Optional
 from settings import settings
 
-app = FastAPI(title="Aurora Scraper API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run startup tasks before API becomes available"""
+    logging.info("Running initial daily scrape on startup...")
+    try:
+        async with WFAScraper() as scraper:
+            await scraper.run_scraper()  # Daily scrape - first page only
+        logging.info("Initial scrape complete, API server ready for requests")
+    except Exception as e:
+        logging.error(f"Initial scrape failed: {e}")
+        logging.info("API server starting anyway, scrapes can be triggered manually")
+    
+    yield  # API server runs here
+    
+    # Shutdown (if needed in future)
+    logging.info("API server shutting down")
+
+app = FastAPI(title="Aurora Scraper API", lifespan=lifespan)
 
 class ScrapeRequest(BaseModel):
     scraper_type: str = "wfa"  # Future: support multiple scrapers

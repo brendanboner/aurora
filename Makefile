@@ -43,6 +43,11 @@ help:
 	@echo "    make test-health     - Test backend health endpoint"
 	@echo "    make test-api        - Open API docs in browser"
 	@echo ""
+	@echo "  Scraping:"
+	@echo "    make scrape-wfa      - Trigger WFA daily scrape (first page)"
+	@echo "    make scrape-wfa-full - Trigger WFA full scrape (all pages)"
+	@echo "    make scrape-status   - Check scraper status"
+	@echo ""
 	@echo "  Data Management:"
 	@echo "    make backup          - Backup all volumes"
 	@echo "    make volumes         - List all volumes"
@@ -240,6 +245,27 @@ nuke:
 	else \
 		echo "❌ Cancelled"; \
 	fi
+
+# Scraping Commands
+scrape-wfa:
+	@echo "🔍 Triggering WFA daily scrape (first page only)..."
+	@curl -s -X POST http://localhost:8001/scrape \
+		-H "Content-Type: application/json" \
+		-d '{"scraper_type": "wfa", "full_scrape": false}' | python3 -m json.tool
+	@echo ""
+	@echo "✅ Daily scrape triggered. Run 'make logs-retriever' to watch progress"
+
+scrape-wfa-full:
+	@echo "🔍 Triggering WFA full scrape (all pages)..."
+	@curl -s -X POST http://localhost:8001/scrape \
+		-H "Content-Type: application/json" \
+		-d '{"scraper_type": "wfa", "full_scrape": true}' | python3 -m json.tool
+	@echo ""
+	@echo "✅ Full scrape triggered. Run 'make logs-retriever' to watch progress"
+
+scrape-status:
+	@echo "📊 Scraper Status:"
+	@curl -s http://localhost:8001/status | python3 -m json.tool
 
 # Quick shortcuts
 .PHONY: start-all stop-all
