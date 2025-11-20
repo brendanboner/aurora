@@ -653,3 +653,13 @@ class TopicSubtopicOf(Relationship):
     target_node_label: str = "Topic"
     target_id_field: str = "topic_id"
     relationship_label: str = "SUBTOPIC_OF"
+
+class ResourceUploadedByPerson(Relationship):
+    """Resource - uploaded by -> Person"""
+    source_node_label: str = "Resource"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "Person"
+    target_id_field: str = "person_id"
+    relationship_label: str = "UPLOADED_BY"
+    
+    uploaded_at: Optional[str] = Field(None, description="Timestamp when uploaded")

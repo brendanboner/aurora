@@ -8,6 +8,7 @@ const AdminMonitoring = () => {
   const [error, setError] = useState(null);
   const [queuePage, setQueuePage] = useState(1);
   const queueItemsPerPage = 5;
+  const [selectedDocument, setSelectedDocument] = useState(null);
 
   useEffect(() => {
     let interval;
@@ -27,6 +28,38 @@ const AdminMonitoring = () => {
     interval = setInterval(loadMonitoringData, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleClearCompleted = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/admin/clear-completed', {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // Refresh data immediately
+      const dashboardResponse = await fetch('http://localhost:8000/admin/dashboard');
+      const data = await dashboardResponse.json();
+      setQueueStatus(data.queue_status);
+      setProcessingStatus(data.processing_status);
+    } catch (err) {
+      setError('Failed to clear completed list');
+    }
+  };
+
+  const handleClearFailed = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/admin/clear-failed', {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // Refresh data immediately
+      const dashboardResponse = await fetch('http://localhost:8000/admin/dashboard');
+      const data = await dashboardResponse.json();
+      setQueueStatus(data.queue_status);
+      setProcessingStatus(data.processing_status);
+    } catch (err) {
+      setError('Failed to clear failed list');
+    }
+  };
 
   return (
     <div className="admin-container">
@@ -192,11 +225,20 @@ const AdminMonitoring = () => {
             <h2>Recent Activity</h2>
             <div className="activity-columns">
               <div className="activity-column">
-                <h3>Recently Completed</h3>
+                <div className="activity-header">
+                  <h3>Recently Completed</h3>
+                  {processingStatus?.recent_completed?.length > 0 && (
+                    <button className="clear-btn" onClick={handleClearCompleted}>Clear</button>
+                  )}
+                </div>
                 {processingStatus?.recent_completed?.length ? (
                   <div className="activity-list">
                     {processingStatus.recent_completed.map((item, i) => (
-                      <div key={i} className="activity-item completed">
+                      <div 
+                        key={i} 
+                        className="activity-item completed clickable"
+                        onClick={() => setSelectedDocument(item)}
+                      >
                         <div className="activity-title">{item.title}</div>
                         <div className="activity-meta"><span>{item.category}</span><span>{new Date(item.updated_at).toLocaleTimeString()}</span></div>
                       </div>
@@ -205,11 +247,20 @@ const AdminMonitoring = () => {
                 ) : <div className="empty-state">No recent completions</div>}
               </div>
               <div className="activity-column">
-                <h3>Recently Failed</h3>
+                <div className="activity-header">
+                  <h3>Recently Failed</h3>
+                  {processingStatus?.recent_failed?.length > 0 && (
+                    <button className="clear-btn" onClick={handleClearFailed}>Clear</button>
+                  )}
+                </div>
                 {processingStatus?.recent_failed?.length ? (
                   <div className="activity-list">
                     {processingStatus.recent_failed.map((item, i) => (
-                      <div key={i} className="activity-item failed">
+                      <div 
+                        key={i} 
+                        className="activity-item failed clickable"
+                        onClick={() => setSelectedDocument(item)}
+                      >
                         <div className="activity-title">{item.title}</div>
                         <div className="activity-meta"><span>{item.category}</span><span>{new Date(item.updated_at).toLocaleTimeString()}</span></div>
                         {item.error && <div className="activity-error">{item.error}</div>}
@@ -222,6 +273,199 @@ const AdminMonitoring = () => {
           </div>
         </div>
       </div>
+
+      {/* Document Details Modal */}
+      {selectedDocument && (
+        <div className="modal-overlay" onClick={() => setSelectedDocument(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Document Details</h2>
+              <button className="modal-close" onClick={() => setSelectedDocument(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-section">
+                <h3>Basic Information</h3>
+                <div className="detail-row">
+                  <span className="detail-label">Title:</span>
+                  <span className="detail-value">{selectedDocument.title}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">URL:</span>
+                  <span className="detail-value">
+                    <a href={selectedDocument.url} target="_blank" rel="noopener noreferrer">
+                      {selectedDocument.url}
+                    </a>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Category:</span>
+                  <span className="detail-value">
+                    <span className="category-badge">{selectedDocument.category}</span>
+                  </span>
+                </div>
+                {selectedDocument.datasource_id && (
+                  <div className="detail-row">
+                    <span className="detail-label">Source:</span>
+                    <span className="detail-value">{selectedDocument.datasource_id}</span>
+                  </div>
+                )}
+                {selectedDocument.publish_date && (
+                  <div className="detail-row">
+                    <span className="detail-label">Publish Date:</span>
+                    <span className="detail-value">{selectedDocument.publish_date}</span>
+                  </div>
+                )}
+                {selectedDocument.uploaded_by && (
+                  <div className="detail-row">
+                    <span className="detail-label">Uploaded By:</span>
+                    <span className="detail-value">{selectedDocument.uploaded_by}</span>
+                  </div>
+                )}
+              </div>
+
+              {selectedDocument.metadata?.nodes?.resource && (
+                <div className="detail-section">
+                  <h3>Document Summary</h3>
+                  <div className="detail-row">
+                    <span className="detail-label">Summary:</span>
+                    <span className="detail-value">{selectedDocument.metadata.nodes.resource.summary}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Importance:</span>
+                    <span className="detail-value">
+                      {(selectedDocument.metadata.nodes.resource.importance * 100).toFixed(0)}%
+                      {selectedDocument.metadata.nodes.resource.importance_explanation && 
+                        ` - ${selectedDocument.metadata.nodes.resource.importance_explanation}`}
+                    </span>
+                  </div>
+                  {selectedDocument.metadata.nodes.resource.extreme_impact && (
+                    <div className="detail-row">
+                      <span className="detail-label">Extreme Impact:</span>
+                      <span className="detail-value">{selectedDocument.metadata.nodes.resource.extreme_impact}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedDocument.metadata?.nodes?.topics && selectedDocument.metadata.nodes.topics.length > 0 && (
+                <div className="detail-section">
+                  <h3>Topics ({selectedDocument.metadata.nodes.topics.length})</h3>
+                  <div className="topics-list">
+                    {selectedDocument.metadata.nodes.topics.map((topic, i) => (
+                      <div key={i} className="topic-item">
+                        <div className="topic-name">{topic.name}</div>
+                        <div className="topic-meta">
+                          <span className="topic-classification">{topic.classification}</span>
+                          {topic.identifier && <span className="topic-identifier">{topic.identifier}</span>}
+                          {topic.issuer && <span className="topic-issuer">Issuer: {topic.issuer}</span>}
+                        </div>
+                        {topic.aliases && topic.aliases.length > 0 && (
+                          <div className="topic-aliases">
+                            Aliases: {topic.aliases.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedDocument.metadata?.nodes?.organizations && selectedDocument.metadata.nodes.organizations.length > 0 && (
+                <div className="detail-section">
+                  <h3>Organizations ({selectedDocument.metadata.nodes.organizations.length})</h3>
+                  <div className="entities-list">
+                    {selectedDocument.metadata.nodes.organizations.map((org, i) => (
+                      <div key={i} className="entity-item">
+                        <div className="entity-name">{org.name}</div>
+                        {org.org_type && <div className="entity-meta">Type: {org.org_type}</div>}
+                        {org.homepage_url && (
+                          <div className="entity-meta">
+                            <a href={org.homepage_url} target="_blank" rel="noopener noreferrer">{org.homepage_url}</a>
+                          </div>
+                        )}
+                        {org.aliases && org.aliases.length > 0 && (
+                          <div className="entity-meta">Aliases: {org.aliases.join(', ')}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedDocument.metadata?.nodes?.people && selectedDocument.metadata.nodes.people.length > 0 && (
+                <div className="detail-section">
+                  <h3>People ({selectedDocument.metadata.nodes.people.length})</h3>
+                  <div className="entities-list">
+                    {selectedDocument.metadata.nodes.people.map((person, i) => (
+                      <div key={i} className="entity-item">
+                        <div className="entity-name">{person.name}</div>
+                        {person.email && <div className="entity-meta">{person.email}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedDocument.metadata?.relationships && selectedDocument.metadata.relationships.length > 0 && (
+                <div className="detail-section">
+                  <h3>Relationships ({selectedDocument.metadata.relationships.length})</h3>
+                  <div className="relationships-list">
+                    {selectedDocument.metadata.relationships.slice(0, 10).map((rel, i) => (
+                      <div key={i} className="relationship-item">
+                        <div className="relationship-type">{rel.relationship_type}</div>
+                        <div className="relationship-details">
+                          {rel.source_identifier} → {rel.target_identifier}
+                        </div>
+                        {rel.confidence && (
+                          <div className="relationship-meta">
+                            Confidence: {(rel.confidence * 100).toFixed(0)}%
+                          </div>
+                        )}
+                        {rel.evidence && (
+                          <div className="relationship-evidence">"{rel.evidence}"</div>
+                        )}
+                      </div>
+                    ))}
+                    {selectedDocument.metadata.relationships.length > 10 && (
+                      <div className="relationship-more">
+                        + {selectedDocument.metadata.relationships.length - 10} more relationships
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="detail-section">
+                <h3>Processing Status</h3>
+                <div className="detail-row">
+                  <span className="detail-label">Status:</span>
+                  <span className="detail-value">
+                    <span className={`status-badge ${selectedDocument.status}`}>{selectedDocument.status}</span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Stage:</span>
+                  <span className="detail-value">{selectedDocument.stage}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Started:</span>
+                  <span className="detail-value">{new Date(selectedDocument.started_at).toLocaleString()}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Updated:</span>
+                  <span className="detail-value">{new Date(selectedDocument.updated_at).toLocaleString()}</span>
+                </div>
+                {selectedDocument.error && (
+                  <div className="detail-row">
+                    <span className="detail-label">Error:</span>
+                    <span className="detail-value error-text">{selectedDocument.error}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

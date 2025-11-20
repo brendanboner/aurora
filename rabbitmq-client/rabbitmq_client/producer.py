@@ -2,6 +2,7 @@
 
 import pika
 import json
+import time
 from typing import Dict, Any, List, Optional
 import logging
 
@@ -41,8 +42,14 @@ class RabbitMQProducer:
         self.channel = None
         self.logger = logger_instance or logger
     
-    def connect(self):
-        """Establish connection to RabbitMQ."""
+    def connect(self, max_retries: int = 5, retry_delay: float = 2.0):
+        """
+        Establish connection to RabbitMQ with retry logic.
+        
+        Args:
+            max_retries: Maximum number of connection attempts (default: 5)
+            retry_delay: Initial delay between retries in seconds (default: 2.0)
+        """
         credentials = pika.PlainCredentials(self.user, self.password)
         parameters = pika.ConnectionParameters(
             host=self.host,
@@ -50,11 +57,27 @@ class RabbitMQProducer:
             credentials=credentials
         )
         
-        self.logger.info(f"Connecting to RabbitMQ at {self.host}:{self.port}")
-        self.connection = pika.BlockingConnection(parameters)
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue=self.queue, durable=True)
-        self.logger.info(f"Connected to RabbitMQ, publishing to queue: {self.queue}")
+        last_exception = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                self.logger.info(f"Connecting to RabbitMQ at {self.host}:{self.port} (attempt {attempt}/{max_retries})")
+                self.connection = pika.BlockingConnection(parameters)
+                self.channel = self.connection.channel()
+                self.channel.queue_declare(queue=self.queue, durable=True)
+                self.logger.info(f"Connected to RabbitMQ, publishing to queue: {self.queue}")
+                return  # Success, exit function
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries:
+                    wait_time = retry_delay * (2 ** (attempt - 1))  # Exponential backoff
+                    self.logger.warning(f"Failed to connect to RabbitMQ (attempt {attempt}/{max_retries}): {e}")
+                    self.logger.info(f"Retrying in {wait_time:.1f} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    self.logger.error(f"Failed to connect to RabbitMQ after {max_retries} attempts: {e}")
+        
+        # If we get here, all retries failed
+        raise last_exception
     
     def publish(self, message: Dict[str, Any], persistent: bool = True):
         """

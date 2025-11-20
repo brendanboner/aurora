@@ -24,6 +24,14 @@ const UserProfile = ({ currentUser }) => {
   const [orgSearch, setOrgSearch] = useState('');
   const [peopleSearch, setPeopleSearch] = useState('');
 
+  // Filter selections
+  const [topicClassificationFilter, setTopicClassificationFilter] = useState([]);
+  const [orgTypeFilter, setOrgTypeFilter] = useState([]);
+
+  // Filter dropdown visibility
+  const [showTopicFilterDropdown, setShowTopicFilterDropdown] = useState(false);
+  const [showOrgFilterDropdown, setShowOrgFilterDropdown] = useState(false);
+
   const location = useLocation();
   const path = location.pathname;
   const selectedSection = path.includes('/profile/topics') ? 'topics'
@@ -33,6 +41,18 @@ const UserProfile = ({ currentUser }) => {
     : null;
 
   useEffect(() => { loadData(); }, [currentUser]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.filter-dropdown-wrapper')) {
+        setShowTopicFilterDropdown(false);
+        setShowOrgFilterDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadData = async () => {
     if (!currentUser) return;
@@ -98,8 +118,23 @@ const UserProfile = ({ currentUser }) => {
     }
   };
 
-  const filteredTopics = availableTopics.filter(t => t.name?.toLowerCase().includes(topicSearch.toLowerCase()));
-  const filteredOrgs = availableOrgs.filter(o => o.name?.toLowerCase().includes(orgSearch.toLowerCase()));
+  // Get unique classification values from topics
+  const uniqueClassifications = [...new Set(availableTopics.map(t => t.classification).filter(Boolean))];
+  const uniqueOrgTypes = [...new Set(availableOrgs.map(o => o.org_type).filter(Boolean))];
+
+  // Apply filters
+  const filteredTopics = availableTopics.filter(t => {
+    const matchesSearch = t.name?.toLowerCase().includes(topicSearch.toLowerCase());
+    const matchesClassification = topicClassificationFilter.length === 0 || topicClassificationFilter.includes(t.classification);
+    return matchesSearch && matchesClassification;
+  });
+
+  const filteredOrgs = availableOrgs.filter(o => {
+    const matchesSearch = o.name?.toLowerCase().includes(orgSearch.toLowerCase());
+    const matchesType = orgTypeFilter.length === 0 || orgTypeFilter.includes(o.org_type);
+    return matchesSearch && matchesType;
+  });
+
   const filteredPeople = availablePeople.filter(p => p.name?.toLowerCase().includes(peopleSearch.toLowerCase()));
 
   if (!currentUser) {
@@ -133,10 +168,46 @@ const UserProfile = ({ currentUser }) => {
             <div className="profile-section">
               <h2><span className="icon-heading"><BookIcon size={20} /></span> Topics Preferences</h2>
               <p className="section-description">Select topics you're interested in.</p>
-              <input className="input search-input" placeholder="Search topics..." value={topicSearch} onChange={e => setTopicSearch(e.target.value)} />
+              <div className="search-filter-container">
+                <input className="input search-input" placeholder="Search topics..." value={topicSearch} onChange={e => setTopicSearch(e.target.value)} />
+                <div className="filter-dropdown-wrapper">
+                  <button 
+                    className={`btn btn-secondary btn-sm filter-btn ${topicClassificationFilter.length > 0 ? 'active' : ''}`}
+                    onClick={() => setShowTopicFilterDropdown(!showTopicFilterDropdown)}
+                  >
+                    Filter {topicClassificationFilter.length > 0 && `(${topicClassificationFilter.length})`}
+                  </button>
+                  {showTopicFilterDropdown && (
+                    <div className="filter-dropdown">
+                      <div className="filter-dropdown-header">
+                        <strong>Classification</strong>
+                        {topicClassificationFilter.length > 0 && (
+                          <button className="btn-link" onClick={() => setTopicClassificationFilter([])}>Clear</button>
+                        )}
+                      </div>
+                      {uniqueClassifications.map(classification => (
+                        <label key={classification} className="filter-option">
+                          <input
+                            type="checkbox"
+                            checked={topicClassificationFilter.includes(classification)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setTopicClassificationFilter([...topicClassificationFilter, classification]);
+                              } else {
+                                setTopicClassificationFilter(topicClassificationFilter.filter(c => c !== classification));
+                              }
+                            }}
+                          />
+                          <span>{classification}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="bulk-actions">
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', availableTopics.map(t => t.id), true)} title={`Select all ${availableTopics.length} topics (including filtered)`}>Select All ({availableTopics.length})</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', [], true)} title="Deselect all topics">Select None</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', filteredTopics.map(t => t.id), true)} title={`Select all ${filteredTopics.length} visible topics`}>Select All ({filteredTopics.length})</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', preferences.topics.filter(id => !filteredTopics.map(t => t.id).includes(id)), true)} title="Deselect all visible topics">Select None</button>
                 {topicSearch && filteredTopics.length < availableTopics.length && (
                   <span className="filter-info">{filteredTopics.length} of {availableTopics.length} shown</span>
                 )}
@@ -158,10 +229,46 @@ const UserProfile = ({ currentUser }) => {
             <div className="profile-section">
               <h2><span className="icon-heading"><BuildingIcon size={20} /></span> Organisation Preferences</h2>
               <p className="section-description">Select organisations you want to follow.</p>
-              <input className="input search-input" placeholder="Search organisations..." value={orgSearch} onChange={e => setOrgSearch(e.target.value)} />
+              <div className="search-filter-container">
+                <input className="input search-input" placeholder="Search organisations..." value={orgSearch} onChange={e => setOrgSearch(e.target.value)} />
+                <div className="filter-dropdown-wrapper">
+                  <button 
+                    className={`btn btn-secondary btn-sm filter-btn ${orgTypeFilter.length > 0 ? 'active' : ''}`}
+                    onClick={() => setShowOrgFilterDropdown(!showOrgFilterDropdown)}
+                  >
+                    Filter {orgTypeFilter.length > 0 && `(${orgTypeFilter.length})`}
+                  </button>
+                  {showOrgFilterDropdown && (
+                    <div className="filter-dropdown">
+                      <div className="filter-dropdown-header">
+                        <strong>Organization Type</strong>
+                        {orgTypeFilter.length > 0 && (
+                          <button className="btn-link" onClick={() => setOrgTypeFilter([])}>Clear</button>
+                        )}
+                      </div>
+                      {uniqueOrgTypes.map(orgType => (
+                        <label key={orgType} className="filter-option">
+                          <input
+                            type="checkbox"
+                            checked={orgTypeFilter.includes(orgType)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setOrgTypeFilter([...orgTypeFilter, orgType]);
+                              } else {
+                                setOrgTypeFilter(orgTypeFilter.filter(t => t !== orgType));
+                              }
+                            }}
+                          />
+                          <span>{orgType}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="bulk-actions">
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', availableOrgs.map(o => o.id), true)} title={`Select all ${availableOrgs.length} organisations (including filtered)`}>Select All ({availableOrgs.length})</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', [], true)} title="Deselect all organisations">Select None</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', filteredOrgs.map(o => o.id), true)} title={`Select all ${filteredOrgs.length} visible organisations`}>Select All ({filteredOrgs.length})</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', preferences.organisations.filter(id => !filteredOrgs.map(o => o.id).includes(id)), true)} title="Deselect all visible organisations">Select None</button>
                 {orgSearch && filteredOrgs.length < availableOrgs.length && (
                   <span className="filter-info">{filteredOrgs.length} of {availableOrgs.length} shown</span>
                 )}
@@ -185,8 +292,8 @@ const UserProfile = ({ currentUser }) => {
               <p className="section-description">Select people you want to track.</p>
               <input className="input search-input" placeholder="Search people..." value={peopleSearch} onChange={e => setPeopleSearch(e.target.value)} />
               <div className="bulk-actions">
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', availablePeople.map(p => p.id), true)} title={`Select all ${availablePeople.length} people (including filtered)`}>Select All ({availablePeople.length})</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', [], true)} title="Deselect all people">Select None</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', filteredPeople.map(p => p.id), true)} title={`Select all ${filteredPeople.length} visible people`}>Select All ({filteredPeople.length})</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', preferences.people.filter(id => !filteredPeople.map(p => p.id).includes(id)), true)} title="Deselect all visible people">Select None</button>
                 {peopleSearch && filteredPeople.length < availablePeople.length && (
                   <span className="filter-info">{filteredPeople.length} of {availablePeople.length} shown</span>
                 )}

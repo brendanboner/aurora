@@ -65,6 +65,11 @@ class WFAScraper(BaseScraper):
     
     async def get_resource_links(self) -> List[Resource]:
         """Extract resource links from the main resource center page (page 1 only - for daily updates)"""
+        self.update_heartbeat()
+        self.update_current_processing(
+            Resource(title="Fetching resource list", url=self.resource_center_url, category="discovery"),
+            "loading page 1"
+        )
         async with self.session.get(self.resource_center_url) as response:
             html = await response.text()
         
@@ -79,6 +84,13 @@ class WFAScraper(BaseScraper):
         while True:
             page_url = f"{self.resource_center_url}?page={page}"
             logging.info(f"Scraping page {page + 1}: {page_url}")
+            
+            # Update monitoring with current page discovery progress
+            self.update_heartbeat()
+            self.update_current_processing(
+                Resource(title="Fetching resource list", url=page_url, category="discovery"),
+                f"loading page {page + 1}"
+            )
             
             async with self.session.get(page_url) as response:
                 html = await response.text()
@@ -103,6 +115,10 @@ class WFAScraper(BaseScraper):
     async def scrape_resource(self, resource: Resource) -> Resource:
         """Main entry point for scraping a resource - follows redirects to final content"""
         try:
+            # Update status: resolving URL
+            self.update_heartbeat()
+            self.update_current_processing(resource, "resolving URL redirects")
+            
             # Follow the complete redirect chain to get the final URL
             final_url = await self.follow_redirect_chain(resource.url)
             
@@ -113,11 +129,15 @@ class WFAScraper(BaseScraper):
             if self.is_document_url(final_url):
                 # It's a document - extract PDF text
                 logging.debug(f"Extracting document from URL: {final_url}")
+                self.update_heartbeat()
+                self.update_current_processing(resource, "extracting PDF content")
                 pdf_text = await self.extract_pdf_text(final_url)
                 logging.debug(f"Extracted PDF text length: {len(pdf_text) if pdf_text else 0}")
                 resource.content = pdf_text if pdf_text else "PDF document - text extraction failed"
             else:
                 logging.debug(f"Extracting HTML content from URL: {final_url}")
+                self.update_heartbeat()
+                self.update_current_processing(resource, "extracting HTML content")
                 # It's an HTML page - extract content
                 async with self.session.get(final_url) as response:
                     if response.status == 200:

@@ -30,8 +30,8 @@
 /* When collapsed/open add consistent separation from page content */
 .sidebar-container.open { margin-right:24px; }
 .sidebar-container.closed { margin-right:16px; }
-.layout-inner.with-sidebar .page-container { flex:1; padding:24px; }
-.layout-inner.collapsed-sidebar .page-container { flex:1; padding:24px; }
+.layout-inner.with-sidebar .page-container { flex:1; padding:24px; overflow-y:auto; }
+.layout-inner.collapsed-sidebar .page-container { flex:1; padding:24px; overflow-y:auto; }
 .sidebar-container { display:flex; }
 .sidebar-container.open { margin-right:24px; }
 .sidebar-container.closed { margin-right:16px; }

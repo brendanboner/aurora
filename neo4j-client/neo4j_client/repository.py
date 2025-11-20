@@ -1019,6 +1019,28 @@ class GraphRepository:
              start_param,
              end_param,
              limit_param
+        
+        // For each person, collect their organizational affiliations
+        UNWIND CASE WHEN size(people) > 0 THEN people ELSE [null] END AS person
+        OPTIONAL MATCH (person)-[aff:AFFILIATED_WITH]->(affOrg:Organization)
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, category_param, doc_type_param,
+             start_param, end_param, limit_param,
+             person,
+             collect(DISTINCT {organization: affOrg.name, role: aff.role}) AS person_affiliations
+        
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, category_param, doc_type_param,
+             start_param, end_param, limit_param,
+             collect(CASE WHEN person IS NOT NULL THEN {
+                 person: person,
+                 affiliations: person_affiliations
+             } ELSE null END) AS people_with_affiliations_raw
+        
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, category_param, doc_type_param,
+             start_param, end_param, limit_param,
+             [x IN people_with_affiliations_raw WHERE x IS NOT NULL] AS people_with_affiliations
 
         // Apply date, category, and doc_type filters
         WHERE
@@ -1050,6 +1072,7 @@ class GraphRepository:
 
         // Calculate relevance scores with per-term scoring for better precision
         WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             people_with_affiliations,
              topics_param, orgs_param, people_param, limit_param,
              
              // Topic match score: check name, aliases, and identifiers in Topic nodes
@@ -1083,6 +1106,7 @@ class GraphRepository:
              ] AS matched_keywords
         
         WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             people_with_affiliations,
              topics_param, orgs_param, people_param, limit_param,
              topic_match_score, matched_term_count, matched_keywords,
              
@@ -1103,14 +1127,14 @@ class GraphRepository:
                     ])) / size(orgs_param)
              END AS org_match_score,
              
-             // People match score: check name and email
+             // People match score: check name (partial match with CONTAINS), email
              CASE
                 WHEN size(people_param) = 0 THEN 1.0
                 ELSE
                     toFloat(size([pr IN people WHERE 
-                        toLower(pr.name) IN [x IN people_param | toLower(x)] OR
+                        any(search_term IN people_param WHERE toLower(pr.name) CONTAINS toLower(search_term)) OR
                         pr.person_id IN people_param OR
-                        (pr.email IS NOT NULL AND toLower(pr.email) IN [x IN people_param | toLower(x)])
+                        (pr.email IS NOT NULL AND any(search_term IN people_param WHERE toLower(pr.email) CONTAINS toLower(search_term)))
                     ])) / size(people_param)
              END AS people_match_score,
              
@@ -1128,6 +1152,7 @@ class GraphRepository:
 
         // Calculate combined relevance score with strong completeness emphasis
         WITH r, publish_date_iso, topics, people, orgs, datasources,
+             people_with_affiliations,
              topic_match_score, text_match_score, org_match_score, people_match_score, avg_topic_confidence, matched_term_count,
              // Completeness bonus: HEAVILY favor documents matching ALL query terms
              // 10x multiplier if ALL terms matched, 2x if 75%+, 1x otherwise
@@ -1137,8 +1162,8 @@ class GraphRepository:
                 WHEN size(topics_param) > 0 AND toFloat(matched_term_count) / size(topics_param) >= 0.75 THEN 2.0
                 ELSE 1.0
              END AS completeness_bonus,
-             // Base relevance: 40% text match, 30% topic match (graph), 20% org match, 10% relationship quality
-             (text_match_score * 0.4 + topic_match_score * 0.3 + org_match_score * 0.2 + avg_topic_confidence * 0.1) AS base_relevance,
+             // Base relevance: 30% text match, 25% topic match (graph), 20% org match, 15% people match, 10% relationship quality
+             (text_match_score * 0.3 + topic_match_score * 0.25 + org_match_score * 0.2 + people_match_score * 0.15 + avg_topic_confidence * 0.1) AS base_relevance,
              
              // Recency score: more recent documents get higher scores
              CASE
@@ -1152,6 +1177,7 @@ class GraphRepository:
         // Final ranking: apply completeness bonus to base relevance, then blend with recency
         // 80% relevance (with completeness bonus), 20% recency
         WITH r, publish_date_iso, topics, people, orgs, datasources, matched_term_count,
+             people_with_affiliations,
              (base_relevance * completeness_bonus * 0.8 + recency_score * 0.2) AS final_score
         
         ORDER BY final_score DESC, matched_term_count DESC,
@@ -1166,6 +1192,7 @@ class GraphRepository:
             r           AS resource,
             topics      AS topics,
             people      AS people,
+            people_with_affiliations AS people_details,
             orgs        AS organisations,
             datasources AS datasources
         """

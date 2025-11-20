@@ -314,15 +314,65 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
         publish_date = d.get("publish_date")
         if publish_date is not None:
             publish_date = _safe_datetime_to_string(publish_date)
+        
+        # Build enriched context that includes people mentioned with their roles/affiliations
+        # This is crucial for "Who is X" queries where person names may not appear in summaries
+        people_mentioned = d.get("people", [])
+        people_details = d.get("people_details", [])
+        orgs_mentioned = d.get("organisations", [])
+        
+        # Create a richer summary that includes entity mentions with roles
+        enriched_summary = d.get("summary", "")
+        if people_details or orgs_mentioned:
+            entity_context = []
+            
+            # Add detailed people information with roles/affiliations
+            if people_details:
+                people_lines = []
+                for person in people_details:
+                    name = person.get("name", "Unknown")
+                    affiliations = person.get("affiliations", [])
+                    if affiliations:
+                        # Build affiliation strings like "David Coleman (VP, Wi-Fi Alliance)"
+                        aff_strs = []
+                        for aff in affiliations:
+                            role = aff.get("role")
+                            org = aff.get("organization")
+                            if role and org:
+                                aff_strs.append(f"{role} at {org}")
+                            elif role:
+                                aff_strs.append(role)
+                            elif org:
+                                aff_strs.append(org)
+                        if aff_strs:
+                            people_lines.append(f"{name} ({', '.join(aff_strs)})")
+                        else:
+                            people_lines.append(name)
+                    else:
+                        people_lines.append(name)
+                
+                if people_lines:
+                    entity_context.append(f"People mentioned: {'; '.join(people_lines)}")
+            elif people_mentioned:
+                # Fallback to simple list if details aren't available
+                entity_context.append(f"People mentioned: {', '.join(people_mentioned)}")
+            
+            if orgs_mentioned:
+                entity_context.append(f"Organizations mentioned: {', '.join(orgs_mentioned)}")
+            
+            if entity_context:
+                enriched_summary = f"{enriched_summary}\n\n{'. '.join(entity_context)}."
             
         docs_ctx.append(
             {
                 "title": d.get("title"),
                 "url": d.get("url"),
                 "publish_date": publish_date,
-                "summary": d.get("summary"),
+                "summary": enriched_summary,
                 "topics": d.get("topics", []),
-                "organisations": d.get("organisations", []),
+                "organisations": orgs_mentioned,
+                "people": people_mentioned,
+                "people_details": people_details,
             }
         )
     

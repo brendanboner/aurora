@@ -102,6 +102,32 @@ def query_documents_from_filters(filters: Dict[str, Any]) -> List[Dict[str, Any]
         r = row.get("resource", {})
         topics = [t.get("name") for t in row.get("topics", []) if t.get("name")]
         orgs = [o.get("name") for o in row.get("organisations", []) if o.get("name")]
+        people = [p.get("name") for p in row.get("people", []) if p.get("name")]
+        
+        # Extract detailed people information with affiliations
+        people_details = []
+        for person_data in row.get("people_details", []):
+            person_node = person_data.get("person")
+            if not person_node:
+                continue
+            
+            person_info = {
+                "name": person_node.get("name"),
+                "email": person_node.get("email")
+            }
+            
+            # Add organizational affiliations if they exist
+            affiliations = person_data.get("affiliations", [])
+            if affiliations:
+                # Filter out empty affiliations (where both org and role are null)
+                valid_affiliations = [
+                    aff for aff in affiliations 
+                    if aff.get("organization") or aff.get("role")
+                ]
+                if valid_affiliations:
+                    person_info["affiliations"] = valid_affiliations
+            
+            people_details.append(person_info)
         
         # Convert DateTime objects to strings for API compatibility
         publish_date = _convert_datetime_to_string(r.get("publish_date"))
@@ -116,6 +142,8 @@ def query_documents_from_filters(filters: Dict[str, Any]) -> List[Dict[str, Any]
                 "summary": r.get("summary", ""),
                 "topics": topics,
                 "organisations": orgs,
+                "people": people,
+                "people_details": people_details,
             }
         )
     return docs

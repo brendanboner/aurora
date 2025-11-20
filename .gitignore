@@ -76,3 +76,6 @@ test_messages.json
 # Temporary files
 *.tmp
 *.temp
+
+# Using UV
+uv.lock
