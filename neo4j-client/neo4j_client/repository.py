@@ -1048,7 +1048,7 @@ class GraphRepository:
                 )
             )
 
-        // Calculate relevance scores for filtering and ranking
+        // Calculate relevance scores with per-term scoring for better precision
         WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
              topics_param, orgs_param, people_param, limit_param,
              
@@ -1064,15 +1064,32 @@ class GraphRepository:
                     ])) / size(topics_param)
              END AS topic_match_score,
              
-             // Text match score: search for topic keywords in document text fields (title, summary, URL)
+             // Count how many distinct query terms matched in document text (completeness metric)
              CASE
-                WHEN size(topics_param) = 0 THEN 0.0
+                WHEN size(topics_param) = 0 THEN 0
                 ELSE
-                    toFloat(size([keyword IN topics_param WHERE
+                    size([keyword IN topics_param WHERE
                         toLower(coalesce(r.title, '')) CONTAINS toLower(keyword) OR
                         toLower(coalesce(r.summary, '')) CONTAINS toLower(keyword) OR
                         toLower(coalesce(r.url, '')) CONTAINS toLower(keyword)
-                    ])) / size(topics_param)
+                    ])
+             END AS matched_term_count,
+             
+             // Simple per-term match tracking for weighted scoring
+             [keyword IN topics_param WHERE
+                 toLower(coalesce(r.title, '')) CONTAINS toLower(keyword) OR
+                 toLower(coalesce(r.summary, '')) CONTAINS toLower(keyword) OR
+                 toLower(coalesce(r.url, '')) CONTAINS toLower(keyword)
+             ] AS matched_keywords
+        
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, limit_param,
+             topic_match_score, matched_term_count, matched_keywords,
+             
+             // Text match score: equal weight per matched term (completeness-based)
+             CASE
+                WHEN size(topics_param) = 0 THEN 0.0
+                ELSE toFloat(matched_term_count) / size(topics_param)
              END AS text_match_score,
              
              // Organization match score: check name and aliases
@@ -1109,11 +1126,19 @@ class GraphRepository:
             AND (size(orgs_param) = 0 OR org_match_score > 0.0)
             AND (size(people_param) = 0 OR people_match_score > 0.0)
 
-        // Calculate combined relevance score
+        // Calculate combined relevance score with strong completeness emphasis
         WITH r, publish_date_iso, topics, people, orgs, datasources,
-             topic_match_score, text_match_score, org_match_score, people_match_score, avg_topic_confidence,
-             // Weighted relevance: 30% topic match (graph), 20% text match (content), 25% org match, 15% people match, 10% relationship quality
-             (topic_match_score * 0.3 + text_match_score * 0.2 + org_match_score * 0.25 + people_match_score * 0.15 + avg_topic_confidence * 0.1) AS relevance_score,
+             topic_match_score, text_match_score, org_match_score, people_match_score, avg_topic_confidence, matched_term_count,
+             // Completeness bonus: HEAVILY favor documents matching ALL query terms
+             // 10x multiplier if ALL terms matched, 2x if 75%+, 1x otherwise
+             // This ensures "wi-fi" + "congress" ranks much higher than just "wi-fi"
+             CASE
+                WHEN size(topics_param) > 0 AND matched_term_count = size(topics_param) THEN 10.0
+                WHEN size(topics_param) > 0 AND toFloat(matched_term_count) / size(topics_param) >= 0.75 THEN 2.0
+                ELSE 1.0
+             END AS completeness_bonus,
+             // Base relevance: 40% text match, 30% topic match (graph), 20% org match, 10% relationship quality
+             (text_match_score * 0.4 + topic_match_score * 0.3 + org_match_score * 0.2 + avg_topic_confidence * 0.1) AS base_relevance,
              
              // Recency score: more recent documents get higher scores
              CASE
@@ -1124,20 +1149,20 @@ class GraphRepository:
                 ELSE 0.1
              END AS recency_score
 
-        // Final ranking: combine relevance and recency
-        // 70% relevance, 30% recency
-        WITH r, publish_date_iso, topics, people, orgs, datasources,
-             (relevance_score * 0.7 + recency_score * 0.3) AS final_score
+        // Final ranking: apply completeness bonus to base relevance, then blend with recency
+        // 80% relevance (with completeness bonus), 20% recency
+        WITH r, publish_date_iso, topics, people, orgs, datasources, matched_term_count,
+             (base_relevance * completeness_bonus * 0.8 + recency_score * 0.2) AS final_score
         
-        ORDER BY final_score DESC, 
+        ORDER BY final_score DESC, matched_term_count DESC,
                  coalesce(
                     CASE WHEN publish_date_iso IS NOT NULL THEN date(publish_date_iso) ELSE NULL END,
                     date(datetime(r.scraped_at))
                  ) DESC
 
-        LIMIT $limit
-
-        RETURN
+        // Limit to top 3 documents for focused results (only show highly relevant matches)
+        // Unless user explicitly requests more with a higher limit
+        LIMIT CASE WHEN $limit < 3 THEN $limit ELSE 3 END        RETURN
             r           AS resource,
             topics      AS topics,
             people      AS people,
