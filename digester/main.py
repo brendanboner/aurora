@@ -137,7 +137,7 @@ class DocumentDigester:
         """Update digester heartbeat timestamp in Redis."""
         if self.redis_client:
             try:
-                self.redis_client.set("digester:heartbeat", datetime.now().timestamp())
+                self.redis_client.setex("digester:heartbeat", 300, datetime.now().timestamp())
             except Exception as e:
                 logger.warning(f"Failed to update heartbeat: {e}")
     
@@ -154,7 +154,7 @@ class DocumentDigester:
                     "started_at": datetime.now().isoformat(),
                     "updated_at": datetime.now().isoformat()
                 }
-                self.redis_client.set("digester:current", json.dumps(processing_data))
+                self.redis_client.setex("digester:current", 300, json.dumps(processing_data))
             except Exception as e:
                 logger.warning(f"Failed to update current processing: {e}")
     

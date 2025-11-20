@@ -183,7 +183,7 @@ async def get_queue_status():
                 peeked_tags = []
                 seen_urls = set()
                 position = 1
-                max_peek = min(message_count, 100)  # Peek more to find uniques
+                max_peek = min(message_count, 50)  # Limit peeking to 50 messages for efficiency
                 
                 for _ in range(max_peek):
                     method_frame, header_frame, body = channel.basic_get(queue=queue_name, auto_ack=False)
@@ -217,8 +217,8 @@ async def get_queue_status():
                     except json.JSONDecodeError:
                         peeked_tags.append(method_frame.delivery_tag)
                 
-                # Re-queue all peeked messages in reverse order to maintain queue order
-                for tag in reversed(peeked_tags):
+                # Re-queue all peeked messages in original order to maintain queue order
+                for tag in peeked_tags:
                     channel.basic_nack(delivery_tag=tag, requeue=True)
                     
             except Exception as e:

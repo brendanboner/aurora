@@ -73,7 +73,7 @@ class BaseScraper:
         """Update retriever heartbeat timestamp in Redis."""
         if self.redis_client:
             try:
-                self.redis_client.set("retriever:heartbeat", datetime.now().timestamp())
+                self.redis_client.set("retriever:heartbeat", datetime.now().timestamp(), ex=300)
             except Exception as e:
                 logging.warning(f"Failed to update heartbeat: {e}")
     
@@ -90,7 +90,7 @@ class BaseScraper:
                     "started_at": datetime.now().isoformat(),
                     "updated_at": datetime.now().isoformat()
                 }
-                self.redis_client.set("retriever:current", json.dumps(processing_data))
+                self.redis_client.set("retriever:current", json.dumps(processing_data), ex=300)
             except Exception as e:
                 logging.warning(f"Failed to update current processing: {e}")
     

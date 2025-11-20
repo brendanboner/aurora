@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     rabbitmq_host: str = "aurora-rabbitmq"
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "user"
-    rabbitmq_password: str = "passsword"
+    rabbitmq_password: str = "password"
     rabbitmq_queue: str = "scraped_content"
     
     # Redis Configuration
