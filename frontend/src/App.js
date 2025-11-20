@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
-import Navigation from './components/Navigation';
+import Header from './components/Header';
+import Sidebar from './components/Sidebar';
 import Chatbot from './pages/Chatbot';
-import Admin from './pages/Admin';
 import UserProfile from './pages/UserProfile';
+import AdminUsers from './pages/AdminUsers';
+import AdminKnowledgeGraph from './pages/AdminKnowledgeGraph';
+import AdminMonitoring from './pages/AdminMonitoring';
 import { testBackendConnection } from './services/api';
 
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
   const [currentUser, setCurrentUser] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     // Check backend connection on startup
@@ -34,6 +38,16 @@ function App() {
         localStorage.removeItem('currentUser');
       }
     }
+
+    // Check if mobile on initial load
+    const handleResize = () => {
+      if (window.innerWidth <= 768) {
+        setSidebarOpen(false);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleUserChange = (user) => {
@@ -45,46 +59,65 @@ function App() {
     }
   };
 
+  const toggleSidebar = () => {
+    setSidebarOpen(prev => !prev);
+  };
+
   return (
     <Router>
       <div className="App">
-        <Navigation 
-          backendStatus={backendStatus} 
-          currentUser={currentUser}
-          onLogout={() => handleUserChange(null)}
-        />
-        <main className="main-content">
-          <Routes>
-            <Route 
-              path="/" 
-              element={
-                <Chatbot 
-                  currentUser={currentUser} 
-                  backendStatus={backendStatus}
+        <div className="app-shell">
+          <Header 
+            currentUser={currentUser}
+            onLogout={() => handleUserChange(null)}
+          />
+          <div className="app-layout">
+              <main className={`main-content ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+                <div className={`layout-inner ${sidebarOpen ? 'with-sidebar' : 'collapsed-sidebar'}`}>
+                  <div className={`sidebar-container ${sidebarOpen ? 'open' : 'closed'}`}>
+                    <Sidebar 
+                      isOpen={sidebarOpen}
+                      onToggle={toggleSidebar}
+                      backendStatus={backendStatus}
+                    />
+                  </div>
+                  <div className="page-container">
+                    <Routes>
+                <Route 
+                  path="/" 
+                  element={<Chatbot currentUser={currentUser} backendStatus={backendStatus} />} 
                 />
-              } 
-            />
-            <Route 
-              path="/admin" 
-              element={
-                <Admin 
-                  onUserChange={handleUserChange}
-                  currentUser={currentUser}
+                {/* New discrete admin pages */}
+                <Route path="/admin/users" element={<AdminUsers onUserChange={handleUserChange} currentUser={currentUser} />} />
+                <Route path="/admin/knowledge-graph" element={<AdminKnowledgeGraph />} />
+                <Route path="/admin/monitoring" element={<AdminMonitoring />} />
+                <Route 
+                  path="/profile" 
+                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
                 />
-              } 
-            />
-            <Route 
-              path="/profile" 
-              element={
-                <UserProfile 
-                  currentUser={currentUser}
-                  onUserChange={handleUserChange}
+                <Route 
+                  path="/profile/topics" 
+                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
                 />
-              } 
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
+                <Route 
+                  path="/profile/organisations" 
+                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
+                />
+                <Route 
+                  path="/profile/people" 
+                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
+                />
+                <Route 
+                  path="/profile/notifications" 
+                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
       </div>
     </Router>
   );

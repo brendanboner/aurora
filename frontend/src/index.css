@@ -1,3 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap');
+
+:root {
+  --font-size: 14px;
+  /* Typography scale variables */
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  /* The default background color for the application. */
+  --background: rgba(30, 31, 42, 1.00);
+  /* The default color for elements or text that appears on top of the background. */
+  --foreground: rgba(248, 248, 251, 1.00);
+  /* The background color for cards, modals, and other containers. */
+  --card: rgba(45, 47, 62, 1.00);
+  /* The default color for text or elements that appear on top of cards, modals and other background containers. */
+  --card-foreground: rgba(248, 248, 251, 1.00);
+  /* The background color for dropdowns and tooltips. */
+  --popover: rgba(45, 47, 62, 1.00);
+  /* The default color for text or elements that appear on top of dropdowns and tooltips. */
+  --popover-foreground: rgba(248, 248, 251, 1.00);
+  /* The primary color used for buttons, links, and other interactive elements. */
+  --primary: rgba(137, 129, 229, 1.00);
+  /* The default color for text or elements that appear on top of primary colored elements. */
+  --primary-foreground: rgba(30, 26, 70, 1.00);
+  /* The secondary color used for secondary(but NOT-DESTRUCTIVE) buttons and interactive elements. */
+  --secondary: rgba(0, 0, 0, 0.00);
+  /* The default color for text or elements that appear on top of secondary colored elements. */
+  --secondary-foreground: rgba(171, 163, 251, 1.00);
+  /* The muted color used for less prominent elements, such as disabled buttons or disabled text. */
+  --muted: rgba(0, 0, 0, 0.00);
+  /* The default color for text or elements that appear on top of muted colored elements. */
+  --muted-foreground: rgba(186, 188, 206, 1.00);
+  /* The accent color used for highlights, links, and other interactive elements. */
+  --accent: rgba(137, 129, 229, 1.00);
+  /* The default color for text or elements that appear on top of accent colored elements. */
+  --accent-foreground: rgba(30, 26, 70, 1.00);
+  /* The color used for background in destructive actions, such as delete buttons or error messages. */
+  --destructive: rgba(237, 95, 86, 1.00);
+  /* The default color for text or elements that appear on top of destructive colored elements. */
+  --destructive-foreground: rgba(248, 248, 251, 1.00);
+  /* The default border color for elements such as inputs, buttons, and other containers. */
+  --border: rgba(77, 79, 99, 1.00);
+  /* The default background color for input fields once the text has been filled. Should be either transparent or match the input-background. */
+  --input: rgba(0, 0, 0, 0.00);
+  /* The default background color for input fields, text areas, and other input elements. */
+  --input-background: rgba(0, 0, 0, 0.00);
+  /* The default font weight for medium text. */
+  --font-weight-medium: 600;
+  /* The default font weight for normal text. */
+  --font-weight-normal: 400;
+  /* The color for focus rings, outlines, and other focus indicators. */
+  --ring: rgba(137, 129, 229, 1.00);
+  /* Shadow for small elevations, such as cards or modals. */
+  --elevation-sm: 0 2px 4px rgba(15, 15, 21, 0.24);
+  /* The color for chart elements, such as a bar or line in a chart. */
+  --chart-1: rgba(137, 129, 229, 1.00);
+  /* The color for another chart element, such as a bar or line in a chart. */
+  --chart-2: rgba(171, 163, 251, 1.00);
+  /* The color for another chart element, such as a bar or line in a chart. */
+  --chart-3: rgba(117, 191, 99, 1.00);
+  /* The color for another chart element, such as a bar or line in a chart. */
+  --chart-4: rgba(237, 95, 86, 1.00);
+  /* The color for another chart element, such as a bar or line in a chart. */
+  --chart-5: rgba(186, 188, 206, 1.00);
+  /* The default border radius for elements such as buttons, tooltip, and other containers. */
+  --radius: 4px;
+  /* Border radius for buttons. */
+  --radius-button: 4px;
+  /* Border radius for cards and containers. */
+  --radius-card: 4px;
+  /* Border radius for chip elements. */
+  --radius-chip: 40px;
+  /* The background color for sidebars, navigation menus, and other persistent elements. */
+  --sidebar: rgba(45, 47, 62, 1.00);
+  /* The default color for text or elements that appear on top of sidebars, navigation menus, and other persistent elements. */
+  --sidebar-foreground: rgba(248, 248, 251, 1.00);
+  /* The primary color used for buttons, links, and other interactive elements in sidebars and navigation menus. */
+  --sidebar-primary: rgba(137, 129, 229, 1.00);
+  /* The default color for text or elements that appear on top of primary colored elements in sidebars and navigation menus. */
+  --sidebar-primary-foreground: rgba(30, 26, 70, 1.00);
+  /* The accent color used for highlights, links, and other interactive elements in sidebars and navigation menus. */
+  --sidebar-accent: rgba(137, 129, 229, 1.00);
+  /* The default color for text or elements that appear on top of accent colored elements in sidebars and navigation menus. */
+  --sidebar-accent-foreground: rgba(30, 26, 70, 1.00);
+  /* The default border color for elements in sidebars and navigation menus. */
+  --sidebar-border: rgba(77, 79, 99, 1.00);
+  /* The default color for focus rings, outlines, and other focus indicators in sidebars and navigation menus. */
+  --sidebar-ring: rgba(137, 129, 229, 1.00);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,18 +98,95 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Source Sans Pro', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #0a0a0a;
-  color: #e0e0e0;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-size: var(--font-size);
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+h1 {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+h2 {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+h3 {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+h4 {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.5;
+}
+
+p {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+span {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+/* Unified icon wrapper styling */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  vertical-align: middle;
+}
+.icon svg {
+  display: block;
+}
+
+label {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+button {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.5;
+}
+
+input, textarea, select {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+html {
+  font-size: var(--font-size);
 }
 
 ::-webkit-scrollbar {
@@ -26,18 +195,14 @@ code {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--background);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #444;
-  border-radius: 4px;
+  background: var(--border);
+  border-radius: var(--radius);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-input, textarea, select {
-  font-family: inherit;
+  background: var(--muted-foreground);
 }

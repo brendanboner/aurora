@@ -1,25 +1,26 @@
-.App {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+.app-layout { flex: 1; display: flex; }
+.main-content { flex:1; padding:0; min-height:calc(100vh - 60px); }
+.layout-inner { display:flex; height:100%; }
+.layout-inner.with-sidebar .page-container { flex:1; padding:24px; }
+.layout-inner.collapsed-sidebar .page-container { flex:1; padding:24px; }
+.sidebar-container { display:flex; }
+.sidebar-container.open { margin-right:24px; }
+.sidebar-container.closed { margin-right:16px; }
+@media (max-width:768px){
+  .layout-inner { flex-direction:column; }
+  .sidebar-container.open { margin-right:0; margin-bottom:16px; }
+  .page-container { padding:16px !important; }
 }
 
-.main-content {
-  flex: 1;
-  padding: 20px;
-  max-width: 1600px;
-  width: 100%;
-  margin: 0 auto;
-}
+/* Cleaned legacy sidebar offset styles; layout now handled via .layout-inner and .page-container */
 
 /* Common button styles */
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: var(--radius-button);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all 0.3s ease;
   outline: none;
@@ -35,75 +36,78 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: var(--elevation-sm);
+  filter: brightness(1.1);
 }
 
 .btn-secondary {
-  background: #2a2a2a;
-  color: #e0e0e0;
-  border: 1px solid #444;
+  background-color: var(--card);
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #333;
-  border-color: #555;
+  background-color: var(--popover);
+  border-color: var(--primary);
 }
 
 .btn-danger {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 .btn-danger:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+  box-shadow: var(--elevation-sm);
+  filter: brightness(1.1);
 }
 
 .btn-success {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  color: white;
+  background-color: var(--chart-3);
+  color: var(--foreground);
 }
 
 .btn-success:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
+  box-shadow: var(--elevation-sm);
+  filter: brightness(1.1);
 }
 
 /* Common card styles */
 .card {
-  background: rgba(30, 30, 30, 0.8);
-  border: 1px solid #333;
-  border-radius: 12px;
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
   padding: 24px;
-  backdrop-filter: blur(10px);
+  box-shadow: var(--elevation-sm);
 }
 
 /* Common input styles */
 .input {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
+  background-color: var(--input-background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 12px 16px;
-  color: #e0e0e0;
-  font-size: 14px;
+  color: var(--foreground);
+  font-size: var(--text-base);
   width: 100%;
   transition: all 0.3s ease;
 }
 
 .input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px rgba(137, 129, 229, 0.1);
 }
 
 .input::placeholder {
-  color: #666;
+  color: var(--muted-foreground);
 }
 
 textarea.input {
@@ -118,8 +122,8 @@ select.input {
 
 /* Loading spinner */
 .spinner {
-  border: 3px solid #333;
-  border-top: 3px solid #667eea;
+  border: 3px solid var(--border);
+  border-top: 3px solid var(--primary);
   border-radius: 50%;
   width: 40px;
   height: 40px;
@@ -142,18 +146,18 @@ select.input {
 }
 
 .status-connected {
-  background: #00f2fe;
-  box-shadow: 0 0 8px rgba(0, 242, 254, 0.6);
+  background-color: var(--chart-3);
+  box-shadow: 0 0 8px var(--chart-3);
 }
 
 .status-disconnected {
-  background: #f5576c;
-  box-shadow: 0 0 8px rgba(245, 87, 108, 0.6);
+  background-color: var(--destructive);
+  box-shadow: 0 0 8px var(--destructive);
 }
 
 .status-checking {
-  background: #ffd700;
-  box-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+  background-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
@@ -170,8 +174,8 @@ select.input {
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  color: #b0b0b0;
-  font-size: 14px;
+  color: var(--muted-foreground);
+  font-size: var(--text-base);
   font-weight: 500;
 }
 
@@ -179,12 +183,12 @@ select.input {
 .badge {
   display: inline-block;
   padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: var(--radius-chip);
+  font-size: var(--text-sm);
   font-weight: 500;
-  background: rgba(102, 126, 234, 0.2);
-  color: #667eea;
-  border: 1px solid rgba(102, 126, 234, 0.3);
+  background-color: rgba(137, 129, 229, 0.2);
+  color: var(--primary);
+  border: 1px solid rgba(137, 129, 229, 0.3);
 }
 
 /* Tag */
@@ -193,18 +197,18 @@ select.input {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(102, 126, 234, 0.15);
-  border: 1px solid rgba(102, 126, 234, 0.3);
-  border-radius: 6px;
-  font-size: 13px;
-  color: #a0a0ff;
+  background-color: rgba(137, 129, 229, 0.15);
+  border: 1px solid rgba(137, 129, 229, 0.3);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: var(--primary-foreground);
   margin: 4px;
 }
 
 .tag .remove-btn {
   background: none;
   border: none;
-  color: #a0a0ff;
+  color: var(--primary-foreground);
   cursor: pointer;
   padding: 0;
   font-size: 16px;
@@ -212,5 +216,5 @@ select.input {
 }
 
 .tag .remove-btn:hover {
-  color: #f5576c;
+  color: var(--destructive);
 }

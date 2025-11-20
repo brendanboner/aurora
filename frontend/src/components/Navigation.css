@@ -1,6 +1,6 @@
 .navigation {
-  background: rgba(20, 20, 20, 0.95);
-  border-bottom: 1px solid #333;
+  background-color: var(--card);
+  border-bottom: 1px solid var(--border);
   backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
@@ -20,9 +20,9 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 700;
-  color: #fff;
+  color: var(--foreground);
 }
 
 .nav-logo {
@@ -40,21 +40,21 @@
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  color: #b0b0b0;
+  color: var(--muted-foreground);
   text-decoration: none;
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   transition: all 0.3s ease;
   font-weight: 500;
 }
 
 .nav-link:hover {
-  background: rgba(102, 126, 234, 0.1);
-  color: #667eea;
+  background-color: rgba(137, 129, 229, 0.1);
+  color: var(--primary);
 }
 
 .nav-link.active {
-  background: rgba(102, 126, 234, 0.2);
-  color: #667eea;
+  background-color: rgba(137, 129, 229, 0.2);
+  color: var(--primary);
 }
 
 .nav-icon {
@@ -71,14 +71,14 @@
   display: flex;
   align-items: center;
   padding: 8px 16px;
-  background: rgba(30, 30, 30, 0.6);
-  border: 1px solid #333;
-  border-radius: 20px;
-  font-size: 13px;
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+  font-size: var(--text-sm);
 }
 
 .status-text {
-  color: #b0b0b0;
+  color: var(--muted-foreground);
   font-weight: 500;
 }
 
@@ -87,14 +87,14 @@
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  background: rgba(102, 126, 234, 0.1);
-  border: 1px solid rgba(102, 126, 234, 0.3);
-  border-radius: 20px;
+  background-color: rgba(137, 129, 229, 0.1);
+  border: 1px solid rgba(137, 129, 229, 0.3);
+  border-radius: var(--radius-chip);
 }
 
 .user-name {
-  color: #e0e0e0;
-  font-size: 14px;
+  color: var(--foreground);
+  font-size: var(--text-base);
   font-weight: 500;
 }
 

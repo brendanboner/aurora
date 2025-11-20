@@ -4,12 +4,12 @@ Professional dark mode LLM chat interface for the Octo Rapid Aurora knowledge ma
 
 ## Features
 
-- 🤖 **LLM Chat Interface**: Modern chat UI with markdown support, document display, and filter visualization
-- 👥 **User Management**: Create, view, and delete users with full CRUD operations
-- 📚 **Knowledge Graph Browser**: Explore topics, organisations, and people with search and statistics
-- ⚙️ **User Preferences**: Customizable preferences for topics, organisations, people, and notifications
-- 🌙 **Dark Mode**: Professional dark theme throughout the application
-- 🔄 **Real-time Status**: Backend connection status monitoring
+- LLM Chat Interface: Modern chat UI with markdown support, document display, and filter visualization
+- User Management: Create, view, and delete users with full CRUD operations
+- Knowledge Graph Browser: Explore topics, organisations, and people with search and statistics
+- User Preferences: Customizable preferences for topics, organisations, people, and notifications
+- Dark Mode: Professional dark theme throughout the application
+- Real-time Status: Backend connection status monitoring
 
 ## Tech Stack
 
@@ -49,8 +49,10 @@ frontend/
 │   ├── pages/
 │   │   ├── Chatbot.jsx     # Main chat interface
 │   │   ├── Chatbot.css
-│   │   ├── Admin.jsx       # Admin dashboard
-│   │   ├── Admin.css
+│   │   ├── AdminUsers.jsx        # Users management page
+│   │   ├── AdminKnowledgeGraph.jsx # Knowledge graph browsing
+│   │   ├── AdminMonitoring.jsx     # Monitoring/status
+│   │   ├── Admin.css          # Shared admin styles (users/graph/monitoring)
 │   │   ├── UserProfile.jsx # User preferences
 │   │   └── UserProfile.css
 │   ├── services/
@@ -71,10 +73,10 @@ frontend/
 - See filter tags applied to queries
 - Markdown rendering for formatted responses
 
-### Admin (/admin)
-- **Users Tab**: Create new users, view all users, delete users
-- **Knowledge Graph Tab**: Browse topics, organisations, and people with search
-- Statistics dashboard showing node counts
+### Admin Pages
+- Users (/admin/users): Create new users, view all users, delete users
+- Knowledge Graph (/admin/knowledge-graph): Browse topics, organisations, and people with search and statistics
+- Monitoring (/admin/monitoring): View service status and activity
 
 ### User Profile (/profile)
 - Select topics of interest

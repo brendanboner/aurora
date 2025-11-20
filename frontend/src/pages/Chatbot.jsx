@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendQuery, getUserPreferences } from '../services/api';
+import { sendQuery } from '../services/api';
+import { ProfileIcon, ChatIcon, BookIcon, BuildingIcon, WarningIcon, HourglassIcon, SendIcon, CalendarIcon } from '../components/icons';
+import Icon from '../components/Icon.jsx';
 import './Chatbot.css';
 
 const Chatbot = ({ currentUser, backendStatus }) => {
@@ -104,7 +106,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
         )}
         {!currentUser && (
           <p className="chat-warning">
-            ⚠️ Please create or select a user in the Admin page to start chatting
+            <Icon Component={WarningIcon} size={16} /> Please create or select a user in the Admin page to start chatting
           </p>
         )}
       </div>
@@ -113,7 +115,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
         {messages.map((message, index) => (
           <div key={index} className={`message message-${message.role}`}>
             <div className="message-avatar">
-              {message.role === 'user' ? '👤' : '🤖'}
+              {message.role === 'user' ? <ProfileIcon size={20} /> : <ChatIcon size={20} />}
             </div>
             <div className="message-content">
               <div className="message-header">
@@ -141,13 +143,13 @@ const Chatbot = ({ currentUser, backendStatus }) => {
                       <span className="tag">To: {message.filters.end_date}</span>
                     )}
                     {message.filters.topics?.map((topic, i) => (
-                      <span key={i} className="tag">📚 {topic}</span>
+                      <span key={i} className="tag"><BookIcon size={12} /> {topic}</span>
                     ))}
                     {message.filters.organisations?.map((org, i) => (
-                      <span key={i} className="tag">🏢 {org}</span>
+                      <span key={i} className="tag"><BuildingIcon size={12} /> {org}</span>
                     ))}
                     {message.filters.people?.map((person, i) => (
-                      <span key={i} className="tag">👤 {person}</span>
+                      <span key={i} className="tag"><ProfileIcon size={12} /> {person}</span>
                     ))}
                   </div>
                 </div>
@@ -169,7 +171,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
                           )}
                         </div>
                         {doc.publish_date && (
-                          <div className="document-date">📅 {doc.publish_date}</div>
+                          <div className="document-date"><CalendarIcon size={12} /> {doc.publish_date}</div>
                         )}
                         {doc.summary && (
                           <div className="document-summary">{doc.summary}</div>
@@ -195,7 +197,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
 
         {isLoading && (
           <div className="message message-assistant">
-            <div className="message-avatar">🤖</div>
+            <div className="message-avatar"><ChatIcon size={20} /></div>
             <div className="message-content">
               <div className="typing-indicator">
                 <span></span>
@@ -211,7 +213,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
 
       {error && (
         <div className="chat-error">
-          ⚠️ {error}
+          <WarningIcon size={16} /> {error}
         </div>
       )}
 
@@ -230,7 +232,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
           className="btn btn-primary"
           disabled={!currentUser || !inputValue.trim() || isLoading || backendStatus !== 'connected'}
         >
-          {isLoading ? '⏳ Thinking...' : '📤 Send'}
+          {isLoading ? (<><HourglassIcon size={16} /> Thinking...</>) : (<><SendIcon size={16} /> Send</>)}
         </button>
       </form>
     </div>

@@ -1,0 +1,121 @@
+.app-header {
+  height: 60px;
+  background-color: rgba(43, 45, 59, 1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.extreme-logo {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--primary) 0%, rgba(171, 163, 251, 1) 100%);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-icon {
+  color: white;
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'Source Sans Pro', sans-serif;
+}
+
+.header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.2;
+}
+
+.brand-name {
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'Source Sans Pro', sans-serif;
+}
+
+.platform-name {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-icon-btn {
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+.header-icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--foreground);
+}
+
+.user-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--muted);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-badge:hover {
+  border-color: var(--primary);
+}
+
+.grid-icon {
+  font-size: 18px;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 16px;
+  }
+
+  .platform-name {
+    display: none;
+  }
+
+  .brand-name {
+    font-size: 14px;
+  }
+}

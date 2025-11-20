@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { ChatIcon, ProfileIcon, AdminIcon, LogoutIcon, StarIcon } from '../components/icons';
 import './Navigation.css';
 
 const Navigation = ({ backendStatus, currentUser, onLogout }) => {
@@ -26,7 +27,7 @@ const Navigation = ({ backendStatus, currentUser, onLogout }) => {
     <nav className="navigation">
       <div className="nav-container">
         <div className="nav-brand">
-          <span className="nav-logo">🌟</span>
+          <span className="nav-logo"><StarIcon size={18} /></span>
           <span className="nav-title">Aurora</span>
         </div>
 
@@ -35,21 +36,21 @@ const Navigation = ({ backendStatus, currentUser, onLogout }) => {
             to="/" 
             className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
           >
-            <span className="nav-icon">💬</span>
+            <span className="nav-icon"><ChatIcon size={16} /></span>
             Chat
           </Link>
           <Link 
             to="/profile" 
             className={`nav-link ${location.pathname === '/profile' ? 'active' : ''}`}
           >
-            <span className="nav-icon">👤</span>
+            <span className="nav-icon"><ProfileIcon size={16} /></span>
             Profile
           </Link>
           <Link 
             to="/admin" 
             className={`nav-link ${location.pathname === '/admin' ? 'active' : ''}`}
           >
-            <span className="nav-icon">⚙️</span>
+            <span className="nav-icon"><AdminIcon size={16} /></span>
             Admin
           </Link>
         </div>
@@ -64,7 +65,7 @@ const Navigation = ({ backendStatus, currentUser, onLogout }) => {
             <div className="user-info">
               <span className="user-name">{currentUser.display_name || currentUser.email}</span>
               <button onClick={onLogout} className="btn-logout" title="Logout">
-                🚪
+                <LogoutIcon size={16} />
               </button>
             </div>
           )}

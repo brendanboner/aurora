@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, HourglassIcon, SaveIcon, ResetIcon, WarningIcon } from '../components/icons';
 import {
   getUserPreferences,
   updateUserPreferences,
@@ -29,6 +31,14 @@ const UserProfile = ({ currentUser, onUserChange }) => {
   const [topicSearch, setTopicSearch] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
   const [peopleSearch, setPeopleSearch] = useState('');
+
+  const location = useLocation();
+  const path = location.pathname;
+  const selectedSection = path.includes('/profile/topics') ? 'topics'
+    : path.includes('/profile/organisations') ? 'organisations'
+    : path.includes('/profile/people') ? 'people'
+    : path.includes('/profile/notifications') ? 'notifications'
+    : null;
 
   useEffect(() => {
     loadData();
@@ -106,7 +116,7 @@ const UserProfile = ({ currentUser, onUserChange }) => {
     return (
       <div className="profile-container">
         <div className="profile-empty">
-          <div className="empty-icon">👤</div>
+          <div className="empty-icon"><ProfileIcon size={48} /></div>
           <h2>No User Selected</h2>
           <p>Please create or select a user in the Admin page to manage preferences.</p>
         </div>
@@ -117,22 +127,23 @@ const UserProfile = ({ currentUser, onUserChange }) => {
   return (
     <div className="profile-container">
       <div className="profile-header">
-        <div className="profile-avatar">👤</div>
+        <div className="profile-avatar"><ProfileIcon size={48} /></div>
         <div className="profile-info">
           <h1>{currentUser.display_name || currentUser.email}</h1>
           <p className="profile-email">{currentUser.email}</p>
         </div>
       </div>
 
-      {error && <div className="profile-error">⚠️ {error}</div>}
-      {successMessage && <div className="profile-success">✅ {successMessage}</div>}
+      {error && <div className="profile-error"><WarningIcon size={16} /> {error}</div>}
+      {successMessage && <div className="profile-success"><CheckIcon size={16} /> {successMessage}</div>}
 
       {loading ? (
         <div className="spinner"></div>
       ) : (
         <>
+          {(selectedSection === 'topics' || !selectedSection) && (
           <div className="profile-section">
-            <h2>📚 Topics Preferences</h2>
+            <h2><span className="icon-heading"><BookIcon size={20} /></span> Topics Preferences</h2>
             <p className="section-description">
               Select topics you're interested in. These will be used to filter content in your queries.
             </p>
@@ -157,7 +168,7 @@ const UserProfile = ({ currentUser, onUserChange }) => {
                     <div className="preference-meta">{topic.classification}</div>
                   )}
                   {preferences.topics?.includes(topic.id) && (
-                    <div className="preference-check">✓</div>
+                    <div className="preference-check"><CheckIcon size={14} /></div>
                   )}
                 </div>
               ))}
@@ -167,10 +178,11 @@ const UserProfile = ({ currentUser, onUserChange }) => {
                 {preferences.topics.length} topic(s) selected
               </div>
             )}
-          </div>
+          </div>)}
 
+          {(selectedSection === 'organisations' || !selectedSection) && (
           <div className="profile-section">
-            <h2>🏢 Organisation Preferences</h2>
+            <h2><span className="icon-heading"><BuildingIcon size={20} /></span> Organisation Preferences</h2>
             <p className="section-description">
               Select organisations you want to follow.
             </p>
@@ -195,7 +207,7 @@ const UserProfile = ({ currentUser, onUserChange }) => {
                     <div className="preference-meta">{org.org_type}</div>
                   )}
                   {preferences.organisations?.includes(org.id) && (
-                    <div className="preference-check">✓</div>
+                    <div className="preference-check"><CheckIcon size={14} /></div>
                   )}
                 </div>
               ))}
@@ -205,10 +217,11 @@ const UserProfile = ({ currentUser, onUserChange }) => {
                 {preferences.organisations.length} organisation(s) selected
               </div>
             )}
-          </div>
+          </div>)}
 
+          {(selectedSection === 'people' || !selectedSection) && (
           <div className="profile-section">
-            <h2>👤 People Preferences</h2>
+            <h2><span className="icon-heading"><ProfileIcon size={20} /></span> People Preferences</h2>
             <p className="section-description">
               Select people you want to track.
             </p>
@@ -233,7 +246,7 @@ const UserProfile = ({ currentUser, onUserChange }) => {
                     <div className="preference-meta">{person.email}</div>
                   )}
                   {preferences.people?.includes(person.id) && (
-                    <div className="preference-check">✓</div>
+                    <div className="preference-check"><CheckIcon size={14} /></div>
                   )}
                 </div>
               ))}
@@ -243,10 +256,11 @@ const UserProfile = ({ currentUser, onUserChange }) => {
                 {preferences.people.length} people selected
               </div>
             )}
-          </div>
+          </div>)}
 
+          {(selectedSection === 'notifications' || !selectedSection) && (
           <div className="profile-section">
-            <h2>🔔 Notification Settings</h2>
+            <h2><span className="icon-heading"><BellIcon size={20} /></span> Notification Settings</h2>
             <div className="notification-settings">
               <label className="checkbox-label">
                 <input
@@ -269,7 +283,7 @@ const UserProfile = ({ currentUser, onUserChange }) => {
                 <span>Daily digest</span>
               </label>
             </div>
-          </div>
+          </div>)}
 
           <div className="profile-actions">
             <button
@@ -277,10 +291,10 @@ const UserProfile = ({ currentUser, onUserChange }) => {
               onClick={handleSavePreferences}
               disabled={saving}
             >
-              {saving ? '⏳ Saving...' : '💾 Save Preferences'}
+              {saving ? (<><HourglassIcon size={16} /> Saving...</>) : (<><SaveIcon size={16} /> Save Preferences</>)}
             </button>
             <button className="btn btn-secondary" onClick={loadData} disabled={saving}>
-              🔄 Reset
+              <ResetIcon size={16} /> Reset
             </button>
           </div>
         </>
