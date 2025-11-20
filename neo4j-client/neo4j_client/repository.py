@@ -1003,11 +1003,21 @@ class GraphRepository:
         OPTIONAL MATCH (r)-[mp:MENTIONS]->(p:Person)
         OPTIONAL MATCH (r)-[mo:MENTIONS]->(o:Organization)
         OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+        
+        // For each person mentioned, also collect their organizational affiliations
+        OPTIONAL MATCH (p)-[aff:AFFILIATED_WITH]->(affOrg:Organization)
 
         WITH r,
              publish_date_iso,
              collect(DISTINCT t)  AS topics,
              collect(DISTINCT rt) AS topic_rels,
+             collect(DISTINCT {
+                 person: p,
+                 affiliations: collect(DISTINCT {
+                     organization: affOrg.name,
+                     role: aff.role
+                 })
+             }) AS people_with_affiliations,
              collect(DISTINCT p)  AS people,
              collect(DISTINCT o)  AS orgs,
              collect(DISTINCT ds) AS datasources,
@@ -1103,14 +1113,14 @@ class GraphRepository:
                     ])) / size(orgs_param)
              END AS org_match_score,
              
-             // People match score: check name and email
+             // People match score: check name (partial match with CONTAINS), email
              CASE
                 WHEN size(people_param) = 0 THEN 1.0
                 ELSE
                     toFloat(size([pr IN people WHERE 
-                        toLower(pr.name) IN [x IN people_param | toLower(x)] OR
+                        any(search_term IN people_param WHERE toLower(pr.name) CONTAINS toLower(search_term)) OR
                         pr.person_id IN people_param OR
-                        (pr.email IS NOT NULL AND toLower(pr.email) IN [x IN people_param | toLower(x)])
+                        (pr.email IS NOT NULL AND any(search_term IN people_param WHERE toLower(pr.email) CONTAINS toLower(search_term)))
                     ])) / size(people_param)
              END AS people_match_score,
              
@@ -1137,8 +1147,8 @@ class GraphRepository:
                 WHEN size(topics_param) > 0 AND toFloat(matched_term_count) / size(topics_param) >= 0.75 THEN 2.0
                 ELSE 1.0
              END AS completeness_bonus,
-             // Base relevance: 40% text match, 30% topic match (graph), 20% org match, 10% relationship quality
-             (text_match_score * 0.4 + topic_match_score * 0.3 + org_match_score * 0.2 + avg_topic_confidence * 0.1) AS base_relevance,
+             // Base relevance: 30% text match, 25% topic match (graph), 20% org match, 15% people match, 10% relationship quality
+             (text_match_score * 0.3 + topic_match_score * 0.25 + org_match_score * 0.2 + people_match_score * 0.15 + avg_topic_confidence * 0.1) AS base_relevance,
              
              // Recency score: more recent documents get higher scores
              CASE
@@ -1166,6 +1176,7 @@ class GraphRepository:
             r           AS resource,
             topics      AS topics,
             people      AS people,
+            people_with_affiliations AS people_details,
             orgs        AS organisations,
             datasources AS datasources
         """
