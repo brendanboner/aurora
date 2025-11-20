@@ -933,17 +933,23 @@ class GraphRepository:
         topics: Optional[List[str]] = None,
         organisations: Optional[List[str]] = None,
         people: Optional[List[str]] = None,
+        category: Optional[str] = None,
+        doc_type: Optional[str] = None,
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch recent Resource nodes with optional filters on topics, organisations, and people.
+        Fetch recent Resource nodes with optional filters on topics, organisations, people, category, and doc_type.
 
         Dates should be ISO-8601 strings (YYYY-MM-DD). We'll prefer publish_date if present,
         otherwise fall back to scraped_at.
         
         The query now supports:
         - Relevance-based ranking combining recency and filter match quality
-        - Matching by name OR aliases for topics and organisations
+        - Matching by name, aliases, or identifiers for topics
+        - Matching by name or aliases for organisations
+        - Category filtering (e.g., 'press release', 'whitepaper', 'blog', 'article', 'podcast', 'newsletter')
+        - Doc type filtering (e.g., 'pdf', 'html', 'video', 'docx')
+        - Topic classification and identifier matching for standards (e.g., '802.11ax', 'Wi-Fi 6', '6 GHz')
         - More flexible matching that treats filters as relevance signals
         - Returns most relevant and recent documents based on proximity to requested entities
 
@@ -966,6 +972,8 @@ class GraphRepository:
             "topics": topics,
             "organisations": organisations,
             "people": people,
+            "category": category,
+            "doc_type": doc_type,
             "limit": limit,
         }
 
@@ -978,6 +986,8 @@ class GraphRepository:
             $topics        AS topics_param,
             $organisations AS orgs_param,
             $people        AS people_param,
+            $category      AS category_param,
+            $doc_type      AS doc_type_param,
             $start         AS start_param,
             $end           AS end_param,
             $limit         AS limit_param
@@ -986,7 +996,7 @@ class GraphRepository:
 
         WITH r,
              (CASE WHEN r.publish_date =~ '\\d{4}-\\d{2}-\\d{2}' THEN r.publish_date ELSE NULL END) AS publish_date_iso,
-             topics_param, orgs_param, people_param, start_param, end_param, limit_param
+             topics_param, orgs_param, people_param, category_param, doc_type_param, start_param, end_param, limit_param
 
         // Collect related entities
         OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
@@ -1004,12 +1014,21 @@ class GraphRepository:
              topics_param,
              orgs_param,
              people_param,
+             category_param,
+             doc_type_param,
              start_param,
              end_param,
              limit_param
 
-        // Apply date filters
+        // Apply date, category, and doc_type filters
         WHERE
+            // Category filter (if specified, must match exactly - case insensitive)
+            (category_param IS NULL OR toLower(r.category) = toLower(category_param))
+            AND
+            // Doc type filter (if specified, must match exactly - case insensitive)
+            (doc_type_param IS NULL OR toLower(r.doc_type) = toLower(doc_type_param))
+            AND
+            // Date filters
             (
                 start_param IS NULL
                 OR (

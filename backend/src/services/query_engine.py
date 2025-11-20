@@ -32,13 +32,23 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     
     has_preferences = bool(pref_topics or pref_orgs or pref_people)
     if has_preferences:
-        log.info(f"User preferences loaded: {len(pref_topics)} topics, {len(pref_orgs)} orgs, {len(pref_people)} people")
+        log.info(f"✓ User preferences loaded: {len(pref_topics)} topics, {len(pref_orgs)} orgs, {len(pref_people)} people")
+        log.info(f"  Topics: {pref_topics}")
+        log.info(f"  Organisations: {pref_orgs}")
+        log.info(f"  People: {pref_people}")
     else:
-        log.info("No user preferences found - using query-based filters only")
+        log.info("✗ No user preferences found - using query-based filters only")
     
     # Step 2: Parse question with LLM to extract filters
     llm_filters = parse_query_to_filters(question)
-    log.info(f"LLM filters: {llm_filters}")
+    log.info(f"✓ LLM extracted filters:")
+    log.info(f"  Topics: {llm_filters.get('topics', [])}")
+    log.info(f"  Organisations: {llm_filters.get('organisations', [])}")
+    log.info(f"  People: {llm_filters.get('people', [])}")
+    log.info(f"  Category: {llm_filters.get('category', 'any')}")
+    log.info(f"  Doc Type: {llm_filters.get('doc_type', 'any')}")
+    log.info(f"  Date range: {llm_filters.get('start_date')} to {llm_filters.get('end_date')}")
+    log.info(f"  Limit: {llm_filters.get('limit', 20)}")
     
     # Step 3: Merge LLM filters with user preferences
     # User preferences act as relevance signals, not strict filters
@@ -51,14 +61,21 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
         pref_people=pref_people
     )
     
-    log.info(f"Merged filters: {merged_filters}")
+    log.info(f"✓ Merged filters for Neo4j query:")
+    log.info(f"  Topics ({len(merged_filters.get('topics', []))}): {merged_filters.get('topics', [])}")
+    log.info(f"  Organisations ({len(merged_filters.get('organisations', []))}): {merged_filters.get('organisations', [])}")
+    log.info(f"  People ({len(merged_filters.get('people', []))}): {merged_filters.get('people', [])}")
+    log.info(f"  Category: {merged_filters.get('category', 'any')}")
+    log.info(f"  Doc Type: {merged_filters.get('doc_type', 'any')}")
+    log.info(f"  Date range: {merged_filters.get('start_date')} to {merged_filters.get('end_date')}")
+    log.info(f"  Result limit: {merged_filters.get('limit', 20)}")
     
     # Step 4: Query Neo4j with merged filters
     docs = query_documents_from_filters(merged_filters)
-    log.info(f"Retrieved {len(docs)} documents from knowledge graph")
+    log.info(f"✓ Retrieved {len(docs)} documents from Neo4j knowledge graph")
     
     if not docs:
-        log.warning("No documents found matching query and filters")
+        log.warning("✗ No documents found matching query and filters")
     
     # Step 5: Summarize documents with LLM, incorporating user preferences
     user_pref_context = {
@@ -135,11 +152,40 @@ def _merge_filters_with_preferences(
     
     merged["people"] = all_people
     
-    # If we now have many filters due to preferences, increase limit
-    # to ensure we get good coverage
-    total_filters = len(merged["topics"]) + len(merged["organisations"]) + len(merged["people"])
-    if total_filters > 10 and merged.get("limit", 20) < 30:
-        merged["limit"] = 30
+    # Category filter is explicit and should be the primary filter
+    # When category is specified, don't add user preferences unless the user explicitly mentioned entities
+    if merged.get("category"):
+        # Check if user explicitly mentioned any entities in their query
+        has_explicit_filters = (
+            len(llm_filters.get("topics", [])) > 0 or
+            len(llm_filters.get("organisations", [])) > 0 or
+            len(llm_filters.get("people", [])) > 0
+        )
+        
+        if not has_explicit_filters:
+            # No explicit entities mentioned - category is the only filter
+            # Clear out user preferences to avoid false negatives
+            log.info("Category-only query detected - clearing user preferences to avoid over-filtering")
+            merged["topics"] = []
+            merged["organisations"] = []
+            merged["people"] = []
+        else:
+            # User mentioned specific entities along with category
+            # Keep explicit filters, but don't add many preferences
+            max_pref_additions = 3
+            if len(all_topics) > len(llm_filters.get("topics", [])) + max_pref_additions:
+                merged["topics"] = llm_filters.get("topics", []) + pref_topics[:max_pref_additions]
+            if len(all_orgs) > len(llm_filters.get("organisations", [])) + max_pref_additions:
+                merged["organisations"] = llm_filters.get("organisations", []) + pref_orgs[:max_pref_additions]
+            if len(all_people) > len(llm_filters.get("people", [])) + max_pref_additions:
+                merged["people"] = llm_filters.get("people", []) + pref_people[:max_pref_additions]
+    else:
+        # No category specified - use all preferences to improve relevance
+        # If we now have many filters due to preferences, increase limit
+        # to ensure we get good coverage
+        total_filters = len(merged["topics"]) + len(merged["organisations"]) + len(merged["people"])
+        if total_filters > 10 and merged.get("limit", 20) < 30:
+            merged["limit"] = 30
     
     return merged
 

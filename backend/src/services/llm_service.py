@@ -89,12 +89,40 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
             organisations.append("Wi-Fi Alliance")
         if "ieee" in lower_q:
             organisations.append("IEEE")
+        # Extract category from common keywords
+        category = None
+        if "press release" in lower_q:
+            category = "press release"
+        elif "whitepaper" in lower_q or "white paper" in lower_q:
+            category = "whitepaper"
+        elif "blog" in lower_q:
+            category = "blog"
+        elif "article" in lower_q:
+            category = "article"
+        elif "paper" in lower_q:
+            category = "paper"
+        elif "podcast" in lower_q:
+            category = "podcast"
+        elif "newsletter" in lower_q:
+            category = "newsletter"
+        
+        # Extract doc_type from common keywords
+        doc_type = None
+        if "pdf" in lower_q:
+            doc_type = "pdf"
+        elif "html" in lower_q or "webpage" in lower_q:
+            doc_type = "html"
+        elif "video" in lower_q:
+            doc_type = "video"
+        
         data = {
             "start_date": dates[0] if dates else None,
             "end_date": dates[-1] if len(dates) > 1 else None,
             "topics": topics,
             "organisations": organisations,
             "people": people,
+            "category": category,
+            "doc_type": doc_type,
             "limit": int(limit_match.group(1)) if limit_match else 20,
         }
         log.info("Using heuristic filters fallback: %s", data)
@@ -120,16 +148,23 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
                 "{\n"
                 '  "start_date": string | null,  // YYYY-MM-DD format\n'
                 '  "end_date": string | null,    // YYYY-MM-DD format\n'
-                '  "topics": string[],           // Technical topics, standards (e.g., "Wi-Fi 6", "802.11ax", "5G", "Bluetooth")\n'
+                '  "topics": string[],           // Technical topics, standards, specs (e.g., "Wi-Fi 6", "802.11ax", "5G", "upper 6 GHz band")\n'
                 '  "organisations": string[],    // Industry orgs or companies (e.g., "Wi-Fi Alliance", "WFA", "IEEE", "3GPP")\n'
                 '  "people": string[],           // People or authors mentioned\n'
+                '  "category": string | null,    // Document category (e.g., "press release", "whitepaper", "blog", "article", "paper", "podcast", "newsletter")\n'
+                '  "doc_type": string | null,    // File format if specified (e.g., "pdf", "html", "video", "docx")\n'
                 '  "limit": number               // max docs to retrieve (default 20, increase for broad queries)\n'
                 "}\n\n"
                 "Important guidelines:\n"
                 "- When user explicitly mentions an organization (e.g., 'Wi-Fi Alliance', 'WFA', 'IEEE'), include it in organisations\n"
-                "- When user mentions a specific technology or standard (e.g., 'Wi-Fi 6', '802.11', 'Bluetooth'), include it in topics\n"
-                "- Extract high-level subject matter relevant to wireless communications and standards\n"
-                "- Resolve relative dates like 'last week', 'this month' to ISO format (today's date: 2025-11-20)\n"
+                "- When user mentions a specific technology, standard, or spectrum band (e.g., 'Wi-Fi 6', '802.11ax', '6 GHz', 'RSPG'), include it in topics\n"
+                "- Include both formal names and acronyms/identifiers (e.g., 'Wi-Fi Alliance' OR 'WFA', '802.11be' OR 'Wi-Fi 7')\n"
+                "- When user asks for a specific document category (e.g., 'press release', 'whitepaper', 'podcast'), set the category\n"
+                "- When user specifies file format (e.g., 'PDF documents', 'HTML pages', 'videos'), set the doc_type\n"
+                "- Extract high-level subject matter relevant to wireless communications, standards bodies, and spectrum policy\n"
+                "- Words like 'latest', 'recent', 'newest' should NOT be converted to date filters - ranking handles recency\n"
+                "- Only set date filters for EXPLICIT dates or periods (e.g., 'last week', 'in November', 'since 2024')\n"
+                "- Resolve explicit relative dates like 'last week', 'in November 2025' to ISO format (today's date: 2025-11-20)\n"
                 "- If the query is broad or exploratory, increase the limit (e.g., 30-50)\n"
                 "- Return empty arrays if no specific entities are mentioned"
             ),
@@ -158,12 +193,40 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
             organisations.append("Wi-Fi Alliance")
         if "ieee" in lower_q:
             organisations.append("IEEE")
+        # Extract category from common keywords
+        category = None
+        if "press release" in lower_q:
+            category = "press release"
+        elif "whitepaper" in lower_q or "white paper" in lower_q:
+            category = "whitepaper"
+        elif "blog" in lower_q:
+            category = "blog"
+        elif "article" in lower_q:
+            category = "article"
+        elif "paper" in lower_q:
+            category = "paper"
+        elif "podcast" in lower_q:
+            category = "podcast"
+        elif "newsletter" in lower_q:
+            category = "newsletter"
+        
+        # Extract doc_type from common keywords
+        doc_type = None
+        if "pdf" in lower_q:
+            doc_type = "pdf"
+        elif "html" in lower_q or "webpage" in lower_q:
+            doc_type = "html"
+        elif "video" in lower_q:
+            doc_type = "video"
+        
         data = {
             "start_date": dates[0] if dates else None,
             "end_date": dates[-1] if len(dates) > 1 else None,
             "topics": topics,
             "organisations": organisations,
             "people": people,
+            "category": category,
+            "doc_type": doc_type,
             "limit": int(limit_match.group(1)) if limit_match else 20,
         }
         log.info("Using heuristic filters due to LLM error: %s", data)
@@ -174,6 +237,8 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
     data.setdefault("topics", [])
     data.setdefault("organisations", [])
     data.setdefault("people", [])
+    data.setdefault("category", None)
+    data.setdefault("doc_type", None)
     data.setdefault("limit", 20)
     
     log.info(f"LLM extracted filters: {data}")

@@ -89,6 +89,8 @@ def query_documents_from_filters(filters: Dict[str, Any]) -> List[Dict[str, Any]
             topics=filters.get("topics") or [],
             organisations=filters.get("organisations") or [],
             people=filters.get("people") or [],
+            category=filters.get("category"),
+            doc_type=filters.get("doc_type"),
             limit=int(filters.get("limit") or 20),
         )
     except Exception as e:

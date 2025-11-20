@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendQuery } from '../services/api';
 import { ProfileIcon, ChatIcon, BookIcon, BuildingIcon, WarningIcon, HourglassIcon, SendIcon, CalendarIcon } from '../components/icons';
+import ChevronLeftIcon from '../components/icons/ChevronLeftIcon';
+import ChevronRightIcon from '../components/icons/ChevronRightIcon';
 import Icon from '../components/Icon.jsx';
 import './Chatbot.css';
 
@@ -11,6 +13,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [currentDocumentIndex, setCurrentDocumentIndex] = useState({});
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -22,8 +25,30 @@ const Chatbot = ({ currentUser, backendStatus }) => {
   }, [messages]);
 
   useEffect(() => {
-    // Add welcome message
-    if (messages.length === 0) {
+    // Load chat history from localStorage
+    const savedMessages = localStorage.getItem('chatHistory');
+    if (savedMessages) {
+      try {
+        const parsed = JSON.parse(savedMessages);
+        // Convert timestamp strings back to Date objects
+        const messagesWithDates = parsed.map(msg => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+        setMessages(messagesWithDates);
+      } catch (err) {
+        console.error('Failed to load chat history:', err);
+        // Add welcome message if loading fails
+        setMessages([
+          {
+            role: 'assistant',
+            content: 'Hello! I\'m Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.',
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    } else {
+      // Add welcome message if no history exists
       setMessages([
         {
           role: 'assistant',
@@ -33,6 +58,13 @@ const Chatbot = ({ currentUser, backendStatus }) => {
       ]);
     }
   }, []);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem('chatHistory', JSON.stringify(messages));
+    }
+  }, [messages]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -155,12 +187,45 @@ const Chatbot = ({ currentUser, backendStatus }) => {
                 </div>
               )}
 
-              {message.documents && message.documents.length > 0 && (
-                <div className="message-documents">
-                  <strong>Referenced Documents ({message.documents.length}):</strong>
-                  <div className="documents-list">
-                    {message.documents.slice(0, 5).map((doc, i) => (
-                      <div key={i} className="document-card">
+              {message.documents && message.documents.length > 0 && (() => {
+                const docIndex = currentDocumentIndex[index] || 0;
+                const doc = message.documents[docIndex];
+                const totalDocs = message.documents.length;
+                
+                return (
+                  <div className="message-documents">
+                    <div className="documents-header">
+                      <strong>Referenced Documents ({totalDocs}):</strong>
+                      {totalDocs > 1 && (
+                        <div className="document-navigation">
+                          <button
+                            className="nav-button"
+                            onClick={() => setCurrentDocumentIndex(prev => ({
+                              ...prev,
+                              [index]: Math.max(0, docIndex - 1)
+                            }))}
+                            disabled={docIndex === 0}
+                            aria-label="Previous document"
+                          >
+                            <ChevronLeftIcon size={16} />
+                          </button>
+                          <span className="doc-counter">{docIndex + 1} / {totalDocs}</span>
+                          <button
+                            className="nav-button"
+                            onClick={() => setCurrentDocumentIndex(prev => ({
+                              ...prev,
+                              [index]: Math.min(totalDocs - 1, docIndex + 1)
+                            }))}
+                            disabled={docIndex === totalDocs - 1}
+                            aria-label="Next document"
+                          >
+                            <ChevronRightIcon size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="document-carousel">
+                      <div className="document-card">
                         <div className="document-title">
                           {doc.url ? (
                             <a href={doc.url} target="_blank" rel="noopener noreferrer">
@@ -178,19 +243,19 @@ const Chatbot = ({ currentUser, backendStatus }) => {
                         )}
                         {(doc.topics?.length > 0 || doc.organisations?.length > 0) && (
                           <div className="document-meta">
-                            {doc.topics?.map((topic, j) => (
+                            {doc.topics?.slice(0, 5).map((topic, j) => (
                               <span key={j} className="badge">{topic}</span>
                             ))}
-                            {doc.organisations?.map((org, j) => (
+                            {doc.organisations?.slice(0, 3).map((org, j) => (
                               <span key={j} className="badge">{org}</span>
                             ))}
                           </div>
                         )}
                       </div>
-                    ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         ))}

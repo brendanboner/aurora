@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-CLI="./cli/aurora"
+CLI="uv run cli/aurora"
 USER=1
 
 divider() {
@@ -13,109 +13,133 @@ divider() {
 
 run_test() {
   divider "$1"
-  $CLI --user-id=$USER "$2"
+  $CLI "$2"
   echo ""
 }
 
 echo ""
 echo "🧪 Running Aurora CLI Test Suite..."
+echo "📝 Testing comprehensive metadata intelligence features"
 echo "User ID: $USER"
 echo ""
 
 # ----------------------------------------------------------------------
-# USER STORY 1 — “What happened last week in topics x, y, z?”
+# METADATA INTELLIGENCE TESTS — Category-based queries
 # ----------------------------------------------------------------------
 run_test \
-  "1. Recent updates for specific topics (Wi-Fi 7, WPA3, Passpoint)" \
-  "What happened last week regarding Wi-Fi 7, WPA3, or Passpoint?"
-
-# ----------------------------------------------------------------------
-# USER STORY 2 — “Give me updates from specific organisations”
-# ----------------------------------------------------------------------
-run_test \
-  "2. Most recent updates from WFA" \
-  "What is the most recent update from WFA?"
+  "1. Category Filter: Latest press release" \
+  "What is the latest press release?"
 
 run_test \
-  "3. Updates from IEEE 802.11 Task Group" \
-  "What has IEEE 802.11 published recently?"
-
-# ----------------------------------------------------------------------
-# USER STORY 3 — “Meeting summaries”
-# ----------------------------------------------------------------------
-run_test \
-  "4. What meetings happened this month related to Wi-Fi Alliance?" \
-  "What meetings have taken place this month related to the Wi-Fi Alliance?"
+  "2. Category Filter: Press releases about spectrum policy" \
+  "Show me press releases about 6 GHz spectrum"
 
 run_test \
-  "5. Summaries of all recent standards meetings" \
-  "Summarise all standards meetings that happened in the last two weeks."
+  "3. Category Filter: Podcasts about Wi-Fi 7" \
+  "What podcasts discuss Wi-Fi 7?"
 
 # ----------------------------------------------------------------------
-# USER STORY 4 — “Upcoming events”
+# METADATA INTELLIGENCE TESTS — Alias matching
 # ----------------------------------------------------------------------
 run_test \
-  "6. Upcoming Wi-Fi or security events next 90 days" \
-  "What upcoming Wi-Fi or network security events are happening in the next 90 days?"
+  "4. Alias Matching: 5G (alias for mobile networks)" \
+  "What documents mention 5G?"
 
 run_test \
-  "7. Are there any relevant webinars or workshops soon?" \
-  "Are there any upcoming workshops or webinars about wireless standards?"
+  "5. Alias Matching: WFA (alias for Wi-Fi Alliance)" \
+  "What are the latest updates from WFA?"
 
 # ----------------------------------------------------------------------
-# USER STORY 5 — “Cross-cutting topics”
+# METADATA INTELLIGENCE TESTS — Identifier matching
 # ----------------------------------------------------------------------
 run_test \
-  "8. What is new in cybersecurity for wireless networking?" \
-  "What is new in cybersecurity for wireless networking this month?"
+  "6. Identifier Matching: 802.11ax standard" \
+  "What documents discuss 802.11ax?"
 
 run_test \
-  "9. What are the latest regulatory updates affecting Wi-Fi?" \
+  "7. Identifier Matching: Spectrum band (6 GHz)" \
+  "Show me documents about the upper 6 GHz band"
+
+# ----------------------------------------------------------------------
+# METADATA INTELLIGENCE TESTS — Doc type filtering
+# ----------------------------------------------------------------------
+run_test \
+  "8. Doc Type Filter: PDF documents" \
+  "Show me PDF documents about Wi-Fi"
+
+# ----------------------------------------------------------------------
+# METADATA INTELLIGENCE TESTS — Combined filters
+# ----------------------------------------------------------------------
+run_test \
+  "9. Combined: Category + Topic" \
+  "What is the latest press release about RSPG?"
+
+run_test \
+  "10. Combined: Topic + Organization" \
+  "What has the Wi-Fi Alliance published about Wi-Fi 7?"
+
+# ----------------------------------------------------------------------
+# USER STORY TESTS — Topic-based queries
+# ----------------------------------------------------------------------
+run_test \
+  "11. Recent updates for specific topics" \
+  "What happened recently regarding Wi-Fi 7?"
+
+run_test \
+  "12. Cross-topic query" \
+  "What is new in cybersecurity for wireless networking?"
+
+# ----------------------------------------------------------------------
+# USER STORY TESTS — Organization queries
+# ----------------------------------------------------------------------
+run_test \
+  "13. Most recent updates from WFA" \
+  "What is the most recent update from the Wi-Fi Alliance?"
+
+run_test \
+  "14. Updates from IEEE" \
+  "What has IEEE published recently?"
+
+# ----------------------------------------------------------------------
+# USER STORY TESTS — Document analysis
+# ----------------------------------------------------------------------
+run_test \
+  "15. Summaries of documents about Wi-Fi 6E" \
+  "Summarise recently published documents related to Wi-Fi 6E"
+
+run_test \
+  "16. Regulatory and policy updates" \
   "What are the latest regulatory or policy updates affecting Wi-Fi?"
 
 # ----------------------------------------------------------------------
-# USER STORY 6 — “Recommendations”
+# USER STORY TESTS — Event and meeting queries
 # ----------------------------------------------------------------------
 run_test \
-  "10. Recommend relevant meetings or events for my interests" \
-  "Based on my interests in Wi-Fi, WPA3, and enterprise security, what meetings or events should I attend in the next few months?"
+  "17. What meetings happened related to Wi-Fi Alliance?" \
+  "What meetings have taken place recently related to the Wi-Fi Alliance?"
 
 run_test \
-  "11. Which colleagues are attending events I may care about?" \
-  "Which colleagues are attending upcoming events or meetings related to my areas of interest?"
+  "18. Upcoming events" \
+  "Are there any upcoming workshops or webinars about wireless standards?"
 
 # ----------------------------------------------------------------------
-# USER STORY 7 — “Document Analysis”
+# USER STORY TESTS — Standard evolution
 # ----------------------------------------------------------------------
 run_test \
-  "12. Summaries of documents about Wi-Fi 6E or AFC" \
-  "Summarise recently published documents related to Wi-Fi 6E or AFC systems."
-
-# ----------------------------------------------------------------------
-# USER STORY 8 — “Standard evolution”
-# ----------------------------------------------------------------------
-run_test \
-  "13. What changed in recent IEEE 802.11 drafts?" \
-  "What has changed in the latest draft versions of IEEE 802.11 standards?"
-
-# ----------------------------------------------------------------------
-# USER STORY 9 — “Source-based filtering”
-# ----------------------------------------------------------------------
-run_test \
-  "14. Show recent updates from public sources only" \
-  "Show me the recent updates from public sources only."
+  "19. Changes in IEEE 802.11 standards" \
+  "What has changed in the latest IEEE 802.11 standards?"
 
 run_test \
-  "15. What did members-only sites publish last week?" \
-  "What member-only content was published last week by WFA or IEEE?"
-
-# ----------------------------------------------------------------------
-# USER STORY 10 — “Cross-reference people, orgs and topics”
-# ----------------------------------------------------------------------
-run_test \
-  "16. Show all updates involving person X or organisation Y" \
-  "Show updates involving John Doe or the Wi-Fi Alliance from the last month."
+  "20. Wi-Fi technology evolution" \
+  "What are the key improvements in Wi-Fi 7 compared to Wi-Fi 6?"
 
 echo ""
 echo "🎉 All CLI tests finished."
+echo "✅ Metadata intelligence features tested:"
+echo "   - Category-based filtering (press release, podcast, newsletter)"
+echo "   - Alias matching (5G → mobile networks, WFA → Wi-Fi Alliance)"
+echo "   - Identifier matching (802.11ax, 6 GHz band)"
+echo "   - Doc type filtering (PDF, HTML, video)"
+echo "   - Combined filters (category + topic, topic + organization)"
+echo "   - Relevance-based ranking with recency boost"
 echo ""
