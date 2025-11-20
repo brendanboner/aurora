@@ -48,6 +48,11 @@ help:
 	@echo "    make scrape-wfa-full - Trigger WFA full scrape (all pages)"
 	@echo "    make scrape-status   - Check scraper status"
 	@echo ""
+	@echo "  Local Document Upload:"
+	@echo "    make parse-docs DIR=./path                        - Upload docs (uses AURORA_USER env or default)"
+	@echo "    make parse-docs DIR=./path USER=user@example.com  - Upload docs as specific user"
+	@echo "    make parse-docs-test DIR=./path                   - Test upload without sending"
+	@echo ""
 	@echo "  Data Management:"
 	@echo "    make backup          - Backup all volumes"
 	@echo "    make volumes         - List all volumes"
@@ -266,6 +271,35 @@ scrape-wfa-full:
 scrape-status:
 	@echo "📊 Scraper Status:"
 	@curl -s http://localhost:8001/status | python3 -m json.tool
+
+# Local Document Upload Commands
+parse-docs:
+	@if [ -z "$(DIR)" ]; then \
+		echo "❌ Error: DIR parameter required. Usage: make parse-docs DIR=./path [USER=email@example.com]"; \
+		exit 1; \
+	fi
+	@if [ -z "$(USER)" ]; then \
+		echo "📄 Uploading documents from $(DIR) as default user (AURORA_USER or bbonner@extremenetworks.com)..."; \
+		cd cli && ./aurora parse --recursive $(DIR); \
+	else \
+		echo "📄 Uploading documents from $(DIR) as user $(USER)..."; \
+		cd cli && ./aurora parse --user=$(USER) --recursive $(DIR); \
+	fi
+	@echo "✅ Upload complete!"
+
+parse-docs-test:
+	@if [ -z "$(DIR)" ]; then \
+		echo "❌ Error: DIR parameter required. Usage: make parse-docs-test DIR=./path [USER=email@example.com]"; \
+		exit 1; \
+	fi
+	@if [ -z "$(USER)" ]; then \
+		echo "🧪 Testing document upload from $(DIR) as default user (test-run mode)..."; \
+		cd cli && ./aurora parse --recursive --test-run $(DIR); \
+	else \
+		echo "🧪 Testing document upload from $(DIR) as user $(USER) (test-run mode)..."; \
+		cd cli && ./aurora parse --user=$(USER) --recursive --test-run $(DIR); \
+	fi
+	@echo "✅ Test complete!"
 
 # Quick shortcuts
 .PHONY: start-all stop-all

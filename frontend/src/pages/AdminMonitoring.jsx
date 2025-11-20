@@ -8,6 +8,7 @@ const AdminMonitoring = () => {
   const [error, setError] = useState(null);
   const [queuePage, setQueuePage] = useState(1);
   const queueItemsPerPage = 5;
+  const [selectedDocument, setSelectedDocument] = useState(null);
 
   useEffect(() => {
     let interval;
@@ -27,6 +28,38 @@ const AdminMonitoring = () => {
     interval = setInterval(loadMonitoringData, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleClearCompleted = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/admin/clear-completed', {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // Refresh data immediately
+      const dashboardResponse = await fetch('http://localhost:8000/admin/dashboard');
+      const data = await dashboardResponse.json();
+      setQueueStatus(data.queue_status);
+      setProcessingStatus(data.processing_status);
+    } catch (err) {
+      setError('Failed to clear completed list');
+    }
+  };
+
+  const handleClearFailed = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/admin/clear-failed', {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // Refresh data immediately
+      const dashboardResponse = await fetch('http://localhost:8000/admin/dashboard');
+      const data = await dashboardResponse.json();
+      setQueueStatus(data.queue_status);
+      setProcessingStatus(data.processing_status);
+    } catch (err) {
+      setError('Failed to clear failed list');
+    }
+  };
 
   return (
     <div className="admin-container">
@@ -192,11 +225,20 @@ const AdminMonitoring = () => {
             <h2>Recent Activity</h2>
             <div className="activity-columns">
               <div className="activity-column">
-                <h3>Recently Completed</h3>
+                <div className="activity-header">
+                  <h3>Recently Completed</h3>
+                  {processingStatus?.recent_completed?.length > 0 && (
+                    <button className="clear-btn" onClick={handleClearCompleted}>Clear</button>
+                  )}
+                </div>
                 {processingStatus?.recent_completed?.length ? (
                   <div className="activity-list">
                     {processingStatus.recent_completed.map((item, i) => (
-                      <div key={i} className="activity-item completed">
+                      <div 
+                        key={i} 
+                        className="activity-item completed clickable"
+                        onClick={() => setSelectedDocument(item)}
+                      >
                         <div className="activity-title">{item.title}</div>
                         <div className="activity-meta"><span>{item.category}</span><span>{new Date(item.updated_at).toLocaleTimeString()}</span></div>
                       </div>
@@ -205,11 +247,20 @@ const AdminMonitoring = () => {
                 ) : <div className="empty-state">No recent completions</div>}
               </div>
               <div className="activity-column">
-                <h3>Recently Failed</h3>
+                <div className="activity-header">
+                  <h3>Recently Failed</h3>
+                  {processingStatus?.recent_failed?.length > 0 && (
+                    <button className="clear-btn" onClick={handleClearFailed}>Clear</button>
+                  )}
+                </div>
                 {processingStatus?.recent_failed?.length ? (
                   <div className="activity-list">
                     {processingStatus.recent_failed.map((item, i) => (
-                      <div key={i} className="activity-item failed">
+                      <div 
+                        key={i} 
+                        className="activity-item failed clickable"
+                        onClick={() => setSelectedDocument(item)}
+                      >
                         <div className="activity-title">{item.title}</div>
                         <div className="activity-meta"><span>{item.category}</span><span>{new Date(item.updated_at).toLocaleTimeString()}</span></div>
                         {item.error && <div className="activity-error">{item.error}</div>}
@@ -222,6 +273,69 @@ const AdminMonitoring = () => {
           </div>
         </div>
       </div>
+
+      {/* Document Details Modal */}
+      {selectedDocument && (
+        <div className="modal-overlay" onClick={() => setSelectedDocument(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Document Details</h2>
+              <button className="modal-close" onClick={() => setSelectedDocument(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-section">
+                <h3>Basic Information</h3>
+                <div className="detail-row">
+                  <span className="detail-label">Title:</span>
+                  <span className="detail-value">{selectedDocument.title}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">URL:</span>
+                  <span className="detail-value">
+                    <a href={selectedDocument.url} target="_blank" rel="noopener noreferrer">
+                      {selectedDocument.url}
+                    </a>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Category:</span>
+                  <span className="detail-value">
+                    <span className="category-badge">{selectedDocument.category}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>Processing Status</h3>
+                <div className="detail-row">
+                  <span className="detail-label">Status:</span>
+                  <span className="detail-value">
+                    <span className={`status-badge ${selectedDocument.status}`}>{selectedDocument.status}</span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Stage:</span>
+                  <span className="detail-value">{selectedDocument.stage}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Started:</span>
+                  <span className="detail-value">{new Date(selectedDocument.started_at).toLocaleString()}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Updated:</span>
+                  <span className="detail-value">{new Date(selectedDocument.updated_at).toLocaleString()}</span>
+                </div>
+                {selectedDocument.error && (
+                  <div className="detail-row">
+                    <span className="detail-label">Error:</span>
+                    <span className="detail-value error-text">{selectedDocument.error}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

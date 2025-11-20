@@ -84,6 +84,24 @@ class GraphStatistics(BaseModel):
     relationships: int
 
 
+class DocumentUpload(BaseModel):
+    title: str
+    url: str
+    category: str
+    content: str
+    publish_date: Optional[str] = None
+    datasource_id: str = "local_upload"
+    uploaded_by: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    binary_content: Optional[str] = None  # base64-encoded binary content for caching
+
+
+class UploadResponse(BaseModel):
+    status: str
+    message: str
+    url: str
+
+
 # ========== Health Check ==========
 
 @app.get("/health")
@@ -268,3 +286,95 @@ async def get_statistics():
         return GraphStatistics(**stats)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Document Upload Endpoint ==========
+
+@app.post("/upload", response_model=UploadResponse)
+async def upload_document(doc: DocumentUpload):
+    """
+    Upload a document to the processing queue.
+    Publishes document to RabbitMQ for processing by the digester.
+    """
+    import pika
+    import os
+    import json
+    from datetime import datetime
+    
+    try:
+        # Cache binary content in Redis if provided
+        if doc.binary_content:
+            import redis
+            redis_host = os.getenv("REDIS_HOST", "localhost")
+            redis_port = int(os.getenv("REDIS_PORT", "6379"))
+            
+            try:
+                redis_client = redis.Redis(
+                    host=redis_host,
+                    port=redis_port,
+                    decode_responses=False,  # Handle binary data
+                    socket_connect_timeout=5
+                )
+                
+                # Store binary content with URL as key (24 hour TTL)
+                cache_key = f"binary_content:{doc.url}"
+                redis_client.setex(cache_key, 86400, doc.binary_content.encode('ascii'))
+                logging.info(f"Cached binary content for {doc.url}")
+            except Exception as e:
+                logging.warning(f"Failed to cache binary content: {e}")
+        
+        # Get RabbitMQ connection details
+        host = os.getenv("RABBITMQ_HOST", "localhost")
+        port = int(os.getenv("RABBITMQ_PORT", "5672"))
+        user = os.getenv("RABBITMQ_USER", "user")
+        password = os.getenv("RABBITMQ_PASSWORD", "password")
+        # Use configured queue; default aligns with .env RABBITMQ_QUEUE=scraped_content
+        queue = os.getenv("RABBITMQ_QUEUE", "scraped_content")
+        
+        # Prepare message (exclude binary_content from queue message)
+        message = {
+            "title": doc.title,
+            "url": doc.url,
+            "category": doc.category,
+            "content": doc.content,
+            "publish_date": doc.publish_date,
+            "datasource_id": doc.datasource_id,
+            "scraped_at": datetime.now().timestamp(),
+        }
+        
+        # Add optional fields
+        if doc.uploaded_by:
+            message["uploaded_by"] = doc.uploaded_by
+        if doc.metadata:
+            message["metadata"] = doc.metadata
+        
+        # Connect to RabbitMQ and publish
+        credentials = pika.PlainCredentials(user, password)
+        parameters = pika.ConnectionParameters(host=host, port=port, credentials=credentials)
+        connection = pika.BlockingConnection(parameters)
+        channel = connection.channel()
+        
+        # Declare queue (idempotent)
+        channel.queue_declare(queue=queue, durable=True)
+        
+        # Publish message
+        channel.basic_publish(
+            exchange='',
+            routing_key=queue,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # Make message persistent
+            )
+        )
+        
+        connection.close()
+        
+        return UploadResponse(
+            status="success",
+            message=f"Document '{doc.title}' queued for processing",
+            url=doc.url
+        )
+        
+    except Exception as e:
+        logging.error(f"Failed to upload document: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")

@@ -19,6 +19,7 @@ from rabbitmq_client import RabbitMQConsumer, RabbitMQProducer
 from llm import MetadataExtractor
 from normalization import MetadataValidator, MetadataNormalizer
 from neo4j_client import Neo4jClient, GraphRepository
+from neo4j_client.models import Person, ResourceUploadedByPerson
 import redis
 import json
 
@@ -69,7 +70,7 @@ class DocumentDigester:
         )
         self.graph_repository = None
         
-        # Initialize Redis for monitoring
+        # Initialize Redis for monitoring and content caching
         try:
             self.redis_client = redis.Redis(
                 host=settings.redis_host,
@@ -79,10 +80,14 @@ class DocumentDigester:
             )
             # Test connection
             self.redis_client.ping()
-            logger.info("Redis connection established for monitoring")
+            logger.info("Redis connection established for monitoring and caching")
         except Exception as e:
             logger.warning(f"Failed to connect to Redis: {e}. Monitoring will be disabled.")
             self.redis_client = None
+        
+        # Initialize document parser for binary files
+        from utils.document_parser import DocumentParser
+        self.doc_parser = DocumentParser()
         
         logger.info("Document Digester initialized")
     
@@ -239,15 +244,24 @@ class DocumentDigester:
         if not (isinstance(scraped_at, (int, float)) and scraped_at > 0):
             raise ValueError("Field 'scraped_at' must be a valid Unix timestamp (positive integer or float).")
 
-        # url must be a valid URL string
-        url_pattern = re.compile(r'^https?://[^\s]+$')
+        # url must be a valid URL string (http, https, or file protocols)
+        url_pattern = re.compile(r'^(https?|file)://[^\s]+$')
         if not isinstance(message["url"], str) or not url_pattern.match(message["url"]):
-            raise ValueError("Field 'url' must be a valid URL string.")
+            raise ValueError("Field 'url' must be a valid URL string (http, https, or file protocol).")
 
-        # All other fields must be valid non-empty strings
-        for field in ["title", "category", "content", "datasource_id"]:
+        # uploaded_by is optional; if present, must be a non-empty string
+        if "uploaded_by" in message:
+            if not isinstance(message["uploaded_by"], str) or not message["uploaded_by"].strip():
+                raise ValueError("Field 'uploaded_by' must be a non-empty string if provided.")
+
+        # All other fields must be valid non-empty strings (except content for file:// URLs)
+        for field in ["title", "category", "datasource_id"]:
             if not isinstance(message[field], str) or not message[field].strip():
                 raise ValueError(f"Field '{field}' must be a non-empty string.")
+        
+        # Content can be empty for local file uploads (binary files), but must be a string
+        if not isinstance(message["content"], str):
+            raise ValueError("Field 'content' must be a string.")
     
     def process_message(self, message: Dict[str, Any]) -> bool:
         """
@@ -268,6 +282,27 @@ class DocumentDigester:
             self.update_current_processing(message, "validating")
             self.validate_message(message)
 
+            # Step 1.5: Retrieve and parse binary content if file:// URL
+            url = message.get("url", "")
+            if url.startswith("file:///") and self.redis_client:
+                # Extract file extension from metadata or URL
+                file_type = message.get("metadata", {}).get("file_type", "")
+                if not file_type:
+                    # Try to extract from URL
+                    file_type = url.rsplit(".", 1)[-1] if "." in url else ""
+                
+                logger.info(f"Attempting to retrieve cached content for {url}")
+                parsed_content = self.doc_parser.retrieve_and_parse(
+                    self.redis_client, url, file_type
+                )
+                
+                if parsed_content:
+                    logger.info(f"Successfully parsed cached content ({len(parsed_content)} chars)")
+                    # Replace placeholder content with parsed text
+                    message["content"] = parsed_content
+                else:
+                    logger.warning(f"Could not retrieve/parse cached content for {url}")
+
             logger.info("Step 2: Extracting and validating metadata nodes from content...")
             self.update_current_processing(message, "extracting metadata")
             metadata = self.metadata_extractor.extract_metadata(message)            
@@ -283,6 +318,46 @@ class DocumentDigester:
             logger.info("Step 5: Inserting entities into knowledge graph...")
             self.update_current_processing(message, "inserting into graph")
             stats = self.graph_repository.insert_entities(deduped_models)
+
+            # Step 6: Create UPLOADED_BY relationship if uploaded_by field is present
+            uploaded_by = message.get("uploaded_by")
+            if uploaded_by:
+                try:
+                    logger.info(f"Step 6: Creating UPLOADED_BY relationship for user {uploaded_by}...")
+                    
+                    # Create Person node for uploader if doesn't exist
+                    person = Person(
+                        person_id=uploaded_by,
+                        name=uploaded_by
+                    )
+                    
+                    # Find the Resource node from the inserted models
+                    resource_node = None
+                    for model in deduped_models:
+                        if model.__class__.__name__ == "Resource":
+                            resource_node = model
+                            break
+                    
+                    if resource_node:
+                        # Create UPLOADED_BY relationship
+                        uploaded_by_rel = ResourceUploadedByPerson(
+                            source=resource_node,
+                            target=person,
+                            uploaded_at=datetime.now().isoformat()
+                        )
+                        
+                        # Insert Person and relationship
+                        upload_models = [person, uploaded_by_rel]
+                        deduped_upload = self.graph_repository.deduplicate_nodes(upload_models)
+                        upload_stats = self.graph_repository.insert_entities(deduped_upload)
+                        
+                        logger.info(f"Created UPLOADED_BY relationship: {upload_stats}")
+                    else:
+                        logger.warning("Resource node not found in models, skipping UPLOADED_BY relationship")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to create UPLOADED_BY relationship: {e}")
+                    # Don't fail the entire process if this step fails
 
             logger.info(f"Successfully processed document: {message.get('title')}")
             logger.info(f"Insert stats: {stats}")

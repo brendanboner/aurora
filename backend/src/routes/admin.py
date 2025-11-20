@@ -343,3 +343,35 @@ async def get_admin_dashboard():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get dashboard data: {str(e)}")
+
+
+@router.delete("/clear-completed")
+async def clear_completed():
+    """
+    Clear the recently completed list.
+    """
+    try:
+        r = get_redis_connection()
+        r.delete("processing:completed")
+        return {"status": "success", "message": "Recently completed list cleared"}
+    except redis.ConnectionError:
+        raise HTTPException(status_code=503, detail="Redis not available")
+    except Exception as e:
+        logger.error(f"Failed to clear completed list: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear completed list: {str(e)}")
+
+
+@router.delete("/clear-failed")
+async def clear_failed():
+    """
+    Clear the recently failed list.
+    """
+    try:
+        r = get_redis_connection()
+        r.delete("processing:failed")
+        return {"status": "success", "message": "Recently failed list cleared"}
+    except redis.ConnectionError:
+        raise HTTPException(status_code=503, detail="Redis not available")
+    except Exception as e:
+        logger.error(f"Failed to clear failed list: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear failed list: {str(e)}")
