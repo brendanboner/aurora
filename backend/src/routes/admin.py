@@ -35,6 +35,10 @@ class ProcessingResource(BaseModel):
     started_at: str
     updated_at: str
     error: Optional[str] = None
+    datasource_id: Optional[str] = None
+    publish_date: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class QueueStatus(BaseModel):

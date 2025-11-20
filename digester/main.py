@@ -171,7 +171,7 @@ class DocumentDigester:
             except Exception as e:
                 logger.warning(f"Failed to clear current processing: {e}")
     
-    def record_completed(self, message: Dict[str, Any]):
+    def record_completed(self, message: Dict[str, Any], metadata: Dict[str, Any] = None):
         """Record successfully completed document in Redis."""
         if self.redis_client:
             try:
@@ -182,8 +182,16 @@ class DocumentDigester:
                     "status": "completed",
                     "stage": "inserted",
                     "started_at": datetime.now().isoformat(),
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": datetime.now().isoformat(),
+                    "datasource_id": message.get("datasource_id", ""),
+                    "publish_date": message.get("publish_date", ""),
+                    "uploaded_by": message.get("uploaded_by", "")
                 }
+                
+                # Add metadata if provided
+                if metadata:
+                    completed_data["metadata"] = metadata
+                
                 # Keep last 20 completed items
                 self.redis_client.lpush("processing:completed", json.dumps(completed_data))
                 self.redis_client.ltrim("processing:completed", 0, 19)
@@ -363,7 +371,7 @@ class DocumentDigester:
             logger.info(f"Insert stats: {stats}")
             
             # Record success and clear current
-            self.record_completed(message)
+            self.record_completed(message, metadata)
             self.clear_current_processing()
 
             return True
