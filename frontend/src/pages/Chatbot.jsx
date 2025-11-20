@@ -212,32 +212,95 @@ const Chatbot = ({ currentUser, backendStatus }) => {
                 </ReactMarkdown>
               </div>
 
-              {message.filters && (
-                <div className="message-filters">
-                  <strong>Applied Filters:</strong>
-                  <div className="filter-tags">
-                    {message.filters.start_date && (
-                      <span className="tag">From: {message.filters.start_date}</span>
-                    )}
-                    {message.filters.end_date && (
-                      <span className="tag">To: {message.filters.end_date}</span>
-                    )}
-                    {message.filters.topics?.map((topic, i) => (
-                      <span key={i} className="tag"><BookIcon size={12} /> {topic}</span>
-                    ))}
-                    {message.filters.organisations?.map((org, i) => (
-                      <span key={i} className="tag"><BuildingIcon size={12} /> {org}</span>
-                    ))}
-                    {message.filters.people?.map((person, i) => (
-                      <span key={i} className="tag"><ProfileIcon size={12} /> {person}</span>
-                    ))}
+              {message.pipeline_debug && (
+                <details className="pipeline-debug">
+                  <summary>Pipeline Debug Info</summary>
+                  <div className="debug-content">
+                    <div className="debug-stage">
+                      <strong>Stage 1: User Preferences</strong>
+                      <div className="debug-info">
+                        {message.pipeline_debug.stage_1_user_preferences.has_preferences ? (
+                          <>
+                            <div>Topics: {message.pipeline_debug.stage_1_user_preferences.topics_count}</div>
+                            <div>Organizations: {message.pipeline_debug.stage_1_user_preferences.organisations_count}</div>
+                            <div>People: {message.pipeline_debug.stage_1_user_preferences.people_count}</div>
+                          </>
+                        ) : (
+                          <div>No user preferences set</div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="debug-stage">
+                      <strong>Stage 2: LLM Filter Extraction</strong>
+                      <div className="debug-info">
+                        {message.pipeline_debug.stage_2_llm_extraction.topics?.length > 0 && (
+                          <div>Topics: {message.pipeline_debug.stage_2_llm_extraction.topics.join(', ')}</div>
+                        )}
+                        {message.pipeline_debug.stage_2_llm_extraction.organisations?.length > 0 && (
+                          <div>Organisations: {message.pipeline_debug.stage_2_llm_extraction.organisations.join(', ')}</div>
+                        )}
+                        {message.pipeline_debug.stage_2_llm_extraction.people?.length > 0 && (
+                          <div>People: {message.pipeline_debug.stage_2_llm_extraction.people.join(', ')}</div>
+                        )}
+                        {message.pipeline_debug.stage_2_llm_extraction.category && (
+                          <div>Category: {message.pipeline_debug.stage_2_llm_extraction.category}</div>
+                        )}
+                        {message.pipeline_debug.stage_2_llm_extraction.doc_type && (
+                          <div>Doc Type: {message.pipeline_debug.stage_2_llm_extraction.doc_type}</div>
+                        )}
+                        <div>Date Range: {message.pipeline_debug.stage_2_llm_extraction.date_range}</div>
+                        <div>Limit: {message.pipeline_debug.stage_2_llm_extraction.limit}</div>
+                        {!message.pipeline_debug.stage_2_llm_extraction.topics?.length && 
+                         !message.pipeline_debug.stage_2_llm_extraction.organisations?.length && 
+                         !message.pipeline_debug.stage_2_llm_extraction.people?.length && (
+                          <div className="no-filters">No filters extracted from query</div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="debug-stage">
+                      <strong>Stage 3: Filter Merging</strong>
+                      <div className="debug-info">
+                        <div>Has Query Filters: {message.pipeline_debug.stage_3_filter_merging.has_query_filters ? 'Yes' : 'No'}</div>
+                        <div>Applied User Prefs: {message.pipeline_debug.stage_3_filter_merging.applied_user_prefs ? 'Yes' : 'No'}</div>
+                        <div>Final Topics: {message.pipeline_debug.stage_3_filter_merging.final_topics_count}</div>
+                        <div>Final Organizations: {message.pipeline_debug.stage_3_filter_merging.final_orgs_count}</div>
+                        <div>Final People: {message.pipeline_debug.stage_3_filter_merging.final_people_count}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="debug-stage">
+                      <strong>Stage 4: Document Retrieval</strong>
+                      <div className="debug-info">
+                        <div>Should Retrieve: {message.pipeline_debug.stage_4_document_retrieval.should_retrieve ? 'Yes' : 'No'}</div>
+                        <div>Reason: {message.pipeline_debug.stage_4_document_retrieval.reason}</div>
+                        <div>Documents Found: {message.pipeline_debug.stage_4_document_retrieval.documents_found}</div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </details>
               )}
 
               {message.documents && message.documents.length > 0 && (() => {
                 const docIndex = currentDocumentIndex[index] || 0;
                 const doc = message.documents[docIndex];
+                
+                // Format date to readable format
+                const formatDate = (dateStr) => {
+                  if (!dateStr) return 'Unknown date';
+                  try {
+                    const date = new Date(dateStr);
+                    if (isNaN(date.getTime())) return dateStr;
+                    return date.toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    });
+                  } catch (e) {
+                    return dateStr;
+                  }
+                };
                 const totalDocs = message.documents.length;
                 
                 return (
@@ -284,7 +347,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
                           )}
                         </div>
                         {doc.publish_date && (
-                          <div className="document-date"><CalendarIcon size={12} /> {doc.publish_date}</div>
+                          <div className="document-date"><CalendarIcon size={12} /> {formatDate(doc.publish_date)}</div>
                         )}
                         {doc.summary && (
                           <div className="document-summary">{doc.summary}</div>

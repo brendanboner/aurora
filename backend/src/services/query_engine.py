@@ -50,26 +50,6 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     log.info(f"  Date range: {llm_filters.get('start_date')} to {llm_filters.get('end_date')}")
     log.info(f"  Limit: {llm_filters.get('limit', 20)}")
     
-    # Step 3: Merge LLM filters with user preferences
-    # User preferences act as relevance signals, not strict filters
-    # If LLM detected specific entities, prioritize those
-    # If LLM filters are empty or generic, boost with user preferences
-    merged_filters = _merge_filters_with_preferences(
-        llm_filters=llm_filters,
-        pref_topics=pref_topics,
-        pref_orgs=pref_orgs,
-        pref_people=pref_people
-    )
-    
-    log.info(f"✓ Merged filters for Neo4j query:")
-    log.info(f"  Topics ({len(merged_filters.get('topics', []))}): {merged_filters.get('topics', [])}")
-    log.info(f"  Organisations ({len(merged_filters.get('organisations', []))}): {merged_filters.get('organisations', [])}")
-    log.info(f"  People ({len(merged_filters.get('people', []))}): {merged_filters.get('people', [])}")
-    log.info(f"  Category: {merged_filters.get('category', 'any')}")
-    log.info(f"  Doc Type: {merged_filters.get('doc_type', 'any')}")
-    log.info(f"  Date range: {merged_filters.get('start_date')} to {merged_filters.get('end_date')}")
-    log.info(f"  Result limit: {merged_filters.get('limit', 20)}")
-    
     # Detect if this is a meta-query about the knowledge base itself
     # Meta-queries ask about stats, counts, or structure rather than content
     question_lower = question.lower()
@@ -81,19 +61,56 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
         "show me all" in question_lower and any(x in question_lower for x in ["topics", "organisations", "people"]),
     ])
     
-    # Determine if we should retrieve documents
-    # Don't retrieve for meta-queries, but do retrieve if any filters were specified
-    has_filters = any([
-        merged_filters.get("topics"),
-        merged_filters.get("organisations"),
-        merged_filters.get("people"),
-        merged_filters.get("category"),
-        merged_filters.get("doc_type"),
-        merged_filters.get("start_date"),
-        merged_filters.get("end_date")
+    # Check if LLM extracted any filters from the query
+    has_query_filters = any([
+        llm_filters.get("topics"),
+        llm_filters.get("organisations"),
+        llm_filters.get("people"),
+        llm_filters.get("category"),
+        llm_filters.get("doc_type"),
+        llm_filters.get("start_date"),
+        llm_filters.get("end_date")
     ])
     
-    should_retrieve_docs = has_filters and not is_meta_query
+    # Step 3: Use ONLY query filters, not user preferences
+    # User preferences are tracked for analytics but don't affect document retrieval
+    # This ensures precise, query-relevant results instead of preference-biased results
+    if has_query_filters:
+        log.info("✓ Using query filters only (no user preference merging for precise results)")
+        merged_filters = {
+            "topics": llm_filters.get("topics", []),
+            "organisations": llm_filters.get("organisations", []),
+            "people": llm_filters.get("people", []),
+            "category": llm_filters.get("category"),
+            "doc_type": llm_filters.get("doc_type"),
+            "start_date": llm_filters.get("start_date"),
+            "end_date": llm_filters.get("end_date"),
+            "limit": llm_filters.get("limit", 20)
+        }
+    else:
+        log.info("✓ No filters extracted from query - using query-only mode (no user preference merging)")
+        merged_filters = {
+            "topics": [],
+            "organisations": [],
+            "people": [],
+            "category": None,
+            "doc_type": None,
+            "start_date": None,
+            "end_date": None,
+            "limit": llm_filters.get("limit", 20)
+        }
+    
+    log.info(f"✓ Final filters for Neo4j query:")
+    log.info(f"  Topics ({len(merged_filters.get('topics', []))}): {merged_filters.get('topics', [])}")
+    log.info(f"  Organisations ({len(merged_filters.get('organisations', []))}): {merged_filters.get('organisations', [])}")
+    log.info(f"  People ({len(merged_filters.get('people', []))}): {merged_filters.get('people', [])}")
+    log.info(f"  Category: {merged_filters.get('category', 'any')}")
+    log.info(f"  Doc Type: {merged_filters.get('doc_type', 'any')}")
+    log.info(f"  Date range: {merged_filters.get('start_date')} to {merged_filters.get('end_date')}")
+    log.info(f"  Result limit: {merged_filters.get('limit', 20)}")
+    
+    # Determine if we should retrieve documents
+    should_retrieve_docs = has_query_filters and not is_meta_query
     
     if should_retrieve_docs:
         # Step 4: Query Neo4j with merged filters
@@ -134,7 +151,36 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
         },
         "documents": formatted_docs,
         "document_count": len(docs),
-        "is_meta_query": is_meta_query
+        "is_meta_query": is_meta_query,
+        "pipeline_debug": {
+            "stage_1_user_preferences": {
+                "has_preferences": has_preferences,
+                "topics_count": len(pref_topics),
+                "organisations_count": len(pref_orgs),
+                "people_count": len(pref_people)
+            },
+            "stage_2_llm_extraction": {
+                "topics": llm_filters.get("topics", []),
+                "organisations": llm_filters.get("organisations", []),
+                "people": llm_filters.get("people", []),
+                "category": llm_filters.get("category"),
+                "doc_type": llm_filters.get("doc_type"),
+                "date_range": f"{llm_filters.get('start_date') or 'none'} to {llm_filters.get('end_date') or 'none'}",
+                "limit": llm_filters.get("limit", 20)
+            },
+            "stage_3_filter_merging": {
+                "has_query_filters": has_query_filters,
+                "applied_user_prefs": has_query_filters and has_preferences,
+                "final_topics_count": len(merged_filters.get("topics", [])),
+                "final_orgs_count": len(merged_filters.get("organisations", [])),
+                "final_people_count": len(merged_filters.get("people", []))
+            },
+            "stage_4_document_retrieval": {
+                "should_retrieve": should_retrieve_docs,
+                "reason": "meta-query" if is_meta_query else ("has-filters" if has_query_filters else "no-filters"),
+                "documents_found": len(docs)
+            }
+        }
     }
 
 

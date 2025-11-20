@@ -181,6 +181,66 @@
   margin-top: 8px;
 }
 
+.pipeline-debug {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(137, 129, 229, 0.05);
+  border: 1px solid rgba(137, 129, 229, 0.2);
+  border-radius: var(--radius-button);
+  font-size: var(--text-sm);
+}
+
+.pipeline-debug summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary);
+  padding: 4px 0;
+  user-select: none;
+}
+
+.pipeline-debug summary:hover {
+  color: rgba(137, 129, 229, 0.8);
+}
+
+.debug-content {
+  margin-top: 12px;
+}
+
+.debug-stage {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(137, 129, 229, 0.1);
+}
+
+.debug-stage:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.debug-stage strong {
+  display: block;
+  color: var(--primary);
+  margin-bottom: 8px;
+  font-size: 0.95em;
+}
+
+.debug-info {
+  padding-left: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+
+.debug-info div {
+  margin: 4px 0;
+}
+
+.debug-info .no-filters {
+  color: var(--muted-foreground);
+  font-style: italic;
+  opacity: 0.7;
+}
+
 .message-documents {
   padding: 12px;
   background-color: rgba(137, 129, 229, 0.1);

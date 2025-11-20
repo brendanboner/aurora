@@ -1052,7 +1052,7 @@ class GraphRepository:
         WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
              topics_param, orgs_param, people_param, limit_param,
              
-             // Topic match score: check name, aliases, and identifiers
+             // Topic match score: check name, aliases, and identifiers in Topic nodes
              CASE 
                 WHEN size(topics_param) = 0 THEN 1.0
                 ELSE 
@@ -1063,6 +1063,17 @@ class GraphRepository:
                         (tp.identifier IS NOT NULL AND toLower(tp.identifier) IN [x IN topics_param | toLower(x)])
                     ])) / size(topics_param)
              END AS topic_match_score,
+             
+             // Text match score: search for topic keywords in document text fields (title, summary, URL)
+             CASE
+                WHEN size(topics_param) = 0 THEN 0.0
+                ELSE
+                    toFloat(size([keyword IN topics_param WHERE
+                        toLower(coalesce(r.title, '')) CONTAINS toLower(keyword) OR
+                        toLower(coalesce(r.summary, '')) CONTAINS toLower(keyword) OR
+                        toLower(coalesce(r.url, '')) CONTAINS toLower(keyword)
+                    ])) / size(topics_param)
+             END AS text_match_score,
              
              // Organization match score: check name and aliases
              CASE
@@ -1092,16 +1103,17 @@ class GraphRepository:
                 ELSE reduce(s = 0.0, rel IN topic_rels | s + coalesce(rel.confidence, 0.5)) / size(topic_rels)
              END AS avg_topic_confidence
 
-        // Apply entity filters - only require match if filters are specified
+        // Apply entity filters - require match in EITHER graph relationships OR document text
         WHERE
-            (size(topics_param) = 0 OR topic_match_score > 0.0)
+            (size(topics_param) = 0 OR topic_match_score > 0.0 OR text_match_score > 0.0)
             AND (size(orgs_param) = 0 OR org_match_score > 0.0)
             AND (size(people_param) = 0 OR people_match_score > 0.0)
 
         // Calculate combined relevance score
         WITH r, publish_date_iso, topics, people, orgs, datasources,
-             // Weighted relevance: 40% topic match, 30% org match, 20% people match, 10% relationship quality
-             (topic_match_score * 0.4 + org_match_score * 0.3 + people_match_score * 0.2 + avg_topic_confidence * 0.1) AS relevance_score,
+             topic_match_score, text_match_score, org_match_score, people_match_score, avg_topic_confidence,
+             // Weighted relevance: 30% topic match (graph), 20% text match (content), 25% org match, 15% people match, 10% relationship quality
+             (topic_match_score * 0.3 + text_match_score * 0.2 + org_match_score * 0.25 + people_match_score * 0.15 + avg_topic_confidence * 0.1) AS relevance_score,
              
              // Recency score: more recent documents get higher scores
              CASE

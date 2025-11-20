@@ -148,7 +148,7 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
                 "{\n"
                 '  "start_date": string | null,  // YYYY-MM-DD format\n'
                 '  "end_date": string | null,    // YYYY-MM-DD format\n'
-                '  "topics": string[],           // Technical topics, standards, specs (e.g., "Wi-Fi 6", "802.11ax", "5G", "upper 6 GHz band")\n'
+                '  "topics": string[],           // Any keywords, locations, events, technologies, standards (e.g., "Dubai", "Wi-Fi 6", "802.11ax", "5G", "upper 6 GHz band", "congress")\n'
                 '  "organisations": string[],    // Industry orgs or companies (e.g., "Wi-Fi Alliance", "WFA", "IEEE", "3GPP")\n'
                 '  "people": string[],           // People or authors mentioned\n'
                 '  "category": string | null,    // Document category (e.g., "press release", "whitepaper", "blog", "article", "paper", "podcast", "newsletter")\n'
@@ -156,17 +156,19 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
                 '  "limit": number               // max docs to retrieve (default 20, increase for broad queries)\n'
                 "}\n\n"
                 "Important guidelines:\n"
+                "- ALWAYS extract meaningful keywords from the query as topics, including locations (e.g., 'Dubai', 'Europe', 'US'), events (e.g., 'congress', 'conference'), and general terms\n"
                 "- When user explicitly mentions an organization (e.g., 'Wi-Fi Alliance', 'WFA', 'IEEE'), include it in organisations\n"
                 "- When user mentions a specific technology, standard, or spectrum band (e.g., 'Wi-Fi 6', '802.11ax', '6 GHz', 'RSPG'), include it in topics\n"
                 "- Include both formal names and acronyms/identifiers (e.g., 'Wi-Fi Alliance' OR 'WFA', '802.11be' OR 'Wi-Fi 7')\n"
                 "- When user asks for a specific document category (e.g., 'press release', 'whitepaper', 'podcast'), set the category\n"
                 "- When user specifies file format (e.g., 'PDF documents', 'HTML pages', 'videos'), set the doc_type\n"
-                "- Extract high-level subject matter relevant to wireless communications, standards bodies, and spectrum policy\n"
+                "- Extract ANY relevant keywords that could help find related documents - be inclusive, not restrictive\n"
+                "- For queries like 'what is happening in [location]', include the location as a topic\n"
                 "- Words like 'latest', 'recent', 'newest' should NOT be converted to date filters - ranking handles recency\n"
                 "- Only set date filters for EXPLICIT dates or periods (e.g., 'last week', 'in November', 'since 2024')\n"
                 "- Resolve explicit relative dates like 'last week', 'in November 2025' to ISO format (today's date: 2025-11-20)\n"
                 "- If the query is broad or exploratory, increase the limit (e.g., 30-50)\n"
-                "- Return empty arrays if no specific entities are mentioned"
+                "- Return empty arrays ONLY if the query is asking about knowledge base structure (meta-queries like 'how many topics', 'list all organizations')"
             ),
         }
         resp = client.chat.completions.create(
