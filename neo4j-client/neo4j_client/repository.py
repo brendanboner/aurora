@@ -1003,21 +1003,11 @@ class GraphRepository:
         OPTIONAL MATCH (r)-[mp:MENTIONS]->(p:Person)
         OPTIONAL MATCH (r)-[mo:MENTIONS]->(o:Organization)
         OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-        
-        // For each person mentioned, also collect their organizational affiliations
-        OPTIONAL MATCH (p)-[aff:AFFILIATED_WITH]->(affOrg:Organization)
 
         WITH r,
              publish_date_iso,
              collect(DISTINCT t)  AS topics,
              collect(DISTINCT rt) AS topic_rels,
-             collect(DISTINCT {
-                 person: p,
-                 affiliations: collect(DISTINCT {
-                     organization: affOrg.name,
-                     role: aff.role
-                 })
-             }) AS people_with_affiliations,
              collect(DISTINCT p)  AS people,
              collect(DISTINCT o)  AS orgs,
              collect(DISTINCT ds) AS datasources,
@@ -1029,6 +1019,28 @@ class GraphRepository:
              start_param,
              end_param,
              limit_param
+        
+        // For each person, collect their organizational affiliations
+        UNWIND CASE WHEN size(people) > 0 THEN people ELSE [null] END AS person
+        OPTIONAL MATCH (person)-[aff:AFFILIATED_WITH]->(affOrg:Organization)
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, category_param, doc_type_param,
+             start_param, end_param, limit_param,
+             person,
+             collect(DISTINCT {organization: affOrg.name, role: aff.role}) AS person_affiliations
+        
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, category_param, doc_type_param,
+             start_param, end_param, limit_param,
+             collect(CASE WHEN person IS NOT NULL THEN {
+                 person: person,
+                 affiliations: person_affiliations
+             } ELSE null END) AS people_with_affiliations_raw
+        
+        WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             topics_param, orgs_param, people_param, category_param, doc_type_param,
+             start_param, end_param, limit_param,
+             [x IN people_with_affiliations_raw WHERE x IS NOT NULL] AS people_with_affiliations
 
         // Apply date, category, and doc_type filters
         WHERE
@@ -1060,6 +1072,7 @@ class GraphRepository:
 
         // Calculate relevance scores with per-term scoring for better precision
         WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             people_with_affiliations,
              topics_param, orgs_param, people_param, limit_param,
              
              // Topic match score: check name, aliases, and identifiers in Topic nodes
@@ -1093,6 +1106,7 @@ class GraphRepository:
              ] AS matched_keywords
         
         WITH r, publish_date_iso, topics, topic_rels, people, orgs, datasources,
+             people_with_affiliations,
              topics_param, orgs_param, people_param, limit_param,
              topic_match_score, matched_term_count, matched_keywords,
              
@@ -1138,6 +1152,7 @@ class GraphRepository:
 
         // Calculate combined relevance score with strong completeness emphasis
         WITH r, publish_date_iso, topics, people, orgs, datasources,
+             people_with_affiliations,
              topic_match_score, text_match_score, org_match_score, people_match_score, avg_topic_confidence, matched_term_count,
              // Completeness bonus: HEAVILY favor documents matching ALL query terms
              // 10x multiplier if ALL terms matched, 2x if 75%+, 1x otherwise
@@ -1162,6 +1177,7 @@ class GraphRepository:
         // Final ranking: apply completeness bonus to base relevance, then blend with recency
         // 80% relevance (with completeness bonus), 20% recency
         WITH r, publish_date_iso, topics, people, orgs, datasources, matched_term_count,
+             people_with_affiliations,
              (base_relevance * completeness_bonus * 0.8 + recency_score * 0.2) AS final_score
         
         ORDER BY final_score DESC, matched_term_count DESC,
