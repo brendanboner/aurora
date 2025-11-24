@@ -79,35 +79,46 @@ graph TB
    - Validates and normalizes extracted data
    - Builds knowledge graph in Neo4j
 
+5. **[Curator Service](./curator/)** - Knowledge graph organization microservice
+   - Organizes topics into hierarchical relationships
+   - Uses clustering and LLM analysis
+   - Runs after digester completes processing
+   - Creates parent/child topic structures
+   - 📖 **[Curator Integration Guide](./doc/CURATOR_INTEGRATION.md)**
+
 #### Infrastructure
 
-5. **PostgreSQL** - Relational database
+6. **PostgreSQL** - Relational database
    - User accounts and authentication
    - User preferences storage
    - Event attendance tracking
 
-6. **Neo4j** - Graph database
+7. **Neo4j** - Graph database
    - Knowledge graph with Topics, Organizations, People, Resources
    - Relationship mapping
    - Graph queries and traversal
 
-7. **RabbitMQ** - Message queue
+8. **RabbitMQ** - Message queue
    - Asynchronous processing pipeline
    - Decouples scraping from processing
 
+9. **Redis** - In-memory data store
+   - Monitoring and state tracking
+   - Content caching
+
 #### Shared Libraries
 
-8. **[rabbitmq-client](./rabbitmq-client/)** - Messaging library
-   - Standardized RabbitMQ producer/consumer interface
-   - Automatic JSON serialization
-   - Used by retriever and digester
+10. **[rabbitmq-client](./rabbitmq-client/)** - Messaging library
+    - Standardized RabbitMQ producer/consumer interface
+    - Automatic JSON serialization
+    - Used by retriever and digester
 
-9. **[neo4j-client](./neo4j-client/)** - Graph database library
-   - Neo4j connection management
-   - Graph node models (Resource, Topic, Organization, Person)
-   - Repository patterns for CRUD operations
+11. **[neo4j-client](./neo4j-client/)** - Graph database library
+    - Neo4j connection management
+    - Graph node models (Resource, Topic, Organization, Person)
+    - Repository patterns for CRUD operations
 
-10. **[common/make-utils.mk](./common/make-utils.mk)** - Shared Docker utilities
+12. **[common/make-utils.mk](./common/make-utils.mk)** - Shared Docker utilities
     - Common Makefile targets for all services
     - Container and network name generation
     - Dependency management
@@ -138,8 +149,10 @@ open http://localhost:3000
 - PostgreSQL database
 - Neo4j knowledge graph
 - RabbitMQ message queue
+- Redis cache
 - Retriever service
 - Digester service
+- Curator service (runs after digester completes)
 
 📖 **[Complete Docker Compose Guide](./DOCKER_COMPOSE.md)**
 

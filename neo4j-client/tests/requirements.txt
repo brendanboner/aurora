@@ -1,0 +1,14 @@
+# Core dependencies
+neo4j>=5.26.0
+pydantic>=2.0.0
+sentence-transformers>=2.2.0
+
+# String similarity
+jellyfish>=1.0.0
+
+# For LLM duplicate checking (optional)
+openai>=1.0.0
+
+# Test dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0

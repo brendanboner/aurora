@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Copy rabbitmq-client from parent context
 COPY rabbitmq-client ./rabbitmq-client
+COPY neo4j-client ./neo4j-client
 
 # Copy retriever requirements and install dependencies
 COPY retriever/requirements.txt .
@@ -12,5 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy retriever application code
 COPY retriever/ .
 
-# Default command (can be overridden)
-CMD ["python", "main.py"]
+# Run the new retriever service with uvicorn
+CMD ["uvicorn", "retriever:app", "--host", "0.0.0.0", "--port", "8000"]

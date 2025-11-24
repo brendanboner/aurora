@@ -21,9 +21,16 @@ class Settings(BaseSettings):
     redis_host: str = "redis"
     redis_port: int = 6379
     
+    # Neo4j Configuration
+    neo4j_uri: str = "bolt://neo4j:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "password"
+    neo4j_database: str = "neo4j"
+    
     # Scraper Configuration
     scraper_delay: float = 0.5  # Delay between requests in seconds
     scraper_max_redirects: int = 10
+    scraper_max_resources: int = -1  # Maximum number of resources to scrape per run (-1 = unlimited)
     
     # Output Configuration
     output_mode: str = "rabbitmq"  # Options: "rabbitmq" or "json"
@@ -35,6 +42,10 @@ class Settings(BaseSettings):
     # API Configuration
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    
+    # Scheduler Configuration
+    scrape_schedule_hour: int = 2  # Hour to run daily scrape (0-23)
+    scrape_schedule_minute: int = 0  # Minute to run daily scrape (0-59)
 
 
 settings = Settings()

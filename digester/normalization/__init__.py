@@ -1,4 +1,5 @@
 from .validator import MetadataValidator
-from .normalizer import MetadataNormalizer
+from .model_builder import MetadataModelBuilder
 
-__all__ = ["MetadataValidator", "MetadataNormalizer"]
+__all__ = ["MetadataValidator", "MetadataModelBuilder"]
+

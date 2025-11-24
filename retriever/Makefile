@@ -65,7 +65,7 @@ deploy-isolated: validate-env clean-isolated
 
 # Deploy on shared network (checks for existing dependencies)
 deploy-shared: validate-env ensure-rabbitmq
-	@echo "🌐 Deploying in SAHRED mode (shared network)..."
+	@echo "🌐 Deploying in SHARED mode (shared network)..."
 	@echo "🚀 Building and running retriever..."
 	@cd .. && docker build -f retriever/Dockerfile -t $(SERVICE_IMAGE) .
 	@docker run --rm --name $(SHARED_SERVICE_CONTAINER) \
