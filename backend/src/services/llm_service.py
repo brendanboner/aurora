@@ -115,9 +115,46 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
         elif "video" in lower_q:
             doc_type = "video"
         
+        # Detect temporal intent from keywords
+        query_intent = "recent"  # default
+        if any(word in lower_q for word in ["next", "upcoming", "future", "scheduled", "when is"]):
+            query_intent = "future"
+        elif any(word in lower_q for word in ["last", "past", "previous", "historical", "happened"]):
+            query_intent = "historical"
+        elif any(word in lower_q for word in ["latest", "recent", "newest", "current"]):
+            query_intent = "recent"
+        
+        # Detect document temporal focus (published vs updated vs mixed)
+        temporal_focus = None
+        if any(word in lower_q for word in ["updated", "changed", "modified", "revised"]):
+            temporal_focus = "updated"
+        elif any(word in lower_q for word in ["published", "released", "announced"]):
+            temporal_focus = "published"
+        elif any(word in lower_q for word in ["happened", "changed or published", "new or updated"]):
+            temporal_focus = "mixed"
+        
+        # Resolve relative dates for document queries
+        from datetime import datetime, timedelta
+        resolved_start = dates[0] if dates else None
+        resolved_end = dates[-1] if len(dates) > 1 else None
+        
+        if not resolved_start and temporal_focus in ["updated", "published", "mixed"]:
+            # Default date ranges for temporal document queries
+            if "last week" in lower_q:
+                resolved_start = (datetime.now() - timedelta(days=7)).date().isoformat()
+                resolved_end = datetime.now().date().isoformat()
+            elif "last month" in lower_q:
+                resolved_start = (datetime.now() - timedelta(days=30)).date().isoformat()
+                resolved_end = datetime.now().date().isoformat()
+            elif "last year" in lower_q:
+                resolved_start = (datetime.now() - timedelta(days=365)).date().isoformat()
+                resolved_end = datetime.now().date().isoformat()
+        
         data = {
-            "start_date": dates[0] if dates else None,
-            "end_date": dates[-1] if len(dates) > 1 else None,
+            "query_intent": query_intent,
+            "temporal_focus": temporal_focus,
+            "start_date": resolved_start,
+            "end_date": resolved_end,
             "topics": topics,
             "organisations": organisations,
             "people": people,
@@ -134,9 +171,10 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
             "role": "system",
             "content": (
                 "You are a query planner for a knowledge graph of wireless standards, industry events, and technical documents. "
-                "Your goal is to extract structured filters that will retrieve relevant documents from the knowledge graph. "
+                "Your goal is to extract structured filters AND determine the temporal intent of the query. "
                 "When the user explicitly mentions an organization, topic, or technical standard, ensure it is captured in the filters. "
                 "Focus on high-level subjects and topics relevant to wireless communications, standards bodies, and industry organizations. "
+                "Pay special attention to temporal keywords like 'next', 'upcoming', 'future', 'scheduled', 'last', 'recent', 'past'. "
                 "Always respond with JSON only."
             ),
         }
@@ -146,6 +184,8 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
                 f"User question:\n{question}\n\n"
                 "Extract filter information and return JSON with these keys:\n"
                 "{\n"
+                '  "query_intent": string,       // Temporal intent: "future" (upcoming events), "historical" (past documents), "recent" (latest news), or "mixed" (both)\n'
+                '  "temporal_focus": string | null,  // Document temporal focus: "published" (newly published), "updated" (recently changed), "mixed" (both), or null (not temporal)\n'
                 '  "start_date": string | null,  // YYYY-MM-DD format\n'
                 '  "end_date": string | null,    // YYYY-MM-DD format\n'
                 '  "topics": string[],           // Any keywords, locations, events, technologies, standards (e.g., "Dubai", "Wi-Fi 6", "802.11ax", "5G", "upper 6 GHz band", "congress")\n'
@@ -166,9 +206,21 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
                 "- For queries like 'what is happening in [location]', include the location as a topic\n"
                 "- Words like 'latest', 'recent', 'newest' should NOT be converted to date filters - ranking handles recency\n"
                 "- Only set date filters for EXPLICIT dates or periods (e.g., 'last week', 'in November', 'since 2024')\n"
-                "- Resolve explicit relative dates like 'last week', 'in November 2025' to ISO format (today's date: 2025-11-20)\n"
+                "- Resolve explicit relative dates like 'last week', 'in November 2025' to ISO format (today's date: 2025-11-24)\n"
                 "- If the query is broad or exploratory, increase the limit (e.g., 30-50)\n"
-                "- Return empty arrays ONLY if the query is asking about knowledge base structure (meta-queries like 'how many topics', 'list all organizations')"
+                "- Return empty arrays ONLY if the query is asking about knowledge base structure (meta-queries like 'how many topics', 'list all organizations')\n\n"
+                "Temporal Intent Detection:\n"
+                '- Set query_intent="future" when query asks about upcoming/next/scheduled events, future meetings, or deadlines (e.g., "when is the next WFA meeting", "upcoming conferences")\n'
+                '- Set query_intent="historical" when query asks about past events, published documents, or historical analysis (e.g., "what happened last month", "documents from 2024")\n'
+                '- Set query_intent="recent" when query asks for latest/newest/recent information without specific dates (e.g., "latest Wi-Fi news", "recent developments")\n'
+                '- Set query_intent="mixed" when query combines past and future (e.g., "WFA events this year", "all meetings") OR when temporal intent is unclear\n'
+                "- For future-oriented queries, set start_date to today (2025-11-24) to filter upcoming events\n\n"
+                "Document Temporal Focus Detection:\n"
+                '- Set temporal_focus="updated" when query asks about documents that changed/updated/modified (e.g., "what documents changed last week", "recently updated content")\n'
+                '- Set temporal_focus="published" when query asks about newly published/released/announced documents (e.g., "what was published last month", "new press releases")\n'
+                '- Set temporal_focus="mixed" when query asks about both published AND updated documents (e.g., "what happened last week", "new or changed documents")\n'
+                '- Set temporal_focus=null for non-temporal queries or event-focused queries\n'
+                '- When temporal_focus is set, resolve relative dates: "last week" = 7 days ago to today, "last month" = 30 days ago to today, "last year" = 365 days ago to today'
             ),
         }
         resp = client.chat.completions.create(
@@ -221,9 +273,46 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
         elif "video" in lower_q:
             doc_type = "video"
         
+        # Detect temporal intent from keywords
+        query_intent = "recent"  # default
+        if any(word in lower_q for word in ["next", "upcoming", "future", "scheduled", "when is"]):
+            query_intent = "future"
+        elif any(word in lower_q for word in ["last", "past", "previous", "historical", "happened"]):
+            query_intent = "historical"
+        elif any(word in lower_q for word in ["latest", "recent", "newest", "current"]):
+            query_intent = "recent"
+        
+        # Detect document temporal focus (published vs updated vs mixed)
+        temporal_focus = None
+        if any(word in lower_q for word in ["updated", "changed", "modified", "revised"]):
+            temporal_focus = "updated"
+        elif any(word in lower_q for word in ["published", "released", "announced"]):
+            temporal_focus = "published"
+        elif any(word in lower_q for word in ["happened", "changed or published", "new or updated"]):
+            temporal_focus = "mixed"
+        
+        # Resolve relative dates for document queries
+        from datetime import datetime, timedelta
+        resolved_start = dates[0] if dates else None
+        resolved_end = dates[-1] if len(dates) > 1 else None
+        
+        if not resolved_start and temporal_focus in ["updated", "published", "mixed"]:
+            # Default date ranges for temporal document queries
+            if "last week" in lower_q:
+                resolved_start = (datetime.now() - timedelta(days=7)).date().isoformat()
+                resolved_end = datetime.now().date().isoformat()
+            elif "last month" in lower_q:
+                resolved_start = (datetime.now() - timedelta(days=30)).date().isoformat()
+                resolved_end = datetime.now().date().isoformat()
+            elif "last year" in lower_q:
+                resolved_start = (datetime.now() - timedelta(days=365)).date().isoformat()
+                resolved_end = datetime.now().date().isoformat()
+        
         data = {
-            "start_date": dates[0] if dates else None,
-            "end_date": dates[-1] if len(dates) > 1 else None,
+            "query_intent": query_intent,
+            "temporal_focus": temporal_focus,
+            "start_date": resolved_start,
+            "end_date": resolved_end,
             "topics": topics,
             "organisations": organisations,
             "people": people,
@@ -234,6 +323,8 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
         log.info("Using heuristic filters due to LLM error: %s", data)
         return data
 
+    data.setdefault("query_intent", "recent")  # default to recent if not specified
+    data.setdefault("temporal_focus", None)  # default to null if not specified
     data.setdefault("start_date", None)
     data.setdefault("end_date", None)
     data.setdefault("topics", [])
@@ -308,6 +399,11 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
             log.error(f"LLM meta-query response failed: {e}")
             return "I cannot provide information about the knowledge base structure at this time."
     
+    # Extract events from user_preferences if present
+    events = []
+    if user_preferences and "events" in user_preferences:
+        events = user_preferences.get("events", [])
+    
     docs_ctx = []
     for d in docs[:10]:
         # Convert any datetime objects to strings for JSON serialization
@@ -376,14 +472,71 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
             }
         )
     
+    # Build events context if available
+    events_ctx = []
+    if events:
+        from datetime import datetime
+        today = datetime.now()
+        
+        for e in events[:5]:  # Limit to top 5 events
+            start_date = _safe_datetime_to_string(e.get("start_date"))
+            end_date = _safe_datetime_to_string(e.get("end_date"))
+            
+            # Calculate temporal context (e.g., "in 2 days", "3 weeks ago")
+            temporal_context = ""
+            if start_date:
+                try:
+                    event_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                    days_diff = (event_date - today).days
+                    if days_diff > 0:
+                        if days_diff < 7:
+                            temporal_context = f" (in {days_diff} day{'s' if days_diff != 1 else ''})"
+                        elif days_diff < 30:
+                            weeks = days_diff // 7
+                            temporal_context = f" (in {weeks} week{'s' if weeks != 1 else ''})"
+                        else:
+                            months = days_diff // 30
+                            temporal_context = f" (in {months} month{'s' if months != 1 else ''})"
+                    elif days_diff < 0:
+                        days_ago = abs(days_diff)
+                        if days_ago < 7:
+                            temporal_context = f" ({days_ago} day{'s' if days_ago != 1 else ''} ago)"
+                        elif days_ago < 30:
+                            weeks = days_ago // 7
+                            temporal_context = f" ({weeks} week{'s' if weeks != 1 else ''} ago)"
+                        else:
+                            months = days_ago // 30
+                            temporal_context = f" ({months} month{'s' if months != 1 else ''} ago)"
+                except Exception:
+                    pass
+            
+            events_ctx.append({
+                "name": e.get("name"),
+                "event_type": e.get("event_type"),
+                "start_date": start_date,
+                "end_date": end_date,
+                "temporal_context": temporal_context,
+                "location": e.get("location"),
+                "description": e.get("description"),
+                "url": e.get("url"),
+                "topics": e.get("topics", []),
+                "organisations": e.get("organisations", [])
+            })
+    
     # Build system message with preference context if available
     system_content = (
         "You are an assistant that answers questions about wireless standards, industry events, and technical documents. "
-        "Your responses must be based ONLY on the provided documents from the knowledge graph. "
-        "Do not make up information or hallucinate details not present in the documents. "
+        "Your responses must be based ONLY on the provided documents and events from the knowledge graph. "
+        "Do not make up information or hallucinate details not present in the documents/events. "
         "Be concise but specific, and highlight the most recent or important updates. "
-        "Reference specific documents when making claims."
+        "Reference specific documents or events when making claims."
     )
+    
+    if events_ctx:
+        system_content += (
+            "\n\nWhen answering about events, include temporal context (e.g., 'in 2 days', '3 weeks ago') to help users "
+            "understand timing. For upcoming events, mention the date, location, and any relevant details."
+        )
     
     if user_preferences and any([
         user_preferences.get("topics"),
@@ -408,12 +561,17 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
             "role": "system",
             "content": system_content,
         }
+        context_data = {
+            "user_question": question,
+            "documents": docs_ctx
+        }
+        
+        if events_ctx:
+            context_data["events"] = events_ctx
+        
         user_msg = {
             "role": "user",
-            "content": json.dumps(
-                {"user_question": question, "documents": docs_ctx},
-                indent=2,
-            ),
+            "content": json.dumps(context_data, indent=2),
         }
         resp = client.chat.completions.create(
             model=deployment,

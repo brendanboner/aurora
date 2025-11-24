@@ -10,6 +10,7 @@ import redis
 
 from rabbitmq_client.producer import RabbitMQProducer
 from settings import settings
+from config_manager import ConfigManager
 
 @dataclass
 class Resource:
@@ -43,6 +44,9 @@ class BaseScraper:
         
         # Resolve JSON output file with scraper name placeholder
         self.json_file = settings.json_output_file.replace('{scraper}', self.scraper_name)
+        
+        # Initialize configuration manager for scraping frequency control
+        self.config_manager = ConfigManager()
         
         # Initialize Redis for monitoring
         try:
@@ -101,6 +105,39 @@ class BaseScraper:
                 self.redis_client.delete("retriever:current")
             except Exception as e:
                 logging.warning(f"Failed to clear current processing: {e}")
+    
+    def should_scrape_datasource(self, datasource_id: str) -> bool:
+        """
+        Check if a datasource should be scraped based on its configuration.
+        
+        Args:
+            datasource_id: Identifier for the datasource (e.g., 'wfa_resource_page')
+            
+        Returns:
+            True if scraping should proceed, False if it should be skipped
+        """
+        return self.config_manager.should_scrape(datasource_id)
+    
+    def mark_datasource_scraped(self, datasource_id: str):
+        """
+        Update the last_scraped_at timestamp for a datasource after successful scraping.
+        
+        Args:
+            datasource_id: Identifier for the datasource
+        """
+        self.config_manager.update_last_scraped(datasource_id)
+    
+    def get_datasource_config(self, datasource_id: str) -> Dict[str, Any]:
+        """
+        Get the full configuration for a datasource.
+        
+        Args:
+            datasource_id: Identifier for the datasource
+            
+        Returns:
+            Configuration dict with scrape_frequency, check_content_hash, weights, etc.
+        """
+        return self.config_manager.get_datasource_config(datasource_id)
     
     def _format_resource_for_logging(self, resource: Resource, content_limit: int = 50) -> Dict[str, Any]:
         """Helper method to format a resource for JSON logging"""

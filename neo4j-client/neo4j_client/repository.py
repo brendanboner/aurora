@@ -5,6 +5,7 @@ import logging
 import json
 import os
 from pathlib import Path
+from datetime import datetime
 from .client import Neo4jClient
 from .models import *
 
@@ -87,6 +88,83 @@ class GraphRepository:
         
         self.logger.info("Base data initialization complete")
 
+    def _log_document_change(
+        self,
+        url_hash: str,
+        old_content_hash: Optional[str],
+        new_content_hash: str,
+        old_publish_date: Optional[datetime],
+        new_publish_date: Optional[datetime],
+        old_title: Optional[str],
+        new_title: str,
+        changed_fields: List[str]
+    ) -> bool:
+        """
+        Log document changes to PostgreSQL document_change_log table.
+        
+        Args:
+            url_hash: Unique identifier for the document
+            old_content_hash: Previous content hash
+            new_content_hash: New content hash
+            old_publish_date: Previous publish date
+            new_publish_date: New publish date
+            old_title: Previous title
+            new_title: New title
+            changed_fields: List of field names that changed
+            
+        Returns:
+            True if logged successfully, False otherwise
+        """
+        try:
+            import psycopg2
+            import psycopg2.extras
+            
+            pg_dsn = os.getenv(
+                "PG_DSN",
+                "postgresql://aurora:aurora_password@localhost:5432/aurora"
+            )
+            
+            conn = psycopg2.connect(pg_dsn)
+            conn.autocommit = True
+            
+            with conn.cursor() as cur:
+                query = """
+                INSERT INTO document_change_log (
+                    url_hash,
+                    old_content_hash,
+                    new_content_hash,
+                    old_publish_date,
+                    new_publish_date,
+                    old_title,
+                    new_title,
+                    changed_fields
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                
+                # Convert datetime to ISO strings for PostgreSQL
+                old_pub_str = old_publish_date.isoformat() if old_publish_date else None
+                new_pub_str = new_publish_date.isoformat() if new_publish_date else None
+                
+                cur.execute(query, (
+                    url_hash,
+                    old_content_hash,
+                    new_content_hash,
+                    old_pub_str,
+                    new_pub_str,
+                    old_title,
+                    new_title,
+                    json.dumps(changed_fields)
+                ))
+            
+            conn.close()
+            self.logger.info(f"Logged document change for {url_hash}: {changed_fields}")
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to log document change: {e}")
+            return False
+
     def create_node(self, node: Node) -> Optional[Dict[str, Any]]:
         """
         General method to create or update any node type in Neo4j.
@@ -95,6 +173,9 @@ class GraphRepository:
         
         Special handling for Resource nodes:
         - Automatically creates INGESTED_FROM relationship to the DataSource
+        - Detects content changes and logs them to PostgreSQL
+        - Sets content_changed_at when content_hash differs
+        - Preserves first_seen_at on creation
         
         Args:
             node: Node model instance
@@ -106,13 +187,74 @@ class GraphRepository:
         label = node.node_label
         id_field = node.id_field
 
+        # Special handling for Resource nodes - detect changes
+        if label == "Resource":
+            # First, fetch existing node to compare
+            fetch_query = f"""
+            MATCH (n:{label} {{{id_field}: $id_value}})
+            RETURN n.content_hash as old_content_hash,
+                   n.publish_date as old_publish_date,
+                   n.title as old_title,
+                   n.first_seen_at as first_seen_at
+            """
+            existing = self.client.execute_read(fetch_query, {"id_value": node_data[id_field]})
+            
+            if existing:
+                # Node exists - check for changes
+                old_data = existing[0]
+                changed_fields = []
+                
+                # Check content_hash
+                if old_data.get('old_content_hash') != node_data.get('content_hash'):
+                    changed_fields.append('content_hash')
+                
+                # Check publish_date
+                old_pub = old_data.get('old_publish_date')
+                new_pub = node_data.get('publish_date')
+                if old_pub != new_pub:
+                    changed_fields.append('publish_date')
+                
+                # Check title
+                if old_data.get('old_title') != node_data.get('title'):
+                    changed_fields.append('title')
+                
+                # If changes detected, log them and set content_changed_at
+                if changed_fields:
+                    self._log_document_change(
+                        url_hash=node_data[id_field],
+                        old_content_hash=old_data.get('old_content_hash'),
+                        new_content_hash=node_data.get('content_hash'),
+                        old_publish_date=old_data.get('old_publish_date'),
+                        new_publish_date=new_pub,
+                        old_title=old_data.get('old_title'),
+                        new_title=node_data.get('title'),
+                        changed_fields=changed_fields
+                    )
+                    # Set content_changed_at to current time
+                    node_data['content_changed_at'] = datetime.now().isoformat()
+                
+                # Preserve first_seen_at
+                if old_data.get('first_seen_at'):
+                    node_data['first_seen_at'] = old_data.get('first_seen_at')
+
         # Prepare query and parameters
-        query = f"""
-        MERGE (n:{label} {{{id_field}: $id_value}})
-        ON CREATE SET n += $properties, n.created_at = datetime()
-        ON MATCH SET n += $properties, n.last_updated = datetime()
-        RETURN n
-        """
+        if label == "Resource":
+            # For Resources, use special handling to preserve first_seen_at
+            query = f"""
+            MERGE (n:{label} {{{id_field}: $id_value}})
+            ON CREATE SET n += $properties, n.created_at = datetime(), n.first_seen_at = datetime()
+            ON MATCH SET n += $properties, n.last_updated = datetime()
+            RETURN n
+            """
+        else:
+            # For other nodes, use standard query
+            query = f"""
+            MERGE (n:{label} {{{id_field}: $id_value}})
+            ON CREATE SET n += $properties, n.created_at = datetime()
+            ON MATCH SET n += $properties, n.last_updated = datetime()
+            RETURN n
+            """
+        
         params = {
             "id_value": node_data[id_field],
             "properties": node_data
@@ -243,7 +385,8 @@ class GraphRepository:
         id_mappings = {
             "Topic": {},      # topic_id -> existing_topic_id
             "Person": {},     # person_id -> existing_person_id
-            "Organization": {}  # org_id -> existing_org_id
+            "Organization": {},  # org_id -> existing_org_id
+            "Event": {}       # event_id -> existing_event_id
         }
         
         result = {
@@ -251,13 +394,15 @@ class GraphRepository:
                 "resource": nodes.get("resource"),
                 "topics": [],
                 "people": [],
-                "organizations": []
+                "organizations": [],
+                "events": []
             },
             "relationships": [],
             "duplicates_found": {
                 "topics": [],
                 "people": [],
-                "organizations": []
+                "organizations": [],
+                "events": []
             }
         }
         
@@ -297,6 +442,18 @@ class GraphRepository:
                 )
             id_mappings["Organization"] = org_mappings
         
+        # Deduplicate events
+        if nodes.get("events"):
+            result["nodes"]["events"], result["duplicates_found"]["events"], event_mappings = \
+                self._deduplicate_node_list(
+                    nodes["events"], 
+                    "Event", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Event"] = event_mappings
+        
 
         self.logger.info(f"ID MAPPINGS: {id_mappings}")
 
@@ -304,7 +461,7 @@ class GraphRepository:
         # Update relationships to point to existing nodes
         remapped_relationships = self._remap_relationships(relationships, id_mappings)
 
-        self.logger.info(f"Deduplication complete. Found {len(result['duplicates_found']['topics'])} duplicate topics, {len(result['duplicates_found']['people'])} duplicate people, and {len(result['duplicates_found']['organizations'])} duplicate organizations.")
+        self.logger.info(f"Deduplication complete. Found {len(result['duplicates_found']['topics'])} duplicate topics, {len(result['duplicates_found']['people'])} duplicate people, {len(result['duplicates_found']['organizations'])} duplicate organizations, and {len(result['duplicates_found']['events'])} duplicate events.")
         
         # Return same structure as input, with duplicates removed and relationships updated
         return {
@@ -312,7 +469,8 @@ class GraphRepository:
                 "resource": result["nodes"]["resource"],
                 "topics": result["nodes"]["topics"],
                 "people": result["nodes"]["people"],
-                "organizations": result["nodes"]["organizations"]
+                "organizations": result["nodes"]["organizations"],
+                "events": result["nodes"]["events"]
             },
             "relationships": remapped_relationships
         }
@@ -360,7 +518,8 @@ class GraphRepository:
                 "resource": 0,
                 "topics": 0,
                 "people": 0,
-                "organizations": 0
+                "organizations": 0,
+                "events": 0
             },
             "relationships_created": 0,
             "success": False
@@ -394,6 +553,13 @@ class GraphRepository:
                     self.create_node(org)
                     stats["nodes_created"]["organizations"] += 1
             
+            # Insert event nodes
+            if nodes.get("events"):
+                self.logger.info(f"Inserting {len(nodes['events'])} event nodes...")
+                for event in nodes["events"]:
+                    self.create_node(event)
+                    stats["nodes_created"]["events"] += 1
+            
             # Insert relationships
             if relationships:
                 self.logger.info(f"Inserting {len(relationships)} relationships...")
@@ -408,7 +574,8 @@ class GraphRepository:
                 f"Nodes: {stats['nodes_created']['resource']} resource, "
                 f"{stats['nodes_created']['topics']} topics, "
                 f"{stats['nodes_created']['people']} people, "
-                f"{stats['nodes_created']['organizations']} organizations. "
+                f"{stats['nodes_created']['organizations']} organizations, "
+                f"{stats['nodes_created']['events']} events. "
                 f"Relationships: {stats['relationships_created']}"
             )
             
@@ -1198,3 +1365,496 @@ class GraphRepository:
         """
 
         return self.client.execute_query(query, params)
+    
+    def get_upcoming_events(
+        self,
+        start_date: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        organisations: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch upcoming Event nodes with optional filters.
+        
+        Args:
+            start_date: ISO-8601 date string (YYYY-MM-DD). Defaults to today if not provided.
+            topics: List of topic names/identifiers to filter by (events associated via resources)
+            organisations: List of organization names to filter by (events mentioned by org resources)
+            limit: Maximum number of events to return (default: 20)
+            
+        Returns:
+            List of dicts containing event data with associated resources:
+            {
+              "event": { ... Event properties ... },
+              "resources": [ {resource props}, ... ],
+              "topics": [ {topic props}, ... ],
+              "organisations": [ {org props}, ... ]
+            }
+        """
+        from datetime import date as date_module
+        
+        # Default to today if no start_date provided
+        if not start_date:
+            start_date = date_module.today().isoformat()
+        
+        topics = topics or []
+        organisations = organisations or []
+        
+        params = {
+            "start_date": start_date,
+            "topics": topics,
+            "organisations": organisations,
+            "limit": limit
+        }
+        
+        query = """
+        WITH
+            $topics        AS topics_param,
+            $organisations AS orgs_param,
+            $start_date    AS start_param,
+            $limit         AS limit_param
+        
+        // Match events that haven't ended yet (future or ongoing)
+        MATCH (e:Event)
+        WHERE
+            // Event hasn't ended yet (use start_date if no end_date)
+            (
+                (e.end_date IS NOT NULL AND datetime(e.end_date) >= datetime(start_param))
+                OR
+                (e.end_date IS NULL AND e.start_date IS NOT NULL AND datetime(e.start_date) >= datetime(start_param))
+            )
+        
+        // Find resources that mention this event
+        OPTIONAL MATCH (r:Resource)-[:MENTIONS_EVENT]->(e)
+        
+        // Find topics and organizations related to those resources
+        OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+        OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        
+        WITH e, r,
+             collect(DISTINCT t) AS topics,
+             collect(DISTINCT o) AS orgs,
+             topics_param, orgs_param
+        
+        // Apply topic and organization filters if specified
+        WHERE
+            (size(topics_param) = 0 OR any(tp IN topics_param WHERE 
+                any(topic IN topics WHERE 
+                    toLower(topic.name) = toLower(tp) OR
+                    topic.topic_id = tp OR
+                    any(alias IN topic.aliases WHERE toLower(alias) = toLower(tp))
+                )
+            ))
+            AND
+            (size(orgs_param) = 0 OR any(op IN orgs_param WHERE
+                any(org IN orgs WHERE
+                    toLower(org.name) = toLower(op) OR
+                    org.org_id = op OR
+                    any(alias IN org.aliases WHERE toLower(alias) = toLower(op))
+                )
+            ))
+        
+        // Collect all resources per event
+        WITH e,
+             collect(DISTINCT r) AS resources,
+             collect(DISTINCT topics) AS all_topics,
+             collect(DISTINCT orgs) AS all_orgs
+        
+        // Flatten nested lists and calculate urgency score
+        WITH e, resources,
+             reduce(flat = [], topics IN all_topics | flat + topics) AS flat_topics,
+             reduce(flat = [], orgs IN all_orgs | flat + orgs) AS flat_orgs,
+             // Urgency score: events closer to today rank higher
+             CASE
+                WHEN e.start_date IS NOT NULL THEN
+                    1.0 / (1.0 + duration.between(datetime($start_date), datetime(e.start_date)).days / 30.0)
+                ELSE 0.1
+             END AS urgency_score
+        
+        ORDER BY urgency_score DESC, e.start_date ASC
+        LIMIT $limit
+        
+        RETURN
+            e AS event,
+            resources AS resources,
+            flat_topics AS topics,
+            flat_orgs AS organisations
+        """
+        
+        return self.client.execute_query(query, params)
+    
+    def get_past_events(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        organisations: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch past Event nodes with optional filters.
+        
+        Args:
+            start_date: ISO-8601 date string (YYYY-MM-DD) for earliest event date
+            end_date: ISO-8601 date string (YYYY-MM-DD). Defaults to today if not provided.
+            topics: List of topic names/identifiers to filter by
+            organisations: List of organization names to filter by
+            limit: Maximum number of events to return (default: 20)
+            
+        Returns:
+            List of dicts containing event data with associated resources
+        """
+        from datetime import date as date_module
+        
+        # Default to today if no end_date provided
+        if not end_date:
+            end_date = date_module.today().isoformat()
+        
+        topics = topics or []
+        organisations = organisations or []
+        
+        params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "topics": topics,
+            "organisations": organisations,
+            "limit": limit
+        }
+        
+        query = """
+        WITH
+            $topics        AS topics_param,
+            $organisations AS orgs_param,
+            $start_date    AS start_param,
+            $end_date      AS end_param,
+            $limit         AS limit_param
+        
+        // Match events that have ended
+        MATCH (e:Event)
+        WHERE
+            // Event has ended (use start_date if no end_date)
+            (
+                (e.end_date IS NOT NULL AND datetime(e.end_date) < datetime(end_param))
+                OR
+                (e.end_date IS NULL AND e.start_date IS NOT NULL AND datetime(e.start_date) < datetime(end_param))
+            )
+            AND
+            // Apply start_date filter if provided
+            (
+                start_param IS NULL
+                OR
+                (e.start_date IS NOT NULL AND datetime(e.start_date) >= datetime(start_param))
+            )
+        
+        // Find resources that mention this event
+        OPTIONAL MATCH (r:Resource)-[:MENTIONS_EVENT]->(e)
+        
+        // Find topics and organizations related to those resources
+        OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+        OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        
+        WITH e, r,
+             collect(DISTINCT t) AS topics,
+             collect(DISTINCT o) AS orgs,
+             topics_param, orgs_param
+        
+        // Apply topic and organization filters if specified
+        WHERE
+            (size(topics_param) = 0 OR any(tp IN topics_param WHERE 
+                any(topic IN topics WHERE 
+                    toLower(topic.name) = toLower(tp) OR
+                    topic.topic_id = tp OR
+                    any(alias IN topic.aliases WHERE toLower(alias) = toLower(tp))
+                )
+            ))
+            AND
+            (size(orgs_param) = 0 OR any(op IN orgs_param WHERE
+                any(org IN orgs WHERE
+                    toLower(org.name) = toLower(op) OR
+                    org.org_id = op OR
+                    any(alias IN org.aliases WHERE toLower(alias) = toLower(op))
+                )
+            ))
+        
+        // Collect all resources per event
+        WITH e,
+             collect(DISTINCT r) AS resources,
+             collect(DISTINCT topics) AS all_topics,
+             collect(DISTINCT orgs) AS all_orgs
+        
+        // Flatten nested lists
+        WITH e, resources,
+             reduce(flat = [], topics IN all_topics | flat + topics) AS flat_topics,
+             reduce(flat = [], orgs IN all_orgs | flat + orgs) AS flat_orgs
+        
+        ORDER BY e.start_date DESC
+        LIMIT $limit
+        
+        RETURN
+            e AS event,
+            resources AS resources,
+            flat_topics AS topics,
+            flat_orgs AS organisations
+        """
+        
+        return self.client.execute_query(query, params)
+    
+    def query_recently_updated_documents(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        organisations: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch Resource nodes that were recently updated (content changed).
+        
+        Args:
+            start_date: ISO-8601 date string - start of date range (default: 7 days ago)
+            end_date: ISO-8601 date string - end of date range (default: today)
+            topics: List of topic names/identifiers to filter by
+            organisations: List of organization names to filter by
+            limit: Maximum number of documents to return
+            
+        Returns:
+            List of dicts containing document data with update_recency_score
+        """
+        from datetime import datetime, timedelta
+        
+        # Default to last 7 days if not provided
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=7)).date().isoformat()
+        if not end_date:
+            end_date = datetime.now().date().isoformat()
+        
+        topics = topics or []
+        organisations = organisations or []
+        
+        params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "topics": topics,
+            "organisations": organisations,
+            "limit": limit
+        }
+        
+        query = """
+        WITH
+            $topics        AS topics_param,
+            $organisations AS orgs_param,
+            $start_date    AS start_param,
+            $end_date      AS end_param,
+            $limit         AS limit_param
+        
+        MATCH (r:Resource)
+        WHERE
+            r.content_changed_at IS NOT NULL
+            AND datetime(r.content_changed_at) >= datetime(start_param)
+            AND datetime(r.content_changed_at) <= datetime(end_param)
+        
+        OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+        OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        OPTIONAL MATCH (r)-[:UPLOADED_BY]->(p:Person)
+        OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+        
+        WITH r, t, o, p, ds, topics_param, orgs_param
+        WHERE
+            (size(topics_param) = 0 OR t.name IN topics_param OR t.topic_id IN topics_param)
+            AND
+            (size(orgs_param) = 0 OR o.name IN orgs_param OR o.org_id IN orgs_param)
+        
+        WITH r,
+             collect(DISTINCT t {.topic_id, .name, .classification}) AS topics,
+             collect(DISTINCT o {.org_id, .name, .org_type}) AS orgs,
+             collect(DISTINCT p {.person_id, .name, .email}) AS people,
+             collect(DISTINCT ds {.source_id, .name}) AS datasources,
+             CASE
+                 WHEN r.content_changed_at IS NOT NULL THEN
+                     1.0 / (1.0 + duration.between(datetime(r.content_changed_at), datetime()).days / 30.0)
+                 ELSE 0.1
+             END AS update_recency_score
+        
+        ORDER BY update_recency_score DESC, r.content_changed_at DESC
+        LIMIT limit_param
+        
+        RETURN
+            r.url_hash     AS url_hash,
+            r.url          AS url,
+            r.title        AS title,
+            r.summary      AS summary,
+            r.category     AS category,
+            r.doc_type     AS doc_type,
+            r.publish_date AS publish_date,
+            r.scraped_at   AS scraped_at,
+            r.content_changed_at AS content_changed_at,
+            r.first_seen_at AS first_seen_at,
+            r.importance   AS importance,
+            update_recency_score AS update_recency_score,
+            topics         AS topics,
+            people         AS people,
+            orgs           AS organisations,
+            datasources    AS datasources
+        """
+        
+        return self.client.execute_query(query, params)
+    
+    def query_documents_by_publish_date(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        organisations: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch Resource nodes by publication date.
+        
+        Args:
+            start_date: ISO-8601 date string - start of date range
+            end_date: ISO-8601 date string - end of date range (default: today)
+            topics: List of topic names/identifiers to filter by
+            organisations: List of organization names to filter by
+            limit: Maximum number of documents to return
+            
+        Returns:
+            List of dicts containing document data with publish_recency_score
+        """
+        from datetime import datetime
+        
+        if not end_date:
+            end_date = datetime.now().date().isoformat()
+        
+        topics = topics or []
+        organisations = organisations or []
+        
+        params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "topics": topics,
+            "organisations": organisations,
+            "limit": limit
+        }
+        
+        query = """
+        WITH
+            $topics        AS topics_param,
+            $organisations AS orgs_param,
+            $start_date    AS start_param,
+            $end_date      AS end_param,
+            $limit         AS limit_param
+        
+        MATCH (r:Resource)
+        WHERE
+            r.publish_date IS NOT NULL
+            AND (start_param IS NULL OR datetime(r.publish_date) >= datetime(start_param))
+            AND datetime(r.publish_date) <= datetime(end_param)
+        
+        OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+        OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        OPTIONAL MATCH (r)-[:UPLOADED_BY]->(p:Person)
+        OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+        
+        WITH r, t, o, p, ds, topics_param, orgs_param
+        WHERE
+            (size(topics_param) = 0 OR t.name IN topics_param OR t.topic_id IN topics_param)
+            AND
+            (size(orgs_param) = 0 OR o.name IN orgs_param OR o.org_id IN orgs_param)
+        
+        WITH r,
+             collect(DISTINCT t {.topic_id, .name, .classification}) AS topics,
+             collect(DISTINCT o {.org_id, .name, .org_type}) AS orgs,
+             collect(DISTINCT p {.person_id, .name, .email}) AS people,
+             collect(DISTINCT ds {.source_id, .name}) AS datasources,
+             CASE
+                 WHEN r.publish_date IS NOT NULL THEN
+                     1.0 / (1.0 + duration.between(datetime(r.publish_date), datetime()).days / 365.0)
+                 ELSE 0.1
+             END AS publish_recency_score
+        
+        ORDER BY publish_recency_score DESC, r.publish_date DESC
+        LIMIT limit_param
+        
+        RETURN
+            r.url_hash     AS url_hash,
+            r.url          AS url,
+            r.title        AS title,
+            r.summary      AS summary,
+            r.category     AS category,
+            r.doc_type     AS doc_type,
+            r.publish_date AS publish_date,
+            r.scraped_at   AS scraped_at,
+            r.content_changed_at AS content_changed_at,
+            r.first_seen_at AS first_seen_at,
+            r.importance   AS importance,
+            publish_recency_score AS publish_recency_score,
+            topics         AS topics,
+            people         AS people,
+            orgs           AS organisations,
+            datasources    AS datasources
+        """
+        
+        return self.client.execute_query(query, params)
+    
+    def query_temporal_mixed(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        organisations: Optional[List[str]] = None,
+        publish_weight: float = 1.0,
+        update_weight: float = 0.8,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        Fetch both newly published and recently updated documents.
+        
+        Args:
+            start_date: ISO-8601 date string - start of date range
+            end_date: ISO-8601 date string - end of date range (default: today)
+            topics: List of topic names/identifiers to filter by
+            organisations: List of organization names to filter by
+            publish_weight: Weight for newly published documents (default: 1.0)
+            update_weight: Weight for updated documents (default: 0.8)
+            limit: Maximum total documents to return
+            
+        Returns:
+            Dict with documents, published_count, updated_count, total_count
+        """
+        from datetime import datetime
+        
+        if not end_date:
+            end_date = datetime.now().date().isoformat()
+        
+        # Query both published and updated documents
+        published = self.query_documents_by_publish_date(start_date, end_date, topics, organisations, limit)
+        updated = self.query_recently_updated_documents(start_date, end_date, topics, organisations, limit)
+        
+        # Apply weights and combine
+        for doc in published:
+            doc['temporal_type'] = 'published'
+            doc['weighted_score'] = doc.get('publish_recency_score', 0.5) * publish_weight
+        
+        for doc in updated:
+            doc['temporal_type'] = 'updated'
+            doc['weighted_score'] = doc.get('update_recency_score', 0.5) * update_weight
+        
+        # Merge and deduplicate by url_hash (keep higher score)
+        doc_map = {}
+        for doc in published + updated:
+            url_hash = doc['url_hash']
+            if url_hash not in doc_map or doc['weighted_score'] > doc_map[url_hash]['weighted_score']:
+                doc_map[url_hash] = doc
+        
+        # Sort by weighted score
+        combined = sorted(doc_map.values(), key=lambda x: x['weighted_score'], reverse=True)[:limit]
+        
+        published_count = sum(1 for doc in combined if doc['temporal_type'] == 'published')
+        updated_count = sum(1 for doc in combined if doc['temporal_type'] == 'updated')
+        
+        return {
+            "documents": combined,
+            "published_count": published_count,
+            "updated_count": updated_count,
+            "total_count": len(combined)
+        }

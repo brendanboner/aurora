@@ -112,6 +112,13 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                   <span className="sidebar-icon"><MonitoringIcon size={16} /></span>
                   <span>Monitoring</span>
                 </Link>
+                <Link 
+                  to="/admin/system-config" 
+                  className={`sidebar-subitem ${isActive('/admin/system-config') ? 'active' : ''}`}
+                >
+                  <span className="sidebar-icon">⚙️</span>
+                  <span>System Config</span>
+                </Link>
               </div>
             )}
           </div>

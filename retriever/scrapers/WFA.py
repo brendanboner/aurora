@@ -284,6 +284,14 @@ class WFAScraper(BaseScraper):
         """Daily scraper execution - scrapes only the first page for new content"""
         logging.info("Starting Wi-Fi Alliance daily resource scraper...")
         
+        datasource_id = "wfa_resource_page"
+        
+        # Check if we should scrape based on configuration
+        if not self.should_scrape_datasource(datasource_id):
+            config = self.get_datasource_config(datasource_id)
+            logging.info(f"Skipping scrape for {datasource_id} - frequency: {config.get('scrape_frequency')}, last scraped: {config.get('last_scraped_at')}")
+            return
+        
         # Get resource links from first page only
         resources = await self.get_resource_links()
         logging.info(f"Found {len(resources)} resources on first page")
@@ -306,6 +314,10 @@ class WFAScraper(BaseScraper):
             
             # Be respectful - add delay between requests
             await asyncio.sleep(settings.scraper_delay)
+        
+        # Mark datasource as scraped
+        self.mark_datasource_scraped(datasource_id)
+        logging.info(f"Updated last_scraped_at for {datasource_id}")
         
         # Clear current processing when done
         self.clear_current_processing()

@@ -95,9 +95,11 @@ class Node(BaseModel):
         Excludes None values and converts datetime to ISO format.
         """
         data = self.model_dump(exclude=["node_label", "id_field", "datasource_id"])
-        # Convert datetime to ISO string for Neo4j
-        if 'created_at' in data and isinstance(data['created_at'], datetime):
-            data['created_at'] = data['created_at'].isoformat()
+        # Convert datetime fields to ISO string for Neo4j
+        datetime_fields = ['created_at', 'scraped_at', 'publish_date', 'content_changed_at', 'first_seen_at', 'start_date', 'end_date']
+        for field in datetime_fields:
+            if field in data and data[field] is not None and isinstance(data[field], datetime):
+                data[field] = data[field].isoformat()
         return data
 
     def get_embedding_fields(self) -> List[str]:
@@ -302,9 +304,19 @@ class Resource(Node):
         description="Impact and outcomes on Extreme Networks company, products, services, clients"
     )
     
-    publish_date: Optional[str] = Field(
+    publish_date: Optional[datetime] = Field(
         None,
-        description="Publication date of the resource"
+        description="Publication date of the resource (ISO 8601 datetime)"
+    )
+    
+    content_changed_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp when the resource content was last changed (based on content_hash)"
+    )
+    
+    first_seen_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp when the resource was first created in the knowledge graph"
     )
     
     language: str = Field(
@@ -519,12 +531,75 @@ class Tag(Node):
 
 
 class Event(Node):
-    """Event node - represents a general event."""
+    """
+    Event node - represents a scheduled event, meeting, conference, or deadline.
     
-    name: str
-    event_type: str
-    date: str = ""
-    location: str = ""
+    Events are temporal entities extracted from documents that have specific dates.
+    They can represent future events (conferences, meetings, deadlines) or past events
+    (historical meetings, completed conferences).
+    
+    The event_id is automatically generated from the name if not provided.
+    """
+
+    node_label: str = "Event"
+    id_field: str = "event_id"
+    
+    # Unique identifier for the event
+    event_id: str = Field(
+        default="",
+        description="Unique slugified identifier generated from name (e.g., 'wfa-congress-2025', 'ieee-meeting-dec-2025')"
+    )
+    
+    name: str = Field(
+        ...,
+        description="Human-readable event name (e.g., 'Wi-Fi Alliance Congress 2025', 'IEEE 802.11 Working Group Meeting')"
+    )
+    
+    event_type: str = Field(
+        ...,
+        description="Type of event (e.g., 'conference', 'meeting', 'webinar', 'deadline', 'workshop', 'seminar', 'summit')"
+    )
+    
+    start_date: Optional[datetime] = Field(
+        None,
+        description="Start date and time of the event (ISO 8601 format)"
+    )
+    
+    end_date: Optional[datetime] = Field(
+        None,
+        description="End date and time of the event (ISO 8601 format, for multi-day events)"
+    )
+    
+    location: str = Field(
+        default="",
+        description="Location of the event (e.g., 'Dubai, UAE', 'Virtual', 'San Francisco, CA')"
+    )
+    
+    timezone: Optional[str] = Field(
+        None,
+        description="Timezone of the event (e.g., 'UTC', 'America/New_York', 'Europe/London')"
+    )
+    
+    description: str = Field(
+        default="",
+        description="Brief description of the event"
+    )
+    
+    url: Optional[str] = Field(
+        None,
+        description="URL for event registration or more information"
+    )
+    
+    # Build slugified event_id from name if not provided
+    @model_validator(mode='after')
+    def validate_id(self):
+        if (not self.event_id) and self.name:
+            self.event_id = slugify(self.name)
+        return self
+
+    def get_embedding_fields(self) -> List[str]:
+        # Specify fields relevant for Event embeddings
+        return ["name", "event_type", "location", "description"]
 
 
 # ========== Relationship Models ==========
@@ -663,3 +738,18 @@ class ResourceUploadedByPerson(Relationship):
     relationship_label: str = "UPLOADED_BY"
     
     uploaded_at: Optional[str] = Field(None, description="Timestamp when uploaded")
+
+class ResourceMentionsEvent(Relationship):
+    """Resource - mentions -> Event"""
+    source_node_label: str = "Resource"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "Event"
+    target_id_field: str = "event_id"
+    relationship_label: str = "MENTIONS_EVENT"
+    
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+    evidence: str = Field(..., description="Direct quote from content mentioning this event")
+    
+    TRUNCATE = {
+        "evidence": 240
+    }

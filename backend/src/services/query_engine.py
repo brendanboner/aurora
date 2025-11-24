@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 import logging
 
 from src.services.llm_service import parse_query_to_filters, summarise_documents
-from src.services.graph_service import query_documents_from_filters
+from src.services.graph_service import query_documents_from_filters, query_upcoming_events, query_past_events, query_temporal_documents
 from src.services import postgres
 
 log = logging.getLogger("query_engine")
@@ -41,7 +41,11 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     
     # Step 2: Parse question with LLM to extract filters
     llm_filters = parse_query_to_filters(question)
+    query_intent = llm_filters.get('query_intent', 'recent')
+    temporal_focus = llm_filters.get('temporal_focus')  # None, "published", "updated", or "mixed"
     log.info(f"✓ LLM extracted filters:")
+    log.info(f"  Query Intent: {query_intent}")
+    log.info(f"  Temporal Focus: {temporal_focus or 'none'}")
     log.info(f"  Topics: {llm_filters.get('topics', [])}")
     log.info(f"  Organisations: {llm_filters.get('organisations', [])}")
     log.info(f"  People: {llm_filters.get('people', [])}")
@@ -49,6 +53,13 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     log.info(f"  Doc Type: {llm_filters.get('doc_type', 'any')}")
     log.info(f"  Date range: {llm_filters.get('start_date')} to {llm_filters.get('end_date')}")
     log.info(f"  Limit: {llm_filters.get('limit', 20)}")
+    
+    # Step 2.5: Load system configuration for relevance weights
+    system_config = postgres.get_system_configuration("default")
+    publish_weight = system_config.get("publish_weight", 1.0)
+    update_weight = system_config.get("update_weight", 0.8)
+    event_weight = system_config.get("event_weight", 0.9)
+    log.info(f"✓ Loaded relevance weights: publish={publish_weight}, update={update_weight}, event={event_weight}")
     
     # Detect if this is a meta-query about the knowledge base itself
     # Meta-queries ask about stats, counts, or structure rather than content
@@ -109,31 +120,101 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     log.info(f"  Date range: {merged_filters.get('start_date')} to {merged_filters.get('end_date')}")
     log.info(f"  Result limit: {merged_filters.get('limit', 20)}")
     
-    # Determine if we should retrieve documents
+    # Determine if we should retrieve documents or events based on query intent
     should_retrieve_docs = has_query_filters and not is_meta_query
+    docs = []
+    events = []
     
     if should_retrieve_docs:
-        # Step 4: Query Neo4j with merged filters
-        docs = query_documents_from_filters(merged_filters)
-        log.info(f"✓ Retrieved {len(docs)} documents from Neo4j knowledge graph")
+        # Step 4: Query Neo4j based on temporal intent and temporal focus
         
-        if not docs:
-            log.warning("✗ No documents found matching query and filters")
+        # Handle temporal focus for document queries (published/updated/mixed)
+        if temporal_focus in ["published", "updated", "mixed"]:
+            log.info(f"✓ Temporal document query detected - focus: {temporal_focus}")
+            temporal_result = query_temporal_documents(
+                merged_filters,
+                temporal_focus,
+                publish_weight=publish_weight,
+                update_weight=update_weight
+            )
+            docs = temporal_result.get("documents", [])
+            published_count = temporal_result.get("published_count", 0)
+            updated_count = temporal_result.get("updated_count", 0)
+            log.info(f"✓ Retrieved {len(docs)} temporal documents ({published_count} published, {updated_count} updated)")
+            
+            # Also query events based on query_intent
+            if query_intent == "future":
+                events = query_upcoming_events(merged_filters)
+                log.info(f"✓ Also retrieved {len(events)} upcoming events")
+            elif query_intent == "historical":
+                events = query_past_events(merged_filters)
+                log.info(f"✓ Also retrieved {len(events)} past events")
+            elif query_intent == "mixed":
+                events_future = query_upcoming_events(merged_filters)
+                events_past = query_past_events(merged_filters)
+                events = events_future + events_past
+                log.info(f"✓ Also retrieved {len(events)} total events ({len(events_future)} upcoming, {len(events_past)} past)")
+        
+        # Handle event-focused queries (no temporal document focus)
+        elif query_intent == "future":
+            # Query for upcoming events
+            log.info("✓ Future-oriented query detected - fetching upcoming events")
+            events = query_upcoming_events(merged_filters)
+            log.info(f"✓ Retrieved {len(events)} upcoming events from Neo4j")
+            
+            # Also get recent related documents for context
+            log.info("✓ Also fetching related documents for context")
+            docs = query_documents_from_filters(merged_filters)
+            log.info(f"✓ Retrieved {len(docs)} related documents")
+            
+        elif query_intent == "historical":
+            # Query for past events and documents
+            log.info("✓ Historical query detected - fetching past events and documents")
+            events = query_past_events(merged_filters)
+            log.info(f"✓ Retrieved {len(events)} past events from Neo4j")
+            
+            docs = query_documents_from_filters(merged_filters)
+            log.info(f"✓ Retrieved {len(docs)} documents from Neo4j")
+            
+        elif query_intent == "mixed":
+            # Query both future events and recent documents
+            log.info("✓ Mixed temporal query - fetching both events and documents")
+            events_future = query_upcoming_events(merged_filters)
+            events_past = query_past_events(merged_filters)
+            events = events_future + events_past
+            log.info(f"✓ Retrieved {len(events)} total events ({len(events_future)} upcoming, {len(events_past)} past)")
+            
+            docs = query_documents_from_filters(merged_filters)
+            log.info(f"✓ Retrieved {len(docs)} documents from Neo4j")
+            
+        else:  # "recent" or default
+            # Query for recent documents only
+            log.info("✓ Recent/default query - fetching documents")
+            docs = query_documents_from_filters(merged_filters)
+            log.info(f"✓ Retrieved {len(docs)} documents from Neo4j knowledge graph")
+        
+        if not docs and not events:
+            log.warning("✗ No documents or events found matching query and filters")
     else:
-        docs = []
         if is_meta_query:
             log.info("✓ Meta-query detected - skipping document retrieval")
         else:
             log.info("✓ No filters specified - answering without document context")
     
-    # Step 5: Summarize documents with LLM, incorporating user preferences
+    # Step 5: Summarize documents and events with LLM, incorporating user preferences
     user_pref_context = {
         "topics": pref_topics,
         "organisations": pref_orgs,
         "people": pref_people
     } if has_preferences else None
     
-    answer = summarise_documents(question, docs, user_pref_context)
+    # Combine documents and events for summarization
+    # For now, pass events in user_pref_context to maintain backwards compatibility
+    context_with_events = user_pref_context.copy() if user_pref_context else {}
+    if events:
+        context_with_events["events"] = events
+    
+    answer = summarise_documents(question, docs, context_with_events if context_with_events else None)
     
     # Step 6: Prepare response with limited topic display for users with many preferences
     formatted_docs = _format_documents_for_response(docs, max_topics_per_doc=10) if docs else []
@@ -149,8 +230,12 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
                 "people": pref_people
             } if has_preferences else None
         },
+        "query_intent": query_intent,
+        "temporal_focus": temporal_focus,
         "documents": formatted_docs,
         "document_count": len(docs),
+        "events": events,
+        "event_count": len(events),
         "is_meta_query": is_meta_query,
         "pipeline_debug": {
             "stage_1_user_preferences": {

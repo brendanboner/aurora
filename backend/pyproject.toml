@@ -18,6 +18,7 @@ dependencies = [
     "neo4j-client",
     "pika",
     "redis",
+    "python-dateutil",
 ]
 
 [tool.setuptools.packages.find]

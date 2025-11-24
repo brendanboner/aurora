@@ -1,7 +1,7 @@
 """Admin routes for monitoring services."""
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import pika
@@ -10,6 +10,7 @@ import redis
 import json
 import subprocess
 import logging
+from src.services import postgres
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 logger = logging.getLogger(__name__)
@@ -379,3 +380,137 @@ async def clear_failed():
     except Exception as e:
         logger.error(f"Failed to clear failed list: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clear failed list: {str(e)}")
+
+
+# ========== System Configuration Endpoints ==========
+
+class SystemConfigurationResponse(BaseModel):
+    """System configuration model for API responses."""
+    datasource_id: str
+    scrape_frequency: str
+    check_content_hash: bool
+    publish_weight: float = Field(..., ge=0.0, le=1.0)
+    update_weight: float = Field(..., ge=0.0, le=1.0)
+    event_weight: float = Field(..., ge=0.0, le=1.0)
+    last_scraped_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class SystemConfigurationCreate(BaseModel):
+    """Model for creating system configuration."""
+    datasource_id: str = Field(..., min_length=1, max_length=255)
+    scrape_frequency: str = Field(default="daily", regex="^(hourly|daily|weekly|monthly|manual)$")
+    check_content_hash: bool = True
+    publish_weight: float = Field(default=1.0, ge=0.0, le=1.0)
+    update_weight: float = Field(default=0.8, ge=0.0, le=1.0)
+    event_weight: float = Field(default=0.9, ge=0.0, le=1.0)
+
+
+class SystemConfigurationUpdate(BaseModel):
+    """Model for updating system configuration."""
+    scrape_frequency: Optional[str] = Field(None, regex="^(hourly|daily|weekly|monthly|manual)$")
+    check_content_hash: Optional[bool] = None
+    publish_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    update_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    event_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+
+
+@router.get("/system-configuration", response_model=List[SystemConfigurationResponse])
+async def get_all_system_configurations():
+    """
+    Get all system configurations.
+    """
+    try:
+        configs = postgres.get_all_system_configurations()
+        return configs
+    except Exception as e:
+        logger.error(f"Failed to get system configurations: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get system configurations: {str(e)}")
+
+
+@router.get("/system-configuration/{datasource_id}", response_model=SystemConfigurationResponse)
+async def get_system_configuration(datasource_id: str):
+    """
+    Get system configuration for a specific datasource.
+    """
+    try:
+        config = postgres.get_system_configuration(datasource_id)
+        if not config:
+            raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
+        return config
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get system configuration: {str(e)}")
+
+
+@router.post("/system-configuration", response_model=SystemConfigurationResponse, status_code=201)
+async def create_system_configuration(config: SystemConfigurationCreate):
+    """
+    Create or update system configuration for a datasource.
+    """
+    try:
+        result = postgres.upsert_system_configuration(
+            datasource_id=config.datasource_id,
+            scrape_frequency=config.scrape_frequency,
+            check_content_hash=config.check_content_hash,
+            publish_weight=config.publish_weight,
+            update_weight=config.update_weight,
+            event_weight=config.event_weight
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to create system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create system configuration: {str(e)}")
+
+
+@router.patch("/system-configuration/{datasource_id}", response_model=SystemConfigurationResponse)
+async def update_system_configuration(datasource_id: str, config: SystemConfigurationUpdate):
+    """
+    Update system configuration for a datasource.
+    Only updates provided fields, leaving others unchanged.
+    """
+    try:
+        # Check if configuration exists
+        existing = postgres.get_system_configuration(datasource_id)
+        if not existing.get("created_at"):
+            raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
+        
+        result = postgres.upsert_system_configuration(
+            datasource_id=datasource_id,
+            scrape_frequency=config.scrape_frequency,
+            check_content_hash=config.check_content_hash,
+            publish_weight=config.publish_weight,
+            update_weight=config.update_weight,
+            event_weight=config.event_weight
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update system configuration: {str(e)}")
+
+
+@router.delete("/system-configuration/{datasource_id}")
+async def delete_system_configuration(datasource_id: str):
+    """
+    Delete system configuration for a datasource.
+    """
+    try:
+        # Check if configuration exists
+        existing = postgres.get_system_configuration(datasource_id)
+        if not existing.get("created_at"):
+            raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
+        
+        query = "DELETE FROM system_configuration WHERE datasource_id = %s"
+        postgres.execute(query, (datasource_id,))
+        
+        return {"status": "success", "message": f"Configuration for datasource '{datasource_id}' deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete system configuration: {str(e)}")

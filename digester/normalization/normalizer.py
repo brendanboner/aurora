@@ -14,6 +14,7 @@ class MetadataNormalizer:
         "RESOURCE_RELATES_TO_TOPIC": ResourceRelatesToTopic,
         "RESOURCE_MENTIONS_PERSON": ResourceMentionsPerson,
         "RESOURCE_MENTIONS_ORGANIZATION": ResourceMentionsOrganization,
+        "RESOURCE_MENTIONS_EVENT": ResourceMentionsEvent,
         "PERSON_AFFILIATED_WITH_ORGANIZATION": PersonAffiliatedWithOrganization,
         "PERSON_CONNECTED_TO_TOPIC": PersonConnectedToTopic,
         "ORGANIZATION_ASSOCIATED_WITH_TOPIC": OrganizationAssociatedWithTopic,
@@ -24,6 +25,7 @@ class MetadataNormalizer:
         "RESOURCE_RELATES_TO_TOPIC": {"source": "title", "target": "lower"},
         "RESOURCE_MENTIONS_PERSON": {"source": "title", "target": "title"},
         "RESOURCE_MENTIONS_ORGANIZATION": {"source": "title", "target": "title"},
+        "RESOURCE_MENTIONS_EVENT": {"source": "title", "target": "title"},
         "PERSON_AFFILIATED_WITH_ORGANIZATION": {"source": "title", "target": "title"},
         "PERSON_CONNECTED_TO_TOPIC": {"source": "title", "target": "lower"},
         "ORGANIZATION_ASSOCIATED_WITH_TOPIC": {"source": "title", "target": "lower"},
@@ -120,6 +122,18 @@ class MetadataNormalizer:
         # Build Resource models
         resource_data = nodes.get("resource", {})
         try:
+            # Parse publish_date to datetime if available
+            publish_date = None
+            if resource_data.get("publish_date") and resource_data.get("publish_date") != "unknown":
+                try:
+                    from dateutil.parser import parse as date_parse
+                    publish_date = date_parse(resource_data.get("publish_date"))
+                except Exception as e:
+                    logger.warning(f"Failed to parse publish_date '{resource_data.get('publish_date')}': {e}")
+                    # Fall back to scraped_at if publish_date is unparseable
+                    if resource_data.get("scraped_at"):
+                        publish_date = resource_data.get("scraped_at")
+            
             resource_model = Resource(
                 url=resource_data.get("url"),
                 title=MetadataNormalizer.normalize_string_field(resource_data.get("title"), case="title"),
@@ -131,7 +145,7 @@ class MetadataNormalizer:
                 importance=resource_data.get("importance", 0.0),
                 importance_explanation=MetadataNormalizer.normalize_string_field(resource_data.get("importance_explanation", "unknown"), case="sentence"),
                 extreme_impact=MetadataNormalizer.normalize_string_field(resource_data.get("extreme_impact", None), case="sentence"),
-                publish_date=resource_data.get("publish_date", "unknown"),
+                publish_date=publish_date,
                 access_notes=MetadataNormalizer.normalize_string_field(resource_data.get("access_notes", None), case="sentence"),
                 datasource_id=resource_data.get("datasource_id")
             )
@@ -179,7 +193,42 @@ class MetadataNormalizer:
             except Exception as e:
                 logger.warning(f"Failed to create Person model for {person_data.get('name')}: {e}")
         
-        logger.info(f"Built models: 1 resource, {len(topic_models)} topics, {len(person_models)} people, {len(org_models)} organizations")
+        # Build Event models
+        event_models = []
+        for event_data in nodes.get("events", []):
+            try:
+                # Parse start_date and end_date to datetime objects
+                start_date = None
+                if event_data.get("start_date"):
+                    try:
+                        from dateutil.parser import parse as date_parse
+                        start_date = date_parse(event_data.get("start_date"))
+                    except Exception as e:
+                        logger.warning(f"Failed to parse start_date for event {event_data.get('name')}: {e}")
+                
+                end_date = None
+                if event_data.get("end_date"):
+                    try:
+                        from dateutil.parser import parse as date_parse
+                        end_date = date_parse(event_data.get("end_date"))
+                    except Exception as e:
+                        logger.warning(f"Failed to parse end_date for event {event_data.get('name')}: {e}")
+                
+                event = Event(
+                    name=MetadataNormalizer.normalize_string_field(event_data.get("name"), case="title"),
+                    event_type=MetadataNormalizer.normalize_string_field(event_data.get("event_type")),
+                    start_date=start_date,
+                    end_date=end_date,
+                    location=MetadataNormalizer.normalize_string_field(event_data.get("location", ""), case="title"),
+                    timezone=MetadataNormalizer.normalize_string_field(event_data.get("timezone", None)),
+                    description=MetadataNormalizer.normalize_string_field(event_data.get("description", ""), case="sentence"),
+                    url=MetadataNormalizer.normalize_string_field(event_data.get("url", None))
+                )
+                event_models.append(event)
+            except Exception as e:
+                logger.warning(f"Failed to create Event model for {event_data.get('name')}: {e}")
+        
+        logger.info(f"Built models: 1 resource, {len(topic_models)} topics, {len(person_models)} people, {len(org_models)} organizations, {len(event_models)} events")
         
         # Normalize Relationships
         relationships = metadata.get("relationships", [])
@@ -188,6 +237,7 @@ class MetadataNormalizer:
         topic_id_map = {t.name: getattr(t, t.id_field) for t in topic_models}
         person_id_map = {p.name: getattr(p, p.id_field) for p in person_models}
         org_id_map = {o.name: getattr(o, o.id_field) for o in org_models}
+        event_id_map = {e.name: getattr(e, e.id_field) for e in event_models}
 
         relationship_models = []
         for rel_data in relationships:
@@ -245,6 +295,10 @@ class MetadataNormalizer:
                 target_id = org_id_map.get(normalized_target_identifier)
                 if not target_id:
                     logger.warning(f"Organization not found for target_identifier '{target_identifier}' (normalized: '{normalized_target_identifier}'). Available: {list(org_id_map.keys())}")
+            elif rel_type == "RESOURCE_MENTIONS_EVENT":
+                target_id = event_id_map.get(normalized_target_identifier)
+                if not target_id:
+                    logger.warning(f"Event not found for target_identifier '{target_identifier}' (normalized: '{normalized_target_identifier}'). Available: {list(event_id_map.keys())}")
             elif rel_type.endswith("_TO_RESOURCE"):
                 target_id = resource_url_hash
             else:
@@ -272,7 +326,8 @@ class MetadataNormalizer:
                 "resource": resource_model,
                 "topics": topic_models,
                 "people": person_models,
-                "organizations": org_models
+                "organizations": org_models,
+                "events": event_models
             },
             "relationships": relationship_models
         }

@@ -130,3 +130,59 @@ def upsert_user_preferences(
         notify_digest
     )
     return fetchone(query, params)
+
+
+# ========== System Configuration ==========
+
+def get_system_configuration(datasource_id: str = "default") -> Dict[str, Any]:
+    """Get system configuration for a datasource.
+    
+    Returns configuration with relevance weights for temporal queries.
+    If no configuration exists, returns default values.
+    """
+    query = "SELECT * FROM system_configuration WHERE datasource_id = %s"
+    result = fetchone(query, (datasource_id,))
+    if not result:
+        # Return default configuration
+        return {
+            "datasource_id": datasource_id,
+            "scrape_frequency": "daily",
+            "check_content_hash": True,
+            "publish_weight": 1.0,
+            "update_weight": 0.8,
+            "event_weight": 0.9,
+            "last_scraped_at": None
+        }
+    return result
+
+
+def upsert_system_configuration(
+    datasource_id: str,
+    scrape_frequency: Optional[str] = None,
+    check_content_hash: Optional[bool] = None,
+    publish_weight: Optional[float] = None,
+    update_weight: Optional[float] = None,
+    event_weight: Optional[float] = None
+) -> Dict[str, Any]:
+    """Create or update system configuration for a datasource."""
+    query = """
+        INSERT INTO system_configuration 
+            (datasource_id, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (datasource_id) DO UPDATE SET
+            scrape_frequency = COALESCE(EXCLUDED.scrape_frequency, system_configuration.scrape_frequency),
+            check_content_hash = COALESCE(EXCLUDED.check_content_hash, system_configuration.check_content_hash),
+            publish_weight = COALESCE(EXCLUDED.publish_weight, system_configuration.publish_weight),
+            update_weight = COALESCE(EXCLUDED.update_weight, system_configuration.update_weight),
+            event_weight = COALESCE(EXCLUDED.event_weight, system_configuration.event_weight),
+            updated_at = NOW()
+        RETURNING *
+    """
+    params = (datasource_id, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
+    return fetchone(query, params)
+
+
+def get_all_system_configurations() -> List[Dict[str, Any]]:
+    """Get all system configurations."""
+    query = "SELECT * FROM system_configuration ORDER BY datasource_id"
+    return fetchall(query)

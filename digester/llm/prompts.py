@@ -13,6 +13,10 @@ Document Information:
 - Datasource ID: {datasource_id}
 - Publish Date: {publish_date}
 
+IMPORTANT: Convert all dates to ISO 8601 format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
+For example: "November 15, 2025" should become "2025-11-15"
+If only year and month are known, use YYYY-MM-01 format.
+
 Content (may be partial):
 {content}
 
@@ -107,6 +111,26 @@ Organizations
     - org_type (string, optional; e.g., "company", "institution", "standards body" "government agency")
     - homepage_url (string, optional)
 
+Events
+  Fields:
+    - name (string, required; e.g., "Wi-Fi Alliance Congress 2025", "IEEE 802.11 Working Group Meeting")
+    - event_type (string, required; one of: "conference", "meeting", "webinar", "deadline", "workshop", "seminar", "summit", "launch", "other")
+    - start_date (string, required; ISO 8601 format YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS; e.g., "2025-12-10", "2025-12-10T09:00:00")
+    - end_date (string, optional; ISO 8601 format for multi-day events)
+    - location (string, optional; e.g., "Dubai, UAE", "Virtual", "San Francisco, CA")
+    - timezone (string, optional; e.g., "UTC", "America/New_York", "Europe/London")
+    - description (string, optional; brief description of the event)
+    - url (string, optional; URL for event registration or more information)
+
+  Guidelines:
+    - Extract ONLY events that have explicit dates mentioned in the document
+    - Include both future events (conferences, meetings, deadlines) and past events
+    - Be precise with dates - convert relative dates like "next month" to absolute ISO dates based on the publish_date
+    - If only a date is mentioned without time, use YYYY-MM-DD format
+    - If time is mentioned, use YYYY-MM-DDTHH:MM:SS format
+    - For multi-day events, include both start_date and end_date
+    - Limit to maximum 5 most relevant events
+
 Relationships to Extract:
 
 RESOURCE_RELATES_TO_TOPIC
@@ -158,6 +182,13 @@ ORGANIZATION_ASSOCIATED_WITH_TOPIC
     - affiliation (string, optional)
     - evidence (string, required, direct quote from content, max 240 chars)
 
+RESOURCE_MENTIONS_EVENT
+  From: RESOURCE
+  To: Event
+  Fields:
+    - confidence (float, 0.0–1.0, required)
+    - evidence (string, required, direct quote from content mentioning the event, max 240 chars)
+
 
 Extract the above nodes in the JSON format below.
 If there are no relevant entities for a node type, return an empty array or null as appropriate.
@@ -177,11 +208,23 @@ Return ONLY valid JSON in this exact format:
       }}
     ],
     "people": [ {{ "name": "string", "email": "string" }} ],
-    "organizations": [ {{ "name": "string", "aliases": [ "string" ], "org_type": "string", "homepage_url": "string" }} ]
+    "organizations": [ {{ "name": "string", "aliases": [ "string" ], "org_type": "string", "homepage_url": "string" }} ],
+    "events": [
+      {{
+        "name": "string",
+        "event_type": "conference|meeting|webinar|deadline|workshop|seminar|summit|launch|other",
+        "start_date": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+        "end_date": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+        "location": "string",
+        "timezone": "string",
+        "description": "string",
+        "url": "string"
+      }}
+    ]
   }},
   "relationships": [
     {{
-      "relationship_type": "RESOURCE_RELATES_TO_TOPIC",
+      "relationship_type": "RESOURCE_RELATES_TO_TOPIC|RESOURCE_MENTIONS_PERSON|RESOURCE_MENTIONS_ORGANIZATION|RESOURCE_MENTIONS_EVENT|PERSON_AFFILIATED_WITH_ORGANIZATION|PERSON_CONNECTED_TO_TOPIC|ORGANIZATION_ASSOCIATED_WITH_TOPIC",
       "source_identifier": "string",
       "target_identifier": "string",
       "confidence": 0.0,
@@ -197,6 +240,7 @@ Return ONLY valid JSON in this exact format:
 
 Important guidelines:
 - Limit topics to maximum 10 most relevant items.
+- Limit events to maximum 5 most relevant events.
 - Be specific and accurate.
 - All confidence and relevance scores must be between 0.0 and 1.0.
 - evidence is a direct quote from the content, max 240 characters. Do not go over the 240 character limit. Cut the quote short if needed.
@@ -218,12 +262,13 @@ Extracted Metadata from Chunks:
 {chunks_metadata}
 
 Create a unified metadata extraction that:
-1. Combines all unique items from lists (topics, people, relationships, etc.)
+1. Combines all unique items from lists (topics, people, events, relationships, etc.)
 2. Creates a comprehensive summary under resource that captures the full document scope
 3. Removes duplicates and near-duplicates
 4. Keeps only the most relevant and accurate information
 5. Limits topics to maximum 10 most relevant items
-6. For duplicate relationships with multiple confidence/relevance scores, average them appropriately
+6. Limits events to maximum 5 most relevant events
+7. For duplicate relationships with multiple confidence/relevance scores, average them appropriately
 
 Return ONLY valid JSON in this exact format:
 
@@ -240,7 +285,19 @@ Return ONLY valid JSON in this exact format:
       }}
     ],
     "people": [ {{ "name": "string", "email": "string" }} ],
-    "organizations": [ {{ "name": "string", "aliases": [ "string" ], "org_type": "string", "homepage_url": "string" }} ]
+    "organizations": [ {{ "name": "string", "aliases": [ "string" ], "org_type": "string", "homepage_url": "string" }} ],
+    "events": [
+      {{
+        "name": "string",
+        "event_type": "conference|meeting|webinar|deadline|workshop|seminar|summit|launch|other",
+        "start_date": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+        "end_date": "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+        "location": "string",
+        "timezone": "string",
+        "description": "string",
+        "url": "string"
+      }}
+    ]
   }},
   "relationships": [
     {{
@@ -309,8 +366,16 @@ ORGANIZATION_ASSOCIATED_WITH_TOPIC
     - affiliation (string, optional)
     - evidence (string, required, direct quote from content, max 240 chars)
 
+RESOURCE_MENTIONS_EVENT
+  From: RESOURCE
+  To: Event
+  Fields:
+    - confidence (float, 0.0–1.0, required)
+    - evidence (string, required, direct quote from content mentioning the event, max 240 chars)
+
 Important guidelines:
 - Limit topics to maximum 10 most relevant items
+- Limit events to maximum 5 most relevant events
 - Ensure all confidence scores are between 0.0 and 1.0
 - For duplicate relationships, merge them and average their scores
 - evidence must be a direct quote from the content, max 240 characters. Do not go over the 240 character limit. Cut the quote short if needed.
