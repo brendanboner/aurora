@@ -475,6 +475,142 @@ class GraphRepository:
             "relationships": remapped_relationships
         }
     
+    # ========== Deduplication Operations ==========
+    
+    def deduplicate_nodes(
+        self, 
+        nodes_dict: Dict[str, Any],
+        relationships: List[Relationship],
+        k_neighbors: int = 5,
+        similarity_threshold: float = 0.85,
+        llm_review_threshold: float = 0.65
+    ) -> Dict[str, Any]:
+        """
+        Deduplicate nodes (topics, people, organizations, events) before insertion.
+        
+        Process:
+        1. Check if node exists by ID (Neo4j MERGE handles this)
+        2. Find k nearest neighbors using vector similarity
+        3. Score potential duplicates using additional features
+        4. Handle duplicates based on score
+        5. Update relationships to point to existing nodes when duplicates found
+        6. Return deduplicated nodes with updated relationships
+        
+        Args:
+            nodes_dict: Dictionary with structure:
+                {
+                    "nodes": {
+                        "resource": resource_model,
+                        "topics": [topic_models],
+                        "people": [person_models],
+                        "organizations": [org_models],
+                        "events": [event_models]
+                    }
+                }
+            relationships: List of relationship models
+            k_neighbors: Number of nearest neighbors to check
+            similarity_threshold: Minimum similarity score for automatic duplicate (default: 0.85)
+            llm_review_threshold: Minimum similarity score to trigger LLM review (default: 0.65)
+            
+        Returns:
+            Dictionary with deduplicated nodes, updated relationships, and merge information
+        """
+        nodes = nodes_dict.get("nodes", {})
+        
+        # Track ID mappings: new_id -> existing_id for duplicates
+        id_mappings = {
+            "Topic": {},      # topic_id -> existing_topic_id
+            "Person": {},     # person_id -> existing_person_id
+            "Organization": {},  # org_id -> existing_org_id
+            "Event": {}       # event_id -> existing_event_id
+        }
+        
+        result = {
+            "nodes": {
+                "resource": nodes.get("resource"),
+                "topics": [],
+                "people": [],
+                "organizations": [],
+                "events": []
+            },
+            "relationships": [],
+            "duplicates_found": {
+                "topics": [],
+                "people": [],
+                "organizations": [],
+                "events": []
+            }
+        }
+        
+        # Deduplicate topics
+        if nodes.get("topics"):
+            result["nodes"]["topics"], result["duplicates_found"]["topics"], topic_mappings = \
+                self._deduplicate_node_list(
+                    nodes["topics"], 
+                    "Topic", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Topic"] = topic_mappings
+        
+        # Deduplicate people
+        if nodes.get("people"):
+            result["nodes"]["people"], result["duplicates_found"]["people"], person_mappings = \
+                self._deduplicate_node_list(
+                    nodes["people"], 
+                    "Person", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Person"] = person_mappings
+        
+        # Deduplicate organizations
+        if nodes.get("organizations"):
+            result["nodes"]["organizations"], result["duplicates_found"]["organizations"], org_mappings = \
+                self._deduplicate_node_list(
+                    nodes["organizations"], 
+                    "Organization", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Organization"] = org_mappings
+        
+        # Deduplicate events
+        if nodes.get("events"):
+            result["nodes"]["events"], result["duplicates_found"]["events"], event_mappings = \
+                self._deduplicate_node_list(
+                    nodes["events"], 
+                    "Event", 
+                    k_neighbors, 
+                    similarity_threshold,
+                    llm_review_threshold
+                )
+            id_mappings["Event"] = event_mappings
+        
+
+        self.logger.info(f"ID MAPPINGS: {id_mappings}")
+
+
+        # Update relationships to point to existing nodes
+        remapped_relationships = self._remap_relationships(relationships, id_mappings)
+
+        self.logger.info(f"Deduplication complete. Found {len(result['duplicates_found']['topics'])} duplicate topics, {len(result['duplicates_found']['people'])} duplicate people, {len(result['duplicates_found']['organizations'])} duplicate organizations, and {len(result['duplicates_found']['events'])} duplicate events.")
+        
+        # Return same structure as input, with duplicates removed and relationships updated
+        return {
+            "nodes": {
+                "resource": result["nodes"]["resource"],
+                "topics": result["nodes"]["topics"],
+                "people": result["nodes"]["people"],
+                "organizations": result["nodes"]["organizations"],
+                "events": result["nodes"]["events"]
+            },
+            "relationships": remapped_relationships
+        }
+    
     def insert_entities(
         self,
         entities_dict: Dict[str, Any]
