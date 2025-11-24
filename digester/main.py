@@ -17,8 +17,9 @@ from settings import settings
 from utils.logger import setup_logger
 from rabbitmq_client import RabbitMQConsumer, RabbitMQProducer
 from llm import MetadataExtractor
-from normalization import MetadataValidator, MetadataNormalizer
-from neo4j_client import Neo4jClient, GraphRepository
+from normalization import MetadataValidator, MetadataModelBuilder
+from neo4j_client import Neo4jClient, GraphRepository, NodeDeduplicator
+
 from neo4j_client.models import Person, ResourceUploadedByPerson
 import redis
 import json
@@ -58,7 +59,7 @@ class DocumentDigester:
         
         self.metadata_extractor = MetadataExtractor()
         self.validator = MetadataValidator()
-        self.normalizer = MetadataNormalizer()
+        self.model_builder = MetadataModelBuilder()
         
         # Initialize Neo4j client with settings and logger
         self.neo4j_client = Neo4jClient(
@@ -69,6 +70,7 @@ class DocumentDigester:
             logger_instance=logger
         )
         self.graph_repository = None
+        self.deduplicator = None
         
         # Initialize Redis for monitoring and content caching
         try:
@@ -103,6 +105,9 @@ class DocumentDigester:
         
         # Create repository with logger
         self.graph_repository = GraphRepository(self.neo4j_client, logger_instance=logger)
+        
+        # Create deduplicator with logger
+        self.deduplicator = NodeDeduplicator(self.neo4j_client, logger_instance=logger)
         
         # Initialize base data (organizations and data sources)
         self.graph_repository.initialize_base_data()
@@ -315,13 +320,11 @@ class DocumentDigester:
             self.update_current_processing(message, "extracting metadata")
             metadata = self.metadata_extractor.extract_metadata(message)            
 
-            logger.info("Step 3: Normalizing metadata...")
-            self.update_current_processing(message, "normalizing")
-            models = self.normalizer.normalize_metadata(metadata)
+            logger.info("Step 3: Building validated models from metadata...")
+            models = self.model_builder.build_models(metadata)
 
             logger.info("Step 4: Deduping nodes...")
-            self.update_current_processing(message, "deduplicating")
-            deduped_models = self.graph_repository.deduplicate_nodes(models)
+            deduped_models = self.deduplicator.deduplicate_nodes(models)
 
             logger.info("Step 5: Inserting entities into knowledge graph...")
             self.update_current_processing(message, "inserting into graph")
@@ -377,7 +380,7 @@ class DocumentDigester:
             return True
         
         except ValueError as e:
-            # Validation errors (including normalization failures) - send to DLQ
+            # Validation errors (including token limit and normalization failures) - send to DLQ
             title = message.get("title", "Unknown")
             error_msg = str(e)
             logger.error(f"Validation error for document '{title}': {error_msg}")

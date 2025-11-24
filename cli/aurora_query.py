@@ -36,6 +36,11 @@ def main():
         default="http://localhost:8000",
         help="Backend API URL (default: http://localhost:8000)"
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show detailed filter information"
+    )
     parser.add_argument("question", nargs="+", help="Natural language question")
     args = parser.parse_args()
 
@@ -107,7 +112,7 @@ def main():
         print("\n⚠️  No documents found")
     
     # Display filters (optional, can be hidden with a flag)
-    if "--verbose" in sys.argv or "-v" in sys.argv:
+    if args.verbose:
         print("\n" + "=" * 80)
         print("🔍 FILTERS APPLIED")
         print("=" * 80)

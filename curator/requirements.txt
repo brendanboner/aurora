@@ -1,0 +1,22 @@
+# Neo4j Client (shared library)
+# -e neo4j-client
+
+# LLM
+openai>=1.54.0  # Includes Azure OpenAI support
+
+# Configuration
+python-dotenv>=1.0.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# Machine Learning / Clustering
+scikit-learn>=1.3.0
+numpy>=1.24.0
+sentence-transformers
+
+# Messaging & Monitoring
+pika>=1.3.0  # RabbitMQ client
+redis>=5.0.0  # Redis client for monitoring
+
+# Utilities
+python-dateutil>=2.9.0

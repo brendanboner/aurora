@@ -1,0 +1,223 @@
+{
+  "description": "Test fixtures for deduplication testing with controlled examples",
+  "test_cases": [
+    {
+      "name": "IEEE 802.11 Variants - Should Deduplicate",
+      "description": "Different representations of the same Wi-Fi standard should be identified as duplicates",
+      "topics": [
+        {
+          "name": "802.11",
+          "classification": "standard",
+          "identifier": "IEEE 802.11",
+          "issuer": "IEEE",
+          "aliases": ["WiFi", "Wireless LAN"]
+        },
+        {
+          "name": "ieee 802.11",
+          "classification": "standard",
+          "identifier": "IEEE 802.11",
+          "issuer": "IEEE",
+          "aliases": ["Wi-Fi"]
+        },
+        {
+          "name": "ieee802.11",
+          "classification": "standard",
+          "identifier": "IEEE 802.11",
+          "issuer": "IEEE",
+          "aliases": []
+        },
+        {
+          "name": "IEEE 802.11",
+          "classification": "standard",
+          "identifier": "802.11",
+          "issuer": "Institute of Electrical and Electronics Engineers",
+          "aliases": ["WiFi Standard"]
+        }
+      ],
+      "expected_unique_count": 0,
+      "expected_duplicates": 4
+    },
+    {
+      "name": "Wi-Fi 6E Variants - Should Deduplicate",
+      "description": "Different names for Wi-Fi 6E standard",
+      "topics": [
+        {
+          "name": "Wi-Fi 6E",
+          "classification": "standard",
+          "identifier": "IEEE 802.11ax",
+          "issuer": "Wi-Fi Alliance",
+          "aliases": ["WiFi 6E", "802.11ax-6GHz"]
+        },
+        {
+          "name": "WiFi 6E",
+          "classification": "standard",
+          "identifier": "802.11ax",
+          "issuer": "Wi-Fi Alliance",
+          "aliases": ["Wi-Fi 6 Extended"]
+        },
+        {
+          "name": "802.11ax 6GHz",
+          "classification": "standard",
+          "identifier": "IEEE 802.11ax",
+          "issuer": "IEEE",
+          "aliases": ["Wi-Fi 6E"]
+        }
+      ],
+      "expected_unique_count": 0,
+      "expected_duplicates": 3
+    },
+    {
+      "name": "Similar but Different Topics - Should NOT Deduplicate",
+      "description": "Related but distinct standards should remain separate",
+      "topics": [
+        {
+          "name": "Wi-Fi 6",
+          "classification": "standard",
+          "identifier": "IEEE 802.11ax",
+          "issuer": "Wi-Fi Alliance",
+          "aliases": ["WiFi 6", "802.11ax"]
+        },
+        {
+          "name": "Wi-Fi 6E",
+          "classification": "standard",
+          "identifier": "IEEE 802.11ax-6GHz",
+          "issuer": "Wi-Fi Alliance",
+          "aliases": ["WiFi 6E"]
+        },
+        {
+          "name": "Wi-Fi 7",
+          "classification": "standard",
+          "identifier": "IEEE 802.11be",
+          "issuer": "Wi-Fi Alliance",
+          "aliases": ["WiFi 7", "802.11be"]
+        }
+      ],
+      "expected_unique_count": 2,
+      "expected_duplicates": 1
+    },
+    {
+      "name": "Organization Name Variants - Should Deduplicate",
+      "description": "Different representations of the same organization",
+      "organizations": [
+        {
+          "name": "IEEE",
+          "org_type": "standards body",
+          "aliases": ["Institute of Electrical and Electronics Engineers"],
+          "homepage_url": "https://www.ieee.org"
+        },
+        {
+          "name": "Institute of Electrical and Electronics Engineers",
+          "org_type": "standards body",
+          "aliases": ["IEEE"],
+          "homepage_url": "https://ieee.org"
+        },
+        {
+          "name": "I.E.E.E.",
+          "org_type": "standards body",
+          "aliases": ["IEEE"],
+          "homepage_url": null
+        }
+      ],
+      "expected_unique_count": 0,
+      "expected_duplicates": 3
+    },
+    {
+      "name": "Person Name Variants - Should Deduplicate",
+      "description": "Same person with different name formats",
+      "people": [
+        {
+          "name": "John Smith",
+          "email": "john.smith@example.com"
+        },
+        {
+          "name": "John A. Smith",
+          "email": "john.smith@example.com"
+        },
+        {
+          "name": "J. Smith",
+          "email": "john.smith@example.com"
+        }
+      ],
+      "expected_unique_count": 0,
+      "expected_duplicates": 3
+    },
+    {
+      "name": "Similar Person Names - Should NOT Deduplicate",
+      "description": "Different people with similar names",
+      "people": [
+        {
+          "name": "John Smith",
+          "email": "john.smith@company1.com"
+        },
+        {
+          "name": "John Smith",
+          "email": "john.smith@company2.com"
+        },
+        {
+          "name": "Jane Smith",
+          "email": "jane.smith@company1.com"
+        }
+      ],
+      "expected_unique_count": 2,
+      "expected_duplicates": 1
+    },
+    {
+      "name": "Acronym Variations - Should Deduplicate",
+      "description": "Topics with and without acronyms",
+      "topics": [
+        {
+          "name": "Software Defined Networking",
+          "classification": "technology",
+          "identifier": null,
+          "issuer": null,
+          "aliases": ["SDN"]
+        },
+        {
+          "name": "SDN",
+          "classification": "technology",
+          "identifier": null,
+          "issuer": null,
+          "aliases": ["Software Defined Networking", "Software-Defined Networking"]
+        },
+        {
+          "name": "Software-Defined Networking",
+          "classification": "technology",
+          "identifier": null,
+          "issuer": null,
+          "aliases": ["SDN"]
+        }
+      ],
+      "expected_unique_count": 0,
+      "expected_duplicates": 3
+    },
+    {
+      "name": "Edge Cases - Punctuation and Spacing",
+      "description": "Test handling of punctuation, spacing, and special characters",
+      "topics": [
+        {
+          "name": "Wi-Fi",
+          "classification": "technology",
+          "identifier": null,
+          "issuer": "Wi-Fi Alliance",
+          "aliases": ["WiFi", "wifi"]
+        },
+        {
+          "name": "WiFi",
+          "classification": "technology",
+          "identifier": null,
+          "issuer": "Wi-Fi Alliance",
+          "aliases": ["Wi-Fi"]
+        },
+        {
+          "name": "wi-fi",
+          "classification": "technology",
+          "identifier": null,
+          "issuer": "WiFi Alliance",
+          "aliases": []
+        }
+      ],
+      "expected_unique_count": 0,
+      "expected_duplicates": 3
+    }
+  ]
+}

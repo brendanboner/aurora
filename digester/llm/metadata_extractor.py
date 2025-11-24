@@ -57,8 +57,19 @@ class MetadataExtractor:
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
+            
+            # Check if response was truncated due to token limit
+            finish_reason = response.choices[0].finish_reason
+            if finish_reason == "length":
+                error_msg = f"LLM response truncated due to max_tokens limit ({self.max_tokens}). Content too large for current token limit."
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
             return response.choices[0].message.content
         
+        except ValueError:
+            # Re-raise ValueError (token limit errors)
+            raise
         except Exception as e:
             logger.error(f"Azure OpenAI call failed: {e}", exc_info=True)
             raise
@@ -89,6 +100,13 @@ class MetadataExtractor:
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response as JSON: {e}")
             logger.error(f"Response was: {response}")
+            
+            # Check if this might be due to truncation (unclosed JSON)
+            if response and not response.rstrip().endswith('}'):
+                error_msg = f"LLM response appears truncated (does not end with closing brace). Likely hit token limit."
+                logger.error(error_msg)
+                raise ValueError(error_msg) from e
+            
             raise
     
     def merge_metadata(self, title: str, chunks_metadata: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -118,6 +136,13 @@ class MetadataExtractor:
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse merged metadata as JSON: {e}")
             logger.error(f"Response was: {response}")
+            
+            # Check if this might be due to truncation (unclosed JSON)
+            if response and not response.rstrip().endswith('}'):
+                error_msg = f"Merged metadata response appears truncated (does not end with closing brace). Likely hit token limit."
+                logger.error(error_msg)
+                raise ValueError(error_msg) from e
+            
             raise
     
     def extract_metadata(self, message: Dict[str, Any]) -> Dict[str, Any]:
@@ -150,12 +175,17 @@ class MetadataExtractor:
             try:
                 chunk_metadata = self.extract_from_chunk(message, chunk)
                 chunks_metadata.append(chunk_metadata)
+            except ValueError:
+                # Validation errors (token limits, malformed data) should fail immediately
+                # Re-raise to send to DLQ without wasting more API calls
+                raise
             except Exception as e:
+                # Other errors (network issues, etc.) might be transient - log and try next chunk
                 logger.error(f"Failed to extract metadata from chunk {i+1}: {e}")
                 continue
         
         if not chunks_metadata:
-            raise Exception("Failed to extract metadata from any chunk")
+            raise ValueError("Failed to extract metadata from any chunk")
         
         # Merge metadata from all chunks
         logger.info("Merging metadata from all chunks")
@@ -175,7 +205,7 @@ class MetadataExtractor:
             "content_hash": content_hash,
         })
         
-        logger.info(f"Extracted metadata: \n%s", json.dumps(final_metadata, indent=2))
+        logger.debug(f"Extracted metadata: \n%s", json.dumps(final_metadata, indent=2))
         
         logger.info(f"Metadata extraction complete for: {message.get('title', 'Unknown')}")
         return final_metadata

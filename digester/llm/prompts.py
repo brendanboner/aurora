@@ -85,15 +85,17 @@ Topics
     - classification (string, required; one of:
       "standard","certification","regulation","framework","specification",
       "protocol","technology","concept","product","service","process","tool","other")
-    - identifier (string, optional; e.g., "IEEE 802.11be", "ISO/IEC 27001")
-    - issuer (string, optional; e.g., "ISO", "Wi-Fi Alliance", "NIST")
-    - aliases (array of strings, optional; e.g., ["Wi-Fi 7", "IEEE 802.11be"])
+    - identifier (string, optional; e.g., "IEEE 802.11be", "ISO/IEC 27001") - Only to be used by topics classified as "standard" or "certification". To be filled in using background knowledge if not explicitly stated in the document.
+    - issuer (string, optional; e.g., "ISO", "Wi-Fi Alliance", "NIST") - Only to be used by topics classified as "standard" or "certification". To be filled in using background knowledge if not explicitly stated in the document.
+    - aliases (array of strings, required; e.g., ["Wi-Fi 7", "IEEE 802.11be"]) - To be generated using background knowledge if not explicitly stated in the document.
 
   Guidelines:
     - Limit topics to maximum 10 most relevant items.
     - Do NOT create topics that are clearly People or Organizations.
     - For well-known standards (e.g., Wi-Fi 7, USB 4.0, ISO/IEC 27001), classify them as "standard" even if the document does not explicitly say "standard".
     - Use identifier and issuer only when you are confident they are correct.
+    - For acronyms: Use widely recognized acronyms as the name (e.g., "AI", "IoT", "VPN") with the expansion in aliases (e.g., aliases: ["Artificial Intelligence"]). For less common acronyms, use the full term as the name and include the acronym in aliases.
+    - For naming keep the most well known simple name and generalize when possible without losing information (e.g., "Wi-Fi" instead of "Wireless Fidelity", "PostgreSQL" instead of "PostgreSQL Database", "802.11" instead of "IEEE 802.11").
 
 People
   Fields:
@@ -103,7 +105,7 @@ People
 Organizations
   Fields:
     - name (string, required)
-    - aliases (array of strings, optional)
+    - aliases (array of strings, required) - To be generated using background knowledge if not explicitly stated in the document.
     - org_type (string, optional; e.g., "company", "institution", "standards body" "government agency")
     - homepage_url (string, optional)
 

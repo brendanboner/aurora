@@ -3,8 +3,7 @@
 ## 🚧 Current Issues & Technical Debt
 
 ### Infrastructure
-- [ ] Make RabbitMQ queues persistent
-- [ ] Consider enterprise Neo4j for production deployment
+- [ ] Make Neo4j persistent
 - [ ] Make logging consistent across all services
 
 ### Data Processing
@@ -12,14 +11,25 @@
 - [ ] Implement duplicate resource detection in retriever service
 - [ ] Add config for data scraping to retriever 
 - [ ] Digester might need to give resources a priority
-- [ ] Should digester validate the data from the queue before processing?
-- [ ] Retriever source filed hardcoded. This should come from a config file
+- [ ] Retriever source url hardcoded. This should come from a config file?
 - [ ] Should we only store https urls?
-- [ ] Retriever Needs to add doctype to the message and chance resource type to category
-- [ ] Need to add in back off tries for message digestions that fail
+- [ ] For very long documents (ex: https://www.wi-fi.org/system/files/Assessing%20the%20economic%20value%20of%20Wi-Fi%20Thailand%20Final%20version.pdf) 
+        we are hitting max return token limits in LLM calls. May need to seperate merging into nodes and relationships and explore where we are hitting token limits.
 - [ ] Need to sanitize node and relationship creation to prevent field injection attacks
-
+- [ ] Digester normalization should happen in the models when instantiating objects
 - [ ] In a reconciliation step we will likely need to address topic conformance nodes and keep them up to date
+- [ ] We do not handle duplicate people. 2 people with the same name will be classified into one.
+- [ ] Retriever needs to check for updated resources and reprocess them if they have changed
+
+- [X] Retriever Needs to add doctype to the message and change resource type to category
+- [X] Add multi threading to digester to process rabbitmq messages to avoid hanging and missing heartbeats
+- [X] Should digester validate the data from the queue before processing?
+- [X] Need to add in back off tries for message digestions that fail - Messages that fail end up in dlq
+
+
+
+### Curation
+- [ ] Not all redundant relationships are cleaned up - However they are redundant so not causing issues
 
 ### Security
 - [ ] Implement prompt injection prevention for LLM processing

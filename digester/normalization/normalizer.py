@@ -4,6 +4,7 @@ import ast
 from utils.logger import setup_logger
 from settings import settings
 from neo4j_client.models import *
+from neo4j_client.models import normalize_string
 
 
 logger = setup_logger(__name__, settings.log_level)
@@ -28,73 +29,6 @@ class MetadataNormalizer:
         "PERSON_CONNECTED_TO_TOPIC": {"source": "title", "target": "lower"},
         "ORGANIZATION_ASSOCIATED_WITH_TOPIC": {"source": "title", "target": "lower"},
     }
-    @staticmethod
-    def normalize_string_field(value: Any, case: str = "lower"):
-        """
-        Normalize a string field or list of string fields from LLM output.
-        - Handles both single strings and lists of strings
-        - Converts to string if not already
-        - Strips leading/trailing whitespace
-        - Collapses multiple spaces
-        - Normalizes case: 'upper', 'lower', 'title', 'sentence'
-        - Returns empty string for None (or empty list for list input)
-        - Filters out None/empty values from lists
-        
-        Args:
-            value: The input value to normalize (str, List[str], or Any)
-            case: Case normalization ('upper', 'lower', 'title', 'sentence')
-            
-        Returns:
-            Normalized string, or list of normalized strings if input was a list
-        """
-        # Handle None
-        if value is None:
-            return ""
-        
-        # Handle list of strings
-        if isinstance(value, list):
-            normalized_list = []
-            for item in value:
-                if item is None:
-                    continue
-                if not isinstance(item, str):
-                    item = str(item)
-                item = item.strip()
-                item = " ".join(item.split())
-                
-                # Apply case normalization
-                if case == "upper":
-                    item = item.upper()
-                elif case == "lower":
-                    item = item.lower()
-                elif case == "title":
-                    item = item.title()
-                elif case == "sentence":
-                    if item:
-                        item = item[0].upper() + item[1:].lower()
-                
-                # Only add non-empty strings
-                if item:
-                    normalized_list.append(item)
-            
-            return normalized_list
-        
-        # Handle single string
-        if not isinstance(value, str):
-            value = str(value)
-        value = value.strip()
-        value = " ".join(value.split())
-        if case == "upper":
-            value = value.upper()
-        elif case == "lower":
-            value = value.lower()
-        elif case == "title":
-            value = value.title()
-        elif case == "sentence":
-            if value:
-                value = value[0].upper() + value[1:].lower()
-        return value
-    """Normalize extracted metadata."""
     
     @staticmethod
     def normalize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,17 +56,17 @@ class MetadataNormalizer:
         try:
             resource_model = Resource(
                 url=resource_data.get("url"),
-                title=MetadataNormalizer.normalize_string_field(resource_data.get("title"), case="title"),
-                summary=MetadataNormalizer.normalize_string_field(resource_data.get("summary"), case="sentence"),
+                title=resource_data.get("title"),
+                summary=resource_data.get("summary"),
                 content_hash=resource_data.get("content_hash"),
-                doc_type=MetadataNormalizer.normalize_string_field(resource_data.get("doc_type", "unknown")),
-                category=MetadataNormalizer.normalize_string_field(resource_data.get("category", "unknown")),
+                doc_type=resource_data.get("doc_type", "unknown"),
+                category=resource_data.get("category", "unknown"),
                 scraped_at=resource_data.get("scraped_at", ""),
                 importance=resource_data.get("importance", 0.0),
-                importance_explanation=MetadataNormalizer.normalize_string_field(resource_data.get("importance_explanation", "unknown"), case="sentence"),
-                extreme_impact=MetadataNormalizer.normalize_string_field(resource_data.get("extreme_impact", None), case="sentence"),
+                importance_explanation=resource_data.get("importance_explanation", "unknown"),
+                extreme_impact=resource_data.get("extreme_impact", None),
                 publish_date=resource_data.get("publish_date", "unknown"),
-                access_notes=MetadataNormalizer.normalize_string_field(resource_data.get("access_notes", None), case="sentence"),
+                access_notes=resource_data.get("access_notes", None),
                 datasource_id=resource_data.get("datasource_id")
             )
         except Exception as e:
@@ -143,11 +77,12 @@ class MetadataNormalizer:
         for topic_data in nodes.get("topics", []):
             try:
                 topic = Topic(
-                    name=MetadataNormalizer.normalize_string_field(topic_data.get("name"), case="lower"),
-                    classification=MetadataNormalizer.normalize_string_field(topic_data.get("classification")),
-                    identifier=MetadataNormalizer.normalize_string_field(topic_data.get("identifier", None)),
-                    issuer=MetadataNormalizer.normalize_string_field(topic_data.get("issuer", None)),
-                    aliases=MetadataNormalizer.normalize_string_field(topic_data.get("aliases", []), case="title")
+                    name=topic_data.get("name"),
+                    classification=topic_data.get("classification"),
+                    identifier=topic_data.get("identifier", None),
+                    issuer=topic_data.get("issuer", None),
+                    aliases=topic_data.get("aliases", []),
+                    created_by="digester"
                 )
                 topic_models.append(topic)
             except Exception as e:
@@ -158,10 +93,10 @@ class MetadataNormalizer:
         for org_data in nodes.get("organizations", []):
             try:
                 org = Organization(
-                    name=MetadataNormalizer.normalize_string_field(org_data.get("name"), case="title"),
-                    org_type=MetadataNormalizer.normalize_string_field(org_data.get("org_type")),
-                    aliases=MetadataNormalizer.normalize_string_field(org_data.get("aliases", []), case="title"),
-                    homepage_url=MetadataNormalizer.normalize_string_field(org_data.get("homepage_url", None))
+                    name=org_data.get("name"),
+                    org_type=org_data.get("org_type"),
+                    aliases=org_data.get("aliases", []),
+                    homepage_url=org_data.get("homepage_url", None)
                 )
                 org_models.append(org)
             except Exception as e:
@@ -172,8 +107,8 @@ class MetadataNormalizer:
         for person_data in nodes.get("people", []):
             try:
                 person = Person(
-                    name=MetadataNormalizer.normalize_string_field(person_data.get("name"), case="title"),
-                    email=MetadataNormalizer.normalize_string_field(person_data.get("email", None))
+                    name=person_data.get("name"),
+                    email=person_data.get("email", None)
                 )
                 person_models.append(person)
             except Exception as e:
@@ -204,7 +139,7 @@ class MetadataNormalizer:
                 # Check if it's a URL (simple heuristic: starts with http:// or https://)
                 if isinstance(identifier, str) and (identifier.startswith('http://') or identifier.startswith('https://')):
                     return identifier  # Don't normalize URLs
-                return MetadataNormalizer.normalize_string_field(identifier, case=target_case)
+                return normalize_string(identifier, case=target_case)
             
             # Get normalization cases from RELATIONSHIP_CASE_MAP, fallback to defaults
             case_map = MetadataNormalizer.RELATIONSHIP_CASE_MAP.get(rel_type, {})
@@ -276,14 +211,3 @@ class MetadataNormalizer:
             },
             "relationships": relationship_models
         }
-    
-    @staticmethod
-    def _extract_version(edition_name: str) -> str:
-        """Extract version number from standard edition name."""
-        import re
-        # Look for patterns like "2021", "v3", "3.0", etc.
-        version_pattern = r'(?:v?(\d+(?:\.\d+)*)|-(\d{4}))'
-        match = re.search(version_pattern, edition_name)
-        if match:
-            return match.group(1) or match.group(2)
-        return ""

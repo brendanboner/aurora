@@ -1,0 +1,191 @@
+{
+  "name_similarity_tests": [
+    {
+      "description": "IEEE 802.11 - exact match (different case)",
+      "name1": "802.11",
+      "name2": "802.11",
+      "expected_range": [0.99, 1.0],
+      "should_be_duplicate": true
+    },
+    {
+      "description": "IEEE 802.11 - with prefix",
+      "name1": "802.11",
+      "name2": "ieee 802.11",
+      "expected_range": [0.70, 0.85],
+      "should_be_duplicate": false,
+      "note": "Prefix adds characters, Jaro-Winkler gives partial credit"
+    },
+    {
+      "description": "IEEE 802.11 - no space variant",
+      "name1": "802.11",
+      "name2": "ieee802.11",
+      "expected_range": [0.75, 0.90],
+      "should_be_duplicate": true,
+      "note": "Jaro-Winkler handles concatenation well"
+    },
+    {
+      "description": "IEEE 802.11 - case insensitive",
+      "name1": "ieee 802.11",
+      "name2": "IEEE 802.11",
+      "expected_range": [0.99, 1.0],
+      "should_be_duplicate": true
+    },
+    {
+      "description": "Wi-Fi hyphen vs no hyphen",
+      "name1": "Wi-Fi",
+      "name2": "WiFi",
+      "expected_range": [0.90, 1.0],
+      "should_be_duplicate": true,
+      "note": "Jaro-Winkler excellent for punctuation differences"
+    },
+    {
+      "description": "Wi-Fi case variations",
+      "name1": "wi-fi",
+      "name2": "WiFi",
+      "expected_range": [0.90, 1.0],
+      "should_be_duplicate": true
+    },
+    {
+      "description": "Wi-Fi 6 vs Wi-Fi 6E - different standards",
+      "name1": "Wi-Fi 6",
+      "name2": "Wi-Fi 6E",
+      "expected_range": [0.85, 0.95],
+      "should_be_duplicate": false,
+      "note": "Very similar but one character different at end"
+    },
+    {
+      "description": "Wi-Fi 6 vs Wi-Fi 7 - different generations",
+      "name1": "Wi-Fi 6",
+      "name2": "Wi-Fi 7",
+      "expected_range": [0.85, 0.95],
+      "should_be_duplicate": false,
+      "note": "Only one digit different"
+    },
+    {
+      "description": "Network Security vs Cybersecurity - related but different",
+      "name1": "Network Security",
+      "name2": "Cybersecurity",
+      "expected_range": [0.30, 0.60],
+      "should_be_duplicate": false
+    },
+    {
+      "description": "SDN acronym expansion - partial match",
+      "name1": "SDN",
+      "name2": "Software Defined Networking",
+      "expected_range": [0.20, 0.50],
+      "should_be_duplicate": false,
+      "note": "Short vs long string, low Jaro-Winkler"
+    },
+    {
+      "description": "5G with spaces vs no spaces",
+      "name1": "5 G",
+      "name2": "5G",
+      "expected_range": [0.85, 1.0],
+      "should_be_duplicate": true,
+      "note": "Jaro-Winkler handles space differences"
+    },
+    {
+      "description": "OAuth vs OAuth2 - different versions",
+      "name1": "OAuth",
+      "name2": "OAuth2",
+      "expected_range": [0.85, 0.95],
+      "should_be_duplicate": false,
+      "note": "Very similar, one character different"
+    }
+  ],
+  "alias_overlap_tests": [
+    {
+      "description": "Same organization, different forms",
+      "node1": {
+        "name": "IEEE",
+        "aliases": ["Institute of Electrical and Electronics Engineers"]
+      },
+      "node2": {
+        "name": "Institute of Electrical and Electronics Engineers",
+        "aliases": ["IEEE"]
+      },
+      "expected_range": [0.5, 1.0],
+      "should_be_duplicate": true
+    },
+    {
+      "description": "Topic with identifier match in aliases",
+      "node1": {
+        "name": "Wi-Fi 6E",
+        "aliases": ["WiFi 6E", "802.11ax 6GHz"]
+      },
+      "node2": {
+        "name": "802.11ax 6GHz",
+        "aliases": ["Wi-Fi 6E"]
+      },
+      "expected_range": [0.5, 1.0],
+      "should_be_duplicate": true
+    },
+    {
+      "description": "No alias overlap",
+      "node1": {
+        "name": "Wi-Fi 6",
+        "aliases": ["802.11ax"]
+      },
+      "node2": {
+        "name": "Wi-Fi 7",
+        "aliases": ["802.11be"]
+      },
+      "expected_range": [0.0, 0.49],
+      "should_be_duplicate": false
+    },
+    {
+      "description": "Partial alias overlap - not enough for duplicate",
+      "node1": {
+        "name": "Wireless Standards",
+        "aliases": ["Wi-Fi", "Bluetooth", "Zigbee"]
+      },
+      "node2": {
+        "name": "Wi-Fi Standards",
+        "aliases": ["Wi-Fi", "802.11"]
+      },
+      "expected_range": [0.2, 0.6],
+      "should_be_duplicate": false
+    }
+  ],
+  "email_match_tests": [
+    {
+      "description": "Exact email match",
+      "node1": {
+        "name": "John Doe",
+        "email": "john.doe@example.com"
+      },
+      "node2": {
+        "name": "John M. Doe",
+        "email": "john.doe@example.com"
+      },
+      "expected_score": 1.0,
+      "should_be_duplicate": true
+    },
+    {
+      "description": "Different emails",
+      "node1": {
+        "name": "John Doe",
+        "email": "john.doe@example.com"
+      },
+      "node2": {
+        "name": "John Doe",
+        "email": "j.doe@example.com"
+      },
+      "expected_score": 0.0,
+      "should_be_duplicate": false
+    },
+    {
+      "description": "Case insensitive email match",
+      "node1": {
+        "name": "Jane Smith",
+        "email": "Jane.Smith@Company.com"
+      },
+      "node2": {
+        "name": "J. Smith",
+        "email": "jane.smith@company.com"
+      },
+      "expected_score": 1.0,
+      "should_be_duplicate": true
+    }
+  ]
+}
