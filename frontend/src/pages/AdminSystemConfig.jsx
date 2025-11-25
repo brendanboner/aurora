@@ -16,11 +16,15 @@ const AdminSystemConfig = () => {
     try {
       setLoading(true);
       const response = await fetch('/api/admin/system-configuration');
-      if (!response.ok) throw new Error('Failed to fetch configurations');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch configurations: ${response.status} ${response.statusText} - ${errorText}`);
+      }
       const data = await response.json();
       setConfigurations(data);
       setError(null);
     } catch (err) {
+      console.error('Error fetching configurations:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -71,6 +75,21 @@ const AdminSystemConfig = () => {
     }
   };
 
+  const handlePurgeQueue = async () => {
+    if (!window.confirm('⚠️ WARNING: This will delete ALL pending documents in the queue!\n\nAre you sure you want to purge the queue?')) return;
+    
+    try {
+      const response = await fetch('/api/admin/purge-queue', {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to purge queue');
+      const data = await response.json();
+      alert(`✅ Successfully purged ${data.messages_purged} messages from the queue`);
+    } catch (err) {
+      alert('❌ Error purging queue: ' + err.message);
+    }
+  };
+
   if (loading) return <div className="loading">Loading configurations...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
@@ -78,9 +97,14 @@ const AdminSystemConfig = () => {
     <div className="admin-system-config">
       <div className="config-header">
         <h2>System Configuration</h2>
-        <button className="btn-create" onClick={() => setShowCreateForm(true)}>
-          + New Configuration
-        </button>
+        <div className="header-actions">
+          <button className="btn-purge" onClick={handlePurgeQueue}>
+            🗑️ Purge Queue
+          </button>
+          <button className="btn-create" onClick={() => setShowCreateForm(true)}>
+            + New Configuration
+          </button>
+        </div>
       </div>
 
       {showCreateForm && (

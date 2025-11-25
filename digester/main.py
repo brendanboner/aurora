@@ -11,6 +11,7 @@ import re
 from datetime import datetime
 from dateutil.parser import parse as date_parse
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from settings import settings
@@ -290,6 +291,39 @@ class DocumentDigester:
         try:
             # Update heartbeat
             self.update_heartbeat()
+
+            # Check for external stop / purge signal before doing any heavy work
+            if self.redis_client and self.redis_client.get("digester:stop") == "1":
+                logger.warning("Digester stop flag detected - acknowledging message without processing and stopping consumer")
+                # Clear flag so we only trigger once
+                try:
+                    self.redis_client.delete("digester:stop")
+                except Exception:
+                    pass
+                # Clear any current processing record and record a synthetic completed skip
+                self.clear_current_processing()
+                if self.redis_client:
+                    try:
+                        skipped_data = {
+                            "title": message.get("title", "Skipped"),
+                            "url": message.get("url", ""),
+                            "category": message.get("category", "unknown"),
+                            "status": "skipped",
+                            "stage": "stopped",
+                            "started_at": datetime.now().isoformat(),
+                            "updated_at": datetime.now().isoformat(),
+                            "reason": "digester stop flag"
+                        }
+                        self.redis_client.lpush("processing:completed", json.dumps(skipped_data))
+                        self.redis_client.ltrim("processing:completed", 0, 19)
+                    except Exception:
+                        pass
+                # Stop consumer asynchronously to avoid reentrancy issues
+                try:
+                    threading.Thread(target=self.rabbitmq_consumer.stop, daemon=True).start()
+                except Exception as e:
+                    logger.error(f"Failed to stop consumer after stop flag: {e}")
+                return True  # Ack message
             
             logger.info("Step 1: Validate RabbitMQ message...")
             self.update_current_processing(message, "validating")
@@ -415,6 +449,26 @@ class DocumentDigester:
             
             # Start consuming messages
             logger.info("Starting message consumption from RabbitMQ...")
+            # Background monitor for stop flag to allow immediate shutdown even when queue empty
+            if self.redis_client:
+                def monitor_stop_flag():
+                    while True:
+                        try:
+                            if self.redis_client.get("digester:stop") == "1":
+                                logger.warning("Digester stop flag detected by monitor - stopping consumer")
+                                try:
+                                    self.redis_client.delete("digester:stop")
+                                except Exception:
+                                    pass
+                                try:
+                                    self.rabbitmq_consumer.stop()
+                                except Exception as e:
+                                    logger.error(f"Error stopping consumer from monitor: {e}")
+                                break
+                        except Exception as e:
+                            logger.debug(f"Stop flag monitor error: {e}")
+                        time.sleep(2)
+                threading.Thread(target=monitor_stop_flag, daemon=True).start()
             self.rabbitmq_consumer.consume(
                 self.process_message,
                 prefetch_count=settings.rabbitmq_prefetch_count

@@ -443,15 +443,29 @@ def _format_document_row(row: Dict[str, Any]) -> Dict[str, Any]:
 def get_graph_statistics() -> Dict[str, Any]:
     """Get statistics about nodes in the knowledge graph."""
     repo = get_repo()
-    # Collect counts, including total relationships between any nodes.
+    # Collect counts using CALL subqueries with variable scope (Neo4j 5+ syntax)
     query = """
-        MATCH (r:Resource) WITH count(r) as resources
-        MATCH (t:Topic) WITH resources, count(t) as topics
-        MATCH (o:Organization) WITH resources, topics, count(o) as organisations
-        MATCH (p:Person) WITH resources, topics, organisations, count(p) as people
-        MATCH (e:Event) WITH resources, topics, organisations, people, count(e) as events
-        MATCH (ds:DataSource) WITH resources, topics, organisations, people, events, count(ds) as datasources
-        MATCH ()-[rel]->() WITH resources, topics, organisations, people, events, datasources, count(rel) as relationships
+        CALL () {
+            MATCH (r:Resource) RETURN count(r) as resources
+        }
+        CALL () {
+            MATCH (t:Topic) RETURN count(t) as topics
+        }
+        CALL () {
+            MATCH (o:Organization) RETURN count(o) as organisations
+        }
+        CALL () {
+            MATCH (p:Person) RETURN count(p) as people
+        }
+        CALL () {
+            MATCH (e:Event) RETURN count(e) as events
+        }
+        CALL () {
+            MATCH (ds:DataSource) RETURN count(ds) as datasources
+        }
+        CALL () {
+            MATCH ()-[rel]->() RETURN count(rel) as relationships
+        }
         RETURN resources, topics, organisations, people, events, datasources, relationships
     """
     results = repo.client.execute_query(query, {})

@@ -146,6 +146,7 @@ def get_system_configuration(datasource_id: str = "default") -> Dict[str, Any]:
         # Return default configuration
         return {
             "datasource_id": datasource_id,
+            "name": datasource_id,
             "scrape_frequency": "daily",
             "check_content_hash": True,
             "publish_weight": 1.0,
@@ -158,6 +159,7 @@ def get_system_configuration(datasource_id: str = "default") -> Dict[str, Any]:
 
 def upsert_system_configuration(
     datasource_id: str,
+    name: Optional[str] = None,
     scrape_frequency: Optional[str] = None,
     check_content_hash: Optional[bool] = None,
     publish_weight: Optional[float] = None,
@@ -167,9 +169,10 @@ def upsert_system_configuration(
     """Create or update system configuration for a datasource."""
     query = """
         INSERT INTO system_configuration 
-            (datasource_id, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
-        VALUES (%s, %s, %s, %s, %s, %s)
+            (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (datasource_id) DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, system_configuration.name),
             scrape_frequency = COALESCE(EXCLUDED.scrape_frequency, system_configuration.scrape_frequency),
             check_content_hash = COALESCE(EXCLUDED.check_content_hash, system_configuration.check_content_hash),
             publish_weight = COALESCE(EXCLUDED.publish_weight, system_configuration.publish_weight),
@@ -178,7 +181,7 @@ def upsert_system_configuration(
             updated_at = NOW()
         RETURNING *
     """
-    params = (datasource_id, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
+    params = (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
     return fetchone(query, params)
 
 

@@ -80,6 +80,7 @@ class GraphStatistics(BaseModel):
     topics: int
     organisations: int
     people: int
+    events: int
     datasources: int
     relationships: int
 

@@ -382,25 +382,121 @@ async def clear_failed():
         raise HTTPException(status_code=500, detail=f"Failed to clear failed list: {str(e)}")
 
 
+@router.delete("/purge-queue")
+async def purge_queue():
+    """
+    Purge all messages from the RabbitMQ queue.
+    WARNING: This will delete all pending documents in the queue!
+    """
+    try:
+        queue_name = os.getenv("RABBITMQ_QUEUE", "document_processing")
+        
+        try:
+            connection = get_rabbitmq_connection()
+            channel = connection.channel()
+            
+            # Purge the queue
+            purged = channel.queue_purge(queue=queue_name)
+            message_count = purged.method.message_count
+            
+            connection.close()
+            
+            logger.info(f"Purged {message_count} messages from queue {queue_name}")
+            return {
+                "status": "success", 
+                "message": f"Purged {message_count} messages from queue",
+                "queue_name": queue_name,
+                "messages_purged": message_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to purge queue: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to purge queue: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to connect to RabbitMQ: {e}")
+        raise HTTPException(status_code=503, detail=f"RabbitMQ not available: {str(e)}")
+
+
+@router.delete("/purge-digester")
+async def purge_digester(also_purge_queue: bool = False):
+    """
+    Signal the digester service to stop processing further documents and optionally purge the queue.
+    This sets a Redis flag that the digester checks before processing each message.
+    When the flag is detected the digester will ack any prefetched messages without processing and
+    stop its consumer loop.
+
+    Args:
+        also_purge_queue: If True, purge the RabbitMQ queue after setting the stop flag.
+    """
+    try:
+        # Set stop flag in Redis
+        try:
+            r = get_redis_connection()
+            r.setex("digester:stop", 300, "1")  # expire in 5 minutes as safety
+        except Exception as e:
+            logger.error(f"Failed to set digester stop flag: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to set digester stop flag: {str(e)}")
+
+        purged_info = None
+        if also_purge_queue:
+            # Re-use purge logic
+            queue_name = os.getenv("RABBITMQ_QUEUE", "document_processing")
+            try:
+                connection = get_rabbitmq_connection()
+                channel = connection.channel()
+                purged = channel.queue_purge(queue=queue_name)
+                message_count = purged.method.message_count
+                connection.close()
+                purged_info = {
+                    "queue_name": queue_name,
+                    "messages_purged": message_count
+                }
+                logger.info(f"Purged {message_count} messages from queue {queue_name} as part of digester purge")
+            except Exception as e:
+                logger.error(f"Failed to purge queue during digester purge: {e}")
+                raise HTTPException(status_code=500, detail=f"Digester stop set but failed to purge queue: {str(e)}")
+
+        response = {
+            "status": "success",
+            "message": "Digester stop signal set",
+            "also_purged_queue": also_purge_queue
+        }
+        if purged_info:
+            response.update(purged_info)
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error purging digester: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to purge digester: {str(e)}")
+
+
 # ========== System Configuration Endpoints ==========
 
 class SystemConfigurationResponse(BaseModel):
     """System configuration model for API responses."""
+    model_config = {"from_attributes": True}
+    
     datasource_id: str
+    name: str
     scrape_frequency: str
     check_content_hash: bool
     publish_weight: float = Field(..., ge=0.0, le=1.0)
     update_weight: float = Field(..., ge=0.0, le=1.0)
     event_weight: float = Field(..., ge=0.0, le=1.0)
-    last_scraped_at: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    last_scraped_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class SystemConfigurationCreate(BaseModel):
     """Model for creating system configuration."""
     datasource_id: str = Field(..., min_length=1, max_length=255)
-    scrape_frequency: str = Field(default="daily", regex="^(hourly|daily|weekly|monthly|manual)$")
+    name: str = Field(..., min_length=1, max_length=255)
+    scrape_frequency: str = Field(default="daily", pattern="^(hourly|daily|weekly|monthly|manual)$")
     check_content_hash: bool = True
     publish_weight: float = Field(default=1.0, ge=0.0, le=1.0)
     update_weight: float = Field(default=0.8, ge=0.0, le=1.0)
@@ -409,7 +505,8 @@ class SystemConfigurationCreate(BaseModel):
 
 class SystemConfigurationUpdate(BaseModel):
     """Model for updating system configuration."""
-    scrape_frequency: Optional[str] = Field(None, regex="^(hourly|daily|weekly|monthly|manual)$")
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    scrape_frequency: Optional[str] = Field(None, pattern="^(hourly|daily|weekly|monthly|manual)$")
     check_content_hash: Optional[bool] = None
     publish_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     update_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
@@ -454,6 +551,7 @@ async def create_system_configuration(config: SystemConfigurationCreate):
     try:
         result = postgres.upsert_system_configuration(
             datasource_id=config.datasource_id,
+            name=config.name,
             scrape_frequency=config.scrape_frequency,
             check_content_hash=config.check_content_hash,
             publish_weight=config.publish_weight,
@@ -480,6 +578,7 @@ async def update_system_configuration(datasource_id: str, config: SystemConfigur
         
         result = postgres.upsert_system_configuration(
             datasource_id=datasource_id,
+            name=config.name,
             scrape_frequency=config.scrape_frequency,
             check_content_hash=config.check_content_hash,
             publish_weight=config.publish_weight,
