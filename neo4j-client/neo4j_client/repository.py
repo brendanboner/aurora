@@ -197,7 +197,7 @@ class GraphRepository:
                    n.title as old_title,
                    n.first_seen_at as first_seen_at
             """
-            existing = self.client.execute_read(fetch_query, {"id_value": node_data[id_field]})
+            existing = self.client.execute_query(fetch_query, {"id_value": node_data[id_field]})
             
             if existing:
                 # Node exists - check for changes
@@ -335,6 +335,471 @@ class GraphRepository:
             f"{relationship.source_node_label}('{relationship.source_id}') to "
             f"{relationship.target_node_label}('{relationship.target_id}')"
         )
+    
+    def delete_relationship(self, relationship: Relationship) -> bool:
+        """
+        General method to delete a specific relationship from Neo4j.
+        Uses the relationship model's metadata to identify and delete the relationship.
+        
+        Args:
+            relationship: Relationship model instance with source_id and target_id populated
+            
+        Returns:
+            True if relationship was deleted, False if not found
+            
+        Example:
+            # Delete a TopicEncompassesTopic relationship
+            rel = TopicEncompassesTopic(
+                source_id="artificial-intelligence",
+                target_id="machine-learning"
+            )
+            success = repo.delete_relationship(rel)
+        """
+        query = f"""
+        MATCH (source:{relationship.source_node_label} {{{relationship.source_id_field}: $source_id}})
+        -[rel:{relationship.relationship_label}]->
+        (target:{relationship.target_node_label} {{{relationship.target_id_field}: $target_id}})
+        DELETE rel
+        RETURN count(rel) as deleted_count
+        """
+        
+        result = self.client.execute_write(query, {
+            "source_id": relationship.source_id,
+            "target_id": relationship.target_id
+        })
+        
+        deleted_count = result[0].get("deleted_count", 0) if result else 0
+        
+        if deleted_count > 0:
+            self.logger.info(
+                f"Deleted {relationship.relationship_label} relationship from "
+                f"{relationship.source_node_label}('{relationship.source_id}') to "
+                f"{relationship.target_node_label}('{relationship.target_id}')"
+            )
+            return True
+        else:
+            self.logger.warning(
+                f"No {relationship.relationship_label} relationship found from "
+                f"{relationship.source_node_label}('{relationship.source_id}') to "
+                f"{relationship.target_node_label}('{relationship.target_id}')"
+            )
+            return False
+    
+    def get_relationship(self, relationship: Relationship) -> Optional[Dict[str, Any]]:
+        """
+        General method to retrieve a specific relationship from Neo4j.
+        Uses the relationship model's metadata to identify and return the relationship.
+        
+        Args:
+            relationship: Relationship model instance with source_id and target_id populated
+            
+        Returns:
+            Relationship data as dictionary, or None if not found
+            
+        Example:
+            # Get a TopicEncompassesTopic relationship
+            rel = TopicEncompassesTopic(
+                source_id="artificial-intelligence",
+                target_id="machine-learning"
+            )
+            rel_data = repo.get_relationship(rel)
+            if rel_data:
+                print(rel_data["confidence"])
+        """
+        query = f"""
+        MATCH (source:{relationship.source_node_label} {{{relationship.source_id_field}: $source_id}})
+        -[rel:{relationship.relationship_label}]->
+        (target:{relationship.target_node_label} {{{relationship.target_id_field}: $target_id}})
+        RETURN rel
+        """
+        
+        result = self.client.execute_query(query, {
+            "source_id": relationship.source_id,
+            "target_id": relationship.target_id
+        })
+        
+        if result:
+            rel_data = result[0].get("rel", {})
+            self.logger.debug(
+                f"Retrieved {relationship.relationship_label} relationship from "
+                f"{relationship.source_node_label}('{relationship.source_id}') to "
+                f"{relationship.target_node_label}('{relationship.target_id}')"
+            )
+            return rel_data
+        else:
+            self.logger.debug(
+                f"{relationship.relationship_label} relationship not found from "
+                f"{relationship.source_node_label}('{relationship.source_id}') to "
+                f"{relationship.target_node_label}('{relationship.target_id}')"
+            )
+            return None
+    
+    def get_all_nodes(self, node_type: type[Node]) -> List[Dict[str, Any]]:
+        """
+        General method to retrieve all nodes of a specific type from the knowledge graph.
+        Uses the node class metadata to determine label and fields to return.
+        Returns all properties of the nodes.
+        
+        Args:
+            node_type: The Node class type (e.g., Topic, Person, Organization)
+            
+        Returns:
+            List of node dictionaries with all their properties
+            
+        Example:
+            # Get all topics
+            topics = repo.get_all_nodes(Topic)
+            for topic in topics:
+                print(topic['name'])
+            
+            # Get all people
+            people = repo.get_all_nodes(Person)
+            
+            # Get all organizations
+            orgs = repo.get_all_nodes(Organization)
+        """
+        # Access class attributes directly from the class (not an instance)
+        # Use __dict__ to get class attributes or model_fields for Pydantic v2
+        label = node_type.model_fields['node_label'].default
+        id_field = node_type.model_fields['id_field'].default
+        
+        query = f"""
+        MATCH (n:{label})
+        RETURN n
+        ORDER BY n.{id_field}
+        """
+        
+        results = self.client.execute_query(query)
+        
+        # Extract node properties from results
+        nodes = [result.get("n", {}) for result in results]
+        
+        self.logger.info(f"Retrieved {len(nodes)} {label} nodes from knowledge graph")
+        return nodes
+    
+    def update_node_aliases(
+        self,
+        node_label: str,
+        id_field: str,
+        node_id: str,
+        aliases: List[str]
+    ) -> None:
+        """
+        Update the aliases field of a node in the graph.
+        
+        This is used during deduplication to merge aliases from duplicate nodes
+        into the existing node.
+        
+        Args:
+            node_label: Label of the node type (e.g., "Topic", "Person", "Organization")
+            id_field: ID field name (e.g., "topic_id", "person_id", "org_id")
+            node_id: The ID value of the node to update
+            aliases: Complete list of aliases to set on the node
+        """
+        query = f"""
+        MATCH (n:{node_label} {{{id_field}: $node_id}})
+        SET n.aliases = $aliases,
+            n.last_updated = datetime()
+        RETURN n
+        """
+        
+        self.client.execute_write(query, {
+            "node_id": node_id,
+            "aliases": aliases
+        })
+        
+        self.logger.info(
+            f"Updated aliases for {node_label} {id_field}='{node_id}': {len(aliases)} aliases"
+        )
+    
+    def would_create_cycle(
+        self, 
+        source_topic_id: str, 
+        target_topic_id: str
+    ) -> bool:
+        """
+        Check if adding an ENCOMPASSES relationship would create a cycle in the hierarchy.
+        A cycle would occur if there's already a path from target to source through
+        ENCOMPASSES relationships. This ensures the hierarchy remains a DAG (Directed Acyclic Graph).
+        
+        Example of what we're preventing:
+        - A ENCOMPASSES B (already exists)
+        - B ENCOMPASSES C (already exists)
+        - Adding C ENCOMPASSES A would create: A → B → C → A (cycle!)
+        
+        Args:
+            source_topic_id: The topic that would encompass (broader topic)
+            target_topic_id: The topic that would be encompassed (narrower topic)
+            
+        Returns:
+            True if adding this relationship would create a cycle, False otherwise
+        """
+        # Check if there's already a path from target to source via ENCOMPASSES
+        # If such a path exists, adding source->target would create a cycle
+        query = """
+        MATCH path = (target:Topic {topic_id: $target_id})
+                     -[:ENCOMPASSES*]->(source:Topic {topic_id: $source_id})
+        RETURN path
+        LIMIT 1
+        """
+        
+        params = {
+            "source_id": source_topic_id,
+            "target_id": target_topic_id
+        }
+        
+        results = self.client.execute_query(query, params)
+        
+        if results:
+            self.logger.warning(
+                f"Cycle detected: Path exists from {target_topic_id} to {source_topic_id}. "
+                f"Cannot add reverse relationship."
+            )
+            return True
+        
+        return False
+    
+    def check_relationship_redundancy(
+        self, 
+        source_topic_id: str, 
+        target_topic_id: str
+    ) -> Dict[str, Any]:
+        """
+        Check if adding an ENCOMPASSES relationship would be redundant or conflicting.
+        
+        A relationship is redundant if it can be inferred from existing relationships.
+        This implements comprehensive transitive reduction by checking three cases:
+        
+        Case 1 (Forward transitivity): A→B→C exists, trying to add A→C
+        - Clearly redundant - just skip creation
+        
+        Case 2 (Sibling inference): A→B and A→C exist, trying to add B→C
+        - Needs LLM resolution to determine if B→C creates proper hierarchy
+          or if they are truly siblings
+        
+        Case 3 (Common child inference): A→C and B→C exist, trying to add A→B
+        - Needs LLM resolution to determine if A→B creates proper hierarchy
+          or if they are truly siblings
+        
+        Args:
+            source_topic_id: The topic that would encompass (broader topic)
+            target_topic_id: The topic that would be encompassed (narrower topic)
+            
+        Returns:
+            Dict with keys:
+                - is_redundant (bool): Whether the relationship is redundant
+                - case_type (str): 'none', 'transitive', 'common_parent', 'common_child'
+                - needs_llm_resolution (bool): Whether LLM should resolve this
+                - topics_for_resolution (List[str]): Topic IDs to analyze [A, B, C]
+                - existing_relationships (List[Dict]): Existing parent-child relationships
+                - proposed_relationship (Dict): The proposed new relationship
+                - conflict_description (str): Human-readable description
+                - common_node_id (str|None): ID of common parent or child node
+        """
+        
+        # Case 1: Check if there's already an indirect path from source to target
+        # (Classic transitivity: A→B→C exists, trying to add A→C)
+        query_case1 = """
+        MATCH path = (source:Topic {topic_id: $source_id})
+                     -[:ENCOMPASSES*2..]->(target:Topic {topic_id: $target_id})
+        RETURN path
+        LIMIT 1
+        """
+        
+        params = {
+            "source_id": source_topic_id,
+            "target_id": target_topic_id
+        }
+        
+        results = self.client.execute_query(query_case1, params)
+        
+        if results:
+            self.logger.info(
+                f"Redundant relationship (Case 1): Indirect path exists from {source_topic_id} "
+                f"to {target_topic_id}. Direct relationship not needed."
+            )
+            return {
+                "is_redundant": True,
+                "case_type": "transitive",
+                "needs_llm_resolution": False,
+                "topics_for_resolution": [],
+                "existing_relationships": [],
+                "proposed_relationship": {"parent": source_topic_id, "child": target_topic_id},
+                "conflict_description": (
+                    f"Transitive redundancy: An indirect path already exists from "
+                    f"{source_topic_id} to {target_topic_id}"
+                ),
+                "common_node_id": None
+            }
+        
+        # Case 2: Check if source and target share a common parent
+        # (A→B and A→C exist, trying to add B→C suggests B and C are siblings)
+        query_case2 = """
+        MATCH (parent:Topic)-[:ENCOMPASSES]->(source:Topic {topic_id: $source_id})
+        MATCH (parent)-[:ENCOMPASSES]->(target:Topic {topic_id: $target_id})
+        RETURN parent.topic_id AS common_parent
+        LIMIT 1
+        """
+        
+        results = self.client.execute_query(query_case2, params)
+        
+        if results:
+            common_parent = results[0].get("common_parent")
+            self.logger.info(
+                f"Redundant relationship (Case 2): {source_topic_id} and {target_topic_id} "
+                f"share common parent {common_parent}. Needs LLM resolution."
+            )
+            return {
+                "is_redundant": True,
+                "case_type": "common_parent",
+                "needs_llm_resolution": True,
+                "topics_for_resolution": [common_parent, source_topic_id, target_topic_id],
+                "existing_relationships": [
+                    {"parent": common_parent, "child": source_topic_id},
+                    {"parent": common_parent, "child": target_topic_id}
+                ],
+                "proposed_relationship": {"parent": source_topic_id, "child": target_topic_id},
+                "conflict_description": (
+                    f"{source_topic_id} and {target_topic_id} share common parent {common_parent}. "
+                    f"Proposed {source_topic_id}→{target_topic_id} needs validation."
+                ),
+                "common_node_id": common_parent
+            }
+        
+        # Case 3: Check if source and target both encompass a common child
+        # (A→C and B→C exist, trying to add A→B suggests A and B are siblings)
+        query_case3 = """
+        MATCH (source:Topic {topic_id: $source_id})-[:ENCOMPASSES]->(child:Topic)
+        MATCH (target:Topic {topic_id: $target_id})-[:ENCOMPASSES]->(child)
+        RETURN child.topic_id AS common_child
+        LIMIT 1
+        """
+        
+        results = self.client.execute_query(query_case3, params)
+        
+        if results:
+            common_child = results[0].get("common_child")
+            self.logger.info(
+                f"Redundant relationship (Case 3): {source_topic_id} and {target_topic_id} "
+                f"both encompass common child {common_child}. Needs LLM resolution."
+            )
+            return {
+                "is_redundant": True,
+                "case_type": "common_child",
+                "needs_llm_resolution": True,
+                "topics_for_resolution": [source_topic_id, target_topic_id, common_child],
+                "existing_relationships": [
+                    {"parent": source_topic_id, "child": common_child},
+                    {"parent": target_topic_id, "child": common_child}
+                ],
+                "proposed_relationship": {"parent": source_topic_id, "child": target_topic_id},
+                "conflict_description": (
+                    f"{source_topic_id} and {target_topic_id} both encompass {common_child}. "
+                    f"Proposed {source_topic_id}→{target_topic_id} needs validation."
+                ),
+                "common_node_id": common_child
+            }
+        
+        # No redundancy detected
+        return {
+            "is_redundant": False,
+            "case_type": "none",
+            "needs_llm_resolution": False,
+            "topics_for_resolution": [],
+            "existing_relationships": [],
+            "proposed_relationship": {"parent": source_topic_id, "child": target_topic_id},
+            "conflict_description": "",
+            "common_node_id": None
+        }
+    
+    def get_node(self, node: Node) -> Optional[Dict[str, Any]]:
+        """
+        General method to retrieve any node type from Neo4j by its ID.
+        Uses the node model's metadata to determine label and ID field.
+        
+        Args:
+            node: Node model instance with the ID field populated
+                  (e.g., Topic(topic_id="ai"), Person(person_id="john-doe"))
+            
+        Returns:
+            Node data as dictionary, or None if not found
+            
+        Example:
+            # Get a topic by ID
+            topic_node = Topic(topic_id="artificial-intelligence", name="", classification="")
+            topic_data = repo.get_node(topic_node)
+            if topic_data:
+                print(topic_data["name"])
+            
+            # Get a person by ID
+            person_node = Person(person_id="jane-smith", name="")
+            person_data = repo.get_node(person_node)
+        """
+        label = node.node_label
+        id_field = node.id_field
+        id_value = getattr(node, id_field)
+        
+        query = f"""
+        MATCH (n:{label} {{{id_field}: $id_value}})
+        RETURN n
+        """
+        
+        result = self.client.execute_query(query, {"id_value": id_value})
+        
+        if result:
+            # Neo4j returns the node object, extract its properties
+            node_data = result[0].get("n", {})
+            self.logger.debug(f"Retrieved {label} with {id_field}='{id_value}'")
+            return node_data
+        else:
+            self.logger.debug(f"{label} with {id_field}='{id_value}' not found")
+            return None
+
+    def delete_node(self, node: Node) -> bool:
+        """
+        General method to delete any node type from Neo4j by its ID.
+        Uses the node model's metadata to determine label and ID field.
+        
+        WARNING: This will also delete all relationships connected to this node.
+        Neo4j requires detaching relationships before deleting a node.
+        
+        Args:
+            node: Node model instance with the ID field populated
+                  (e.g., Topic(topic_id="ai"), Person(person_id="john-doe"))
+            
+        Returns:
+            True if node was deleted, False if node was not found
+            
+        Example:
+            # Delete a topic by ID
+            topic_node = Topic(topic_id="outdated-topic", name="", classification="")
+            deleted = repo.delete_node(topic_node)
+            if deleted:
+                print("Topic deleted successfully")
+            
+            # Delete a person by ID
+            person_node = Person(person_id="jane-smith", name="")
+            repo.delete_node(person_node)
+        """
+        label = node.node_label
+        id_field = node.id_field
+        id_value = getattr(node, id_field)
+        
+        query = f"""
+        MATCH (n:{label} {{{id_field}: $id_value}})
+        DETACH DELETE n
+        RETURN count(n) as deleted_count
+        """
+        
+        result = self.client.execute_write(query, {"id_value": id_value})
+        deleted = result[0].get("deleted_count", 0) if result else 0
+        
+        if deleted > 0:
+            self.logger.info(f"Deleted {label} with {id_field}='{id_value}' and all its relationships")
+            return True
+        else:
+            self.logger.warning(f"{label} with {id_field}='{id_value}' not found, nothing deleted")
+            return False
     
     # ========== Deduplication Operations ==========
     

@@ -58,6 +58,20 @@ class Node(BaseModel):
         description="Embedding vector for the topic"
     )
 
+    # Optional deduplication metadata fields (set during deduplication process)
+    deduplication_best_match_id: Optional[str] = Field(
+        default=None,
+        description="ID of the closest matching node found during deduplication"
+    )
+    deduplication_best_match_name: Optional[str] = Field(
+        default=None,
+        description="Name of the closest matching node found during deduplication"
+    )
+    deduplication_score: Optional[float] = Field(
+        default=None,
+        description="Similarity score with the best match (0.0-1.0)"
+    )
+
     TRUNCATE: ClassVar[Dict[str, int]] = {}
 
 
@@ -753,3 +767,57 @@ class ResourceMentionsEvent(Relationship):
     TRUNCATE = {
         "evidence": 240
     }
+
+
+def slugify(text: str) -> str:
+    """
+    Convert text to a URL-friendly slug.
+    
+    Examples:
+        'Wi-Fi 6E' -> 'wi-fi-6e'
+        'Network Security' -> 'network-security'
+        '802.11ax' -> '802-11ax'
+    """
+    text = text.lower()
+    text = re.sub(r'[^\w\s-]', '', text)  # Remove special chars except - and spaces
+    text = re.sub(r'[-\s]+', '_', text)    # Replace spaces and multiple - with single _
+    return text.strip('-')
+
+
+def normalize_string(value: str, case: str = "lower") -> str:
+    """
+    Normalize a single string value.
+    - Strips leading/trailing whitespace
+    - Collapses multiple spaces
+    - Normalizes case: 'upper', 'lower', 'title', 'sentence'
+    - Returns empty string for None
+    
+    Args:
+        value: The input value to normalize
+        case: Case normalization ('upper', 'lower', 'title', 'sentence')
+        
+    Returns:
+        Normalized string
+    """
+    if value is None:
+        return ""
+    
+    if not isinstance(value, str):
+        value = str(value)
+    
+    # Strip and collapse whitespace
+    value = value.strip()
+    value = " ".join(value.split())
+    
+    # Apply case normalization
+    if case == "upper":
+        value = value.upper()
+    elif case == "lower":
+        value = value.lower()
+    elif case == "title":
+        value = value.title()
+    elif case == "sentence":
+        if value:
+            value = value[0].upper() + value[1:].lower()
+    
+    return value
