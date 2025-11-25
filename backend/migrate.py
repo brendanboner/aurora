@@ -205,6 +205,30 @@ def run_migration_001():
     return True
 
 
+def run_migration_002():
+    """Run migration 002: Add temporal extraction threshold."""
+    logger.info("=" * 80)
+    logger.info("Running Migration 002: Add Temporal Extraction Threshold")
+    logger.info("=" * 80)
+    
+    migrations_dir = Path(__file__).parent / "migrations"
+    sql_file = migrations_dir / "002_add_temporal_extraction_threshold.sql"
+    
+    if not sql_file.exists():
+        logger.error(f"Migration file not found: {sql_file}")
+        return False
+    
+    # Run SQL migration
+    if not run_sql_migration(sql_file):
+        logger.error("SQL migration failed - aborting")
+        return False
+    
+    logger.info("=" * 80)
+    logger.info("✓ Migration 002 completed successfully")
+    logger.info("=" * 80)
+    return True
+
+
 def main():
     """Main migration runner."""
     if len(sys.argv) > 1:
@@ -213,6 +237,8 @@ def main():
         
         if migration_number == "001":
             success = run_migration_001()
+        elif migration_number == "002":
+            success = run_migration_002()
         else:
             logger.error(f"Unknown migration: {migration_number}")
             success = False
@@ -220,6 +246,8 @@ def main():
         # Run all migrations
         logger.info("Running all migrations...")
         success = run_migration_001()
+        if success:
+            success = run_migration_002()
     
     sys.exit(0 if success else 1)
 

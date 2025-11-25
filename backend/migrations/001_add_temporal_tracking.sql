@@ -16,21 +16,26 @@
 -- =============================================================================
 -- Stores configuration for datasources and temporal relevance scoring weights
 CREATE TABLE IF NOT EXISTS system_configuration (
-    datasource_id       TEXT PRIMARY KEY,
-    name                TEXT NOT NULL,
-    scrape_frequency    TEXT NOT NULL DEFAULT 'daily',  -- hourly, daily, weekly, manual
-    check_content_hash  BOOLEAN NOT NULL DEFAULT TRUE,
-    last_scraped_at     TIMESTAMPTZ,
-    publish_weight      REAL NOT NULL DEFAULT 1.0,      -- Weight for newly published docs
-    update_weight       REAL NOT NULL DEFAULT 0.8,      -- Weight for updated docs
-    event_weight        REAL NOT NULL DEFAULT 0.9,      -- Weight for events
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    datasource_id               TEXT PRIMARY KEY,
+    name                        TEXT NOT NULL,
+    scrape_frequency            TEXT NOT NULL DEFAULT 'daily',  -- hourly, daily, weekly, manual
+    check_content_hash          BOOLEAN NOT NULL DEFAULT TRUE,
+    last_scraped_at             TIMESTAMPTZ,
+    publish_weight              REAL NOT NULL DEFAULT 1.0,      -- Weight for newly published docs
+    update_weight               REAL NOT NULL DEFAULT 0.8,      -- Weight for updated docs
+    event_weight                REAL NOT NULL DEFAULT 0.9,      -- Weight for events
+    temporal_extraction_days    INTEGER NOT NULL DEFAULT 90,    -- Days threshold for extracting events from documents
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Index for querying by scrape frequency
 CREATE INDEX IF NOT EXISTS idx_system_config_scrape_freq 
 ON system_configuration(scrape_frequency);
+
+-- Index for querying by temporal extraction threshold
+CREATE INDEX IF NOT EXISTS idx_system_config_temporal_threshold 
+ON system_configuration(temporal_extraction_days);
 
 -- =============================================================================
 -- Document Change Log Table
