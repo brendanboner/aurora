@@ -152,6 +152,7 @@ def get_system_configuration(datasource_id: str = "default") -> Dict[str, Any]:
             "publish_weight": 1.0,
             "update_weight": 0.8,
             "event_weight": 0.9,
+            "temporal_extraction_days": 90,
             "last_scraped_at": None
         }
     return result
@@ -164,13 +165,14 @@ def upsert_system_configuration(
     check_content_hash: Optional[bool] = None,
     publish_weight: Optional[float] = None,
     update_weight: Optional[float] = None,
-    event_weight: Optional[float] = None
+    event_weight: Optional[float] = None,
+    temporal_extraction_days: Optional[int] = None
 ) -> Dict[str, Any]:
     """Create or update system configuration for a datasource."""
     query = """
         INSERT INTO system_configuration 
-            (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight, temporal_extraction_days)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (datasource_id) DO UPDATE SET
             name = COALESCE(EXCLUDED.name, system_configuration.name),
             scrape_frequency = COALESCE(EXCLUDED.scrape_frequency, system_configuration.scrape_frequency),
@@ -178,10 +180,11 @@ def upsert_system_configuration(
             publish_weight = COALESCE(EXCLUDED.publish_weight, system_configuration.publish_weight),
             update_weight = COALESCE(EXCLUDED.update_weight, system_configuration.update_weight),
             event_weight = COALESCE(EXCLUDED.event_weight, system_configuration.event_weight),
+            temporal_extraction_days = COALESCE(EXCLUDED.temporal_extraction_days, system_configuration.temporal_extraction_days),
             updated_at = NOW()
         RETURNING *
     """
-    params = (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight)
+    params = (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight, temporal_extraction_days)
     return fetchone(query, params)
 
 

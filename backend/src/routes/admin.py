@@ -487,6 +487,7 @@ class SystemConfigurationResponse(BaseModel):
     publish_weight: float = Field(..., ge=0.0, le=1.0)
     update_weight: float = Field(..., ge=0.0, le=1.0)
     event_weight: float = Field(..., ge=0.0, le=1.0)
+    temporal_extraction_days: int = Field(default=90, ge=1)
     last_scraped_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -501,6 +502,7 @@ class SystemConfigurationCreate(BaseModel):
     publish_weight: float = Field(default=1.0, ge=0.0, le=1.0)
     update_weight: float = Field(default=0.8, ge=0.0, le=1.0)
     event_weight: float = Field(default=0.9, ge=0.0, le=1.0)
+    temporal_extraction_days: int = Field(default=90, ge=1)
 
 
 class SystemConfigurationUpdate(BaseModel):
@@ -511,6 +513,7 @@ class SystemConfigurationUpdate(BaseModel):
     publish_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     update_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     event_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    temporal_extraction_days: Optional[int] = Field(None, ge=1)
 
 
 @router.get("/system-configuration", response_model=List[SystemConfigurationResponse])
@@ -556,7 +559,8 @@ async def create_system_configuration(config: SystemConfigurationCreate):
             check_content_hash=config.check_content_hash,
             publish_weight=config.publish_weight,
             update_weight=config.update_weight,
-            event_weight=config.event_weight
+            event_weight=config.event_weight,
+            temporal_extraction_days=config.temporal_extraction_days
         )
         return result
     except Exception as e:
@@ -583,7 +587,8 @@ async def update_system_configuration(datasource_id: str, config: SystemConfigur
             check_content_hash=config.check_content_hash,
             publish_weight=config.publish_weight,
             update_weight=config.update_weight,
-            event_weight=config.event_weight
+            event_weight=config.event_weight,
+            temporal_extraction_days=config.temporal_extraction_days
         )
         return result
     except HTTPException:
