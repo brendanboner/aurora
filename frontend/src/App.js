@@ -8,6 +8,7 @@ import UserProfile from './pages/UserProfile';
 import AdminUsers from './pages/AdminUsers';
 import AdminKnowledgeGraph from './pages/AdminKnowledgeGraph';
 import AdminMonitoring from './pages/AdminMonitoring';
+import AdminSystemConfig from './pages/AdminSystemConfig';
 import { testBackendConnection } from './services/api';
 
 function App() {
@@ -91,6 +92,7 @@ function App() {
                 <Route path="/admin/users" element={<AdminUsers onUserChange={handleUserChange} currentUser={currentUser} />} />
                 <Route path="/admin/knowledge-graph" element={<AdminKnowledgeGraph />} />
                 <Route path="/admin/monitoring" element={<AdminMonitoring />} />
+                <Route path="/admin/system-config" element={<AdminSystemConfig />} />
                 <Route 
                   path="/profile" 
                   element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 

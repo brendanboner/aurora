@@ -116,6 +116,8 @@ class Neo4jClient:
             "CREATE CONSTRAINT datasource_source_id IF NOT EXISTS FOR (ds:DataSource) REQUIRE ds.source_id IS UNIQUE",
             # Person: person_id is unique
             "CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.person_id IS UNIQUE",
+            # Event: event_id is unique
+            "CREATE CONSTRAINT event_id IF NOT EXISTS FOR (e:Event) REQUIRE e.event_id IS UNIQUE",
             # Team: name is unique
             "CREATE CONSTRAINT team_name IF NOT EXISTS FOR (t:Team) REQUIRE t.name IS UNIQUE",
             # Project: name is unique
@@ -136,6 +138,11 @@ class Neo4jClient:
             "CREATE VECTOR INDEX datasource_embedding_index IF NOT EXISTS FOR (ds:DataSource) ON ds.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
             # Person embedding
             "CREATE VECTOR INDEX person_embedding_index IF NOT EXISTS FOR (p:Person) ON p.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            # Temporal indexes for date-based queries
+            "CREATE INDEX event_start_date IF NOT EXISTS FOR (e:Event) ON (e.start_date)",
+            "CREATE INDEX resource_publish_date IF NOT EXISTS FOR (r:Resource) ON (r.publish_date)",
+            "CREATE INDEX resource_content_changed_at IF NOT EXISTS FOR (r:Resource) ON (r.content_changed_at)",
+            "CREATE INDEX resource_first_seen_at IF NOT EXISTS FOR (r:Resource) ON (r.first_seen_at)",
         ]
         for constraint in constraints:
             try:

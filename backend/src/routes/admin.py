@@ -1,7 +1,7 @@
 """Admin routes for monitoring services."""
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import pika
@@ -10,6 +10,7 @@ import redis
 import json
 import subprocess
 import logging
+from src.services import postgres
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 logger = logging.getLogger(__name__)
@@ -379,3 +380,241 @@ async def clear_failed():
     except Exception as e:
         logger.error(f"Failed to clear failed list: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clear failed list: {str(e)}")
+
+
+@router.delete("/purge-queue")
+async def purge_queue():
+    """
+    Purge all messages from the RabbitMQ queue.
+    WARNING: This will delete all pending documents in the queue!
+    """
+    try:
+        queue_name = os.getenv("RABBITMQ_QUEUE", "document_processing")
+        
+        try:
+            connection = get_rabbitmq_connection()
+            channel = connection.channel()
+            
+            # Purge the queue
+            purged = channel.queue_purge(queue=queue_name)
+            message_count = purged.method.message_count
+            
+            connection.close()
+            
+            logger.info(f"Purged {message_count} messages from queue {queue_name}")
+            return {
+                "status": "success", 
+                "message": f"Purged {message_count} messages from queue",
+                "queue_name": queue_name,
+                "messages_purged": message_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to purge queue: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to purge queue: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to connect to RabbitMQ: {e}")
+        raise HTTPException(status_code=503, detail=f"RabbitMQ not available: {str(e)}")
+
+
+@router.delete("/purge-digester")
+async def purge_digester(also_purge_queue: bool = False):
+    """
+    Signal the digester service to stop processing further documents and optionally purge the queue.
+    This sets a Redis flag that the digester checks before processing each message.
+    When the flag is detected the digester will ack any prefetched messages without processing and
+    stop its consumer loop.
+
+    Args:
+        also_purge_queue: If True, purge the RabbitMQ queue after setting the stop flag.
+    """
+    try:
+        # Set stop flag in Redis
+        try:
+            r = get_redis_connection()
+            r.setex("digester:stop", 300, "1")  # expire in 5 minutes as safety
+        except Exception as e:
+            logger.error(f"Failed to set digester stop flag: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to set digester stop flag: {str(e)}")
+
+        purged_info = None
+        if also_purge_queue:
+            # Re-use purge logic
+            queue_name = os.getenv("RABBITMQ_QUEUE", "document_processing")
+            try:
+                connection = get_rabbitmq_connection()
+                channel = connection.channel()
+                purged = channel.queue_purge(queue=queue_name)
+                message_count = purged.method.message_count
+                connection.close()
+                purged_info = {
+                    "queue_name": queue_name,
+                    "messages_purged": message_count
+                }
+                logger.info(f"Purged {message_count} messages from queue {queue_name} as part of digester purge")
+            except Exception as e:
+                logger.error(f"Failed to purge queue during digester purge: {e}")
+                raise HTTPException(status_code=500, detail=f"Digester stop set but failed to purge queue: {str(e)}")
+
+        response = {
+            "status": "success",
+            "message": "Digester stop signal set",
+            "also_purged_queue": also_purge_queue
+        }
+        if purged_info:
+            response.update(purged_info)
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error purging digester: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to purge digester: {str(e)}")
+
+
+# ========== System Configuration Endpoints ==========
+
+class SystemConfigurationResponse(BaseModel):
+    """System configuration model for API responses."""
+    model_config = {"from_attributes": True}
+    
+    datasource_id: str
+    name: str
+    scrape_frequency: str
+    check_content_hash: bool
+    publish_weight: float = Field(..., ge=0.0, le=1.0)
+    update_weight: float = Field(..., ge=0.0, le=1.0)
+    event_weight: float = Field(..., ge=0.0, le=1.0)
+    temporal_extraction_days: int = Field(default=90, ge=1)
+    last_scraped_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class SystemConfigurationCreate(BaseModel):
+    """Model for creating system configuration."""
+    datasource_id: str = Field(..., min_length=1, max_length=255)
+    name: str = Field(..., min_length=1, max_length=255)
+    scrape_frequency: str = Field(default="daily", pattern="^(hourly|daily|weekly|monthly|manual)$")
+    check_content_hash: bool = True
+    publish_weight: float = Field(default=1.0, ge=0.0, le=1.0)
+    update_weight: float = Field(default=0.8, ge=0.0, le=1.0)
+    event_weight: float = Field(default=0.9, ge=0.0, le=1.0)
+    temporal_extraction_days: int = Field(default=90, ge=1)
+
+
+class SystemConfigurationUpdate(BaseModel):
+    """Model for updating system configuration."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    scrape_frequency: Optional[str] = Field(None, pattern="^(hourly|daily|weekly|monthly|manual)$")
+    check_content_hash: Optional[bool] = None
+    publish_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    update_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    event_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    temporal_extraction_days: Optional[int] = Field(None, ge=1)
+
+
+@router.get("/system-configuration", response_model=List[SystemConfigurationResponse])
+async def get_all_system_configurations():
+    """
+    Get all system configurations.
+    """
+    try:
+        configs = postgres.get_all_system_configurations()
+        return configs
+    except Exception as e:
+        logger.error(f"Failed to get system configurations: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get system configurations: {str(e)}")
+
+
+@router.get("/system-configuration/{datasource_id}", response_model=SystemConfigurationResponse)
+async def get_system_configuration(datasource_id: str):
+    """
+    Get system configuration for a specific datasource.
+    """
+    try:
+        config = postgres.get_system_configuration(datasource_id)
+        if not config:
+            raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
+        return config
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get system configuration: {str(e)}")
+
+
+@router.post("/system-configuration", response_model=SystemConfigurationResponse, status_code=201)
+async def create_system_configuration(config: SystemConfigurationCreate):
+    """
+    Create or update system configuration for a datasource.
+    """
+    try:
+        result = postgres.upsert_system_configuration(
+            datasource_id=config.datasource_id,
+            name=config.name,
+            scrape_frequency=config.scrape_frequency,
+            check_content_hash=config.check_content_hash,
+            publish_weight=config.publish_weight,
+            update_weight=config.update_weight,
+            event_weight=config.event_weight,
+            temporal_extraction_days=config.temporal_extraction_days
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to create system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create system configuration: {str(e)}")
+
+
+@router.patch("/system-configuration/{datasource_id}", response_model=SystemConfigurationResponse)
+async def update_system_configuration(datasource_id: str, config: SystemConfigurationUpdate):
+    """
+    Update system configuration for a datasource.
+    Only updates provided fields, leaving others unchanged.
+    """
+    try:
+        # Check if configuration exists
+        existing = postgres.get_system_configuration(datasource_id)
+        if not existing.get("created_at"):
+            raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
+        
+        result = postgres.upsert_system_configuration(
+            datasource_id=datasource_id,
+            name=config.name,
+            scrape_frequency=config.scrape_frequency,
+            check_content_hash=config.check_content_hash,
+            publish_weight=config.publish_weight,
+            update_weight=config.update_weight,
+            event_weight=config.event_weight,
+            temporal_extraction_days=config.temporal_extraction_days
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update system configuration: {str(e)}")
+
+
+@router.delete("/system-configuration/{datasource_id}")
+async def delete_system_configuration(datasource_id: str):
+    """
+    Delete system configuration for a datasource.
+    """
+    try:
+        # Check if configuration exists
+        existing = postgres.get_system_configuration(datasource_id)
+        if not existing.get("created_at"):
+            raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
+        
+        query = "DELETE FROM system_configuration WHERE datasource_id = %s"
+        postgres.execute(query, (datasource_id,))
+        
+        return {"status": "success", "message": f"Configuration for datasource '{datasource_id}' deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete system configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete system configuration: {str(e)}")

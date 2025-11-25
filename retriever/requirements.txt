@@ -21,3 +21,7 @@ pydantic-settings>=2.0.0
 
 # Redis for monitoring
 redis>=5.0.0
+
+# PostgreSQL and date utilities for configuration management
+psycopg2-binary>=2.9.0
+python-dateutil>=2.9.0

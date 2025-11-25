@@ -3,15 +3,14 @@ import aiohttp
 import json
 import time
 import logging
-import hashlib
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import redis
 
 from rabbitmq_client.producer import RabbitMQProducer
-from neo4j_client.client import Neo4jClient
 from settings import settings
+from config_manager import ConfigManager
 
 @dataclass
 class Resource:
@@ -46,19 +45,8 @@ class BaseScraper:
         # Resolve JSON output file with scraper name placeholder
         self.json_file = settings.json_output_file.replace('{scraper}', self.scraper_name)
         
-        # Initialize Neo4j client for URL checking
-        try:
-            self.neo4j_client = Neo4jClient(
-                uri=settings.neo4j_uri,
-                user=settings.neo4j_user,
-                password=settings.neo4j_password,
-                database=settings.neo4j_database
-            )
-            self.neo4j_client.connect()
-            logging.info("Neo4j connection established for URL deduplication")
-        except Exception as e:
-            logging.warning(f"Failed to connect to Neo4j: {e}. URL deduplication will be disabled.")
-            self.neo4j_client = None
+        # Initialize configuration manager for scraping frequency control
+        self.config_manager = ConfigManager()
         
         # Initialize Redis for monitoring
         try:
@@ -84,8 +72,6 @@ class BaseScraper:
         """Async context manager exit"""
         if self.session:
             await self.session.close()
-        if self.neo4j_client:
-            self.neo4j_client.close()
     
     def update_heartbeat(self):
         """Update retriever heartbeat timestamp in Redis."""
@@ -120,75 +106,38 @@ class BaseScraper:
             except Exception as e:
                 logging.warning(f"Failed to clear current processing: {e}")
     
-    def _compute_url_hash(self, url: str) -> str:
+    def should_scrape_datasource(self, datasource_id: str) -> bool:
         """
-        Compute SHA256 hash of a URL.
+        Check if a datasource should be scraped based on its configuration.
         
         Args:
-            url: URL to hash
+            datasource_id: Identifier for the datasource (e.g., 'wfa_resource_page')
             
         Returns:
-            SHA256 hash of the URL as a hex string
+            True if scraping should proceed, False if it should be skipped
         """
-        return hashlib.sha256(url.encode('utf-8')).hexdigest()
+        return self.config_manager.should_scrape(datasource_id)
     
-    def url_exists_in_db(self, url: str) -> bool:
+    def mark_datasource_scraped(self, datasource_id: str):
         """
-        Check if a URL already exists in the Neo4j database.
+        Update the last_scraped_at timestamp for a datasource after successful scraping.
         
         Args:
-            url: URL to check
-            
-        Returns:
-            True if URL exists in database, False otherwise
+            datasource_id: Identifier for the datasource
         """
-        if not self.neo4j_client:
-            # If Neo4j is not available, assume URL doesn't exist (fail open)
-            logging.warning("Neo4j client not available, cannot check for duplicate URLs")
-            return False
-        
-        try:
-            url_hash = self._compute_url_hash(url)
-            query = """
-            MATCH (r:Resource {url_hash: $url_hash})
-            RETURN r.url_hash as url_hash
-            LIMIT 1
-            """
-            result = self.neo4j_client.execute_query(query, {"url_hash": url_hash})
-            return len(result) > 0
-        except Exception as e:
-            logging.error(f"Error checking URL existence in Neo4j: {e}")
-            # Fail open - if we can't check, assume it doesn't exist
-            return False
+        self.config_manager.update_last_scraped(datasource_id)
     
-    def filter_new_urls(self, resources: List[Resource]) -> List[Resource]:
+    def get_datasource_config(self, datasource_id: str) -> Dict[str, Any]:
         """
-        Filter out resources whose URLs already exist in the database.
+        Get the full configuration for a datasource.
         
         Args:
-            resources: List of Resource objects to filter
+            datasource_id: Identifier for the datasource
             
         Returns:
-            List of Resource objects with only new URLs (not in database)
+            Configuration dict with scrape_frequency, check_content_hash, weights, etc.
         """
-        if not self.neo4j_client:
-            logging.warning("Neo4j client not available, skipping URL deduplication")
-            return resources
-        
-        new_resources = []
-        duplicate_count = 0
-        
-        for resource in resources:
-            if not self.url_exists_in_db(resource.url):
-                new_resources.append(resource)
-            else:
-                duplicate_count += 1
-                logging.debug(f"Skipping duplicate URL: {resource.url}")
-        
-        if duplicate_count > 0:
-            logging.info(f"Filtered out {duplicate_count} duplicate URLs, {len(new_resources)} new URLs remain")
-        
-        return new_resources
+        return self.config_manager.get_datasource_config(datasource_id)
     
     def _format_resource_for_logging(self, resource: Resource, content_limit: int = 50) -> Dict[str, Any]:
         """Helper method to format a resource for JSON logging"""
@@ -279,7 +228,12 @@ class BaseScraper:
     
     @abc.abstractmethod
     async def run_scraper(self):
-        """Abstract method that each scraper must implement for scraping execution"""
+        """Abstract method that each scraper must implement for daily execution"""
+        pass
+    
+    @abc.abstractmethod 
+    async def run_full_scraper(self):
+        """Abstract method that each scraper must implement for full database population"""
         pass
     
     @abc.abstractmethod

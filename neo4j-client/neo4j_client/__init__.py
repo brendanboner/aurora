@@ -30,8 +30,9 @@ from .models import (
     OrganizationAssociatedWithTopic,
     ResourceIngestedFromDataSource,
     DataSourceBelongsToOrganization,
-    TopicEncompasses,
-    TopicSubtopicOf
+    TopicSubtopicOf,
+    ResourceUploadedByPerson,
+    ResourceMentionsEvent
 )
 
 __version__ = "0.1.0"
@@ -64,6 +65,7 @@ __all__ = [
     "OrganizationAssociatedWithTopic",
     "ResourceIngestedFromDataSource",
     "DataSourceBelongsToOrganization",
-    "TopicEncompasses",
     "TopicSubtopicOf",
+    "ResourceUploadedByPerson",
+    "ResourceMentionsEvent",
 ]

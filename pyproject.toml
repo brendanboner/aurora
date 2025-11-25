@@ -1,0 +1,22 @@
+[project]
+name = "aurora"
+version = "0.1.0"
+description = "Aurora RAG System - Monorepo"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+    "neo4j-client",
+    "rabbitmq-client",
+    "backend",
+    "cli",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]

@@ -18,8 +18,8 @@ from src.routes import admin
 
 app = FastAPI(title="Aurora Backend API")
 
-# Include admin routes
-app.include_router(admin.router)
+# Include admin routes (router already has /admin prefix, accessed via nginx /api/ proxy)
+app.include_router(admin.router, prefix="")
 
 # Add CORS middleware
 app.add_middleware(
@@ -80,6 +80,7 @@ class GraphStatistics(BaseModel):
     topics: int
     organisations: int
     people: int
+    events: int
     datasources: int
     relationships: int
 

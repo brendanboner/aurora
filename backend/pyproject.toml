@@ -16,9 +16,14 @@ dependencies = [
     "python-dotenv",
     "openai",
     "neo4j-client",
-    "pika",
+    "rabbitmq-client",
     "redis",
+    "python-dateutil",
 ]
+
+[tool.uv.sources]
+neo4j-client = { workspace = true }
+rabbitmq-client = { workspace = true }
 
 [tool.setuptools.packages.find]
 where = ["."]

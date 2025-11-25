@@ -18,13 +18,13 @@ run_test() {
 }
 
 echo ""
-echo "🧪 Running Aurora CLI Test Suite..."
-echo "📝 Testing comprehensive metadata intelligence features"
+echo " Running Aurora CLI Test Suite..."
+echo " Testing comprehensive metadata intelligence features"
 echo "User ID: $USER"
 echo ""
 
 # ----------------------------------------------------------------------
-# METADATA INTELLIGENCE TESTS — Category-based queries
+# METADATA INTELLIGENCE TESTS  Category-based queries
 # ----------------------------------------------------------------------
 run_test \
   "1. Category Filter: Latest press release" \
@@ -39,7 +39,7 @@ run_test \
   "What podcasts discuss Wi-Fi 7?"
 
 # ----------------------------------------------------------------------
-# METADATA INTELLIGENCE TESTS — Alias matching
+# METADATA INTELLIGENCE TESTS  Alias matching
 # ----------------------------------------------------------------------
 run_test \
   "4. Alias Matching: 5G (alias for mobile networks)" \
@@ -50,7 +50,7 @@ run_test \
   "What are the latest updates from WFA?"
 
 # ----------------------------------------------------------------------
-# METADATA INTELLIGENCE TESTS — Identifier matching
+# METADATA INTELLIGENCE TESTS  Identifier matching
 # ----------------------------------------------------------------------
 run_test \
   "6. Identifier Matching: 802.11ax standard" \
@@ -61,14 +61,14 @@ run_test \
   "Show me documents about the upper 6 GHz band"
 
 # ----------------------------------------------------------------------
-# METADATA INTELLIGENCE TESTS — Doc type filtering
+# METADATA INTELLIGENCE TESTS  Doc type filtering
 # ----------------------------------------------------------------------
 run_test \
   "8. Doc Type Filter: PDF documents" \
   "Show me PDF documents about Wi-Fi"
 
 # ----------------------------------------------------------------------
-# METADATA INTELLIGENCE TESTS — Combined filters
+# METADATA INTELLIGENCE TESTS  Combined filters
 # ----------------------------------------------------------------------
 run_test \
   "9. Combined: Category + Topic" \
@@ -79,7 +79,7 @@ run_test \
   "What has the Wi-Fi Alliance published about Wi-Fi 7?"
 
 # ----------------------------------------------------------------------
-# USER STORY TESTS — Topic-based queries
+# USER STORY TESTS  Topic-based queries
 # ----------------------------------------------------------------------
 run_test \
   "11. Recent updates for specific topics" \
@@ -90,7 +90,7 @@ run_test \
   "What is new in cybersecurity for wireless networking?"
 
 # ----------------------------------------------------------------------
-# USER STORY TESTS — Organization queries
+# USER STORY TESTS  Organization queries
 # ----------------------------------------------------------------------
 run_test \
   "13. Most recent updates from WFA" \
@@ -101,7 +101,7 @@ run_test \
   "What has IEEE published recently?"
 
 # ----------------------------------------------------------------------
-# META-QUERY TESTS — Knowledge base structure queries (no documents)
+# META-QUERY TESTS  Knowledge base structure queries (no documents)
 # ----------------------------------------------------------------------
 run_test \
   "15. Meta-query: Count organizations" \
@@ -116,7 +116,7 @@ run_test \
   "What types of documents are in the knowledge base?"
 
 # ----------------------------------------------------------------------
-# USER STORY TESTS — Document analysis
+# USER STORY TESTS  Document analysis
 # ----------------------------------------------------------------------
 run_test \
   "18. Summaries of documents about Wi-Fi 6E" \
@@ -127,7 +127,7 @@ run_test \
   "What are the latest regulatory or policy updates affecting Wi-Fi?"
 
 # ----------------------------------------------------------------------
-# USER STORY TESTS — Event and meeting queries
+# USER STORY TESTS  Event and meeting queries
 # ----------------------------------------------------------------------
 run_test \
   "20. What meetings happened related to Wi-Fi Alliance?" \
@@ -138,7 +138,7 @@ run_test \
   "Are there any upcoming workshops or webinars about wireless standards?"
 
 # ----------------------------------------------------------------------
-# USER STORY TESTS — Standard evolution
+# USER STORY TESTS  Standard evolution
 # ----------------------------------------------------------------------
 run_test \
   "22. Changes in IEEE 802.11 standards" \
@@ -149,10 +149,10 @@ run_test \
   "What are the key improvements in Wi-Fi 7 compared to Wi-Fi 6?"
 
 echo ""
-echo "🎉 All CLI tests finished."
-echo "✅ Metadata intelligence features tested:"
+echo " All CLI tests finished."
+echo " Metadata intelligence features tested:"
 echo "   - Category-based filtering (press release, podcast, newsletter)"
-echo "   - Alias matching (5G → mobile networks, WFA → Wi-Fi Alliance)"
+echo "   - Alias matching (5G  mobile networks, WFA  Wi-Fi Alliance)"
 echo "   - Identifier matching (802.11ax, 6 GHz band)"
 echo "   - Doc type filtering (PDF, HTML, video)"
 echo "   - Combined filters (category + topic, topic + organization)"

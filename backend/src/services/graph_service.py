@@ -190,18 +190,283 @@ def get_all_people(limit: int = 1000) -> List[Dict[str, Any]]:
     return [dict(r) for r in results]
 
 
+def query_upcoming_events(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Fetch upcoming events with graceful fallback if Neo4j unavailable."""
+    try:
+        repo = get_repo()
+        rows = repo.get_upcoming_events(
+            start_date=filters.get("start_date"),
+            topics=filters.get("topics") or [],
+            organisations=filters.get("organisations") or [],
+            limit=int(filters.get("limit") or 20),
+        )
+    except Exception as e:
+        log.warning(f"Neo4j event query failed; returning empty events: {e}")
+        return []
+    
+    events: List[Dict[str, Any]] = []
+    for row in rows:
+        e = row.get("event", {})
+        resources = row.get("resources", [])
+        topics = [t.get("name") for t in row.get("topics", []) if t.get("name")]
+        orgs = [o.get("name") for o in row.get("organisations", []) if o.get("name")]
+        
+        # Convert DateTime objects to strings
+        start_date = _convert_datetime_to_string(e.get("start_date"))
+        end_date = _convert_datetime_to_string(e.get("end_date"))
+        
+        # Get resource details
+        resource_details = []
+        for r in resources:
+            if not r:
+                continue
+            resource_details.append({
+                "title": r.get("title"),
+                "url": r.get("url"),
+                "publish_date": _convert_datetime_to_string(r.get("publish_date")) or _convert_datetime_to_string(r.get("scraped_at")),
+                "summary": r.get("summary", "")
+            })
+        
+        events.append({
+            "name": e.get("name"),
+            "event_type": e.get("event_type"),
+            "start_date": start_date,
+            "end_date": end_date,
+            "location": e.get("location"),
+            "timezone": e.get("timezone"),
+            "description": e.get("description"),
+            "url": e.get("url"),
+            "topics": topics,
+            "organisations": orgs,
+            "resources": resource_details
+        })
+    
+    return events
+
+
+def query_past_events(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Fetch past events with graceful fallback if Neo4j unavailable."""
+    try:
+        repo = get_repo()
+        rows = repo.get_past_events(
+            start_date=filters.get("start_date"),
+            end_date=filters.get("end_date"),
+            topics=filters.get("topics") or [],
+            organisations=filters.get("organisations") or [],
+            limit=int(filters.get("limit") or 20),
+        )
+    except Exception as e:
+        log.warning(f"Neo4j event query failed; returning empty events: {e}")
+        return []
+    
+    events: List[Dict[str, Any]] = []
+    for row in rows:
+        e = row.get("event", {})
+        resources = row.get("resources", [])
+        topics = [t.get("name") for t in row.get("topics", []) if t.get("name")]
+        orgs = [o.get("name") for o in row.get("organisations", []) if o.get("name")]
+        
+        # Convert DateTime objects to strings
+        start_date = _convert_datetime_to_string(e.get("start_date"))
+        end_date = _convert_datetime_to_string(e.get("end_date"))
+        
+        # Get resource details
+        resource_details = []
+        for r in resources:
+            if not r:
+                continue
+            resource_details.append({
+                "title": r.get("title"),
+                "url": r.get("url"),
+                "publish_date": _convert_datetime_to_string(r.get("publish_date")) or _convert_datetime_to_string(r.get("scraped_at")),
+                "summary": r.get("summary", "")
+            })
+        
+        events.append({
+            "name": e.get("name"),
+            "event_type": e.get("event_type"),
+            "start_date": start_date,
+            "end_date": end_date,
+            "location": e.get("location"),
+            "timezone": e.get("timezone"),
+            "description": e.get("description"),
+            "url": e.get("url"),
+            "topics": topics,
+            "organisations": orgs,
+            "resources": resource_details
+        })
+    
+    return events
+
+
+def query_temporal_documents(
+    filters: Dict[str, Any],
+    temporal_focus: str,
+    publish_weight: float = 1.0,
+    update_weight: float = 0.8
+) -> Dict[str, Any]:
+    """Query documents based on temporal focus (published/updated/mixed).
+    
+    Args:
+        filters: Query filters (start_date, end_date, topics, organisations, people, etc.)
+        temporal_focus: "published", "updated", or "mixed"
+        publish_weight: Weight for newly published documents (default: 1.0)
+        update_weight: Weight for updated documents (default: 0.8)
+        
+    Returns:
+        Dict with documents, published_count, updated_count, total_count
+    """
+    try:
+        repo = get_repo()
+        
+        if temporal_focus == "published":
+            # Query only newly published documents
+            rows = repo.query_documents_by_publish_date(
+                start_date=filters.get("start_date"),
+                end_date=filters.get("end_date"),
+                topics=filters.get("topics") or [],
+                organisations=filters.get("organisations") or [],
+                limit=int(filters.get("limit") or 20)
+            )
+            
+            docs = []
+            for row in rows:
+                doc = _format_document_row(row)
+                doc["temporal_type"] = "published"
+                doc["weighted_score"] = row.get("publish_recency_score", 0.5) * publish_weight
+                docs.append(doc)
+            
+            return {
+                "documents": docs,
+                "published_count": len(docs),
+                "updated_count": 0,
+                "total_count": len(docs)
+            }
+            
+        elif temporal_focus == "updated":
+            # Query only recently updated documents
+            rows = repo.query_recently_updated_documents(
+                start_date=filters.get("start_date"),
+                end_date=filters.get("end_date"),
+                topics=filters.get("topics") or [],
+                organisations=filters.get("organisations") or [],
+                limit=int(filters.get("limit") or 20)
+            )
+            
+            docs = []
+            for row in rows:
+                doc = _format_document_row(row)
+                doc["temporal_type"] = "updated"
+                doc["weighted_score"] = row.get("update_recency_score", 0.5) * update_weight
+                docs.append(doc)
+            
+            return {
+                "documents": docs,
+                "published_count": 0,
+                "updated_count": len(docs),
+                "total_count": len(docs)
+            }
+            
+        else:  # "mixed"
+            # Query both published and updated documents with weighted scoring
+            result = repo.query_temporal_mixed(
+                start_date=filters.get("start_date"),
+                end_date=filters.get("end_date"),
+                topics=filters.get("topics") or [],
+                organisations=filters.get("organisations") or [],
+                publish_weight=publish_weight,
+                update_weight=update_weight,
+                limit=int(filters.get("limit") or 20)
+            )
+            
+            docs = []
+            for row in result.get("documents", []):
+                doc = _format_document_row(row)
+                doc["temporal_type"] = row.get("temporal_type", "unknown")
+                doc["weighted_score"] = row.get("weighted_score", 0.5)
+                docs.append(doc)
+            
+            return {
+                "documents": docs,
+                "published_count": result.get("published_count", 0),
+                "updated_count": result.get("updated_count", 0),
+                "total_count": result.get("total_count", 0)
+            }
+            
+    except Exception as e:
+        log.warning(f"Temporal document query failed; returning empty result: {e}")
+        return {
+            "documents": [],
+            "published_count": 0,
+            "updated_count": 0,
+            "total_count": 0
+        }
+
+
+def _format_document_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a document row from Neo4j query result."""
+    topics = []
+    if isinstance(row.get("topics"), list):
+        topics = [t.get("name") for t in row["topics"] if isinstance(t, dict) and t.get("name")]
+    
+    orgs = []
+    if isinstance(row.get("organisations"), list):
+        orgs = [o.get("name") for o in row["organisations"] if isinstance(o, dict) and o.get("name")]
+    
+    people = []
+    if isinstance(row.get("people"), list):
+        people = [p.get("name") for p in row["people"] if isinstance(p, dict) and p.get("name")]
+    
+    datasources = []
+    if isinstance(row.get("datasources"), list):
+        datasources = [ds.get("name") for ds in row["datasources"] if isinstance(ds, dict) and ds.get("name")]
+    
+    return {
+        "url_hash": row.get("url_hash"),
+        "url": row.get("url"),
+        "title": row.get("title"),
+        "summary": row.get("summary"),
+        "category": row.get("category"),
+        "doc_type": row.get("doc_type"),
+        "publish_date": _convert_datetime_to_string(row.get("publish_date")),
+        "scraped_at": _convert_datetime_to_string(row.get("scraped_at")),
+        "content_changed_at": _convert_datetime_to_string(row.get("content_changed_at")),
+        "first_seen_at": _convert_datetime_to_string(row.get("first_seen_at")),
+        "importance": row.get("importance"),
+        "topics": topics,
+        "organisations": orgs,
+        "people": people,
+        "datasources": datasources
+    }
+
+
 def get_graph_statistics() -> Dict[str, Any]:
     """Get statistics about nodes in the knowledge graph."""
     repo = get_repo()
-    # Collect counts, including total relationships between any nodes.
+    # Collect counts using CALL subqueries with variable scope (Neo4j 5+ syntax)
     query = """
-        MATCH (r:Resource) WITH count(r) as resources
-        MATCH (t:Topic) WITH resources, count(t) as topics
-        MATCH (o:Organization) WITH resources, topics, count(o) as organisations
-        MATCH (p:Person) WITH resources, topics, organisations, count(p) as people
-        MATCH (ds:DataSource) WITH resources, topics, organisations, people, count(ds) as datasources
-        MATCH ()-[rel]->() WITH resources, topics, organisations, people, datasources, count(rel) as relationships
-        RETURN resources, topics, organisations, people, datasources, relationships
+        CALL () {
+            MATCH (r:Resource) RETURN count(r) as resources
+        }
+        CALL () {
+            MATCH (t:Topic) RETURN count(t) as topics
+        }
+        CALL () {
+            MATCH (o:Organization) RETURN count(o) as organisations
+        }
+        CALL () {
+            MATCH (p:Person) RETURN count(p) as people
+        }
+        CALL () {
+            MATCH (e:Event) RETURN count(e) as events
+        }
+        CALL () {
+            MATCH (ds:DataSource) RETURN count(ds) as datasources
+        }
+        CALL () {
+            MATCH ()-[rel]->() RETURN count(rel) as relationships
+        }
+        RETURN resources, topics, organisations, people, events, datasources, relationships
     """
     results = repo.client.execute_query(query, {})
     return dict(results[0]) if results else {
@@ -209,6 +474,7 @@ def get_graph_statistics() -> Dict[str, Any]:
         "topics": 0,
         "organisations": 0,
         "people": 0,
+        "events": 0,
         "datasources": 0,
         "relationships": 0
     }
