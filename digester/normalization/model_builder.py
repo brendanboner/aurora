@@ -1,6 +1,8 @@
 """Build Pydantic models from extracted metadata."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from dateutil import parser as date_parser
 from utils.logger import setup_logger
 from settings import settings
 from neo4j_client.models import (
@@ -25,6 +27,37 @@ RELATIONSHIP_MODELS = {
 
 class MetadataModelBuilder:
     """Build validated Pydantic models from raw metadata."""
+    
+    @staticmethod
+    def _parse_date(date_value: Any) -> Optional[datetime]:
+        """
+        Parse a date value into a datetime object.
+        Handles ISO 8601 strings, human-readable dates, and datetime objects.
+        Returns None if parsing fails or value is None/empty.
+        """
+        if not date_value:
+            return None
+        
+        # If already a datetime, return it
+        if isinstance(date_value, datetime):
+            return date_value
+        
+        # If it's a string, try to parse it
+        if isinstance(date_value, str):
+            date_str = date_value.strip()
+            if not date_str or date_str.lower() == "unknown":
+                return None
+            
+            try:
+                # Use dateutil.parser which handles many formats including:
+                # - ISO 8601: "2025-11-06", "2025-11-06T10:30:00"
+                # - Human readable: "November 6, 2025", "6 Nov 2025"
+                return date_parser.parse(date_str)
+            except Exception as e:
+                logger.warning(f"Failed to parse date '{date_str}': {e}")
+                return None
+        
+        return None
     
     @staticmethod
     def build_models(metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -92,6 +125,9 @@ class MetadataModelBuilder:
     def _build_resource(data: Dict[str, Any]) -> Resource:
         """Build Resource model."""
         try:
+            # Parse publish_date if provided - handles both ISO 8601 and human-readable formats
+            publish_date = MetadataModelBuilder._parse_date(data.get("publish_date"))
+            
             return Resource(
                 url=data.get("url"),
                 title=data.get("title"),
@@ -103,7 +139,7 @@ class MetadataModelBuilder:
                 importance=data.get("importance", 0.0),
                 importance_explanation=data.get("importance_explanation", "unknown"),
                 extreme_impact=data.get("extreme_impact"),
-                publish_date=data.get("publish_date", "unknown"),
+                publish_date=publish_date,
                 access_notes=data.get("access_notes"),
                 datasource_id=data.get("datasource_id")
             )
