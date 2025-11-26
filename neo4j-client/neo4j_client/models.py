@@ -743,6 +743,17 @@ class TopicSubtopicOf(Relationship):
     target_id_field: str = "topic_id"
     relationship_label: str = "SUBTOPIC_OF"
 
+class TopicEncompasses(Relationship):
+    """Topic - encompasses -> Topic (broader topic encompasses narrower topic)"""
+    source_node_label: str = "Topic"
+    source_id_field: str = "topic_id"
+    target_node_label: str = "Topic"
+    target_id_field: str = "topic_id"
+    relationship_label: str = "ENCOMPASSES"
+    
+    reasoning: Optional[str] = Field(None, description="Explanation of why this relationship exists")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+
 class ResourceUploadedByPerson(Relationship):
     """Resource - uploaded by -> Person"""
     source_node_label: str = "Resource"
