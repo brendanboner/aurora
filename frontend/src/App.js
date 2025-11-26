@@ -9,6 +9,7 @@ import AdminUsers from './pages/AdminUsers';
 import AdminKnowledgeGraph from './pages/AdminKnowledgeGraph';
 import AdminMonitoring from './pages/AdminMonitoring';
 import AdminSystemConfig from './pages/AdminSystemConfig';
+import News from './pages/News';
 import { testBackendConnection } from './services/api';
 
 function App() {
@@ -87,6 +88,10 @@ function App() {
                 <Route 
                   path="/" 
                   element={<Chatbot currentUser={currentUser} backendStatus={backendStatus} />} 
+                />
+                <Route 
+                  path="/news" 
+                  element={<News currentUser={currentUser} backendStatus={backendStatus} />} 
                 />
                 {/* New discrete admin pages */}
                 <Route path="/admin/users" element={<AdminUsers onUserChange={handleUserChange} currentUser={currentUser} />} />

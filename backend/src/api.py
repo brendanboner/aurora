@@ -14,6 +14,7 @@ logging.basicConfig(
 from src.services.query_engine import run_query
 from src.services import postgres
 from src.services import graph_service
+from src.services.news_service import get_news_service
 from src.routes import admin
 
 app = FastAPI(title="Aurora Backend API")
@@ -101,6 +102,22 @@ class UploadResponse(BaseModel):
     status: str
     message: str
     url: str
+
+
+class NewsRequest(BaseModel):
+    user_id: int
+    time_range: str = "1month"
+    force_refresh: bool = False
+
+
+class NewsResponse(BaseModel):
+    headline: str
+    summary: str
+    sections: List[Dict[str, Any]]
+    highlights: List[str]
+    time_range: str
+    document_count: int
+    generated_at: str
 
 
 # ========== Health Check ==========
@@ -379,3 +396,38 @@ async def upload_document(doc: DocumentUpload):
     except Exception as e:
         logging.error(f"Failed to upload document: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")
+
+
+# ========== News Endpoint ==========
+
+@app.post("/news", response_model=NewsResponse)
+async def get_news(req: NewsRequest):
+    """
+    Generate curated news content for a user based on their preferences.
+    Returns a personalized news digest with sections, highlights, and related documents.
+    """
+    try:
+        # Verify user exists
+        user = postgres.get_user_by_id(req.user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get user preferences
+        preferences = postgres.get_user_preferences(req.user_id)
+        
+        # Generate news content
+        news_service = get_news_service()
+        news_content = news_service.generate_news(
+            user_id=req.user_id,
+            user_preferences=preferences,
+            time_range=req.time_range,
+            force_refresh=req.force_refresh
+        )
+        
+        return NewsResponse(**news_content)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to generate news: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate news: {str(e)}")

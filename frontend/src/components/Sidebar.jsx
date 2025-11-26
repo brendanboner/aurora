@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon } from '../components/icons';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
   const location = useLocation();
@@ -35,6 +35,16 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
           >
             <span className="sidebar-icon"><ChatIcon /></span>
             {isOpen && <span className="sidebar-label">Chat</span>}
+          </Link>
+
+          {/* News */}
+          <Link 
+            to="/news" 
+            className={`sidebar-item ${isActive('/news') ? 'active' : ''}`}
+            title="News & Events"
+          >
+            <span className="sidebar-icon"><NewsIcon /></span>
+            {isOpen && <span className="sidebar-label">News & Events</span>}
           </Link>
 
           {/* Profile Menu with expandable submenu */}

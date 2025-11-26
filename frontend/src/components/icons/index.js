@@ -20,3 +20,5 @@ export { default as CalendarIcon } from './CalendarIcon.jsx';
 export { default as SendIcon } from './SendIcon.jsx';
 export { default as LogoutIcon } from './LogoutIcon.jsx';
 export { default as StarIcon } from './StarIcon.jsx';
+export { default as NewsIcon } from './NewsIcon.jsx';
+export { default as RefreshIcon } from './RefreshIcon.jsx';
