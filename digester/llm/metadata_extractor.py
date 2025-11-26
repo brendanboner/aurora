@@ -82,7 +82,8 @@ class MetadataExtractor:
             category=message.get("category", ""),
             datasource_id=message.get("datasource_id", ""),
             publish_date=message.get("publish_date", ""),
-            content=content_chunk
+            content=content_chunk,
+            max_tokens=self.max_tokens
         )
         
         response = self.call_llm(prompt)
@@ -119,7 +120,8 @@ class MetadataExtractor:
         
         prompt = METADATA_MERGE_PROMPT.format(
             title=title,
-            chunks_metadata=chunks_str
+            chunks_metadata=chunks_str,
+            max_tokens=self.max_tokens
         )
         
         response = self.call_llm(prompt)

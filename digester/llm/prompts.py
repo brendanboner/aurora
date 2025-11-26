@@ -241,11 +241,14 @@ Return ONLY valid JSON in this exact format:
 }}
 
 Important guidelines:
+- CRITICAL: Keep your response CONCISE to stay within {max_tokens} token limit. Use short summaries and descriptions.
 - Limit topics to maximum 10 most relevant items.
 - Limit events to maximum 5 most relevant events.
-- Be specific and accurate.
+- Limit relationships to maximum 15 most relevant connections.
+- Be specific and accurate but BRIEF.
 - All confidence and relevance scores must be between 0.0 and 1.0.
 - evidence is a direct quote from the content, max 240 characters. Do not go over the 240 character limit. Cut the quote short if needed.
+- Keep summaries under 3 sentences, importance_explanation under 2 sentences, extreme_impact under 2 sentences.
 - Do not add any fields not specified above.
 - For relationships, relationship_type, subject_identifier, and object_identifier are required. For the other fields refer to relationship type definitions above.
 - relationship identifiers should be the name field of the respective nodes or the URL if the node is the resource.
@@ -376,8 +379,11 @@ RESOURCE_MENTIONS_EVENT
     - evidence (string, required, direct quote from content mentioning the event, max 240 chars)
 
 Important guidelines:
+- CRITICAL: Keep your response CONCISE to stay within {max_tokens} token limit. Use short summaries and descriptions.
 - Limit topics to maximum 10 most relevant items
 - Limit events to maximum 5 most relevant events
+- Limit relationships to maximum 15 most relevant connections
+- Keep summaries under 3 sentences, importance_explanation under 2 sentences, extreme_impact under 2 sentences
 - Ensure all confidence scores are between 0.0 and 1.0
 - For duplicate relationships, merge them and average their scores
 - evidence must be a direct quote from the content, max 240 characters. Do not go over the 240 character limit. Cut the quote short if needed.
