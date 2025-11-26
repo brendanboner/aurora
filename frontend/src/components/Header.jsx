@@ -1,5 +1,6 @@
 import React from 'react';
 import './Header.css';
+import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 
 const Header = ({ currentUser, onLogout }) => {
   const getUserInitials = () => {
@@ -16,12 +17,9 @@ const Header = ({ currentUser, onLogout }) => {
   return (
     <header className="app-header">
       <div className="header-brand">
-        <div className="extreme-logo">
-          <div className="logo-icon">E</div>
-        </div>
+        <ExtremeNetworksLogo height={36} />
         <div className="header-title">
-          <span className="brand-name">Extreme</span>
-          <span className="platform-name">Platform ONE | Aurora</span>
+          <span className="brand-name"><b>Extreme</b> Platform ONE | Aurora</span>
         </div>
       </div>
 

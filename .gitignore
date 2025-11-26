@@ -81,3 +81,5 @@ test_messages.json
 
 # Using UV
 uv.lock
+
+node_modules/

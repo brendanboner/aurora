@@ -18,41 +18,22 @@
   gap: 12px;
 }
 
-.extreme-logo {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, var(--primary) 0%, rgba(171, 163, 251, 1) 100%);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.logo-icon {
-  color: white;
-  font-size: 20px;
-  font-weight: 700;
-  font-family: 'Source Sans Pro', sans-serif;
-}
-
 .header-title {
   display: flex;
-  flex-direction: column;
-  gap: 0;
-  line-height: 1.2;
+  align-items: center;
+  line-height: 1;
 }
 
 .brand-name {
   color: var(--foreground);
-  font-size: 16px;
-  font-weight: 700;
-  font-family: 'Source Sans Pro', sans-serif;
+  font-size: 18px;
+  font-weight: 300;
+  font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: 0.3px;
 }
 
-.platform-name {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 400;
+.platform-text {
+  font-weight: 600;
 }
 
 .header-actions {
@@ -111,11 +92,11 @@
     padding: 0 16px;
   }
 
-  .platform-name {
-    display: none;
-  }
-
   .brand-name {
     font-size: 14px;
+  }
+  
+  .platform-text {
+    display: none;
   }
 }
