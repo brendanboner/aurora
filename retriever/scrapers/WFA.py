@@ -63,26 +63,24 @@ class WFAScraper(BaseScraper):
         
         return resources
     
-    async def get_resource_links(self) -> List[Resource]:
-        """Extract resource links from the main resource center page (page 1 only - for daily updates)"""
-        self.update_heartbeat()
-        self.update_current_processing(
-            Resource(title="Fetching resource list", url=self.resource_center_url, category="discovery"),
-            "loading page 1"
-        )
-        async with self.session.get(self.resource_center_url) as response:
-            html = await response.text()
+    async def get_resource_links(self, max_resources: int = -1) -> List[Resource]:
+        """
+        Extract resource links from the resource center, collecting across pages as needed.
+        Resolves redirects and checks for duplicates to ensure we collect only new resources.
         
-        soup = BeautifulSoup(html, 'html.parser')
-        return self._extract_resources_from_soup(soup)
-    
-    async def get_all_resource_links(self) -> List[Resource]:
-        """Extract all resource links from all pages (for full database population)"""
-        all_resources = []
+        Args:
+            max_resources: Maximum number of NEW resources to collect (-1 = unlimited/all pages)
+        
+        Returns:
+            List of Resource objects with resolved URLs that don't exist in the database
+        """
+        new_resources = []
         page = 0
+        total_found = 0
+        duplicates_skipped = 0
         
         while True:
-            page_url = f"{self.resource_center_url}?page={page}"
+            page_url = f"{self.resource_center_url}?page={page}" if page > 0 else self.resource_center_url
             logging.info(f"Scraping page {page + 1}: {page_url}")
             
             # Update monitoring with current page discovery progress
@@ -100,46 +98,81 @@ class WFAScraper(BaseScraper):
             
             # If no resources found on this page, we've reached the end
             if not page_resources:
+                logging.info(f"No resources found on page {page + 1}, stopping pagination")
                 break
+            
+            total_found += len(page_resources)
+            logging.info(f"Found {len(page_resources)} resources on page {page + 1} (total found: {total_found})")
+            
+            # Process each resource: resolve redirects and check for duplicates
+            for resource in page_resources:
+                # Check if we've already collected enough new resources
+                if max_resources >= 0 and len(new_resources) >= max_resources:
+                    logging.info(f"Reached max_resources limit of {max_resources} new resources")
+                    break
                 
-            all_resources.extend(page_resources)
-            logging.info(f"Found {len(page_resources)} resources on page {page + 1} (total: {len(all_resources)})")
+                try:
+                    logging.info(f"Processing resource: {resource.title} -> {resource.url}")
+                    # Resolve the URL to its final destination
+                    self.update_heartbeat()
+                    final_url = await self.follow_redirect_chain(resource.url)
+                    
+                    # Check if the final URL already exists in the database
+                    if self.url_exists_in_db(final_url):
+                        duplicates_skipped += 1
+                        logging.info(f"Skipping duplicate URL (after redirect): {final_url}")
+                        continue
+                    
+                    # This is a new resource - update with final URL and add to list
+                    resource.url = final_url
+                    new_resources.append(resource)
+                    logging.info(f"Added new resource: {resource.title} -> {final_url}")
+                    
+                except Exception as e:
+                    logging.error(f"Error processing resource {resource.url}: {e}")
+                    # Skip this resource on error
+                    continue
+            
+            # Check if we've reached the max_resources limit
+            if max_resources >= 0 and len(new_resources) >= max_resources:
+                logging.info(f"Collected {len(new_resources)} new resources, stopping pagination")
+                break
             
             # Be respectful - add delay between page requests
             await asyncio.sleep(settings.scraper_delay)
             page += 1
         
-        logging.info(f"Total resources found across all pages: {len(all_resources)}")
-        return all_resources
+        logging.info(f"Resource collection complete: {total_found} found, {duplicates_skipped} duplicates skipped, {len(new_resources)} new resources to scrape")
+        return new_resources
     
     async def scrape_resource(self, resource: Resource) -> Resource:
-        """Main entry point for scraping a resource - follows redirects to final content"""
+        """
+        Scrape a resource's content. URL is already resolved to final destination.
+        
+        Note: The URL in the resource has already been resolved through the redirect chain
+        by get_resource_links(), so we don't need to follow redirects again.
+        """
         try:
-            # Update status: resolving URL
+            # Update status
             self.update_heartbeat()
-            self.update_current_processing(resource, "resolving URL redirects")
-            
-            # Follow the complete redirect chain to get the final URL
-            final_url = await self.follow_redirect_chain(resource.url)
-            
-            # Update the resource with the final URL
-            resource.url = final_url
+            self.update_current_processing(resource, "extracting content")
             
             # Determine content type and process accordingly
-            if self.is_document_url(final_url):
+            # Note: resource.url is already the final URL after redirect resolution
+            if self.is_document_url(resource.url):
                 # It's a document - extract PDF text
-                logging.debug(f"Extracting document from URL: {final_url}")
+                logging.debug(f"Extracting document from URL: {resource.url}")
                 self.update_heartbeat()
                 self.update_current_processing(resource, "extracting PDF content")
-                pdf_text = await self.extract_pdf_text(final_url)
+                pdf_text = await self.extract_pdf_text(resource.url)
                 logging.debug(f"Extracted PDF text length: {len(pdf_text) if pdf_text else 0}")
                 resource.content = pdf_text if pdf_text else "PDF document - text extraction failed"
             else:
-                logging.debug(f"Extracting HTML content from URL: {final_url}")
+                logging.debug(f"Extracting HTML content from URL: {resource.url}")
                 self.update_heartbeat()
                 self.update_current_processing(resource, "extracting HTML content")
                 # It's an HTML page - extract content
-                async with self.session.get(final_url) as response:
+                async with self.session.get(resource.url) as response:
                     if response.status == 200:
                         html = await response.text()
                         soup = BeautifulSoup(html, 'html.parser')
@@ -283,7 +316,7 @@ class WFAScraper(BaseScraper):
     async def run_scraper(self):
         """Daily scraper execution - scrapes only the first page for new content"""
         logging.info("Starting Wi-Fi Alliance daily resource scraper...")
-        
+
         datasource_id = "wfa_resource_page"
         
         # Check if we should scrape based on configuration
@@ -291,68 +324,48 @@ class WFAScraper(BaseScraper):
             config = self.get_datasource_config(datasource_id)
             logging.info(f"Skipping scrape for {datasource_id} - frequency: {config.get('scrape_frequency')}, last scraped: {config.get('last_scraped_at')}")
             return
+
+        max_resources = settings.scraper_max_resources
         
-        # Get resource links from first page only
-        resources = await self.get_resource_links()
-        logging.info(f"Found {len(resources)} resources on first page")
+        if max_resources == -1:
+            logging.info("Starting Wi-Fi Alliance FULL resource scraper (unlimited)...")
+        else:
+            logging.info(f"Starting Wi-Fi Alliance resource scraper (max {max_resources} new resources)...")
         
-        # Scrape all resources from the first page
-        for resource in resources:
-            # Update heartbeat and tracking
-            self.update_heartbeat()
-            self.update_current_processing(resource, "scraping")
-            
-            logging.info(f"Scraping resource: {resource.title} at ({resource.url})")
-            scraped_resource = await self.scrape_resource(resource)
-            
-            # Log scraped resource as formatted JSON
-            scraped_data = self._format_resource_for_logging(scraped_resource)
-            logging.debug(f"Scraped resource:\n{json.dumps(scraped_data, indent=2, ensure_ascii=False)}")
-            
-            self.update_current_processing(scraped_resource, "publishing to queue")
-            self.publish_message(scraped_resource)
-            
-            # Be respectful - add delay between requests
-            await asyncio.sleep(settings.scraper_delay)
+        # Get new resource links (already deduplicated and redirects resolved)
+        resources = await self.get_resource_links(max_resources=max_resources)
+
+        if len(resources) == 0:
+            logging.info("No new resources to scrape")
+            self.clear_current_processing()
+            return
         
-        # Mark datasource as scraped
-        self.mark_datasource_scraped(datasource_id)
-        logging.info(f"Updated last_scraped_at for {datasource_id}")
+        logging.info(f"Scraping {len(resources)} new resources")
         
-        # Clear current processing when done
-        self.clear_current_processing()
-    
-    async def run_full_scraper(self):
-        """Full scraper execution - scrapes ALL pages for complete database population"""
-        logging.info("Starting Wi-Fi Alliance FULL resource scraper...")
-        
-        # Get ALL resource links from all pages
-        resources = await self.get_all_resource_links()
-        logging.info(f"Found {len(resources)} total resources across all pages")
-        
-        # Scrape all resources
+        # Scrape all collected resources
         for i, resource in enumerate(resources, 1):
-            # Update heartbeat and tracking
+             # Update heartbeat and tracking
             self.update_heartbeat()
             self.update_current_processing(resource, f"scraping ({i}/{len(resources)})")
             
             logging.info(f"Scraping resource {i}/{len(resources)}: {resource.title}")
             scraped_resource = await self.scrape_resource(resource)
             
-            # Log progress every 50 resources
-            if i % 50 == 0:
+            # Log progress periodically
+            if i % 10 == 0 or i == len(resources):
                 scraped_data = self._format_resource_for_logging(scraped_resource)
-                logging.debug(f"Progress {i}/{len(resources)} - Scraped resource:\n{json.dumps(scraped_data, indent=2, ensure_ascii=False)}")
+                logging.info(f"Progress {i}/{len(resources)} - Scraped: {scraped_resource.title}")
+                logging.debug(f"Resource data:\n{json.dumps(scraped_data, indent=2, ensure_ascii=False)}")
             
             self.update_current_processing(scraped_resource, f"publishing to queue ({i}/{len(resources)})")
             self.publish_message(scraped_resource)
             
             # Be respectful - add delay between requests
             await asyncio.sleep(settings.scraper_delay)
+
+        # Mark datasource as scraped
+        self.mark_datasource_scraped(datasource_id)
         
-        # Clear current processing when done
+         # Clear current processing when done
         self.clear_current_processing()
-
-
-# TODO:
-# - After getting the first page of resources if all are new resources we need to get another page
+        logging.info(f"Scraping completed: {len(resources)} resources processed")

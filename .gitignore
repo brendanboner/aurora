@@ -83,3 +83,8 @@ test_messages.json
 uv.lock
 
 node_modules/
+
+# Ignore standards files
+/cli/standards/
+/cli/standards.zip
+

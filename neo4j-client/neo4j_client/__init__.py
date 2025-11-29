@@ -30,6 +30,7 @@ from .models import (
     OrganizationAssociatedWithTopic,
     ResourceIngestedFromDataSource,
     DataSourceBelongsToOrganization,
+    TopicEncompasses,
     TopicSubtopicOf,
     ResourceUploadedByPerson,
     ResourceMentionsEvent
@@ -65,6 +66,7 @@ __all__ = [
     "OrganizationAssociatedWithTopic",
     "ResourceIngestedFromDataSource",
     "DataSourceBelongsToOrganization",
+    "TopicEncompasses",
     "TopicSubtopicOf",
     "ResourceUploadedByPerson",
     "ResourceMentionsEvent",

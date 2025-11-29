@@ -3,48 +3,87 @@
 from typing import Dict, Any, List, Optional, ClassVar
 from datetime import datetime
 import logging
+import os
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 import re
 import hashlib
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError:  # Optional dependency
-    SentenceTransformer = None  # type: ignore
-    logging.getLogger(__name__).warning(
-        "sentence_transformers not installed; embeddings generation disabled."
-    )
 
+# Configure module logger - will inherit from parent if configured, otherwise use basic config
 logger = logging.getLogger(__name__)
 
-# Lazy initialization for SentenceTransformer embedding model
-_embedding_model = None
-def get_embedding_model():
-    """Return (and lazily initialize) the embedding model, if available.
-
-    If sentence_transformers is not installed we return None and downstream
-    embedding code will gracefully skip embedding generation.
-    """
-    global _embedding_model
-    if SentenceTransformer is None:
-        return None
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
-    return _embedding_model
-
-
-def slugify(text: str) -> str:
-    """
-    Convert text to a URL-friendly slug.
+# Only set up basic config if no handlers are configured (i.e., if this is imported standalone)
+if not logging.getLogger().handlers:
+    # Configure only the neo4j_client logger hierarchy, not the root
+    neo4j_client_logger = logging.getLogger('neo4j_client')
+    neo4j_client_logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    ))
+    neo4j_client_logger.addHandler(handler)
     
-    Examples:
-        'Wi-Fi 6E' -> 'wi-fi-6e'
-        'Network Security' -> 'network-security'
-        '802.11ax' -> '802-11ax'
+    # Suppress verbose neo4j driver logs
+    logging.getLogger('neo4j').setLevel(logging.WARNING)
+
+# Embedding model configuration
+EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'sentence-transformers')  # Options: 'sentence-transformers', 'openai'
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'all-mpnet-base-v2')  # Default SentenceTransformer model
+
+# Lazy initialization for embedding models
+_embedding_model = None
+_openai_client = None
+
+def get_embedding_model():
     """
-    text = text.lower()
-    text = re.sub(r'[^\w\s-]', '', text)  # Remove special chars except - and spaces
-    text = re.sub(r'[-\s]+', '_', text)    # Replace spaces and multiple - with single _
-    return text.strip('-')
+    Get the embedding model based on EMBEDDING_PROVIDER environment variable.
+    
+    Supported providers:
+    - 'sentence-transformers': Use SentenceTransformer (default: all-mpnet-base-v2)
+    - 'openai': Use Azure OpenAI embeddings (default: text-embedding-3-small)
+    
+    Environment variables:
+    - EMBEDDING_PROVIDER: 'sentence-transformers' or 'openai'
+    - EMBEDDING_MODEL: Model name (e.g., 'all-mpnet-base-v2' or 'text-embedding-3-small')
+    - AZURE_OPENAI_API_KEY: Required if using OpenAI provider
+    - AZURE_OPENAI_ENDPOINT: Required if using OpenAI provider
+    - AZURE_OPENAI_API_VERSION: Optional (default: '2024-08-01-preview')
+    """
+    global _embedding_model, _openai_client
+    
+    if EMBEDDING_PROVIDER == 'openai':
+        if _openai_client is None:
+            try:
+                from openai import AzureOpenAI
+                
+                api_key = os.getenv('AZURE_OPENAI_API_KEY')
+                endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+                api_version = os.getenv('AZURE_OPENAI_API_VERSION', '2024-08-01-preview')
+                
+                if not api_key:
+                    raise ValueError("AZURE_OPENAI_API_KEY environment variable is required for Azure OpenAI embeddings")
+                if not endpoint:
+                    raise ValueError("AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI embeddings")
+                
+                _openai_client = AzureOpenAI(
+                    api_key=api_key,
+                    api_version=api_version,
+                    azure_endpoint=endpoint
+                )
+                logger.info(f"Initialized Azure OpenAI client for embeddings with model: {EMBEDDING_MODEL}")
+            except ImportError:
+                raise ImportError("openai package is required for Azure OpenAI embeddings. Install with: pip install openai")
+        return _openai_client
+    else:
+        # Default to SentenceTransformer
+        if _embedding_model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+                logger.info(f"Initialized SentenceTransformer model: {EMBEDDING_MODEL}")
+            except ImportError:
+                raise ImportError("sentence-transformers package is required. Install with: pip install sentence-transformers")
+        return _embedding_model
 
 
 class Node(BaseModel):
@@ -73,6 +112,7 @@ class Node(BaseModel):
     )
 
     TRUNCATE: ClassVar[Dict[str, int]] = {}
+    NORMALIZE: ClassVar[Dict[str, str]] = {}  # field_name -> case
 
 
     # Build Node embedding
@@ -83,16 +123,49 @@ class Node(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _truncate_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
-        caps = getattr(cls, "TRUNCATE", {})
-        if not caps or not isinstance(data, dict):
+    def _normalize_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize string fields based on NORMALIZE configuration."""
+        if not isinstance(data, dict):
             return data
-
-        for name, max_len in caps.items():
-            value = data.get(name)
+        
+        normalize_config = getattr(cls, "NORMALIZE", {})
+        if not normalize_config:
+            return data
+            
+        for field_name, case in normalize_config.items():
+            value = data.get(field_name)
+            if value is None:
+                continue
+            
+            # Handle lists
+            if isinstance(value, list):
+                normalized_list = []
+                for item in value:
+                    if item is not None:
+                        normalized_list.append(normalize_string(item, case))
+                data[field_name] = normalized_list
+            else:
+                # Handle single strings
+                data[field_name] = normalize_string(value, case)
+        
+        return data
+    
+    @model_validator(mode="before")
+    @classmethod
+    def _truncate_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Truncate string fields based on TRUNCATE configuration."""
+        if not isinstance(data, dict):
+            return data
+        
+        truncate_config = getattr(cls, "TRUNCATE", {})
+        if not truncate_config:
+            return data
+            
+        for field_name, max_len in truncate_config.items():
+            value = data.get(field_name)
             if isinstance(value, str) and len(value) > max_len:
-                data[name] = value[:max_len]
-                logger.warning(f"Truncated field '{name}' to max length {max_len}")
+                data[field_name] = value[:max_len]
+                logger.warning(f"Truncated field '{field_name}' to max length {max_len}")
 
         return data
     
@@ -140,28 +213,41 @@ class Node(BaseModel):
         return " | ".join(parts)
 
     def build_embedding(self) -> List[float]:
-        """Generate embedding vector for the node if embedding model available.
-
-        Returns empty list when embeddings are disabled (missing dependency) or
-        when there is no meaningful text to embed.
         """
-        embedding_text = self.get_embedding_text().strip()
-        if not embedding_text:
-            return []
-        embedding_model = get_embedding_model()
-        if embedding_model is None:
-            return []
-        try:
-            logger.info(f"Generating embedding for text: {embedding_text}")
+        Generate embedding vector for the node using configured embedding provider.
+        
+        Supports:
+        - SentenceTransformer models (local, fast, 768 dimensions)
+        - OpenAI embeddings (API-based, high quality, 1536 dimensions for text-embedding-3-small)
+        """
+        embedding_text = self.get_embedding_text()
+        logger.info(f"Generating embedding for text: {embedding_text}")
+        
+        if EMBEDDING_PROVIDER == 'openai':
+            # Use OpenAI embeddings
+            client = get_embedding_model()
+            try:
+                response = client.embeddings.create(
+                    input=embedding_text,
+                    model=EMBEDDING_MODEL,
+                    dimensions=768
+                )
+                embedding_vector = response.data[0].embedding
+                logger.debug(f"Generated OpenAI embedding with {len(embedding_vector)} dimensions")
+                return embedding_vector
+            except Exception as e:
+                logger.error(f"Failed to generate OpenAI embedding: {e}")
+                raise
+        else:
+            # Use SentenceTransformer
+            embedding_model = get_embedding_model()
             embedding_vector = embedding_model.encode(
                 embedding_text,
                 convert_to_numpy=True,
-                normalize_embeddings=True
+                normalize_embeddings=True  
             ).tolist()
+            logger.debug(f"Generated SentenceTransformer embedding with {len(embedding_vector)} dimensions")
             return embedding_vector
-        except Exception as e:
-            logger.warning(f"Failed to generate embedding: {e}; returning empty list")
-            return []
 
 
 class Relationship(BaseModel):
@@ -185,6 +271,7 @@ class Relationship(BaseModel):
     target_id: str # e.g. the actual target node's id value
 
     TRUNCATE: ClassVar[Dict[str, int]] = {}
+    NORMALIZE: ClassVar[Dict[str, str]] = {}  # field_name -> case
 
 
     def to_dict(self) -> Dict[str, Any]:
@@ -201,16 +288,49 @@ class Relationship(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _truncate_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
-        caps = getattr(cls, "TRUNCATE", {})
-        if not caps or not isinstance(data, dict):
+    def _normalize_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize string fields based on NORMALIZE configuration."""
+        if not isinstance(data, dict):
             return data
-
-        for name, max_len in caps.items():
-            value = data.get(name)
+        
+        normalize_config = getattr(cls, "NORMALIZE", {})
+        if not normalize_config:
+            return data
+            
+        for field_name, case in normalize_config.items():
+            value = data.get(field_name)
+            if value is None:
+                continue
+            
+            # Handle lists
+            if isinstance(value, list):
+                normalized_list = []
+                for item in value:
+                    if item is not None:
+                        normalized_list.append(normalize_string(item, case))
+                data[field_name] = normalized_list
+            else:
+                # Handle single strings
+                data[field_name] = normalize_string(value, case)
+        
+        return data
+    
+    @model_validator(mode="before")
+    @classmethod
+    def _truncate_strings(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Truncate string fields based on TRUNCATE configuration."""
+        if not isinstance(data, dict):
+            return data
+        
+        truncate_config = getattr(cls, "TRUNCATE", {})
+        if not truncate_config:
+            return data
+            
+        for field_name, max_len in truncate_config.items():
+            value = data.get(field_name)
             if isinstance(value, str) and len(value) > max_len:
-                data[name] = value[:max_len]
-                logger.warning(f"Truncated field '{name}' to max length {max_len}")
+                data[field_name] = value[:max_len]
+                logger.warning(f"Truncated field '{field_name}' to max length {max_len}")
 
         return data
 
@@ -241,6 +361,12 @@ class DataSource(Node):
         None,
         description="URL to fetch data from (optional)"
     )
+    
+    NORMALIZE = {
+        "name": "title",
+        "source_type": "lower",
+        "fetch_url": "lower"
+    }
     
     @model_validator(mode='after')
     def validate_id(self):
@@ -347,6 +473,16 @@ class Resource(Node):
         "title": 500
     }  
 
+    NORMALIZE = {
+        "title": "title",
+        "summary": "sentence",
+        "doc_type": "lower",
+        "category": "lower",
+        "importance_explanation": "sentence",
+        "extreme_impact": "sentence",
+        "access_notes": "sentence"
+    }
+
     # Generate url_hash after initialization
     @model_validator(mode='after')
     def generate_url_hash(self):
@@ -402,6 +538,37 @@ class Topic(Node):
         default_factory=list,
         description="Alternative names or synonyms for this topic (e.g., ['802.11ax', 'High Efficiency Wireless'])"
     )
+    
+    created_by: str = Field(
+        default="unknown",
+        description="Service that created this topic (e.g., 'digester', 'curator', 'manual', 'api')"
+    )
+    
+    # Deduplication metadata (populated during deduplication process)
+    deduplication_best_match_id: Optional[str] = Field(
+        None,
+        description="ID of the best matching existing node found during deduplication (if any)"
+    )
+    
+    deduplication_best_match_name: Optional[str] = Field(
+        None,
+        description="Name of the best matching existing node found during deduplication (if any)"
+    )
+    
+    deduplication_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Similarity score of the best match (0.0-1.0)"
+    )
+
+    NORMALIZE = {
+        "name": "lower",
+        "classification": "lower",
+        "identifier": "lower",
+        "issuer": "lower",
+        "aliases": "lower"
+    }
 
     # Build slugified topic_id from name if not provided
     @model_validator(mode='after')
@@ -447,6 +614,31 @@ class Organization(Node):
         description="Organization's homepage URL"
     )
     
+    # Deduplication metadata (populated during deduplication process)
+    deduplication_best_match_id: Optional[str] = Field(
+        None,
+        description="ID of the best matching existing node found during deduplication (if any)"
+    )
+    
+    deduplication_best_match_name: Optional[str] = Field(
+        None,
+        description="Name of the best matching existing node found during deduplication (if any)"
+    )
+    
+    deduplication_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Similarity score of the best match (0.0-1.0)"
+    )
+    
+    NORMALIZE = {
+        "name": "title",
+        "org_type": "lower",
+        "aliases": "title",
+        "homepage_url": "lower"
+    }
+    
     @model_validator(mode='after')
     def validate_id(self):
         if (not self.org_id) and self.name:
@@ -478,6 +670,29 @@ class Person(Node):
         None,
         description="Email address of the person"
     )
+    
+    # Deduplication metadata (populated during deduplication process)
+    deduplication_best_match_id: Optional[str] = Field(
+        None,
+        description="ID of the best matching existing node found during deduplication (if any)"
+    )
+    
+    deduplication_best_match_name: Optional[str] = Field(
+        None,
+        description="Name of the best matching existing node found during deduplication (if any)"
+    )
+    
+    deduplication_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Similarity score of the best match (0.0-1.0)"
+    )
+    
+    NORMALIZE = {
+        "name": "title",
+        "email": "lower"
+    }
     
     @model_validator(mode='after')
     def validate_id(self):
@@ -640,6 +855,11 @@ class ResourceRelatesToTopic(Relationship):
         "evidence": 240
     }   
 
+    NORMALIZE = {
+        "evidence": "sentence",
+        "stance": "lower"
+    }
+
 class ResourceMentionsPerson(Relationship):
     """Resource - mentions -> Person"""
     source_node_label: str = "Resource"
@@ -656,6 +876,11 @@ class ResourceMentionsPerson(Relationship):
         "evidence": 240
     }  
 
+    NORMALIZE = {
+        "evidence": "sentence",
+        "role": "sentence"
+    }
+
 class ResourceMentionsOrganization(Relationship):
     """Resource - mentions -> Organization"""
     source_node_label: str = "Resource"
@@ -670,6 +895,10 @@ class ResourceMentionsOrganization(Relationship):
     TRUNCATE = {
         "evidence": 240
     }  
+
+    NORMALIZE = {
+        "evidence": "sentence"
+    }
 
 class PersonAffiliatedWithOrganization(Relationship):
     """Person - affiliated with -> Organization"""
@@ -687,6 +916,11 @@ class PersonAffiliatedWithOrganization(Relationship):
         "evidence": 240
     }  
 
+    NORMALIZE = {
+        "evidence": "sentence",
+        "role": "sentence"
+    }
+
 class PersonConnectedToTopic(Relationship):
     """Person - connected to -> Topic"""
     source_node_label: str = "Person"
@@ -702,6 +936,11 @@ class PersonConnectedToTopic(Relationship):
     TRUNCATE = {
         "evidence": 240
     }  
+
+    NORMALIZE = {
+        "evidence": "sentence",
+        "affiliation": "sentence"
+    }
 
 class OrganizationAssociatedWithTopic(Relationship):
     """Organization - associated with -> Topic"""
@@ -719,6 +958,11 @@ class OrganizationAssociatedWithTopic(Relationship):
         "evidence": 240
     }  
 
+    NORMALIZE = {
+        "evidence": "sentence",
+        "affiliation": "sentence"
+    }
+
 class ResourceIngestedFromDataSource(Relationship):
     """Resource - ingested from -> DataSource"""
     source_node_label: str = "Resource"
@@ -735,23 +979,31 @@ class DataSourceBelongsToOrganization(Relationship):
     target_id_field: str = "org_id"
     relationship_label: str = "BELONGS_TO"
 
+
+
+class TopicEncompasses(Relationship):
+    """Topic - encompasses -> Topic (A encompasses B means A is a broader category that includes B)"""
+    source_node_label: str = "Topic"
+    source_id_field: str = "topic_id"
+    target_node_label: str = "Topic"
+    target_id_field: str = "topic_id"
+    relationship_label: str = "ENCOMPASSES"
+
+    reasoning: str = Field(..., description="Brief explanation of why source topic encompasses target topic")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
+
+    NORMALIZE = {
+        "reasoning": "sentence"
+    }
+
 class TopicSubtopicOf(Relationship):
-    """Topic - subtopic of -> Topic"""
+    """Topic - subtopic of -> Topic (A is subtopic of B means A is a more specific topic within B)"""
     source_node_label: str = "Topic"
     source_id_field: str = "topic_id"
     target_node_label: str = "Topic"
     target_id_field: str = "topic_id"
     relationship_label: str = "SUBTOPIC_OF"
 
-class TopicEncompasses(Relationship):
-    """Topic - encompasses -> Topic (broader topic encompasses narrower topic)"""
-    source_node_label: str = "Topic"
-    source_id_field: str = "topic_id"
-    target_node_label: str = "Topic"
-    target_id_field: str = "topic_id"
-    relationship_label: str = "ENCOMPASSES"
-    
-    reasoning: Optional[str] = Field(None, description="Explanation of why this relationship exists")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
 
 class ResourceUploadedByPerson(Relationship):
