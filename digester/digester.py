@@ -8,6 +8,7 @@ validates and normalizes the data, and inserts it into a Neo4j knowledge graph.
 import sys
 from typing import Dict, Any
 import re
+import hashlib
 from datetime import datetime
 from dateutil.parser import parse as date_parse
 import threading
@@ -28,6 +29,24 @@ import json
 
 
 logger = setup_logger(__name__, settings.log_level)
+
+
+# Redis TTL constants (in seconds)
+REDIS_HEARTBEAT_TTL = 300  # 5 minutes
+REDIS_CURRENT_PROCESSING_TTL = 300  # 5 minutes
+REDIS_DELIVERY_ATTEMPT_TTL = 3600  # 1 hour
+
+# Redis list size limits
+REDIS_MAX_COMPLETED_ITEMS = 20
+REDIS_MAX_FAILED_ITEMS = 20
+
+# Hash truncation length for Redis keys
+REDIS_HASH_KEY_LENGTH = 16
+
+# Heartbeat update interval (in seconds)
+# Only update heartbeat if this many seconds have passed since last update
+# This reduces Redis I/O while still maintaining reasonable monitoring granularity
+HEARTBEAT_UPDATE_INTERVAL = 30  # 30 seconds
 
 
 class DocumentDigester:
@@ -87,6 +106,9 @@ class DocumentDigester:
             logger.warning(f"Failed to connect to Redis: {e}. Monitoring will be disabled.")
             self.redis_client = None
         
+        # Track last heartbeat update time to avoid excessive Redis I/O
+        self._last_heartbeat_time = 0.0
+        
         # Initialize document parser for binary files
         from utils.document_parser import DocumentParser
         self.doc_parser = DocumentParser()
@@ -101,7 +123,7 @@ class DocumentDigester:
         by the neo4j-init container, which runs before this service starts.
         This method only establishes the connection and creates the repository.
         """
-        logger.info("Connecting to Neo4j knowledge graph...")
+        logger.info("Initializing Neo4j graph repository...")
         
         # Connect to Neo4j
         self.neo4j_client.connect()
@@ -133,8 +155,7 @@ class DocumentDigester:
             True if sent successfully, False otherwise
         """
         try:
-            title = message.get("resource_data", {}).get("title", 
-                    message.get("event_data", {}).get("name", "Unknown"))
+            title = self._get_message_title(message)
             
             # Add error metadata
             dlq_message = {
@@ -144,12 +165,14 @@ class DocumentDigester:
             }
             
             # Use fresh connection to avoid stale idle connection issues
+            logger.debug(f"Opening RabbitMQ producer connection to DLQ: {self._dlq_queue}")
             with RabbitMQProducer(
                 **self._rabbitmq_config,
                 queue=self._dlq_queue,
                 logger_instance=logger
             ) as producer:
                 producer.publish(dlq_message)
+                logger.debug("Closed RabbitMQ producer connection to DLQ")
             
             logger.info(f"Sent document to DLQ: {title} - Reason: {error}")
             
@@ -186,8 +209,7 @@ class DocumentDigester:
             retry_count = message.get("retry_count", 0) + 1
             max_retries = settings.max_message_retries
             
-            title = message.get("resource_data", {}).get("title", 
-                    message.get("event_data", {}).get("name", "Unknown"))
+            title = self._get_message_title(message)
             
             # Check if max retries exceeded
             if retry_count > max_retries:
@@ -204,12 +226,14 @@ class DocumentDigester:
             }
             
             # Use fresh connection to avoid stale idle connection issues
+            logger.debug(f"Opening RabbitMQ producer connection to retry queue: {self._retry_queue}")
             with RabbitMQProducer(
                 **self._rabbitmq_config,
                 queue=self._retry_queue,
                 logger_instance=logger
             ) as producer:
                 producer.publish(retry_message)
+                logger.debug("Closed RabbitMQ producer connection to retry queue")
             
             logger.info(f"Requeued message for retry ({retry_count}/{max_retries}): {title}")
             return True
@@ -220,29 +244,47 @@ class DocumentDigester:
             return self.send_to_dlq(message, f"Requeue failed: {e}, Original error: {error}")
     
     def update_heartbeat(self):
-        """Update digester heartbeat timestamp in Redis."""
-        if self.redis_client:
-            try:
-                self.redis_client.setex("digester:heartbeat", 300, datetime.now().timestamp())
-            except Exception as e:
-                logger.warning(f"Failed to update heartbeat: {e}")
+        """
+        Update digester heartbeat timestamp in Redis.
+        
+        Uses time-based caching to avoid excessive Redis I/O - only updates
+        if HEARTBEAT_UPDATE_INTERVAL seconds have passed since last update.
+        """
+        if not self.redis_client:
+            return
+        
+        current_time = time.time()
+        time_since_last = current_time - self._last_heartbeat_time
+        
+        # Only update if enough time has passed since last update
+        if time_since_last >= HEARTBEAT_UPDATE_INTERVAL:
+            self._set_redis_value(
+                "digester:heartbeat",
+                str(current_time),
+                REDIS_HEARTBEAT_TTL,
+                "update heartbeat"
+            )
+            self._last_heartbeat_time = current_time
     
     def update_current_processing(self, message: Dict[str, Any], stage: str):
         """Update current processing status in Redis."""
-        if self.redis_client:
-            try:
-                processing_data = {
-                    "title": message.get("title", "Unknown"),
-                    "url": message.get("url", ""),
-                    "category": message.get("category", "unknown"),
-                    "status": "processing",
-                    "stage": stage,
-                    "started_at": datetime.now().isoformat(),
-                    "updated_at": datetime.now().isoformat()
-                }
-                self.redis_client.setex("digester:current", 300, json.dumps(processing_data))
-            except Exception as e:
-                logger.warning(f"Failed to update current processing: {e}")
+        resource_data = message.get("resource_data", {})
+        event_data = message.get("event_data", {})
+        processing_data = {
+            "title": resource_data.get("title") or event_data.get("name") or "Unknown",
+            "url": resource_data.get("url") or event_data.get("url") or "",
+            "category": resource_data.get("category") or "event" if event_data else "unknown",
+            "status": "processing",
+            "stage": stage,
+            "started_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        self._set_redis_value(
+            "digester:current",
+            json.dumps(processing_data),
+            REDIS_CURRENT_PROCESSING_TTL,
+            "update current processing"
+        )
     
     def clear_current_processing(self):
         """Clear current processing status in Redis."""
@@ -292,7 +334,7 @@ class DocumentDigester:
                     and items_digested >= items_scraped 
                     and current_status == "digesting"):
                     self.graph_repository.update_batch_status(batch_id, "completed")
-                    logger.info(f"Batch {batch_id} completed: {items_digested} items digested")
+                    logger.info(f"Batch {batch_id} completed: {items_digested}/{items_scraped} items digested")
             else:
                 logger.warning(f"Batch {batch_id} not found when updating progress")
                 
@@ -301,50 +343,52 @@ class DocumentDigester:
     
     def record_completed(self, message: Dict[str, Any], metadata: Dict[str, Any] = None):
         """Record successfully completed document in Redis."""
-        if self.redis_client:
-            try:
-                completed_data = {
-                    "title": message.get("title", "Unknown"),
-                    "url": message.get("url", ""),
-                    "category": message.get("category", "unknown"),
-                    "status": "completed",
-                    "stage": "inserted",
-                    "started_at": datetime.now().isoformat(),
-                    "updated_at": datetime.now().isoformat(),
-                    "datasource_id": message.get("datasource_id", ""),
-                    "publish_date": message.get("publish_date", ""),
-                    "uploaded_by": message.get("uploaded_by", "")
-                }
-                
-                # Add metadata if provided
-                if metadata:
-                    completed_data["metadata"] = metadata
-                
-                # Keep last 20 completed items
-                self.redis_client.lpush("processing:completed", json.dumps(completed_data))
-                self.redis_client.ltrim("processing:completed", 0, 19)
-            except Exception as e:
-                logger.warning(f"Failed to record completed: {e}")
+        resource_data = message.get("resource_data", {})
+        event_data = message.get("event_data", {})
+        completed_data = {
+            "title": resource_data.get("title") or event_data.get("name") or "Unknown",
+            "url": resource_data.get("url") or event_data.get("url") or "",
+            "category": resource_data.get("category") or "event" if event_data else "unknown",
+            "status": "completed",
+            "stage": "inserted",
+            "started_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "datasource_id": message.get("datasource_id", ""),
+            "publish_date": resource_data.get("publish_date", ""),
+            "uploaded_by": message.get("uploaded_by", "")
+        }
+        
+        # Add metadata if provided
+        if metadata:
+            completed_data["metadata"] = metadata
+        
+        self._record_to_redis_list(
+            "processing:completed",
+            completed_data,
+            REDIS_MAX_COMPLETED_ITEMS,
+            "completed"
+        )
     
     def record_failed(self, message: Dict[str, Any], error: str):
         """Record failed document in Redis."""
-        if self.redis_client:
-            try:
-                failed_data = {
-                    "title": message.get("title", "Unknown"),
-                    "url": message.get("url", ""),
-                    "category": message.get("category", "unknown"),
-                    "status": "failed",
-                    "stage": "error",
-                    "started_at": datetime.now().isoformat(),
-                    "updated_at": datetime.now().isoformat(),
-                    "error": error
-                }
-                # Keep last 20 failed items
-                self.redis_client.lpush("processing:failed", json.dumps(failed_data))
-                self.redis_client.ltrim("processing:failed", 0, 19)
-            except Exception as e:
-                logger.warning(f"Failed to record failure: {e}")
+        resource_data = message.get("resource_data", {})
+        event_data = message.get("event_data", {})
+        failed_data = {
+            "title": resource_data.get("title") or event_data.get("name") or "Unknown",
+            "url": resource_data.get("url") or event_data.get("url") or "",
+            "category": resource_data.get("category") or "event" if event_data else "unknown",
+            "status": "failed",
+            "stage": "error",
+            "started_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "error": error
+        }
+        self._record_to_redis_list(
+            "processing:failed",
+            failed_data,
+            REDIS_MAX_FAILED_ITEMS,
+            "failed"
+        )
     
     def validate_resource_message(self, message: Dict[str, Any]) -> None:
         """
@@ -464,10 +508,52 @@ class DocumentDigester:
         # For resources, use URL
         return resource_data.get("url") or event_data.get("url") or event_data.get("name") or message.get("id", "unknown")
     
+    def _get_message_title(self, message: Dict[str, Any]) -> str:
+        """Extract a display title from a message for logging purposes."""
+        resource_data = message.get("resource_data", {})
+        event_data = message.get("event_data", {})
+        return resource_data.get("title") or event_data.get("name") or "Unknown"
+    
+    def _record_to_redis_list(self, list_key: str, data: Dict[str, Any], max_items: int, operation_name: str):
+        """
+        Record data to a Redis list with automatic trimming to max size.
+        
+        Args:
+            list_key: Redis list key
+            data: Data dict to serialize and store
+            max_items: Maximum number of items to keep in the list
+            operation_name: Name of operation for logging (e.g., "completed", "failed")
+        """
+        if self.redis_client:
+            try:
+                self.redis_client.lpush(list_key, json.dumps(data))
+                self.redis_client.ltrim(list_key, 0, max_items - 1)
+            except Exception as e:
+                logger.warning(f"Failed to record {operation_name}: {e}")
+
+    def _set_redis_value(self, key: str, value: str, ttl: int, operation_name: str):
+        """
+        Set a Redis key with TTL.
+        
+        Args:
+            key: Redis key
+            value: Value to store
+            ttl: Time-to-live in seconds
+            operation_name: Name of operation for logging
+        """
+        if self.redis_client:
+            try:
+                self.redis_client.setex(key, ttl, value)
+            except Exception as e:
+                logger.warning(f"Failed to {operation_name}: {e}")
+
+    
     def _get_delivery_attempt_key(self, message: Dict[str, Any]) -> str:
         """Get Redis key for tracking delivery attempts."""
         msg_id = self._get_message_id(message)
-        return f"delivery_attempts:{hash(msg_id)}"
+        # Use stable hash instead of Python's hash() which varies across runs
+        stable_hash = hashlib.sha256(msg_id.encode()).hexdigest()[:REDIS_HASH_KEY_LENGTH]
+        return f"delivery_attempts:{stable_hash}"
     
     def _clear_delivery_attempts(self, message: Dict[str, Any]):
         """Clear delivery attempt counter after successful processing."""
@@ -476,6 +562,93 @@ class DocumentDigester:
                 self.redis_client.delete(self._get_delivery_attempt_key(message))
             except Exception as e:
                 logger.debug(f"Failed to clear delivery attempts: {e}")
+    
+    def _check_delivery_attempts(self, message: Dict[str, Any]) -> bool:
+        """
+        Track delivery attempts in Redis to prevent infinite redelivery loops.
+        
+        This catches cases where the channel dies mid-processing and the message
+        gets redelivered without our retry_count metadata.
+        
+        Args:
+            message: Message from RabbitMQ
+            
+        Returns:
+            True if message should be processed, False if it should be sent to DLQ
+        """
+        if not self.redis_client:
+            return True
+        
+        attempt_key = self._get_delivery_attempt_key(message)
+        attempts = self.redis_client.incr(attempt_key)
+        self.redis_client.expire(attempt_key, REDIS_DELIVERY_ATTEMPT_TTL)
+        
+        if attempts > settings.max_message_retries:
+            title = self._get_message_title(message)
+            error_msg = f"Max delivery attempts ({attempts}) exceeded - possible infinite redelivery loop"
+            logger.error(f"Sending to DLQ after {attempts} delivery attempts: {title}")
+            self.record_failed(message, error_msg)
+            self.send_to_dlq(message, error_msg)
+            self.redis_client.delete(attempt_key)  # Clean up
+            return False
+        
+        return True
+    
+    def _check_stop_flag(self, message: Dict[str, Any]) -> bool:
+        """
+        Check for external stop/purge signal before doing heavy work.
+        
+        Args:
+            message: Message from RabbitMQ
+            
+        Returns:
+            True if message should be processed, False if service is stopping
+        """
+        if not self.redis_client:
+            return True
+        
+        if self.redis_client.get("digester:stop") != "1":
+            return True
+        
+        # Stop flag detected
+        logger.warning("Digester stop flag detected - acknowledging message without processing and stopping consumer")
+        
+        try:
+            self.redis_client.delete("digester:stop")
+        except Exception as e:
+            logger.debug(f"Failed to delete stop flag: {e}")
+        
+        self.clear_current_processing()
+        
+        # Record skipped message
+        if self.redis_client:
+            try:
+                title = self._get_message_title(message)
+                skipped_data = {
+                    "title": title,
+                    "url": message.get("resource_data", {}).get("url") or message.get("event_data", {}).get("url") or "",
+                    "status": "skipped",
+                    "stage": "stopped",
+                    "started_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat(),
+                    "reason": "digester stop flag"
+                }
+                self._record_to_redis_list(
+                    "processing:completed",
+                    skipped_data,
+                    REDIS_MAX_COMPLETED_ITEMS,
+                    "skipped message"
+                )
+            except Exception as e:
+                logger.debug(f"Failed to record skipped message: {e}")
+        
+        # Stop consumer in background thread
+        try:
+            threading.Thread(target=self.rabbitmq_consumer.stop, daemon=True).start()
+        except Exception as e:
+            logger.error(f"Failed to stop consumer after stop flag: {e}", exc_info=True)
+        
+        return False
 
     def process_message(self, message: Dict[str, Any]) -> bool:
         """
@@ -491,53 +664,13 @@ class DocumentDigester:
             # Update heartbeat
             self.update_heartbeat()
             
-            # Track delivery attempts in Redis to prevent infinite redelivery loops
-            # This catches cases where the channel dies mid-processing and the message
-            # gets redelivered without our retry_count metadata
-            if self.redis_client:
-                attempt_key = self._get_delivery_attempt_key(message)
-                attempts = self.redis_client.incr(attempt_key)
-                self.redis_client.expire(attempt_key, 3600)  # 1 hour TTL
-                
-                if attempts > settings.max_message_retries:
-                    resource_data = message.get("resource_data", {})
-                    event_data = message.get("event_data", {})
-                    title = resource_data.get("title", event_data.get("name", "Unknown"))
-                    error_msg = f"Max delivery attempts ({attempts}) exceeded - possible infinite redelivery loop"
-                    logger.error(f"Sending to DLQ after {attempts} delivery attempts: {title}")
-                    self.record_failed(message, error_msg)
-                    self.send_to_dlq(message, error_msg)
-                    self.redis_client.delete(attempt_key)  # Clean up
-                    return True  # ACK to remove from queue
-
-            # Check for external stop / purge signal before doing any heavy work
-            if self.redis_client and self.redis_client.get("digester:stop") == "1":
-                logger.warning("Digester stop flag detected - acknowledging message without processing and stopping consumer")
-                try:
-                    self.redis_client.delete("digester:stop")
-                except Exception as e:
-                    logger.debug(f"Failed to delete stop flag: {e}")
-                self.clear_current_processing()
-                if self.redis_client:
-                    try:
-                        skipped_data = {
-                            "title": message.get("resource_data", {}).get("title", message.get("event_data", {}).get("name", "Skipped")),
-                            "url": message.get("resource_data", {}).get("url", message.get("event_data", {}).get("url", "")),
-                            "status": "skipped",
-                            "stage": "stopped",
-                            "started_at": datetime.now().isoformat(),
-                            "updated_at": datetime.now().isoformat(),
-                            "reason": "digester stop flag"
-                        }
-                        self.redis_client.lpush("processing:completed", json.dumps(skipped_data))
-                        self.redis_client.ltrim("processing:completed", 0, 19)
-                    except Exception as e:
-                        logger.debug(f"Failed to record skipped message: {e}")
-                try:
-                    threading.Thread(target=self.rabbitmq_consumer.stop, daemon=True).start()
-                except Exception as e:
-                    logger.error(f"Failed to stop consumer after stop flag: {e}")
-                return True
+            # Check delivery attempts to prevent infinite redelivery loops
+            if not self._check_delivery_attempts(message):
+                return True  # ACK to remove from queue
+            
+            # Check for external stop/purge signal before doing any heavy work
+            if not self._check_stop_flag(message):
+                return True  # ACK and stop processing
 
             # Determine message type and route accordingly
             message_type = message.get("message_type")
@@ -552,7 +685,7 @@ class DocumentDigester:
                 
         except ValueError as e:
             # Validation errors - send to DLQ (non-retryable)
-            title = message.get("resource_data", {}).get("title", message.get("event_data", {}).get("name", "Unknown"))
+            title = self._get_message_title(message)
             error_msg = str(e)
             logger.error(f"Validation error for '{title}': {error_msg}")
             
@@ -613,7 +746,7 @@ class DocumentDigester:
             batch_id=batch_id
         )
         
-        # logger.info("Inserting event into knowledge graph...")
+        logger.info("Inserting event into knowledge graph...")
         self.update_current_processing({"title": event_name, "url": event_data.get("url", ""), "category": "event"}, "inserting into graph")
         
         # create_node automatically creates INGESTED_FROM relationship via datasource_id
@@ -696,11 +829,12 @@ class DocumentDigester:
                 logger.warning(f"Failed to get event relationship: {e}")
 
         logger.info("Deduping nodes...")
-        deduped_models = self.deduplicator.deduplicate_nodes(models)
+        # Deduplicate and replace models dict with deduplicated version
+        models = self.deduplicator.deduplicate_nodes(models)
 
         logger.info("Inserting entities into knowledge graph...")
         self.update_current_processing({"title": title, "url": resource_data.get("url", ""), "category": resource_data.get("category", "unknown")}, "inserting into graph")
-        stats = self.graph_repository.insert_entities(deduped_models)
+        stats = self.graph_repository.insert_entities(models)
 
         # # Create UPLOADED_BY relationship if uploaded_by field is present
         uploaded_by = message.get("uploaded_by")
@@ -713,11 +847,8 @@ class DocumentDigester:
                     name=uploaded_by
                 )
                 
-                resource_node = None
-                for model in deduped_models:
-                    if model.__class__.__name__ == "Resource":
-                        resource_node = model
-                        break
+                # Get resource node from models dict
+                resource_node = models["nodes"].get("resource")
                 
                 if resource_node:
                     uploaded_by_rel = ResourceUploadedByPerson(
@@ -732,10 +863,10 @@ class DocumentDigester:
                     
                     logger.info(f"Created UPLOADED_BY relationship: {upload_stats}")
                 else:
-                    logger.warning("Resource node not found in models, skipping UPLOADED_BY relationship")
+                    logger.error("Resource node not found in models, cannot create UPLOADED_BY relationship")
                     
             except Exception as e:
-                logger.warning(f"Failed to create UPLOADED_BY relationship: {e}")
+                logger.error(f"Failed to create UPLOADED_BY relationship: {e}", exc_info=True)
 
         logger.info(f"Successfully processed resource: {title}")
         logger.info(f"Insert stats: {stats}")
@@ -782,7 +913,7 @@ class DocumentDigester:
                                 try:
                                     self.rabbitmq_consumer.stop()
                                 except Exception as e:
-                                    logger.error(f"Error stopping consumer from monitor: {e}")
+                                    logger.error(f"Error stopping consumer from monitor: {e}", exc_info=True)
                                 break
                         except Exception as e:
                             logger.debug(f"Stop flag monitor error: {e}")
@@ -808,12 +939,12 @@ class DocumentDigester:
         try:
             self.rabbitmq_consumer.stop()
         except Exception as e:
-            logger.error(f"Error stopping RabbitMQ consumer: {e}")
+            logger.error(f"Error stopping RabbitMQ consumer: {e}", exc_info=True)
         
         try:
             self.neo4j_client.close()
         except Exception as e:
-            logger.error(f"Error closing Neo4j connection: {e}")
+            logger.error(f"Error closing Neo4j connection: {e}", exc_info=True)
         
         logger.info("Shutdown complete")
 

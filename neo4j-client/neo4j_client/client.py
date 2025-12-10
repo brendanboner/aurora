@@ -133,17 +133,17 @@ class Neo4jClient:
 
             # Vector indexes for embeddings (using Neo4j vector search)
             # Resource embedding
-            "CREATE VECTOR INDEX resource_embedding_index IF NOT EXISTS FOR (r:Resource) ON r.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            "CREATE VECTOR INDEX resource_embedding_index IF NOT EXISTS FOR (r:Resource) ON r.embedding OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}}",
             # Topic embedding
-            "CREATE VECTOR INDEX topic_embedding_index IF NOT EXISTS FOR (t:Topic) ON t.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            "CREATE VECTOR INDEX topic_embedding_index IF NOT EXISTS FOR (t:Topic) ON t.embedding OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}}",
             # Organization embedding
-            "CREATE VECTOR INDEX organization_embedding_index IF NOT EXISTS FOR (o:Organization) ON o.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            "CREATE VECTOR INDEX organization_embedding_index IF NOT EXISTS FOR (o:Organization) ON o.embedding OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}}",
             # DataSource embedding
-            "CREATE VECTOR INDEX datasource_embedding_index IF NOT EXISTS FOR (ds:DataSource) ON ds.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            "CREATE VECTOR INDEX datasource_embedding_index IF NOT EXISTS FOR (ds:DataSource) ON ds.embedding OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}}",
             # Person embedding
-            "CREATE VECTOR INDEX person_embedding_index IF NOT EXISTS FOR (p:Person) ON p.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            "CREATE VECTOR INDEX person_embedding_index IF NOT EXISTS FOR (p:Person) ON p.embedding OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}}",
             # Event embedding
-            "CREATE VECTOR INDEX event_embedding_index IF NOT EXISTS FOR (e:Event) ON e.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            "CREATE VECTOR INDEX event_embedding_index IF NOT EXISTS FOR (e:Event) ON e.embedding OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}}",
             
             # Temporal indexes for date-based queries
             "CREATE INDEX event_start_date IF NOT EXISTS FOR (e:Event) ON (e.start_date)",

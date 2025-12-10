@@ -19,7 +19,7 @@ class TestTopicOrganizer:
         sample_topics
     ):
         """Test that run() returns statistics dictionary."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         
         # Pre-populate mock with topics
         for topic in sample_topics:
@@ -52,7 +52,7 @@ class TestTopicOrganizer:
     
     def test_run_with_no_topics(self, mock_graph_repository):
         """Test run() when no topics exist."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         
         # Empty repository
         with patch('tasks.topic_organizer.Neo4jClient'):
@@ -75,7 +75,7 @@ class TestTopicOrganizer:
         sample_topics
     ):
         """Test that run() creates ENCOMPASSES relationships."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         from testing.mocks import MockHierarchyAnalyzer
         
         # Pre-populate with topics
@@ -113,7 +113,7 @@ class TestTopicOrganizer:
     
     def test_heartbeat_callback_called(self, mock_graph_repository, sample_topics):
         """Test that heartbeat callback is invoked during long operations."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         from testing.mocks import MockHierarchyAnalyzer
         
         heartbeat_mock = MagicMock()
@@ -144,7 +144,7 @@ class TestTopicOrganizer:
     
     def test_close_releases_resources(self, mock_graph_repository):
         """Test that close() releases resources."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         
         mock_client = MagicMock()
         
@@ -162,7 +162,7 @@ class TestTopicOrganizer:
     
     def test_cross_cluster_analysis_enabled(self, mock_graph_repository, sample_topics):
         """Test cross-cluster analysis when enabled."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         from testing.mocks import MockHierarchyAnalyzer
         
         mock_analyzer = MockHierarchyAnalyzer()
@@ -205,7 +205,7 @@ class TestTopicOrganizerErrorHandling:
     
     def test_handles_clustering_error(self, mock_graph_repository, sample_topics):
         """Test graceful handling of clustering errors."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         
         with patch('tasks.topic_organizer.Neo4jClient'):
             with patch('tasks.topic_organizer.GraphRepository', return_value=mock_graph_repository):
@@ -226,7 +226,7 @@ class TestTopicOrganizerErrorHandling:
     
     def test_handles_llm_error(self, mock_graph_repository, sample_topics):
         """Test graceful handling of LLM errors."""
-        from tasks.topic_organizer import TopicOrganizer
+        from services.topic_organizer import TopicOrganizer
         from testing.mocks import MockHierarchyAnalyzer
         
         mock_analyzer = MockHierarchyAnalyzer()

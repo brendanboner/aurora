@@ -69,13 +69,24 @@ class TopicThresholdMonitor:
     def neo4j(self) -> Neo4jClient:
         """Lazy initialization of Neo4j client."""
         if self._neo4j_client is None:
-            self._neo4j_client = Neo4jClient(
-                uri=settings.neo4j_uri,
-                user=settings.neo4j_user,
-                password=settings.neo4j_password,
-                database=settings.neo4j_database,
-            )
-            self._neo4j_client.connect()
+            try:
+                self._neo4j_client = Neo4jClient(
+                    uri=settings.neo4j_uri,
+                    user=settings.neo4j_user,
+                    password=settings.neo4j_password,
+                    database=settings.neo4j_database,
+                )
+                self._neo4j_client.connect()
+            except Exception as e:
+                # If connection fails, clean up and re-raise
+                if self._neo4j_client:
+                    try:
+                        self._neo4j_client.close()
+                    except Exception:
+                        pass  # Ignore cleanup errors
+                    self._neo4j_client = None
+                logger.error(f"Failed to initialize Neo4j client: {e}")
+                raise
         return self._neo4j_client
     
     def get_last_curation_timestamp(self) -> Optional[datetime]:

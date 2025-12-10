@@ -2,8 +2,8 @@
 
 from typing import Dict, Any, List, Optional, TypedDict, Union
 from datetime import datetime
-from dateutil import parser as date_parser
 from utils.logger import setup_logger
+from utils.date_helpers import parse_date
 from settings import settings
 from neo4j_client.models import (
     Resource, Topic, Organization, Person, Event,
@@ -71,9 +71,9 @@ def build_event_model(
     """
     try:
         # Parse dates
-        start_date = _parse_date(event_data.get("start_date"))
-        end_date = _parse_date(event_data.get("end_date"))
-        scraped_at_dt = _parse_date(scraped_at)
+        start_date = parse_date(event_data.get("start_date"))
+        end_date = parse_date(event_data.get("end_date"))
+        scraped_at_dt = parse_date(scraped_at)
         
         return Event(
             name=event_data.get("name"),
@@ -91,37 +91,6 @@ def build_event_model(
         )
     except Exception as e:
         raise ValueError(f"Failed to create Event model: {e}")
-
-
-def _parse_date(date_value: Any) -> Optional[datetime]:
-    """
-    Parse a date value into a datetime object.
-    Handles ISO 8601 strings, human-readable dates, and datetime objects.
-    Returns None if parsing fails or value is None/empty.
-    """
-    if not date_value:
-        return None
-    
-    # If already a datetime, return it
-    if isinstance(date_value, datetime):
-        return date_value
-    
-    # If it's a string, try to parse it
-    if isinstance(date_value, str):
-        date_str = date_value.strip()
-        if not date_str or date_str.lower() == "unknown":
-            return None
-        
-        try:
-            # Use dateutil.parser which handles many formats including:
-            # - ISO 8601: "2025-11-06", "2025-11-06T10:30:00"
-            # - Human readable: "November 6, 2025", "6 Nov 2025"
-            return date_parser.parse(date_str)
-        except Exception as e:
-            logger.warning(f"Failed to parse date '{date_str}': {e}")
-            return None
-    
-    return None
 
 
 def build_models(metadata: Dict[str, Any]) -> BuiltModelsDict:
@@ -190,7 +159,7 @@ def _build_resource(data: Dict[str, Any]) -> Resource:
     """Build Resource model."""
     try:
         # Parse publish_date if provided - handles both ISO 8601 and human-readable formats
-        publish_date = _parse_date(data.get("publish_date"))
+        publish_date = parse_date(data.get("publish_date"))
         
         return Resource(
             url=data.get("url"),
@@ -384,17 +353,17 @@ def _resolve_node_id(
         normalized = normalize_string(identifier, case="lower")
         node_id = topic_id_map.get(normalized)
         if not node_id:
-            logger.debug(f"Topic not found: '{identifier}' (normalized: '{normalized}'). Available: {list(topic_id_map.keys())}")
+            logger.warning(f"Topic not found: '{identifier}' (normalized: '{normalized}'). {len(topic_id_map)} topics available")
     elif node_type == "person":
         normalized = normalize_string(identifier, case="title")
         node_id = person_id_map.get(normalized)
         if not node_id:
-            logger.debug(f"Person not found: '{identifier}' (normalized: '{normalized}'). Available: {list(person_id_map.keys())}")
+            logger.warning(f"Person not found: '{identifier}' (normalized: '{normalized}'). {len(person_id_map)} people available")
     elif node_type == "organization":
         normalized = normalize_string(identifier, case="title")
         node_id = org_id_map.get(normalized)
         if not node_id:
-            logger.debug(f"Organization not found: '{identifier}' (normalized: '{normalized}'). Available: {list(org_id_map.keys())}")
+            logger.warning(f"Organization not found: '{identifier}' (normalized: '{normalized}'). {len(org_id_map)} organizations available")
     else:
         return None
     

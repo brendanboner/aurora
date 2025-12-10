@@ -23,9 +23,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 from settings import settings
 from utils.logger import setup_logger
 from api import app, set_scheduler, set_start_time, update_job_state
-from tasks.topic_organizer import TopicOrganizer
-from tasks.event_reconciler import EventReconciler
-from tasks.threshold_monitor import TopicThresholdMonitor
+from services.topic_organizer import TopicOrganizer
+from services.event_reconciler import EventReconciler
+from services.threshold_monitor import TopicThresholdMonitor
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -357,7 +357,9 @@ class CuratorScheduler:
         
         if self.scheduler:
             logger.info("Shutting down APScheduler...")
-            self.scheduler.shutdown(wait=False)
+            # Wait for running jobs to complete (with 30 second timeout)
+            # This prevents jobs from accessing closed resources during shutdown
+            self.scheduler.shutdown(wait=True)
         
         if self._threshold_monitor:
             logger.info("Closing threshold monitor...")

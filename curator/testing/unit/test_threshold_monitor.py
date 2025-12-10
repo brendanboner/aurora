@@ -14,7 +14,7 @@ class TestThresholdMonitor:
     
     def test_get_last_curation_timestamp_none(self, mock_redis_client):
         """Test getting timestamp when none is set."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         monitor = TopicThresholdMonitor(
             redis_client=mock_redis_client,
@@ -27,7 +27,7 @@ class TestThresholdMonitor:
     
     def test_get_last_curation_timestamp_exists(self, mock_redis_client):
         """Test getting timestamp when one is set."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         # Set a timestamp
         test_time = datetime(2025, 1, 15, 10, 0, 0)
@@ -44,7 +44,7 @@ class TestThresholdMonitor:
     
     def test_set_last_curation_timestamp(self, mock_redis_client):
         """Test setting the last curation timestamp."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         monitor = TopicThresholdMonitor(
             redis_client=mock_redis_client,
@@ -60,7 +60,7 @@ class TestThresholdMonitor:
     
     def test_set_last_curation_timestamp_defaults_to_now(self, mock_redis_client):
         """Test that timestamp defaults to current time."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         monitor = TopicThresholdMonitor(
             redis_client=mock_redis_client,
@@ -78,7 +78,7 @@ class TestThresholdMonitor:
     
     def test_count_topics_since_all_topics(self, mock_redis_client, mock_neo4j_client):
         """Test counting all topics when no timestamp provided."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         # Mock Neo4j to return a count
         mock_neo4j_client.execute_query = MagicMock(return_value=[{"count": 42}])
@@ -95,7 +95,7 @@ class TestThresholdMonitor:
     
     def test_count_topics_since_timestamp(self, mock_redis_client, mock_neo4j_client):
         """Test counting topics created after a timestamp."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         mock_neo4j_client.execute_query = MagicMock(return_value=[{"count": 15}])
         
@@ -116,7 +116,7 @@ class TestThresholdMonitor:
     
     def test_curation_running_flag(self, mock_redis_client):
         """Test setting and checking curation running flag."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         monitor = TopicThresholdMonitor(
             redis_client=mock_redis_client,
@@ -135,7 +135,7 @@ class TestThresholdMonitor:
     
     def test_threshold_check_below_threshold(self, mock_redis_client, mock_neo4j_client):
         """Test threshold check when below threshold."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         mock_neo4j_client.execute_query = MagicMock(return_value=[{"count": 10}])
         
@@ -156,7 +156,7 @@ class TestThresholdMonitor:
     
     def test_threshold_check_above_threshold(self, mock_redis_client, mock_neo4j_client):
         """Test threshold check when above threshold."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         from unittest.mock import patch
         
         mock_neo4j_client.execute_query = MagicMock(return_value=[{"count": 60}])
@@ -180,7 +180,7 @@ class TestThresholdMonitor:
     
     def test_threshold_check_curation_already_running(self, mock_redis_client, mock_neo4j_client):
         """Test threshold check when curation is already running."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         mock_neo4j_client.execute_query = MagicMock(return_value=[{"count": 100}])
         
@@ -204,7 +204,7 @@ class TestThresholdMonitorIngestionSignals:
     
     def test_check_ingestion_complete_signal_not_set(self, mock_redis_client):
         """Test checking ingestion complete signal when not set."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         monitor = TopicThresholdMonitor(
             redis_client=mock_redis_client,
@@ -217,7 +217,7 @@ class TestThresholdMonitorIngestionSignals:
     
     def test_check_ingestion_complete_signal_set(self, mock_redis_client):
         """Test checking ingestion complete signal when set."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         # Set the signal
         mock_redis_client.set("ingestion:daily_complete", "1")
@@ -233,7 +233,7 @@ class TestThresholdMonitorIngestionSignals:
     
     def test_clear_ingestion_complete_signal(self, mock_redis_client):
         """Test clearing the ingestion complete signal."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         mock_redis_client.set("ingestion:daily_complete", "1")
         
@@ -252,7 +252,7 @@ class TestThresholdMonitorLocking:
     
     def test_extend_curation_lock(self, mock_redis_client):
         """Test extending the curation lock."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         monitor = TopicThresholdMonitor(
             redis_client=mock_redis_client,
@@ -270,7 +270,7 @@ class TestThresholdMonitorLocking:
     
     def test_is_curation_running(self, mock_redis_client):
         """Test checking if curation is running."""
-        from tasks.threshold_monitor import TopicThresholdMonitor
+        from services.threshold_monitor import TopicThresholdMonitor
         
         monitor = TopicThresholdMonitor(
             redis_client=mock_redis_client,

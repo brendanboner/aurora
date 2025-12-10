@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, Optional
 from datetime import datetime
-from dateutil import parser
+from utils.date_helpers import parse_date
 from utils.logger import setup_logger
 from settings import settings
 
@@ -60,22 +60,3 @@ def validate_metadata(metadata: Dict[str, Any]) -> bool:
 
     logger.info("Structured metadata validation passed")
     return True
-
-
-def parse_date(date_str: str) -> Optional[datetime]:
-    """
-    Parse a date string into a datetime object.
-    
-    Args:
-        date_str: Date string to parse
-        
-    Returns:
-        Parsed datetime object, or None if parsing fails
-    """
-    if not date_str:
-        return None
-    try:
-        return parser.parse(date_str)
-    except Exception as e:
-        logger.error(f"Failed to parse date: {date_str}, error: {e}")
-        return None

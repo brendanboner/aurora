@@ -10,6 +10,8 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
+from services.topic_organizer import TopicOrganizer
+from services.event_reconciler import EventReconciler
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -120,8 +122,6 @@ async def get_status():
 @app.post("/trigger/topics", response_model=TriggerResponse)
 async def trigger_topic_organization(background_tasks: BackgroundTasks):
     """Manually trigger topic organization job."""
-    from tasks.topic_organizer import TopicOrganizer
-    
     if _job_state["topic_organization"]["is_running"]:
         raise HTTPException(
             status_code=409,
@@ -160,8 +160,6 @@ async def trigger_topic_organization(background_tasks: BackgroundTasks):
 @app.post("/trigger/reconcile", response_model=TriggerResponse)
 async def trigger_event_reconciliation(background_tasks: BackgroundTasks):
     """Manually trigger event reconciliation job."""
-    from tasks.event_reconciler import EventReconciler
-    
     if _job_state["event_reconciliation"]["is_running"]:
         raise HTTPException(
             status_code=409,
@@ -170,8 +168,9 @@ async def trigger_event_reconciliation(background_tasks: BackgroundTasks):
     
     async def run_job():
         update_job_state("event_reconciliation", is_running=True)
+        reconciler = None
         try:
-            reconciler = EventReconciler()
+            reconciler = EventReconciler(logger_instance=logger)
             await asyncio.to_thread(reconciler.run)
             update_job_state(
                 "event_reconciliation",
@@ -187,6 +186,10 @@ async def trigger_event_reconciliation(background_tasks: BackgroundTasks):
                 last_error=str(e),
             )
             logger.error(f"Manual event reconciliation failed: {e}")
+        finally:
+            # Ensure cleanup of resources
+            if reconciler:
+                reconciler.close()
     
     background_tasks.add_task(run_job)
     

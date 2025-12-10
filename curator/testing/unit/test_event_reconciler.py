@@ -21,7 +21,7 @@ class TestEventReconcilerBasics:
     
     def test_has_pending_work_no_batches(self, mock_neo4j_client):
         """Test has_pending_work when no batches need reconciliation."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_query = MagicMock(return_value=[{"pending_count": 0}])
         
@@ -37,7 +37,7 @@ class TestEventReconcilerBasics:
     
     def test_has_pending_work_with_batches(self, mock_neo4j_client):
         """Test has_pending_work when batches need reconciliation."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_query = MagicMock(return_value=[{"pending_count": 3}])
         
@@ -53,7 +53,7 @@ class TestEventReconcilerBasics:
     
     def test_get_batches_pending_reconciliation(self, mock_neo4j_client, sample_events):
         """Test retrieving batches that need reconciliation."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         # Mock return value
         mock_batches = [
@@ -89,7 +89,7 @@ class TestEventReconcilerBasics:
     
     def test_similarity_threshold_configuration(self, mock_neo4j_client):
         """Test that similarity threshold is properly configured."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         reconciler = EventReconciler(
             neo4j_client=mock_neo4j_client,
@@ -100,7 +100,7 @@ class TestEventReconcilerBasics:
     
     def test_auto_cancel_days_configuration(self, mock_neo4j_client):
         """Test auto-cancel days configuration."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         reconciler = EventReconciler(
             neo4j_client=mock_neo4j_client,
@@ -111,7 +111,7 @@ class TestEventReconcilerBasics:
     
     def test_close_releases_resources_when_owning_connection(self, mock_neo4j_client):
         """Test that close() releases resources when owning the connection."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         reconciler = EventReconciler(
             neo4j_client=mock_neo4j_client,
@@ -129,7 +129,7 @@ class TestEventReconcilerBasics:
     
     def test_close_does_not_release_external_connection(self, mock_neo4j_client):
         """Test that close() doesn't release externally provided connection."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         reconciler = EventReconciler(
             neo4j_client=mock_neo4j_client,
@@ -148,7 +148,7 @@ class TestReconcileDatasourceEvents:
     
     def test_finds_disappeared_future_events(self, mock_neo4j_client, mock_graph_repository):
         """Test that future events not updated during scrape are found."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         # Future date for testing
         future_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%S')
@@ -195,7 +195,7 @@ class TestReconcileDatasourceEvents:
     
     def test_returns_empty_stats_when_no_disappeared_events(self, mock_neo4j_client, mock_graph_repository):
         """Test that empty stats returned when all events were updated."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         # Events updated during scrape should NOT be returned by the query
         mock_neo4j_client.execute_query = MagicMock(side_effect=[
@@ -216,7 +216,7 @@ class TestReconcileDatasourceEvents:
     
     def test_skips_already_unconfirmed_events(self, mock_neo4j_client, mock_graph_repository):
         """Test that already unconfirmed events are checked but not marked again."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         future_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%S')
         
@@ -248,7 +248,7 @@ class TestReconcileDatasourceEvents:
     
     def test_handles_query_error_gracefully(self, mock_neo4j_client, mock_graph_repository):
         """Test that query errors are handled gracefully."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_query = MagicMock(
             side_effect=Exception("Database connection failed")
@@ -272,7 +272,7 @@ class TestMarkEventUnconfirmed:
     
     def test_marks_event_status_as_unconfirmed(self, mock_neo4j_client):
         """Test marking an event as unconfirmed updates status."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_write = MagicMock(return_value=[{"url_hash": "test123"}])
         mock_logger = MagicMock()
@@ -304,7 +304,7 @@ class TestMarkEventUnconfirmed:
     
     def test_handles_mark_error_gracefully(self, mock_neo4j_client):
         """Test that errors during marking are logged."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_write = MagicMock(side_effect=Exception("DB Error"))
         mock_logger = MagicMock()
@@ -325,7 +325,7 @@ class TestMarkBatchReconciled:
     
     def test_marks_batch_reconciled_with_timestamp(self, mock_neo4j_client):
         """Test marking a batch as reconciled sets reconciled_at."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_write = MagicMock(return_value=[{"batch_id": "batch-001"}])
         
@@ -357,7 +357,7 @@ class TestRunFullReconciliation:
     
     def test_run_returns_stats_with_no_pending_work(self, mock_neo4j_client):
         """Test run() when no work is pending."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         # Return empty list for batches
         mock_neo4j_client.execute_query = MagicMock(return_value=[])
@@ -374,7 +374,7 @@ class TestRunFullReconciliation:
     
     def test_run_processes_multiple_batches(self, mock_neo4j_client, mock_graph_repository):
         """Test that run() processes multiple pending batches."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         batches = [
             {
@@ -421,7 +421,7 @@ class TestErrorHandling:
     
     def test_handles_neo4j_connection_error_in_has_pending_work(self, mock_neo4j_client):
         """Test handling of Neo4j connection errors in has_pending_work."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_query = MagicMock(
             side_effect=Exception("Connection failed")
@@ -441,7 +441,7 @@ class TestErrorHandling:
     
     def test_handles_batch_processing_error(self, mock_neo4j_client, mock_graph_repository):
         """Test handling of errors during batch processing."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         batches = [{
             "batch_id": "batch-001",
@@ -481,7 +481,7 @@ class TestDatetimeHandling:
     
     def test_reconcile_query_uses_datetime_conversion(self, mock_neo4j_client, mock_graph_repository):
         """Test that reconciliation query properly converts start_date strings."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         mock_neo4j_client.execute_query = MagicMock(return_value=[])
         
@@ -504,7 +504,7 @@ class TestDatetimeHandling:
     
     def test_check_query_uses_datetime_conversion(self, mock_neo4j_client, mock_graph_repository):
         """Test that the diagnostic check query uses datetime conversion."""
-        from tasks.event_reconciler import EventReconciler
+        from services.event_reconciler import EventReconciler
         
         # First call returns empty events, second call is check query
         mock_neo4j_client.execute_query = MagicMock(side_effect=[

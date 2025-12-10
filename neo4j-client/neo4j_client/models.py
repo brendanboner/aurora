@@ -234,7 +234,6 @@ class Node(BaseModel):
                 response = client.embeddings.create(
                     input=embedding_text,
                     model=EMBEDDING_MODEL,
-                    dimensions=768
                 )
                 embedding_vector = response.data[0].embedding
                 logger.debug(f"Generated OpenAI embedding with {len(embedding_vector)} dimensions")

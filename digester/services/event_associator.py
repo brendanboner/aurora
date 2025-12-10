@@ -18,8 +18,8 @@ from datetime import date
 from settings import settings
 from utils.logger import setup_logger
 from utils.llm_helpers import call_llm_with_retry, parse_json_from_llm_response
-from utils.date_extractor import extract_date_from_title
-from utils.prompts import EVENT_DISAMBIGUATION_PROMPT
+from utils.date_helpers import extract_date_from_title
+from utils.prompts import EVENT_DISAMBIGUATION_PROMPT, MAX_REASONING_LENGTH, MAX_EVIDENCE_LENGTH
 from neo4j_client import GraphRepository
 from neo4j_client.models import ResourceRelatesToEvent
 
@@ -28,6 +28,9 @@ logger = setup_logger(__name__, settings.log_level)
 
 # Auto-link confidence for single event matches
 SINGLE_EVENT_CONFIDENCE = 0.95
+
+# Maximum error message length for evidence field
+MAX_ERROR_MESSAGE_LENGTH = 50
 
 
 class EventAssociator:
@@ -105,10 +108,11 @@ class EventAssociator:
             
             event_index = result.get("event_index", 0)
             confidence = float(result.get("confidence", 0.0))
-            reasoning = result.get("reasoning", "")[:100]
+            reasoning = result.get("reasoning", "")[:MAX_REASONING_LENGTH]
             
+            # Valid range: 0 (no match) or 1 to len(events) (1-based indexing)
             if event_index < 0 or event_index > len(events):
-                logger.warning(f"LLM returned invalid event_index {event_index}, treating as no match")
+                logger.warning(f"LLM returned invalid event_index {event_index} (valid: 0 or 1-{len(events)}), treating as no match")
                 return None, 0.0, "Invalid event index returned"
             
             if event_index == 0:
@@ -117,11 +121,11 @@ class EventAssociator:
             return events[event_index - 1], confidence, reasoning
             
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM disambiguation response: {e}")
+            logger.error(f"Failed to parse LLM disambiguation response: {e}", exc_info=True)
             return None, 0.0, "Failed to parse LLM response"
         except Exception as e:
-            logger.error(f"Error during event disambiguation: {e}")
-            return None, 0.0, f"Error: {str(e)[:50]}"
+            logger.error(f"Error during event disambiguation: {e}", exc_info=True)
+            return None, 0.0, f"Error: {str(e)[:MAX_ERROR_MESSAGE_LENGTH]}"
     
     def get_event_relationship(
         self,
@@ -210,7 +214,7 @@ class EventAssociator:
                 source_id=resource_url_hash,
                 target_id=event_url_hash,
                 confidence=confidence,
-                evidence=evidence[:240],
+                evidence=evidence[:MAX_EVIDENCE_LENGTH],
                 context_type="material"
             )
             

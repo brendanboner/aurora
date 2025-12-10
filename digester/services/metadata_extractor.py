@@ -24,7 +24,12 @@ class MetadataExtractor:
         logger.info(f"Initialized MetadataExtractor with Azure OpenAI deployment: {settings.azure_openai_deployment}")
     
     def chunk_content(self, content: str) -> List[str]:
-        """Split content into overlapping chunks."""
+        """
+        Split content into overlapping chunks, respecting sentence and paragraph boundaries.
+        
+        This prevents splitting mid-sentence which can break context for the LLM.
+        Falls back to character-based splitting if no suitable boundaries are found.
+        """
         if len(content) <= self.max_chunk_size:
             return [content]
         
@@ -32,12 +37,41 @@ class MetadataExtractor:
         start = 0
         
         while start < len(content):
-            end = start + self.max_chunk_size
-            chunk = content[start:end]
-            chunks.append(chunk)
-            start = end - self.chunk_overlap
+            end = min(start + self.max_chunk_size, len(content))
+            
+            # If this is the last chunk, take everything
+            if end >= len(content):
+                chunks.append(content[start:])
+                break
+            
+            # Try to find a good breaking point near the target end position
+            # Priority: paragraph > sentence > word boundary > character split
+            chunk_end = end
+            
+            # Look for paragraph break (double newline) in the last 20% of chunk
+            search_start = end - int(self.max_chunk_size * 0.2)
+            paragraph_break = content.rfind('\n\n', search_start, end)
+            if paragraph_break > search_start:
+                chunk_end = paragraph_break + 2  # Include the paragraph break
+            else:
+                # Look for sentence ending in the last 20% of chunk
+                for punct in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                    sentence_end = content.rfind(punct, search_start, end)
+                    if sentence_end > search_start:
+                        chunk_end = sentence_end + len(punct)
+                        break
+                else:
+                    # Look for word boundary (space) in the last 10% of chunk
+                    search_start = end - int(self.max_chunk_size * 0.1)
+                    word_boundary = content.rfind(' ', search_start, end)
+                    if word_boundary > search_start:
+                        chunk_end = word_boundary + 1
+                    # Otherwise use character split (chunk_end already = end)
+            
+            chunks.append(content[start:chunk_end])
+            start = chunk_end - self.chunk_overlap
         
-        logger.info(f"Split content into {len(chunks)} chunks")
+        logger.info(f"Split content into {len(chunks)} chunks with smart boundaries")
         return chunks
     
     def call_llm(self, prompt: str, system_message: str = "You are a metadata extraction expert. Always respond with valid JSON.") -> str:
@@ -89,7 +123,7 @@ class MetadataExtractor:
             metadata = json.loads(json_str)
             return metadata
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}")
+            logger.error(f"Failed to parse LLM response as JSON: {e}", exc_info=True)
             logger.error(f"Response was: {response}")
             
             # Check if this might be due to truncation (unclosed JSON)
@@ -122,7 +156,7 @@ class MetadataExtractor:
             metadata = json.loads(json_str)
             return metadata
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse merged metadata as JSON: {e}")
+            logger.error(f"Failed to parse merged metadata as JSON: {e}", exc_info=True)
             logger.error(f"Response was: {response}")
             
             # Check if this might be due to truncation (unclosed JSON)

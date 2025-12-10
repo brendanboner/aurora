@@ -7,8 +7,8 @@ Organizes topics into hierarchical relationships using clustering and LLM analys
 import logging
 from typing import List, Dict, Any, Optional, Callable
 
-from clustering import TopicClusterer
-from llm.hierarchy_analyzer import HierarchyAnalyzer
+from services.clustering import TopicClusterer
+from services.hierarchy_analyzer import HierarchyAnalyzer
 from neo4j_client import Neo4jClient, GraphRepository
 from neo4j_client.deduplicator import NodeDeduplicator
 from neo4j_client.models import (

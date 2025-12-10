@@ -155,7 +155,7 @@ class TestPromptFormatting:
     
     def test_format_topics_for_prompt(self):
         """Test formatting topics into prompt-ready JSON."""
-        from llm.prompts import format_topics_for_prompt
+        from services.prompts import format_topics_for_prompt
         
         topics = [
             {"name": "Wi-Fi", "classification": "technology"},
@@ -170,7 +170,7 @@ class TestPromptFormatting:
     
     def test_prompt_templates_exist(self):
         """Test that required prompt templates are defined."""
-        from llm.prompts import (
+        from services.prompts import (
             HIERARCHY_ANALYSIS_SYSTEM_PROMPT,
             HIERARCHY_ANALYSIS_USER_PROMPT,
         )

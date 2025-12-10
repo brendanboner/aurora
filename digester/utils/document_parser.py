@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOKEN_LIMIT = 3000  # chars ~750 tokens for content, leaves room for prompt + response
 CHARS_PER_TOKEN = 4  # Rough approximation
 
+# Content simplification parameters
+MIN_SECTION_LENGTH = 10  # Minimum length for a section to be included after deduplication
+
 
 class DocumentParser:
     """Parse binary documents to extract text content."""
@@ -49,6 +52,20 @@ class DocumentParser:
             self.pptx_available = True
         except ImportError:
             logger.warning("python-pptx not available - PPTX parsing disabled")
+        
+        # Log summary of available parsers
+        available = []
+        if self.pdf_available:
+            available.append("PDF")
+        if self.docx_available:
+            available.append("DOCX")
+        if self.pptx_available:
+            available.append("PPTX")
+        
+        if available:
+            logger.info(f"Document parser initialized with support for: {', '.join(available)}")
+        else:
+            logger.warning("Document parser initialized with NO parsing libraries available")
     
     def parse_pdf(self, binary_data: bytes, simplify_large: bool = True) -> str:
         """
@@ -83,7 +100,7 @@ class DocumentParser:
             return full_text
             
         except Exception as e:
-            logger.error(f"PDF parsing failed: {e}")
+            logger.error(f"PDF parsing failed: {e}", exc_info=True)
             return f"[PDF parsing error: {str(e)}]"
     
     def parse_docx(self, binary_data: bytes, simplify_large: bool = True) -> str:
@@ -125,7 +142,7 @@ class DocumentParser:
             return full_text
             
         except Exception as e:
-            logger.error(f"DOCX parsing failed: {e}")
+            logger.error(f"DOCX parsing failed: {e}", exc_info=True)
             return f"[DOCX parsing error: {str(e)}]"
     
     def estimate_tokens(self, text: str) -> int:
@@ -151,12 +168,12 @@ class DocumentParser:
         # Split by double newlines (paragraph boundaries)
         sections = text.split("\n\n")
         
-        # Deduplicate and remove very short sections (< 10 chars)
+        # Deduplicate and remove very short sections
         seen = set()
         unique_sections = []
         for section in sections:
             section = section.strip()
-            if len(section) < 10:
+            if len(section) < MIN_SECTION_LENGTH:
                 continue
             # Use first 50 chars as dedup key
             key = section[:50].lower()
@@ -214,7 +231,7 @@ class DocumentParser:
             return full_text
             
         except Exception as e:
-            logger.error(f"PPTX parsing failed: {e}")
+            logger.error(f"PPTX parsing failed: {e}", exc_info=True)
             return f"[PPTX parsing error: {str(e)}]"
     
     def parse_from_base64(self, base64_content: str, file_extension: str, simplify_large: bool = True) -> str:
@@ -254,7 +271,7 @@ class DocumentParser:
                 return f"[Unsupported file type: {ext}]"
         
         except Exception as e:
-            logger.error(f"Document parsing failed: {e}")
+            logger.error(f"Document parsing failed: {e}", exc_info=True)
             return f"[Parsing error: {str(e)}]"
     
     def retrieve_and_parse(self, redis_client, url: str, file_extension: str, simplify_large: bool = True) -> Optional[str]:
@@ -275,7 +292,7 @@ class DocumentParser:
             cached = redis_client.get(cache_key)
             
             if not cached:
-                logger.warning(f"No cached content found for {url}")
+                logger.debug(f"No cached content found for {url}")
                 return None
             
             # Decode from bytes to string if needed
@@ -286,5 +303,5 @@ class DocumentParser:
             return self.parse_from_base64(cached, file_extension, simplify_large=simplify_large)
         
         except Exception as e:
-            logger.error(f"Failed to retrieve/parse cached content: {e}")
+            logger.error(f"Failed to retrieve/parse cached content: {e}", exc_info=True)
             return None

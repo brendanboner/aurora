@@ -84,12 +84,35 @@ class TopicClusterer:
         
         self.logger.info(f"Clustering {len(topics)} topics...")
         
-        # Step 1: Extract embeddings
+        # Step 1: Extract embeddings and filter topics without embeddings
         embeddings = self._extract_embeddings(topics)
         
         if embeddings is None:
             self.logger.error("Failed to extract embeddings from topics")
             return [topics]  # Return all as one cluster if extraction fails
+        
+        # Filter topics to only include those with valid embeddings
+        # This ensures the topic list matches the embeddings array
+        topics_with_embeddings = [
+            topic for topic in topics 
+            if topic.get('embedding') is not None 
+            and isinstance(topic.get('embedding'), (list, np.ndarray))
+        ]
+        
+        if len(topics_with_embeddings) != len(topics):
+            self.logger.info(
+                f"Using {len(topics_with_embeddings)}/{len(topics)} topics with valid embeddings for clustering"
+            )
+        
+        if len(topics_with_embeddings) < self.min_cluster_size:
+            self.logger.warning(
+                f"Only {len(topics_with_embeddings)} topics with embeddings, less than minimum cluster size "
+                f"of {self.min_cluster_size}. Returning as single cluster."
+            )
+            return [topics_with_embeddings] if topics_with_embeddings else []
+        
+        # Update topics reference to filtered list
+        topics = topics_with_embeddings
         
         # Step 2: Compute distance matrix
         distance_matrix = cosine_distances(embeddings)
@@ -177,15 +200,26 @@ class TopicClusterer:
         """
         try:
             embeddings = []
+            topics_without_embeddings = []
+            
             for topic in topics:
                 embedding = topic.get('embedding')
                 if embedding is None or not isinstance(embedding, (list, np.ndarray)):
-                    self.logger.warning(
-                        f"Topic '{topic.get('name', 'unknown')}' has no valid embedding"
-                    )
-                    # Use zero vector as fallback
-                    embedding = [0.0] * 768  # Default embedding dimension
+                    topics_without_embeddings.append(topic.get('name', 'unknown'))
+                    continue
                 embeddings.append(embedding)
+            
+            # Log warning if any topics are missing embeddings
+            if topics_without_embeddings:
+                self.logger.warning(
+                    f"{len(topics_without_embeddings)} topic(s) missing embeddings and will be excluded from clustering: "
+                    f"{', '.join(topics_without_embeddings[:5])}"
+                    f"{' and more...' if len(topics_without_embeddings) > 5 else ''}"
+                )
+            
+            if not embeddings:
+                self.logger.error("No topics have valid embeddings")
+                return None
             
             return np.array(embeddings)
         

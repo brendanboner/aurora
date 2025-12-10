@@ -11,7 +11,7 @@ import time
 from typing import List, Dict, Any, Optional
 from openai import AzureOpenAI, RateLimitError, APIError
 
-from .prompts import (
+from utils.prompts import (
     HIERARCHY_ANALYSIS_SYSTEM_PROMPT,
     HIERARCHY_ANALYSIS_USER_PROMPT,
     CONFLICT_RESOLUTION_SYSTEM_PROMPT,
@@ -192,6 +192,7 @@ class HierarchyAnalyzer:
             topics_json=topics_json
         )
         
+        response_text = None  # Initialize to prevent NameError in exception handlers
         try:
             # Call Azure OpenAI with retry logic
             messages = [
@@ -236,7 +237,7 @@ class HierarchyAnalyzer:
         
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse LLM response as JSON: {e}")
-            self.logger.error(f"Response text: {response_text if 'response_text' in locals() else 'N/A'}")
+            self.logger.error(f"Response text: {response_text if response_text else 'N/A'}")
             return []
         
         except Exception as e:
@@ -415,6 +416,7 @@ class HierarchyAnalyzer:
             conflict_description=conflict_data["conflict_description"]
         )
         
+        response_text = None  # Initialize to prevent NameError in exception handlers
         try:
             # Call Azure OpenAI with retry logic
             messages = [
@@ -459,7 +461,7 @@ class HierarchyAnalyzer:
         
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse LLM conflict resolution response as JSON: {e}")
-            self.logger.error(f"Response text: {response_text if 'response_text' in locals() else 'N/A'}")
+            self.logger.error(f"Response text: {response_text if response_text else 'N/A'}")
             # Return a conservative default: keep existing structure
             return {
                 "decision": "keep_existing",
@@ -520,6 +522,7 @@ class HierarchyAnalyzer:
             topics_json=topics_json
         )
         
+        response_text = None  # Initialize to prevent NameError in exception handlers
         try:
             # Call Azure OpenAI with retry logic
             messages = [
@@ -578,7 +581,7 @@ class HierarchyAnalyzer:
         
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse LLM response as JSON: {e}")
-            self.logger.error(f"Response text: {response_text if 'response_text' in locals() else 'N/A'}")
+            self.logger.error(f"Response text: {response_text if response_text else 'N/A'}")
             return []
         
         except Exception as e:

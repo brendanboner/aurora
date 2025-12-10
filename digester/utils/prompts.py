@@ -1,6 +1,11 @@
 """Prompts for LLM metadata extraction."""
 
 
+# Evidence field character limits
+MAX_EVIDENCE_LENGTH = 240
+MAX_REASONING_LENGTH = 100
+
+
 METADATA_EXTRACTION_PROMPT = """
 
 You are a metadata extraction expert. Read the provided content and extract only entities and relations that are directly supported by the text, you may use limited domain knowledge as specified below.

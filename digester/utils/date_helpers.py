@@ -1,15 +1,14 @@
-"""
-Date extraction utility for extracting dates from document titles.
-
-This module extracts dates from document titles to enable automatic
-document-to-event association. Only titles with embedded dates indicate
-meeting-related documents (minutes, attendance, agendas, etc.).
-"""
+"""Shared date parsing and extraction utilities."""
 
 import re
+from typing import Any, Optional, List, Tuple
 from datetime import datetime, date
-from typing import Optional, List, Tuple
-from dateutil import parser as dateutil_parser
+from dateutil import parser as date_parser
+from utils.logger import setup_logger
+from settings import settings
+
+
+logger = setup_logger(__name__, settings.log_level)
 
 
 # Date patterns to search for in document titles
@@ -43,6 +42,54 @@ TITLE_DATE_PATTERNS: List[Tuple[str, Optional[str]]] = [
     (r'(\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})', None),  # 8 April 2025
     (r'(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{4})', None),  # 8 Apr 2025
 ]
+
+
+def parse_date(date_value: Any) -> Optional[datetime]:
+    """
+    Parse a date value into a datetime object.
+    
+    Handles multiple input formats:
+    - ISO 8601 strings: "2025-11-06", "2025-11-06T10:30:00"
+    - Human-readable dates: "November 6, 2025", "6 Nov 2025"
+    - Datetime objects (returned as-is)
+    - Unix timestamps (integers/floats)
+    
+    Args:
+        date_value: Date value to parse (str, datetime, int, float, or None)
+        
+    Returns:
+        Parsed datetime object, or None if parsing fails or value is None/empty
+    """
+    if not date_value:
+        return None
+    
+    # If already a datetime, return it
+    if isinstance(date_value, datetime):
+        return date_value
+    
+    # If it's a string, try to parse it
+    if isinstance(date_value, str):
+        date_str = date_value.strip()
+        if not date_str or date_str.lower() == "unknown":
+            return None
+        
+        try:
+            # Use dateutil.parser which handles many formats
+            return date_parser.parse(date_str)
+        except Exception as e:
+            logger.warning(f"Failed to parse date string '{date_str}': {e}")
+            return None
+    
+    # If it's a numeric timestamp (Unix epoch)
+    if isinstance(date_value, (int, float)):
+        try:
+            return datetime.fromtimestamp(date_value)
+        except Exception as e:
+            logger.warning(f"Failed to parse timestamp {date_value}: {e}")
+            return None
+    
+    logger.warning(f"Unsupported date type: {type(date_value)}")
+    return None
 
 
 def extract_date_from_title(title: str) -> Optional[date]:
@@ -86,7 +133,7 @@ def extract_date_from_title(title: str) -> Optional[date]:
                     parsed_dt = datetime.strptime(date_str, date_format)
                 else:
                     # Use dateutil for written formats
-                    parsed_dt = dateutil_parser.parse(date_str, fuzzy=False)
+                    parsed_dt = date_parser.parse(date_str, fuzzy=False)
                 
                 # Validate the date is reasonable (not too far in past or future)
                 result_date = parsed_dt.date()
