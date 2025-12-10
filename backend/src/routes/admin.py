@@ -482,12 +482,22 @@ class SystemConfigurationResponse(BaseModel):
     
     datasource_id: str
     name: str
-    scrape_frequency: str
+    scraper_type: Optional[str] = None
+    resource_url: Optional[str] = None
+    scrape_schedule: Optional[str] = None  # Cron expression
+    run_on_startup: bool = False
     check_content_hash: bool
     publish_weight: float = Field(..., ge=0.0, le=1.0)
     update_weight: float = Field(..., ge=0.0, le=1.0)
     event_weight: float = Field(..., ge=0.0, le=1.0)
     temporal_extraction_days: int = Field(default=90, ge=1)
+    scraper_delay: Optional[float] = Field(default=0.5, ge=0.0, le=10.0)
+    max_resources: Optional[int] = Field(default=150, ge=-1)
+    max_redirects: Optional[int] = Field(default=10, ge=1, le=50)
+    folders: Optional[List[str]] = Field(default=None, description="Folder paths for hierarchical scrapers (e.g., WFA Causeway)")
+    discovery_mode: str = Field(default="incremental", description="Discovery mode: 'incremental' or 'date_based'")
+    consecutive_duplicates_limit: int = Field(default=5, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
+    full_refresh_schedule: Optional[str] = Field(default=None, description="Cron expression for full refresh (incremental mode only)")
     last_scraped_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -497,23 +507,45 @@ class SystemConfigurationCreate(BaseModel):
     """Model for creating system configuration."""
     datasource_id: str = Field(..., min_length=1, max_length=255)
     name: str = Field(..., min_length=1, max_length=255)
-    scrape_frequency: str = Field(default="daily", pattern="^(hourly|daily|weekly|monthly|manual)$")
+    scraper_type: Optional[str] = Field(default=None, max_length=100, description="Scraper class to use (e.g., 'wfa', 'wfa_causeway')")
+    resource_url: Optional[str] = Field(default=None, max_length=500, description="URL path to scrape")
+    scrape_schedule: Optional[str] = Field(default=None, max_length=100, description="Cron expression (e.g., '0 2 * * *' for 2 AM daily)")
+    run_on_startup: bool = Field(default=False, description="Run immediately when retriever starts")
     check_content_hash: bool = True
     publish_weight: float = Field(default=1.0, ge=0.0, le=1.0)
     update_weight: float = Field(default=0.8, ge=0.0, le=1.0)
     event_weight: float = Field(default=0.9, ge=0.0, le=1.0)
     temporal_extraction_days: int = Field(default=90, ge=1)
+    scraper_delay: float = Field(default=0.5, ge=0.0, le=10.0, description="Delay between requests in seconds")
+    max_resources: int = Field(default=150, ge=-1, description="Max resources per scrape run (-1 = unlimited)")
+    max_redirects: int = Field(default=10, ge=1, le=50, description="Max redirects to follow")
+    folders: Optional[List[str]] = Field(default=None, description="Folder paths for hierarchical scrapers (e.g., WFA Causeway)")
+    discovery_mode: str = Field(default="incremental", description="Discovery mode: 'incremental' or 'date_based'")
+    consecutive_duplicates_limit: int = Field(default=5, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
+    full_refresh_schedule: Optional[str] = Field(default=None, max_length=100, description="Cron expression for full refresh (incremental mode only)")
+
 
 
 class SystemConfigurationUpdate(BaseModel):
     """Model for updating system configuration."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    scrape_frequency: Optional[str] = Field(None, pattern="^(hourly|daily|weekly|monthly|manual)$")
+    scraper_type: Optional[str] = Field(None, max_length=100, description="Scraper class to use (e.g., 'wfa', 'wfa_causeway')")
+    resource_url: Optional[str] = Field(None, max_length=500, description="URL path to scrape")
+    scrape_schedule: Optional[str] = Field(None, max_length=100, description="Cron expression (e.g., '0 2 * * *' for 2 AM daily)")
+    run_on_startup: Optional[bool] = Field(None, description="Run immediately when retriever starts")
     check_content_hash: Optional[bool] = None
     publish_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     update_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     event_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     temporal_extraction_days: Optional[int] = Field(None, ge=1)
+    scraper_delay: Optional[float] = Field(None, ge=0.0, le=10.0, description="Delay between requests in seconds")
+    max_resources: Optional[int] = Field(None, ge=-1, description="Max resources per scrape run (-1 = unlimited)")
+    max_redirects: Optional[int] = Field(None, ge=1, le=50, description="Max redirects to follow")
+    folders: Optional[List[str]] = Field(None, description="Folder paths for hierarchical scrapers (e.g., WFA Causeway)")
+    discovery_mode: Optional[str] = Field(None, description="Discovery mode: 'incremental' or 'date_based'")
+    consecutive_duplicates_limit: Optional[int] = Field(None, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
+    full_refresh_schedule: Optional[str] = Field(None, max_length=100, description="Cron expression for full refresh (incremental mode only)")
+
 
 
 @router.get("/system-configuration", response_model=List[SystemConfigurationResponse])
@@ -555,12 +587,22 @@ async def create_system_configuration(config: SystemConfigurationCreate):
         result = postgres.upsert_system_configuration(
             datasource_id=config.datasource_id,
             name=config.name,
-            scrape_frequency=config.scrape_frequency,
+            scraper_type=config.scraper_type,
+            resource_url=config.resource_url,
+            scrape_schedule=config.scrape_schedule,
+            run_on_startup=config.run_on_startup,
             check_content_hash=config.check_content_hash,
             publish_weight=config.publish_weight,
             update_weight=config.update_weight,
             event_weight=config.event_weight,
-            temporal_extraction_days=config.temporal_extraction_days
+            temporal_extraction_days=config.temporal_extraction_days,
+            scraper_delay=config.scraper_delay,
+            max_resources=config.max_resources,
+            max_redirects=config.max_redirects,
+            folders=config.folders,
+            discovery_mode=config.discovery_mode,
+            consecutive_duplicates_limit=config.consecutive_duplicates_limit,
+            full_refresh_schedule=config.full_refresh_schedule
         )
         return result
     except Exception as e:
@@ -583,12 +625,22 @@ async def update_system_configuration(datasource_id: str, config: SystemConfigur
         result = postgres.upsert_system_configuration(
             datasource_id=datasource_id,
             name=config.name,
-            scrape_frequency=config.scrape_frequency,
+            scraper_type=config.scraper_type,
+            resource_url=config.resource_url,
+            scrape_schedule=config.scrape_schedule,
+            run_on_startup=config.run_on_startup,
             check_content_hash=config.check_content_hash,
             publish_weight=config.publish_weight,
             update_weight=config.update_weight,
             event_weight=config.event_weight,
-            temporal_extraction_days=config.temporal_extraction_days
+            temporal_extraction_days=config.temporal_extraction_days,
+            scraper_delay=config.scraper_delay,
+            max_resources=config.max_resources,
+            max_redirects=config.max_redirects,
+            folders=config.folders,
+            discovery_mode=config.discovery_mode,
+            consecutive_duplicates_limit=config.consecutive_duplicates_limit,
+            full_refresh_schedule=config.full_refresh_schedule
         )
         return result
     except HTTPException:

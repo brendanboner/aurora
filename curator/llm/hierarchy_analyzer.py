@@ -7,8 +7,9 @@ narrower-than relationships between topics.
 
 import json
 import logging
+import time
 from typing import List, Dict, Any, Optional
-from openai import AzureOpenAI
+from openai import AzureOpenAI, RateLimitError, APIError
 
 from .prompts import (
     HIERARCHY_ANALYSIS_SYSTEM_PROMPT,
@@ -65,10 +66,94 @@ class HierarchyAnalyzer:
         self.confidence_threshold = confidence_threshold
         self.logger = logger_instance or logger
         
+        # Retry configuration for rate limits
+        self.max_retries = 5
+        self.initial_retry_delay = 10  # seconds
+        self.max_retry_delay = 120  # seconds
+        
         self.logger.info(
             f"Initialized HierarchyAnalyzer with deployment: {deployment}, "
             f"confidence threshold: {confidence_threshold}"
         )
+    
+    def _call_llm_with_retry(
+        self,
+        messages: List[Dict[str, str]],
+        operation_name: str = "LLM call"
+    ) -> Optional[str]:
+        """
+        Make an LLM API call with automatic retry on rate limit errors.
+        
+        Uses exponential backoff when rate limited, waiting progressively longer
+        between retries up to max_retry_delay.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            operation_name: Name of the operation for logging
+            
+        Returns:
+            The response content string, or None if all retries failed
+            
+        Raises:
+            Exception: If a non-rate-limit error occurs
+        """
+        retry_delay = self.initial_retry_delay
+        
+        for attempt in range(self.max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.deployment,
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    response_format={"type": "json_object"}
+                )
+                return response.choices[0].message.content.strip()
+                
+            except RateLimitError as e:
+                # Extract retry-after if provided in the error
+                retry_after = getattr(e, 'retry_after', None)
+                if retry_after:
+                    wait_time = int(retry_after)
+                else:
+                    wait_time = min(retry_delay, self.max_retry_delay)
+                
+                if attempt < self.max_retries - 1:
+                    self.logger.warning(
+                        f"Rate limited during {operation_name} (attempt {attempt + 1}/{self.max_retries}). "
+                        f"Waiting {wait_time} seconds before retry..."
+                    )
+                    time.sleep(wait_time)
+                    # Exponential backoff for next attempt
+                    retry_delay = min(retry_delay * 2, self.max_retry_delay)
+                else:
+                    self.logger.error(
+                        f"Rate limit exceeded after {self.max_retries} attempts for {operation_name}"
+                    )
+                    raise
+                    
+            except APIError as e:
+                # Handle other API errors (server errors, etc.)
+                if e.status_code and e.status_code >= 500:
+                    # Server error - retry
+                    if attempt < self.max_retries - 1:
+                        wait_time = min(retry_delay, self.max_retry_delay)
+                        self.logger.warning(
+                            f"Server error during {operation_name} (attempt {attempt + 1}/{self.max_retries}): {e}. "
+                            f"Waiting {wait_time} seconds before retry..."
+                        )
+                        time.sleep(wait_time)
+                        retry_delay = min(retry_delay * 2, self.max_retry_delay)
+                    else:
+                        self.logger.error(
+                            f"Server error persisted after {self.max_retries} attempts for {operation_name}"
+                        )
+                        raise
+                else:
+                    # Client error - don't retry
+                    raise
+        
+        return None
     
     def analyze_cluster(
         self,
@@ -108,26 +193,21 @@ class HierarchyAnalyzer:
         )
         
         try:
-            # Call Azure OpenAI
-            response = self.client.chat.completions.create(
-                model=self.deployment,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": HIERARCHY_ANALYSIS_SYSTEM_PROMPT
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"}  # Ensure JSON response
+            # Call Azure OpenAI with retry logic
+            messages = [
+                {"role": "system", "content": HIERARCHY_ANALYSIS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            response_text = self._call_llm_with_retry(
+                messages, 
+                operation_name="cluster analysis"
             )
             
-            # Parse the response
-            response_text = response.choices[0].message.content.strip()
+            if response_text is None:
+                self.logger.error("LLM call returned no response after retries")
+                return []
+            
             self.logger.debug(f"LLM response: {response_text}")
             
             result = json.loads(response_text)
@@ -336,26 +416,28 @@ class HierarchyAnalyzer:
         )
         
         try:
-            # Call Azure OpenAI
-            response = self.client.chat.completions.create(
-                model=self.deployment,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": CONFLICT_RESOLUTION_SYSTEM_PROMPT
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"}  # Ensure JSON response
+            # Call Azure OpenAI with retry logic
+            messages = [
+                {"role": "system", "content": CONFLICT_RESOLUTION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            response_text = self._call_llm_with_retry(
+                messages,
+                operation_name="conflict resolution"
             )
             
-            # Parse the response
-            response_text = response.choices[0].message.content.strip()
+            if response_text is None:
+                self.logger.error("LLM call returned no response after retries")
+                return {
+                    "decision": "keep_existing",
+                    "reasoning": "LLM call failed after retries",
+                    "final_structure": conflict_data["existing_relationships"],
+                    "relationships_to_remove": [],
+                    "relationships_to_add": [],
+                    "confidence": 0.0
+                }
+            
             self.logger.debug(f"LLM conflict resolution response: {response_text}")
             
             resolution = json.loads(response_text)
@@ -439,26 +521,21 @@ class HierarchyAnalyzer:
         )
         
         try:
-            # Call Azure OpenAI
-            response = self.client.chat.completions.create(
-                model=self.deployment,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": GENERAL_TOPIC_SUGGESTION_SYSTEM_PROMPT
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"}
+            # Call Azure OpenAI with retry logic
+            messages = [
+                {"role": "system", "content": GENERAL_TOPIC_SUGGESTION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            response_text = self._call_llm_with_retry(
+                messages,
+                operation_name="general topic suggestion"
             )
             
-            # Parse the response
-            response_text = response.choices[0].message.content.strip()
+            if response_text is None:
+                self.logger.error("LLM call returned no response after retries")
+                return []
+            
             self.logger.debug(f"LLM general topic suggestion response: {response_text}")
             
             result = json.loads(response_text)

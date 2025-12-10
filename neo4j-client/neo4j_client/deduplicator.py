@@ -20,11 +20,35 @@ import logging
 import json
 import os
 import re
+import time
 from .models import Node, Relationship
 from .repository import GraphRepository
 
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_rate_limit_wait_time(error_message: str) -> float:
+    """
+    Extract wait time from rate limit error message.
+    
+    Args:
+        error_message: The error message from Azure OpenAI
+        
+    Returns:
+        Wait time in seconds, defaults to 5.0 if not parseable
+    """
+    # Look for patterns like "retry after 4815 milliseconds" or "retry after 5 seconds"
+    ms_match = re.search(r'retry after (\d+)\s*milliseconds', error_message, re.IGNORECASE)
+    if ms_match:
+        return int(ms_match.group(1)) / 1000.0
+    
+    sec_match = re.search(r'retry after (\d+)\s*seconds', error_message, re.IGNORECASE)
+    if sec_match:
+        return float(sec_match.group(1))
+    
+    # Default wait time if we can't parse
+    return 5.0
 
 
 class NodeDeduplicator:
@@ -113,7 +137,7 @@ class NodeDeduplicator:
         
         if existing_node:
             # Node exists by ID - exact match
-            self.logger.info(f"{node_label} with ID {node_id} already exists")
+            self.logger.debug(f"{node_label} with ID {node_id} already exists")
             return {
                 "is_duplicate": True,
                 "existing_node": existing_node,
@@ -124,7 +148,7 @@ class NodeDeduplicator:
         
         # Find similar nodes using vector similarity
         similar_nodes = self._find_similar_nodes(node, node_label, k_neighbors)
-        self.logger.info(f"Similar nodes for {node_label} '{getattr(node, 'name', node_id)}': {len(similar_nodes)} found")
+        self.logger.debug(f"Similar nodes for {node_label} '{getattr(node, 'name', node_id)}': {len(similar_nodes)} found")
         
         if not similar_nodes:
             # No similar nodes found
@@ -132,7 +156,7 @@ class NodeDeduplicator:
         
         # Score potential duplicates
         best_match, best_score = self._score_duplicates(node, similar_nodes, node_label)
-        self.logger.info(f"Best match for {node_label} '{getattr(node, 'name', node_id)}': {best_match.get('name', 'N/A')} with score {best_score:.3f}")
+        self.logger.debug(f"Best match for {node_label} '{getattr(node, 'name', node_id)}': {best_match.get('name', 'N/A')} with score {best_score:.3f}")
         
         is_duplicate = False
         action = ""
@@ -141,7 +165,7 @@ class NodeDeduplicator:
             # HIGH CONFIDENCE: Automatic duplicate
             is_duplicate = True
             action = "auto_merge"
-            self.logger.info(
+            self.logger.debug(
                 f"AUTOMATIC DUPLICATE found for {node_label}: "
                 f"new='{getattr(node, 'name', node_id)}' (id={node_id}) "
                 f"existing='{best_match.get('name', best_match.get(node.id_field))}' (id={best_match.get(node.id_field)}) "
@@ -150,7 +174,7 @@ class NodeDeduplicator:
             
         elif best_score >= llm_review_threshold:
             # MEDIUM CONFIDENCE: Use LLM to decide
-            self.logger.info(
+            self.logger.debug(
                 f"LLM REVIEW for {node_label}: "
                 f"new='{getattr(node, 'name', node_id)}' (id={node_id}) "
                 f"existing='{best_match.get('name', best_match.get(node.id_field))}' (id={best_match.get(node.id_field)}) "
@@ -162,18 +186,18 @@ class NodeDeduplicator:
             action = "llm_confirmed_merge" if is_duplicate else "llm_rejected_merge"
             
             if is_duplicate:
-                self.logger.info(
+                self.logger.debug(
                     f"LLM CONFIRMED DUPLICATE for {node_label}: "
                     f"new='{getattr(node, 'name', node_id)}' -> existing='{best_match.get('name', best_match.get(node.id_field))}'"
                 )
             else:
-                self.logger.info(
+                self.logger.debug(
                     f"LLM REJECTED DUPLICATE for {node_label}: "
                     f"treating '{getattr(node, 'name', node_id)}' as new node"
                 )
         else:
             # LOW CONFIDENCE: Treat as new node
-            self.logger.info(
+            self.logger.debug(
                 f"NEW NODE: {node_label} '{getattr(node, 'name', node_id)}' "
                 f"(best match score {best_score:.3f} below threshold {llm_review_threshold:.3f})"
             )
@@ -321,6 +345,12 @@ class NodeDeduplicator:
         nodes = nodes_dict.get("nodes", {})
         relationships = nodes_dict.get("relationships", [])
         
+        # Count entities for logging
+        topic_count = len(nodes.get("topics", []))
+        people_count = len(nodes.get("people", []))
+        org_count = len(nodes.get("organizations", []))
+        self.logger.info(f"Starting deduplication for {topic_count} topics, {people_count} people, {org_count} organizations...")
+        
         # Track ID mappings: new_id -> existing_id for duplicates
         id_mappings = {
             "Topic": {},      # topic_id -> existing_topic_id
@@ -380,13 +410,13 @@ class NodeDeduplicator:
             id_mappings["Organization"] = org_mappings
         
 
-        self.logger.info(f"ID MAPPINGS: {id_mappings}")
+        self.logger.debug(f"ID MAPPINGS: {id_mappings}")
 
 
         # Update relationships to point to existing nodes
         remapped_relationships = self._remap_relationships(relationships, id_mappings)
 
-        self.logger.info(f"Deduplication complete. Found {len(result['duplicates_found']['topics'])} duplicate topics, {len(result['duplicates_found']['people'])} duplicate people, and {len(result['duplicates_found']['organizations'])} duplicate organizations.")
+        self.logger.info(f"Deduplication complete. Found {len(result['duplicates_found']['topics'])} duplicate topics, {len(result['duplicates_found']['people'])} duplicate people, {len(result['duplicates_found']['organizations'])} duplicate organizations.")
         
         # Return same structure as input, with duplicates removed and relationships updated
         return {
@@ -462,7 +492,7 @@ class NodeDeduplicator:
                     "action": duplicate_info["action"]
                 })
                 
-                self.logger.info(
+                self.logger.debug(
                     f"Duplicate {node_label} found: '{getattr(node, 'name', node_id)}' "
                     f"matches existing '{duplicate_info['existing_node'].get('name')}' "
                     f"(action: {duplicate_info['action']}, score: {duplicate_info['similarity_score']:.3f})"
@@ -543,7 +573,7 @@ class NodeDeduplicator:
                     "aliases": merged_aliases_list
                 })
                 
-                self.logger.info(
+                self.logger.debug(
                     f"Merged aliases for {node_label} '{existing_name}': "
                     f"added {len(new_aliases_to_add)} new aliases: {sorted(list(new_aliases_to_add))}"
                 )
@@ -629,7 +659,7 @@ class NodeDeduplicator:
             existing_node = raw_node if not isinstance(raw_node, dict) or 'n' not in raw_node else raw_node.get('n', {})
             vector_score = item.get('score', 0.0)
 
-            self.logger.info(f"Scoring potential duplicate: existing_node='{existing_node.get('name', 'N/A')}', vector_score={vector_score:.3f}")
+            self.logger.debug(f"Scoring potential duplicate: existing_node='{existing_node.get('name', 'N/A')}', vector_score={vector_score:.3f}")
 
             # Start with vector similarity score (50% weight)
             total_score = vector_score * 0.5
@@ -830,18 +860,26 @@ class NodeDeduplicator:
         self,
         new_node: Node,
         existing_node: Dict[str, Any],
-        node_label: str
+        node_label: str,
+        max_retries: int = 3
     ) -> bool:
         """
         Use LLM to determine if two nodes are duplicates when confidence is uncertain.
+        
+        Implements retry logic for rate limit (429) errors, waiting the 
+        suggested time before retrying.
         
         Args:
             new_node: New node being considered
             existing_node: Existing node from the database
             node_label: Type of node (Topic, Person, Organization)
+            max_retries: Maximum number of retries for rate limit errors
             
         Returns:
             True if nodes are duplicates, False otherwise
+            
+        Raises:
+            Exception: If rate limit retries are exhausted (propagates to trigger message requeue)
         """
         # Check if LLM client is available
         if not self.llm_client:
@@ -904,33 +942,66 @@ class NodeDeduplicator:
             
             """
         
-        try:
-            response = self.llm_client.chat.completions.create(
-                model=self.llm_deployment,
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "You are a data deduplication expert. Respond with only 'YES' or 'NO'."
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                temperature=0,  # Use deterministic output
-                max_tokens=10   # Only need a single word response
-            )
-            
-            answer = response.choices[0].message.content.strip().upper()
-            is_duplicate = answer == "YES"
-            
-            self.logger.info(
-                f"LLM response for {node_label} duplicate check: {answer} "
-                f"(new='{new_data.get('name')}', existing='{existing_data.get('name')}')"
-            )
-            
-            return is_duplicate
-            
-        except Exception as e:
-            self.logger.error(f"LLM duplicate check failed: {e}", exc_info=True)
-            return False
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):  # +1 for initial attempt
+            try:
+                response = self.llm_client.chat.completions.create(
+                    model=self.llm_deployment,
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": "You are a data deduplication expert. Respond with only 'YES' or 'NO'."
+                        },
+                        {
+                            "role": "user", 
+                            "content": prompt
+                        }
+                    ],
+                    temperature=0,  # Use deterministic output
+                    max_tokens=10   # Only need a single word response
+                )
+                
+                answer = response.choices[0].message.content.strip().upper()
+                is_duplicate = answer == "YES"
+                
+                self.logger.info(
+                    f"LLM response for {node_label} duplicate check: {answer} "
+                    f"(new='{new_data.get('name')}', existing='{existing_data.get('name')}')"
+                )
+                
+                return is_duplicate
+                
+            except Exception as e:
+                error_str = str(e)
+                last_exception = e
+                
+                # Check for rate limit error (429)
+                is_rate_limit = "429" in error_str or "RateLimitReached" in error_str
+                
+                if is_rate_limit and attempt < max_retries:
+                    wait_time = _parse_rate_limit_wait_time(error_str) + 0.5
+                    self.logger.warning(
+                        f"Rate limit hit during duplicate check (attempt {attempt + 1}/{max_retries + 1}). "
+                        f"Waiting {wait_time:.1f}s before retry..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                
+                # Either not a rate limit error, or we've exhausted retries
+                if is_rate_limit:
+                    self.logger.error(
+                        f"Rate limit retries exhausted ({max_retries} retries) for LLM duplicate check. "
+                        f"Re-raising to trigger message requeue."
+                    )
+                    # Re-raise to propagate up and trigger message retry
+                    raise
+                else:
+                    # Non-rate-limit errors: log and return False (treat as non-duplicate)
+                    self.logger.error(f"LLM duplicate check failed with non-retryable error: {e}", exc_info=True)
+                    return False
+        
+        # Should not reach here, but if we do, re-raise last exception
+        if last_exception:
+            raise last_exception
+        return False

@@ -1,0 +1,171 @@
+{
+  "topics": [
+    {
+      "topic_id": "wi-fi",
+      "name": "wi-fi",
+      "classification": "technology",
+      "identifier": "IEEE 802.11",
+      "issuer": "ieee",
+      "aliases": ["wifi", "wireless fidelity"],
+      "created_by": "digester",
+      "embedding": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    },
+    {
+      "topic_id": "wi-fi-6",
+      "name": "wi-fi 6",
+      "classification": "standard",
+      "identifier": "IEEE 802.11ax",
+      "issuer": "ieee",
+      "aliases": ["802.11ax", "high efficiency wireless"],
+      "created_by": "digester",
+      "embedding": [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95, 0.95, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    },
+    {
+      "topic_id": "wi-fi-6e",
+      "name": "wi-fi 6e",
+      "classification": "standard",
+      "identifier": "IEEE 802.11ax (6 GHz)",
+      "issuer": "ieee",
+      "aliases": ["802.11ax 6ghz"],
+      "created_by": "digester",
+      "embedding": [0.16, 0.26, 0.36, 0.46, 0.56, 0.66, 0.76, 0.86, 0.96, 0.94, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    },
+    {
+      "topic_id": "wi-fi-7",
+      "name": "wi-fi 7",
+      "classification": "standard",
+      "identifier": "IEEE 802.11be",
+      "issuer": "ieee",
+      "aliases": ["802.11be", "extremely high throughput"],
+      "created_by": "digester",
+      "embedding": [0.17, 0.27, 0.37, 0.47, 0.57, 0.67, 0.77, 0.87, 0.97, 0.93, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    },
+    {
+      "topic_id": "wireless-networking",
+      "name": "wireless networking",
+      "classification": "technology",
+      "identifier": null,
+      "issuer": null,
+      "aliases": ["wireless networks", "wireless communications"],
+      "created_by": "digester",
+      "embedding": [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    },
+    {
+      "topic_id": "bluetooth",
+      "name": "bluetooth",
+      "classification": "technology",
+      "identifier": "IEEE 802.15.1",
+      "issuer": "bluetooth sig",
+      "aliases": ["bt"],
+      "created_by": "digester",
+      "embedding": [0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    },
+    {
+      "topic_id": "network-security",
+      "name": "network security",
+      "classification": "technology",
+      "identifier": null,
+      "issuer": null,
+      "aliases": ["security", "cybersecurity"],
+      "created_by": "digester",
+      "embedding": [0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2]
+    },
+    {
+      "topic_id": "wpa3",
+      "name": "wpa3",
+      "classification": "standard",
+      "identifier": "WPA3",
+      "issuer": "wi-fi alliance",
+      "aliases": ["wi-fi protected access 3"],
+      "created_by": "digester",
+      "embedding": [0.45, 0.55, 0.65, 0.75, 0.85, 0.15, 0.25, 0.35, 0.45, 0.55, 0.55, 0.65, 0.75, 0.85, 0.15, 0.25]
+    },
+    {
+      "topic_id": "passpoint",
+      "name": "passpoint",
+      "classification": "certification",
+      "identifier": "Passpoint",
+      "issuer": "wi-fi alliance",
+      "aliases": ["hotspot 2.0", "hs2.0"],
+      "created_by": "digester",
+      "embedding": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.85, 0.75, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    },
+    {
+      "topic_id": "iot",
+      "name": "iot",
+      "classification": "technology",
+      "identifier": null,
+      "issuer": null,
+      "aliases": ["internet of things", "connected devices"],
+      "created_by": "digester",
+      "embedding": [0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4]
+    },
+    {
+      "topic_id": "matter",
+      "name": "matter",
+      "classification": "standard",
+      "identifier": "Matter 1.0",
+      "issuer": "connectivity standards alliance",
+      "aliases": ["project chip", "connected home over ip"],
+      "created_by": "digester",
+      "embedding": [0.65, 0.75, 0.85, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.75, 0.85, 0.15, 0.25, 0.35, 0.45]
+    },
+    {
+      "topic_id": "thread",
+      "name": "thread",
+      "classification": "technology",
+      "identifier": "Thread",
+      "issuer": "thread group",
+      "aliases": ["thread protocol"],
+      "created_by": "digester",
+      "embedding": [0.68, 0.78, 0.88, 0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.78, 0.88, 0.12, 0.22, 0.32, 0.42]
+    }
+  ],
+  "topic_clusters": {
+    "wifi_cluster": ["wi-fi", "wi-fi-6", "wi-fi-6e", "wi-fi-7"],
+    "security_cluster": ["network-security", "wpa3"],
+    "iot_cluster": ["iot", "matter", "thread"]
+  },
+  "expected_relationships": [
+    {
+      "broader": "wi-fi",
+      "narrower": "wi-fi-6",
+      "confidence": 0.95
+    },
+    {
+      "broader": "wi-fi",
+      "narrower": "wi-fi-6e",
+      "confidence": 0.95
+    },
+    {
+      "broader": "wi-fi",
+      "narrower": "wi-fi-7",
+      "confidence": 0.95
+    },
+    {
+      "broader": "wireless-networking",
+      "narrower": "wi-fi",
+      "confidence": 0.90
+    },
+    {
+      "broader": "wireless-networking",
+      "narrower": "bluetooth",
+      "confidence": 0.85
+    },
+    {
+      "broader": "network-security",
+      "narrower": "wpa3",
+      "confidence": 0.90
+    },
+    {
+      "broader": "iot",
+      "narrower": "matter",
+      "confidence": 0.85
+    },
+    {
+      "broader": "iot",
+      "narrower": "thread",
+      "confidence": 0.85
+    }
+  ]
+}

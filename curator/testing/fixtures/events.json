@@ -1,0 +1,126 @@
+{
+  "events": [
+    {
+      "url_hash": "abc123def456",
+      "name": "Wi-Fi Alliance Congress 2025",
+      "event_type": "conference",
+      "start_date": "2025-03-15T09:00:00",
+      "end_date": "2025-03-17T17:00:00",
+      "location": "Dubai, UAE",
+      "timezone": "Asia/Dubai",
+      "description": "Annual Wi-Fi Alliance member congress featuring latest Wi-Fi technology updates and certification programs.",
+      "url": "https://www.wi-fi.org/events/congress-2025",
+      "status": "scheduled",
+      "datasource_id": "wfa-events",
+      "batch_id": "batch-001",
+      "scraped_at": "2025-01-15T10:00:00",
+      "embedding": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    },
+    {
+      "url_hash": "def456ghi789",
+      "name": "IEEE 802.11 Working Group Meeting",
+      "event_type": "meeting",
+      "start_date": "2025-02-10T08:00:00",
+      "end_date": "2025-02-14T18:00:00",
+      "location": "San Francisco, CA",
+      "timezone": "America/Los_Angeles",
+      "description": "Quarterly IEEE 802.11 working group session for standards development.",
+      "url": "https://www.ieee802.org/11/meetings/2025-02",
+      "status": "scheduled",
+      "datasource_id": "ieee-meetings",
+      "batch_id": "batch-002",
+      "scraped_at": "2025-01-10T08:00:00",
+      "embedding": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 0.9, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    },
+    {
+      "url_hash": "ghi789jkl012",
+      "name": "Wi-Fi Security Summit 2025",
+      "event_type": "summit",
+      "start_date": "2025-04-20T09:00:00",
+      "end_date": "2025-04-21T17:00:00",
+      "location": "Virtual",
+      "timezone": "UTC",
+      "description": "Virtual summit focused on WPA3 and emerging Wi-Fi security standards.",
+      "url": "https://www.wi-fi.org/events/security-summit-2025",
+      "status": "scheduled",
+      "datasource_id": "wfa-events",
+      "batch_id": "batch-001",
+      "scraped_at": "2025-01-15T10:00:00",
+      "embedding": [0.4, 0.5, 0.6, 0.7, 0.8, 0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.5, 0.6, 0.7, 0.8, 0.1]
+    },
+    {
+      "url_hash": "old123event456",
+      "name": "Wi-Fi Alliance Congress 2025 - OLD",
+      "event_type": "conference",
+      "start_date": "2025-03-10T09:00:00",
+      "end_date": "2025-03-12T17:00:00",
+      "location": "Dubai, UAE",
+      "timezone": "Asia/Dubai",
+      "description": "Annual Wi-Fi Alliance member congress - RESCHEDULED",
+      "url": "https://www.wi-fi.org/events/congress-2025-old",
+      "status": "unconfirmed",
+      "datasource_id": "wfa-events",
+      "batch_id": "batch-000",
+      "scraped_at": "2025-01-01T10:00:00",
+      "embedding": [0.11, 0.21, 0.31, 0.41, 0.51, 0.61, 0.71, 0.81, 0.91, 0.99, 0.11, 0.21, 0.31, 0.41, 0.51, 0.61]
+    }
+  ],
+  "ingestion_batches": [
+    {
+      "batch_id": "batch-001",
+      "datasource_id": "wfa-events",
+      "status": "completed",
+      "scrape_started_at": "2025-01-15T09:00:00",
+      "scrape_completed_at": "2025-01-15T10:30:00",
+      "items_digested": 15,
+      "events_count": 5,
+      "reconciled_at": null
+    },
+    {
+      "batch_id": "batch-002",
+      "datasource_id": "ieee-meetings",
+      "status": "completed",
+      "scrape_started_at": "2025-01-10T07:00:00",
+      "scrape_completed_at": "2025-01-10T08:30:00",
+      "items_digested": 8,
+      "events_count": 3,
+      "reconciled_at": null
+    },
+    {
+      "batch_id": "batch-003",
+      "datasource_id": "wfa-events",
+      "status": "in_progress",
+      "scrape_started_at": "2025-01-20T09:00:00",
+      "scrape_completed_at": null,
+      "items_digested": 0,
+      "events_count": 0,
+      "reconciled_at": null
+    }
+  ],
+  "datasources": [
+    {
+      "datasource_id": "wfa-events",
+      "name": "Wi-Fi Alliance Events",
+      "has_events": true
+    },
+    {
+      "datasource_id": "ieee-meetings",
+      "name": "IEEE 802.11 Meetings",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa-docs",
+      "name": "Wi-Fi Alliance Documents",
+      "has_events": false
+    }
+  ],
+  "supersedes_scenarios": [
+    {
+      "description": "Event rescheduled to new URL",
+      "new_event_hash": "abc123def456",
+      "old_event_hash": "old123event456",
+      "similarity_score": 0.92,
+      "reason": "Same event rescheduled to new dates"
+    }
+  ]
+}

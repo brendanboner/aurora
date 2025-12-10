@@ -13,6 +13,7 @@ from .models import (
     Topic,
     Organization,
     DataSource,
+    IngestionBatch,
     Person,
     Team,
     Project,
@@ -29,11 +30,16 @@ from .models import (
     PersonConnectedToTopic,
     OrganizationAssociatedWithTopic,
     ResourceIngestedFromDataSource,
+    EventIngestedFromDataSource,
+    EventSupersedes,
     DataSourceBelongsToOrganization,
+    IngestionBatchBelongsToDataSource,
+    ResourceIngestedInBatch,
+    EventIngestedInBatch,
     TopicEncompasses,
     TopicSubtopicOf,
     ResourceUploadedByPerson,
-    ResourceMentionsEvent
+    ResourceRelatesToEvent
 )
 
 __version__ = "0.1.0"
@@ -49,6 +55,7 @@ __all__ = [
     "Topic",
     "Organization",
     "DataSource",
+    "IngestionBatch",
     "Person",
     "Team",
     "Project",
@@ -65,9 +72,14 @@ __all__ = [
     "PersonConnectedToTopic",
     "OrganizationAssociatedWithTopic",
     "ResourceIngestedFromDataSource",
+    "EventIngestedFromDataSource",
+    "EventSupersedes",
     "DataSourceBelongsToOrganization",
+    "IngestionBatchBelongsToDataSource",
+    "ResourceIngestedInBatch",
+    "EventIngestedInBatch",
     "TopicEncompasses",
     "TopicSubtopicOf",
     "ResourceUploadedByPerson",
-    "ResourceMentionsEvent",
+    "ResourceRelatesToEvent",
 ]

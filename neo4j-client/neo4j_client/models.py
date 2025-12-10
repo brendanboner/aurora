@@ -27,8 +27,8 @@ if not logging.getLogger().handlers:
     logging.getLogger('neo4j').setLevel(logging.WARNING)
 
 # Embedding model configuration
-EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'sentence-transformers')  # Options: 'sentence-transformers', 'openai'
-EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'all-mpnet-base-v2')  # Default SentenceTransformer model
+EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'openai')  # Options: 'openai' (default), 'sentence-transformers'
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')  # Default Azure OpenAI embedding model
 
 # Lazy initialization for embedding models
 _embedding_model = None
@@ -39,14 +39,14 @@ def get_embedding_model():
     Get the embedding model based on EMBEDDING_PROVIDER environment variable.
     
     Supported providers:
-    - 'sentence-transformers': Use SentenceTransformer (default: all-mpnet-base-v2)
-    - 'openai': Use Azure OpenAI embeddings (default: text-embedding-3-small)
+    - 'openai': Use Azure OpenAI embeddings (default)
+    - 'sentence-transformers': Use local SentenceTransformer (requires [local-embeddings] extra)
     
     Environment variables:
-    - EMBEDDING_PROVIDER: 'sentence-transformers' or 'openai'
-    - EMBEDDING_MODEL: Model name (e.g., 'all-mpnet-base-v2' or 'text-embedding-3-small')
-    - AZURE_OPENAI_API_KEY: Required if using OpenAI provider
-    - AZURE_OPENAI_ENDPOINT: Required if using OpenAI provider
+    - EMBEDDING_PROVIDER: 'openai' (default) or 'sentence-transformers'
+    - EMBEDDING_MODEL: Model name (default: 'text-embedding-3-small' for openai)
+    - AZURE_OPENAI_API_KEY: Required for OpenAI provider
+    - AZURE_OPENAI_ENDPOINT: Required for OpenAI provider
     - AZURE_OPENAI_API_VERSION: Optional (default: '2024-08-01-preview')
     """
     global _embedding_model, _openai_client
@@ -181,9 +181,13 @@ class Node(BaseModel):
         Convert node to dictionary for Neo4j.
         Excludes None values and converts datetime to ISO format.
         """
-        data = self.model_dump(exclude=["node_label", "id_field", "datasource_id"])
+        data = self.model_dump(exclude=["node_label", "id_field"], exclude_none=True)
         # Convert datetime fields to ISO string for Neo4j
-        datetime_fields = ['created_at', 'scraped_at', 'publish_date', 'content_changed_at', 'first_seen_at', 'start_date', 'end_date']
+        datetime_fields = [
+            'scraped_at', 'publish_date', 'content_changed_at', 
+            'start_date', 'end_date', 'scrape_started_at', 'scrape_completed_at', 
+            'digest_completed_at'
+        ]
         for field in datetime_fields:
             if field in data and data[field] is not None and isinstance(data[field], datetime):
                 data[field] = data[field].isoformat()
@@ -194,9 +198,9 @@ class Node(BaseModel):
         Returns a list of field names to include in the embedding text.
         Subclasses should override to specify relevant fields.
         """
-        # By default, include all string fields except 'created_at'
+        # By default, include all string fields
         return [name for name, field in self.__fields__.items()
-                if field.annotation == str and name != "created_at"]
+                if field.annotation == str]
 
     def get_embedding_text(self) -> str:
         """
@@ -221,7 +225,7 @@ class Node(BaseModel):
         - OpenAI embeddings (API-based, high quality, 1536 dimensions for text-embedding-3-small)
         """
         embedding_text = self.get_embedding_text()
-        logger.info(f"Generating embedding for text: {embedding_text}")
+        logger.debug(f"Generating embedding for text: {embedding_text}")
         
         if EMBEDDING_PROVIDER == 'openai':
             # Use OpenAI embeddings
@@ -277,13 +281,10 @@ class Relationship(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert relationship to dictionary for Neo4j.
-        Excludes None values, metadata fields, and converts datetime to ISO format.
+        Excludes None values and metadata fields.
         Only includes instance data (source_id, target_id, and relationship-specific fields).
         """
-        data = self.model_dump(exclude={"source_id", "target_id", "source_node_label", "source_id_field", "target_node_label", "target_id_field", "relationship_label"})
-        # Convert datetime to ISO string for Neo4j
-        if 'created_at' in data and isinstance(data['created_at'], datetime):
-            data['created_at'] = data['created_at'].isoformat()
+        data = self.model_dump(exclude={"source_id", "target_id", "source_node_label", "source_id_field", "target_node_label", "target_id_field", "relationship_label"}, exclude_none=True)
         return data
 
     @model_validator(mode="before")
@@ -339,10 +340,10 @@ class DataSource(Node):
     """DataSource node - represents a data source."""
 
     node_label: str = "DataSource"
-    id_field: str = "source_id"
+    id_field: str = "datasource_id"
     
     # Unique identifier for the data source
-    source_id: str = Field(
+    datasource_id: str = Field(
         default="",
         description="Unique identifier for the data source (auto-generated from name if not provided)"
     )
@@ -362,6 +363,11 @@ class DataSource(Node):
         description="URL to fetch data from (optional)"
     )
     
+    has_events: bool = Field(
+        default=False,
+        description="Whether this datasource contains events (calendar, conference listings, etc.)"
+    )
+    
     NORMALIZE = {
         "name": "title",
         "source_type": "lower",
@@ -370,9 +376,92 @@ class DataSource(Node):
     
     @model_validator(mode='after')
     def validate_id(self):
-        if (not self.source_id) and self.name:
-            self.source_id = slugify(self.name)
+        if (not self.datasource_id) and self.name:
+            self.datasource_id = slugify(self.name)
         return self
+
+
+class IngestionBatch(Node):
+    """
+    IngestionBatch node - tracks the lifecycle of a scrape→digest pipeline.
+    
+    Each time the retriever scrapes a datasource, it creates an IngestionBatch.
+    The batch tracks progress through scraping, digesting, and completion.
+    This enables the curator to know when all items have been digested
+    before running event reconciliation.
+    """
+    
+    node_label: str = "IngestionBatch"
+    id_field: str = "batch_id"
+    
+    batch_id: str = Field(
+        ...,
+        description="UUID uniquely identifying this batch"
+    )
+    
+    datasource_id: str = Field(
+        ...,
+        description="ID of the datasource this batch belongs to (denormalized for fast queries)"
+    )
+    
+    status: str = Field(
+        default="scraping",
+        description="Batch status: 'scraping', 'digesting', 'completed', 'failed'"
+    )
+    
+    scrape_started_at: Optional[datetime] = Field(
+        default=None,
+        description="When the retriever started scraping"
+    )
+    
+    scrape_completed_at: Optional[datetime] = Field(
+        default=None,
+        description="When the retriever finished scraping"
+    )
+    
+    digest_completed_at: Optional[datetime] = Field(
+        default=None,
+        description="When the digester finished processing all items"
+    )
+    
+    items_scraped: int = Field(
+        default=0,
+        description="Number of items sent to the queue by retriever"
+    )
+    
+    items_digested: int = Field(
+        default=0,
+        description="Number of items processed by digester"
+    )
+    
+    events_count: int = Field(
+        default=0,
+        description="Number of events ingested in this batch"
+    )
+    
+    resources_count: int = Field(
+        default=0,
+        description="Number of resources ingested in this batch"
+    )
+    
+    error_message: Optional[str] = Field(
+        default=None,
+        description="Error message if batch failed"
+    )
+    
+    reconciled_at: Optional[datetime] = Field(
+        default=None,
+        description="When event reconciliation was run for this batch (null if not yet reconciled)"
+    )
+    
+    NORMALIZE = {
+        "status": "lower"
+    }
+    
+    def build_embedding(self) -> List[float]:
+        """IngestionBatch doesn't need embeddings."""
+        return []
+
 
 class Resource(Node):
     """Resource node - represents a document/resource."""
@@ -419,7 +508,7 @@ class Resource(Node):
 
     scraped_at: datetime = Field(
         ...,
-        description="Timestamp when the resource metadata was last updated"
+        description="Timestamp when the resource metadata was last scraped"
     )
 
     importance: Optional[float] = Field(
@@ -432,6 +521,11 @@ class Resource(Node):
     datasource_id: str = Field(
         ...,
         description="Unique identifier for the data source (e.g., 'api', 'webpage', 'sharepoint', 'rss', 'database')"
+    )
+
+    batch_id: Optional[str] = Field(
+        default=None,
+        description="ID of the ingestion batch this resource was ingested in"
     )
 
     importance_explanation: Optional[str] = Field(
@@ -452,11 +546,6 @@ class Resource(Node):
     content_changed_at: Optional[datetime] = Field(
         None,
         description="Timestamp when the resource content was last changed (based on content_hash)"
-    )
-    
-    first_seen_at: Optional[datetime] = Field(
-        None,
-        description="Timestamp when the resource was first created in the knowledge graph"
     )
     
     language: str = Field(
@@ -704,6 +793,105 @@ class Person(Node):
         # Specify fields relevant for Person embeddings
         return ["name", "email"]
 
+class Event(Node):
+    """
+    Event node - represents a scheduled event, meeting, conference, or deadline.
+    
+    Events are temporal entities extracted from documents that have specific dates.
+    They can represent future events (conferences, meetings, deadlines) or past events
+    (historical meetings, completed conferences).
+    
+    The event_id is generated from the URL (preferred) or falls back to name+date slug.
+    URL-based IDs are more stable as events may be renamed or rescheduled.
+    """
+
+    node_label: str = "Event"
+    id_field: str = "url_hash"
+    
+    # Unique identifier - SHA256 hash of URL (same pattern as Resource)
+    url_hash: str = Field(
+        default="",
+        description="SHA256 hash of the event URL - serves as unique identifier (auto-generated)"
+    )
+    
+    name: str = Field(
+        ...,
+        description="Human-readable event name (e.g., 'Wi-Fi Alliance Congress 2025', 'IEEE 802.11 Working Group Meeting')"
+    )
+    
+    event_type: str = Field(
+        ...,
+        description="Type of event (e.g., 'conference', 'meeting', 'webinar', 'deadline', 'workshop', 'seminar', 'summit')"
+    )
+    
+    start_date: Optional[datetime] = Field(
+        None,
+        description="Start date and time of the event (ISO 8601 format)"
+    )
+    
+    end_date: Optional[datetime] = Field(
+        None,
+        description="End date and time of the event (ISO 8601 format, for multi-day events)"
+    )
+    
+    location: Optional[str] = Field(
+        default=None,
+        description="Location of the event (e.g., 'Dubai, UAE', 'Virtual', 'San Francisco, CA')"
+    )
+    
+    timezone: Optional[str] = Field(
+        None,
+        description="Timezone of the event (e.g., 'UTC', 'America/New_York', 'Europe/London')"
+    )
+    
+    description: str = Field(
+        default="",
+        description="Description of the event (scraped from source)"
+    )
+    
+    url: str = Field(
+        ...,
+        description="URL for event registration or more information (required for stable ID generation)"
+    )
+    
+    status: str = Field(
+        default="scheduled",
+        description="Event status: 'scheduled', 'cancelled', 'rescheduled', 'completed', 'unconfirmed'"
+    )
+
+    datasource_id: str = Field(
+        ...,
+        description="Unique identifier for the data source this event was ingested from"
+    )
+    
+    batch_id: Optional[str] = Field(
+        default=None,
+        description="ID of the ingestion batch this event was ingested in"
+    )
+    
+    scraped_at: Optional[datetime] = Field(
+        default=None,
+        description="When this event was last scraped from the source (ISO 8601 format)"
+    )
+
+    NORMALIZE = {
+        "name": "title",
+        "event_type": "lower",
+        "location": "title",
+        "status": "lower"
+    }
+    
+    # Generate url_hash from URL (same pattern as Resource)
+    @model_validator(mode='after')
+    def generate_url_hash(self):
+        if not self.url_hash:
+            self.url_hash = hashlib.sha256(self.url.encode('utf-8')).hexdigest()
+        return self
+
+    def get_embedding_fields(self) -> List[str]:
+        # Include dates for temporal differentiation (e.g., "Wi-Fi Congress 2025" vs "2026")
+        return ["name", "event_type", "location", "start_date", "end_date"]
+
 # TODO
 
 class Team(Node):
@@ -759,79 +947,43 @@ class Tag(Node):
     category: str = ""
 
 
-class Event(Node):
-    """
-    Event node - represents a scheduled event, meeting, conference, or deadline.
-    
-    Events are temporal entities extracted from documents that have specific dates.
-    They can represent future events (conferences, meetings, deadlines) or past events
-    (historical meetings, completed conferences).
-    
-    The event_id is automatically generated from the name if not provided.
-    """
-
-    node_label: str = "Event"
-    id_field: str = "event_id"
-    
-    # Unique identifier for the event
-    event_id: str = Field(
-        default="",
-        description="Unique slugified identifier generated from name (e.g., 'wfa-congress-2025', 'ieee-meeting-dec-2025')"
-    )
-    
-    name: str = Field(
-        ...,
-        description="Human-readable event name (e.g., 'Wi-Fi Alliance Congress 2025', 'IEEE 802.11 Working Group Meeting')"
-    )
-    
-    event_type: str = Field(
-        ...,
-        description="Type of event (e.g., 'conference', 'meeting', 'webinar', 'deadline', 'workshop', 'seminar', 'summit')"
-    )
-    
-    start_date: Optional[datetime] = Field(
-        None,
-        description="Start date and time of the event (ISO 8601 format)"
-    )
-    
-    end_date: Optional[datetime] = Field(
-        None,
-        description="End date and time of the event (ISO 8601 format, for multi-day events)"
-    )
-    
-    location: str = Field(
-        default="",
-        description="Location of the event (e.g., 'Dubai, UAE', 'Virtual', 'San Francisco, CA')"
-    )
-    
-    timezone: Optional[str] = Field(
-        None,
-        description="Timezone of the event (e.g., 'UTC', 'America/New_York', 'Europe/London')"
-    )
-    
-    description: str = Field(
-        default="",
-        description="Brief description of the event"
-    )
-    
-    url: Optional[str] = Field(
-        None,
-        description="URL for event registration or more information"
-    )
-    
-    # Build slugified event_id from name if not provided
-    @model_validator(mode='after')
-    def validate_id(self):
-        if (not self.event_id) and self.name:
-            self.event_id = slugify(self.name)
-        return self
-
-    def get_embedding_fields(self) -> List[str]:
-        # Specify fields relevant for Event embeddings
-        return ["name", "event_type", "location", "description"]
-
-
 # ========== Relationship Models ==========
+
+class IngestionBatchBelongsToDataSource(Relationship):
+    """Relationship: IngestionBatch belongs to a DataSource."""
+    
+    source_node_label: str = "IngestionBatch"
+    source_id_field: str = "batch_id"
+    target_node_label: str = "DataSource"
+    target_id_field: str = "datasource_id"
+    relationship_label: str = "BELONGS_TO"
+
+
+class ResourceIngestedInBatch(Relationship):
+    """Resource - ingested in -> IngestionBatch
+    
+    Tracks which batch a resource was ingested in.
+    Enables queries like "find all resources from batch X".
+    """
+    source_node_label: str = "Resource"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "IngestionBatch"
+    target_id_field: str = "batch_id"
+    relationship_label: str = "INGESTED_IN"
+
+
+class EventIngestedInBatch(Relationship):
+    """Event - ingested in -> IngestionBatch
+    
+    Tracks which batch an event was ingested in.
+    Enables queries like "find all events from batch X".
+    """
+    source_node_label: str = "Event"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "IngestionBatch"
+    target_id_field: str = "batch_id"
+    relationship_label: str = "INGESTED_IN"
+
 
 class ResourceRelatesToTopic(Relationship):
     """Resource - relates to -> Topic"""
@@ -966,15 +1118,52 @@ class OrganizationAssociatedWithTopic(Relationship):
 class ResourceIngestedFromDataSource(Relationship):
     """Resource - ingested from -> DataSource"""
     source_node_label: str = "Resource"
-    source_id_field: str = "url"
+    source_id_field: str = "url_hash"
     target_node_label: str = "DataSource"
-    target_id_field: str = "source_id"
+    target_id_field: str = "datasource_id"
     relationship_label: str = "INGESTED_FROM"
+
+class EventIngestedFromDataSource(Relationship):
+    """Event - ingested from -> DataSource"""
+    source_node_label: str = "Event"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "DataSource"
+    target_id_field: str = "datasource_id"
+    relationship_label: str = "INGESTED_FROM"
+
+
+class EventSupersedes(Relationship):
+    """Event - supersedes -> Event
+    
+    Indicates that the source event supersedes (replaces) the target event.
+    This is used when an event is rescheduled to a new URL or renamed.
+    The target event should be marked with status='rescheduled'.
+    
+    Example:
+        New URL event (supersedes) -> Old URL event (status='rescheduled')
+    """
+    source_node_label: str = "Event"
+    source_id_field: str = "url_hash"
+    target_node_label: str = "Event"
+    target_id_field: str = "url_hash"
+    relationship_label: str = "SUPERSEDES"
+    
+    similarity_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Embedding similarity score between the two events (0.0-1.0)"
+    )
+    reason: str = Field(
+        default="",
+        description="Explanation of why this event supersedes the other (e.g., 'URL changed', 'Rescheduled')"
+    )
+
 
 class DataSourceBelongsToOrganization(Relationship):
     """DataSource - belongs to -> Organization"""
     source_node_label: str = "DataSource"
-    source_id_field: str = "source_id"
+    source_id_field: str = "datasource_id"
     target_node_label: str = "Organization"
     target_id_field: str = "org_id"
     relationship_label: str = "BELONGS_TO"
@@ -1016,19 +1205,37 @@ class ResourceUploadedByPerson(Relationship):
     
     uploaded_at: Optional[str] = Field(None, description="Timestamp when uploaded")
 
-class ResourceMentionsEvent(Relationship):
-    """Resource - mentions -> Event"""
+class ResourceRelatesToEvent(Relationship):
+    """Resource - relates to -> Event
+    
+    Represents any relationship between a resource and an event.
+    Use confidence score to indicate relationship strength:
+    - 0.8-1.0: Strong relationship (meeting minutes, presentations, materials FROM event)
+    - 0.5-0.8: Medium relationship (announcements, descriptions ABOUT event)
+    - 0.2-0.5: Weak relationship (casual mentions, references TO event)
+    
+    Optional context_type provides additional specificity when needed.
+    """
     source_node_label: str = "Resource"
     source_id_field: str = "url_hash"
     target_node_label: str = "Event"
-    target_id_field: str = "event_id"
-    relationship_label: str = "MENTIONS_EVENT"
+    target_id_field: str = "url_hash"
+    relationship_label: str = "RELATES_TO"
     
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0-1.0)")
-    evidence: str = Field(..., description="Direct quote from content mentioning this event")
+    evidence: str = Field(..., description="Direct quote from content relating to this event")
+    context_type: Optional[str] = Field(
+        None,
+        description="Type of relationship: 'material' (from event), 'announcement' (about event), 'reference' (mentions event)"
+    )
     
     TRUNCATE = {
         "evidence": 240
+    }
+    
+    NORMALIZE = {
+        "evidence": "sentence",
+        "context_type": "lower"
     }
 
 

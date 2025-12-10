@@ -79,6 +79,17 @@ class RabbitMQProducer:
         # If we get here, all retries failed
         raise last_exception
     
+    def _ensure_connected(self):
+        """Ensure connection and channel are open, reconnecting if necessary."""
+        if not self.channel or not self.channel.is_open:
+            if self.connection and self.connection.is_open:
+                try:
+                    self.connection.close()
+                except Exception as e:
+                    self.logger.debug(f"Error closing stale connection: {e}")
+            self.logger.info("Channel is closed, reconnecting...")
+            self.connect()
+
     def publish(self, message: Dict[str, Any], persistent: bool = True):
         """
         Publish a message to the queue.
@@ -87,8 +98,7 @@ class RabbitMQProducer:
             message: Dictionary to publish (will be JSON serialized)
             persistent: If True, message survives broker restart (default: True)
         """
-        if not self.channel:
-            self.connect()
+        self._ensure_connected()
         
         try:
             # Serialize to JSON
@@ -107,7 +117,14 @@ class RabbitMQProducer:
                 properties=properties
             )
             
-            msg_id = message.get('title', message.get('id', message.get('url', 'Unknown')))
+            # Extract message identifier from nested resource_data/event_data or top-level fields
+            resource_data = message.get('resource_data', {})
+            event_data = message.get('event_data', {})
+            msg_id = (
+                resource_data.get('title') or 
+                event_data.get('name') or 
+                message.get('title', message.get('id', message.get('url', 'Unknown')))
+            )
             self.logger.info(f"Published message: {msg_id}")
             
         except (TypeError, ValueError) as e:
@@ -125,8 +142,7 @@ class RabbitMQProducer:
             messages: List of dictionaries to publish
             persistent: If True, messages survive broker restart (default: True)
         """
-        if not self.channel:
-            self.connect()
+        self._ensure_connected()
         
         self.logger.info(f"Publishing batch of {len(messages)} messages")
         

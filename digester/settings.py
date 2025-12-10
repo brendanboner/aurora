@@ -44,10 +44,17 @@ class Settings(BaseSettings):
     azure_openai_deployment: str  # Your deployment name
     llm_max_tokens: int = 4096
     llm_temperature: float = 0.1
+    llm_rate_limit_retries: int = 3  # Max retries when hitting rate limits
     
     # Content Chunking
     max_chunk_size: int = 8000
     chunk_overlap: int = 500
+    
+    # Event Association
+    event_disambiguation_confidence_threshold: float = 0.6  # Minimum confidence for LLM event disambiguation
+    
+    # Message Retry Configuration
+    max_message_retries: int = 3  # Max times to requeue a message before sending to DLQ
     
     # Logging
     log_level: str = "INFO"

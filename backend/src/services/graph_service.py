@@ -431,7 +431,7 @@ def _format_document_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "publish_date": _convert_datetime_to_string(row.get("publish_date")),
         "scraped_at": _convert_datetime_to_string(row.get("scraped_at")),
         "content_changed_at": _convert_datetime_to_string(row.get("content_changed_at")),
-        "first_seen_at": _convert_datetime_to_string(row.get("first_seen_at")),
+        "created_at": _convert_datetime_to_string(row.get("created_at")),
         "importance": row.get("importance"),
         "topics": topics,
         "organisations": orgs,

@@ -105,6 +105,8 @@ class Neo4jClient:
     
     def setup_schema(self):
         """Create schema for the neo4j database including constraints and indexes."""
+        self.logger.info("Setting up database schema (constraints and indexes)...")
+        
         constraints = [
             # Resource: url_hash is unique
             "CREATE CONSTRAINT resource_url_hash IF NOT EXISTS FOR (r:Resource) REQUIRE r.url_hash IS UNIQUE",
@@ -116,8 +118,10 @@ class Neo4jClient:
             "CREATE CONSTRAINT datasource_source_id IF NOT EXISTS FOR (ds:DataSource) REQUIRE ds.source_id IS UNIQUE",
             # Person: person_id is unique
             "CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.person_id IS UNIQUE",
-            # Event: event_id is unique
-            "CREATE CONSTRAINT event_id IF NOT EXISTS FOR (e:Event) REQUIRE e.event_id IS UNIQUE",
+            # Event: url_hash is unique (same pattern as Resource)
+            "CREATE CONSTRAINT event_url_hash IF NOT EXISTS FOR (e:Event) REQUIRE e.url_hash IS UNIQUE",
+            # IngestionBatch: batch_id is unique
+            "CREATE CONSTRAINT ingestion_batch_id IF NOT EXISTS FOR (b:IngestionBatch) REQUIRE b.batch_id IS UNIQUE",
             # Team: name is unique
             "CREATE CONSTRAINT team_name IF NOT EXISTS FOR (t:Team) REQUIRE t.name IS UNIQUE",
             # Project: name is unique
@@ -138,21 +142,37 @@ class Neo4jClient:
             "CREATE VECTOR INDEX datasource_embedding_index IF NOT EXISTS FOR (ds:DataSource) ON ds.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
             # Person embedding
             "CREATE VECTOR INDEX person_embedding_index IF NOT EXISTS FOR (p:Person) ON p.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            # Event embedding
+            "CREATE VECTOR INDEX event_embedding_index IF NOT EXISTS FOR (e:Event) ON e.embedding OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}}",
+            
             # Temporal indexes for date-based queries
             "CREATE INDEX event_start_date IF NOT EXISTS FOR (e:Event) ON (e.start_date)",
+            "CREATE INDEX event_last_updated IF NOT EXISTS FOR (e:Event) ON (e.last_updated)",
+            "CREATE INDEX event_status IF NOT EXISTS FOR (e:Event) ON (e.status)",
             "CREATE INDEX resource_publish_date IF NOT EXISTS FOR (r:Resource) ON (r.publish_date)",
             "CREATE INDEX resource_content_changed_at IF NOT EXISTS FOR (r:Resource) ON (r.content_changed_at)",
-            "CREATE INDEX resource_first_seen_at IF NOT EXISTS FOR (r:Resource) ON (r.first_seen_at)",
+            "CREATE INDEX resource_created_at IF NOT EXISTS FOR (r:Resource) ON (r.created_at)",
+            
+            # IngestionBatch indexes for reconciliation queries
+            "CREATE INDEX ingestion_batch_status IF NOT EXISTS FOR (b:IngestionBatch) ON (b.status)",
+            "CREATE INDEX ingestion_batch_reconciled_at IF NOT EXISTS FOR (b:IngestionBatch) ON (b.reconciled_at)",
+            
+            # DataSource index for event reconciliation filtering
+            "CREATE INDEX datasource_has_events IF NOT EXISTS FOR (ds:DataSource) ON (ds.has_events)",
+            
+            # Topic index for created_by (used by curator to find digester-created topics)
+            "CREATE INDEX topic_created_by IF NOT EXISTS FOR (t:Topic) ON (t.created_by)",
         ]
+        
         for constraint in constraints:
             try:
                 self.execute_write(constraint)
                 constraint_desc = constraint.split('FOR')[1].split('REQUIRE')[0].strip()
-                self.logger.info(f"Created constraint: {constraint_desc}")
+                self.logger.debug(f"Created constraint/index: {constraint_desc}")
             except Exception as e:
                 # Constraint might already exist
                 self.logger.debug(f"Constraint creation skipped: {e}")
-        self.logger.info("Constraints setup complete")
+        self.logger.info("Database schema setup complete")
     
     def clear_database(self, confirm: bool = False):
         """

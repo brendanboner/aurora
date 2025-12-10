@@ -222,7 +222,7 @@ class TopicClusterer:
             
             # Handle clusters that are too large
             if cluster_size > self.max_cluster_size:
-                self.logger.info(
+                self.logger.debug(
                     f"Splitting large cluster of size {cluster_size} into smaller chunks"
                 )
                 # Split into chunks of max_cluster_size
@@ -239,7 +239,7 @@ class TopicClusterer:
             
             # Handle clusters that are too small
             elif cluster_size < self.min_cluster_size:
-                self.logger.info(
+                self.logger.debug(
                     f"Cluster of size {cluster_size} is below minimum, will attempt merge"
                 )
                 # Try to merge with an existing refined cluster
@@ -248,7 +248,7 @@ class TopicClusterer:
                     if len(refined_cluster) + cluster_size <= self.max_cluster_size:
                         refined_cluster.extend(cluster)
                         merged = True
-                        self.logger.info(
+                        self.logger.debug(
                             f"Merged small cluster into existing cluster "
                             f"(new size: {len(refined_cluster)})"
                         )
@@ -256,7 +256,7 @@ class TopicClusterer:
                 
                 # If couldn't merge, keep it anyway (better than losing topics)
                 if not merged:
-                    self.logger.warning(
+                    self.logger.debug(
                         f"Could not merge small cluster of size {cluster_size}, keeping as-is"
                     )
                     refined.append(cluster)
@@ -383,7 +383,7 @@ class TopicClusterer:
             overlapping_cluster = cluster + nearest_topics
             overlapping_clusters.append(overlapping_cluster)
             
-            self.logger.info(
+            self.logger.debug(
                 f"  Cluster {i+1}: Added {len(nearest_topics)} overlap topics "
                 f"({len(cluster)} → {len(overlapping_cluster)} total) - "
                 f"Overlaps: {[t.get('name') for t in nearest_topics]}..."

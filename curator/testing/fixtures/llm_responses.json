@@ -1,0 +1,128 @@
+{
+  "hierarchy_analysis": {
+    "wifi_cluster": {
+      "input_topics": ["wi-fi", "wi-fi 6", "wi-fi 6e", "wi-fi 7"],
+      "response": {
+        "relationships": [
+          {
+            "broader_topic": "wi-fi",
+            "narrower_topic": "wi-fi 6",
+            "confidence": 0.95,
+            "reasoning": "Wi-Fi 6 (802.11ax) is a specific generation of the Wi-Fi standard"
+          },
+          {
+            "broader_topic": "wi-fi",
+            "narrower_topic": "wi-fi 6e",
+            "confidence": 0.95,
+            "reasoning": "Wi-Fi 6E is Wi-Fi 6 extended to the 6 GHz band"
+          },
+          {
+            "broader_topic": "wi-fi",
+            "narrower_topic": "wi-fi 7",
+            "confidence": 0.95,
+            "reasoning": "Wi-Fi 7 (802.11be) is the next generation of the Wi-Fi standard"
+          },
+          {
+            "broader_topic": "wi-fi 6",
+            "narrower_topic": "wi-fi 6e",
+            "confidence": 0.85,
+            "reasoning": "Wi-Fi 6E is a specific extension of Wi-Fi 6 to additional spectrum"
+          }
+        ],
+        "new_topics": []
+      }
+    },
+    "security_cluster": {
+      "input_topics": ["network security", "wpa3", "passpoint"],
+      "response": {
+        "relationships": [
+          {
+            "broader_topic": "network security",
+            "narrower_topic": "wpa3",
+            "confidence": 0.90,
+            "reasoning": "WPA3 is a specific network security protocol for Wi-Fi"
+          },
+          {
+            "broader_topic": "wi-fi",
+            "narrower_topic": "passpoint",
+            "confidence": 0.80,
+            "reasoning": "Passpoint is a Wi-Fi certification program for seamless roaming"
+          }
+        ],
+        "new_topics": []
+      }
+    },
+    "iot_cluster": {
+      "input_topics": ["iot", "matter", "thread"],
+      "response": {
+        "relationships": [
+          {
+            "broader_topic": "iot",
+            "narrower_topic": "matter",
+            "confidence": 0.85,
+            "reasoning": "Matter is an IoT connectivity standard"
+          },
+          {
+            "broader_topic": "iot",
+            "narrower_topic": "thread",
+            "confidence": 0.85,
+            "reasoning": "Thread is a low-power IoT networking protocol"
+          }
+        ],
+        "new_topics": []
+      }
+    },
+    "empty_cluster": {
+      "input_topics": ["unrelated topic a", "unrelated topic b"],
+      "response": {
+        "relationships": [],
+        "new_topics": []
+      }
+    }
+  },
+  "cross_cluster_analysis": {
+    "representatives": ["wi-fi", "network security", "iot", "wireless networking"],
+    "response": {
+      "relationships": [
+        {
+          "broader_topic": "wireless networking",
+          "narrower_topic": "wi-fi",
+          "confidence": 0.90,
+          "reasoning": "Wi-Fi is a specific type of wireless networking technology"
+        }
+      ]
+    }
+  },
+  "error_responses": {
+    "malformed_json": "{ relationships: [ invalid json }",
+    "missing_fields": {
+      "relationships": [
+        {
+          "broader_topic": "topic a"
+        }
+      ]
+    },
+    "low_confidence": {
+      "relationships": [
+        {
+          "broader_topic": "topic a",
+          "narrower_topic": "topic b",
+          "confidence": 0.3,
+          "reasoning": "Weak relationship"
+        }
+      ]
+    }
+  },
+  "general_topic_suggestions": {
+    "orphan_topics": ["wi-fi 6e", "wi-fi 7", "wpa3"],
+    "response": {
+      "suggested_topics": [
+        {
+          "name": "wireless standards",
+          "classification": "technology",
+          "reasoning": "General category for wireless communication standards"
+        }
+      ]
+    }
+  }
+}

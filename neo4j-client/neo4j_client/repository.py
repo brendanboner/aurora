@@ -31,6 +31,8 @@ class GraphRepository:
         Initialize base organizations and data sources from the local initial_data.json file.
         Creates organizations, data sources, and their relationships.
         """
+        self.logger.info("Initializing base data (organizations and data sources)...")
+        
         json_path = Path(__file__).parent / "initial_data.json"
         if not json_path.exists():
             self.logger.warning(f"Initial data file not found: {json_path}")
@@ -57,10 +59,10 @@ class GraphRepository:
             
             # Link data source to organization if org_id is provided
             if org_id:
-                ds_to_org_rel = DataSourceBelongsToOrganization(source_id=ds.source_id, target_id=org_id)
+                ds_to_org_rel = DataSourceBelongsToOrganization(source_id=ds.datasource_id, target_id=org_id)
                 self.create_relationship(ds_to_org_rel)
         
-        self.logger.info("Base data initialization complete")
+        self.logger.info(f"Base data initialization complete ({len(orgs)} organizations, {len(data_sources)} data sources)")
 
     def _log_document_change(
         self,
@@ -149,7 +151,6 @@ class GraphRepository:
         - Automatically creates INGESTED_FROM relationship to the DataSource
         - Detects content changes and logs them to PostgreSQL
         - Sets content_changed_at when content_hash differs
-        - Preserves first_seen_at on creation
         
         Args:
             node: Node model instance
@@ -168,8 +169,7 @@ class GraphRepository:
             MATCH (n:{label} {{{id_field}: $id_value}})
             RETURN n.content_hash as old_content_hash,
                    n.publish_date as old_publish_date,
-                   n.title as old_title,
-                   n.first_seen_at as first_seen_at
+                   n.title as old_title
             """
             existing = self.client.execute_query(fetch_query, {"id_value": node_data[id_field]})
             
@@ -206,50 +206,72 @@ class GraphRepository:
                     )
                     # Set content_changed_at to current time
                     node_data['content_changed_at'] = datetime.now().isoformat()
-                
-                # Preserve first_seen_at
-                if old_data.get('first_seen_at'):
-                    node_data['first_seen_at'] = old_data.get('first_seen_at')
 
         # Prepare query and parameters
-        if label == "Resource":
-            # For Resources, use special handling to preserve first_seen_at
-            query = f"""
-            MERGE (n:{label} {{{id_field}: $id_value}})
-            ON CREATE SET n += $properties, n.created_at = datetime(), n.first_seen_at = datetime()
-            ON MATCH SET n += $properties, n.last_updated = datetime()
-            RETURN n
-            """
-        else:
-            # For other nodes, use standard query
-            query = f"""
-            MERGE (n:{label} {{{id_field}: $id_value}})
-            ON CREATE SET n += $properties, n.created_at = datetime()
-            ON MATCH SET n += $properties, n.last_updated = datetime()
-            RETURN n
-            """
+        # Set both created_at and last_updated on create, only last_updated on match
+        query = f"""
+        MERGE (n:{label} {{{id_field}: $id_value}})
+        ON CREATE SET n += $properties, n.created_at = datetime(), n.last_updated = datetime()
+        ON MATCH SET n += $properties, n.last_updated = datetime()
+        RETURN n
+        """
         
         params = {
             "id_value": node_data[id_field],
             "properties": node_data
         }
         result = self.client.execute_write(query, params)
-        self.logger.info(f"Created/updated {label}: {node_data.get(id_field)}")
+        self.logger.debug(f"Created/updated {label}: {node_data.get(id_field)}")
         
         # For Resource nodes, automatically create the INGESTED_FROM relationship
         if label == "Resource" and hasattr(node, 'datasource_id'):
             datasource_id = getattr(node, 'datasource_id')
             if datasource_id:
                 try:
-                    # Create the relationship using the url (not url_hash) as source_id
-                    # because ResourceIngestedFromDataSource uses 'url' as source_id_field
                     ingested_rel = ResourceIngestedFromDataSource(
-                        source_id=node.url,
+                        source_id=node.url_hash,
                         target_id=datasource_id
                     )
                     self.create_relationship(ingested_rel)
                 except Exception as e:
                     self.logger.warning(f"Failed to create INGESTED_FROM relationship for Resource: {e}")
+            
+            # Also create INGESTED_IN relationship to batch if batch_id present
+            batch_id = getattr(node, 'batch_id', None)
+            if batch_id:
+                try:
+                    batch_rel = ResourceIngestedInBatch(
+                        source_id=node.url_hash,
+                        target_id=batch_id
+                    )
+                    self.create_relationship(batch_rel)
+                except Exception as e:
+                    self.logger.warning(f"Failed to create INGESTED_IN relationship for Resource: {e}")
+        
+        # For Event nodes, automatically create the INGESTED_FROM relationship
+        if label == "Event" and hasattr(node, 'datasource_id'):
+            datasource_id = getattr(node, 'datasource_id')
+            if datasource_id:
+                try:
+                    ingested_rel = EventIngestedFromDataSource(
+                        source_id=node.url_hash,
+                        target_id=datasource_id
+                    )
+                    self.create_relationship(ingested_rel)
+                except Exception as e:
+                    self.logger.warning(f"Failed to create INGESTED_FROM relationship for Event: {e}")
+            
+            # Also create INGESTED_IN relationship to batch if batch_id present
+            batch_id = getattr(node, 'batch_id', None)
+            if batch_id:
+                try:
+                    batch_rel = EventIngestedInBatch(
+                        source_id=node.url_hash,
+                        target_id=batch_id
+                    )
+                    self.create_relationship(batch_rel)
+                except Exception as e:
+                    self.logger.warning(f"Failed to create INGESTED_IN relationship for Event: {e}")
         
         # Extract the node properties from the result (same as get_node)
         if result:
@@ -339,7 +361,7 @@ class GraphRepository:
         deleted = result[0].get("deleted_count", 0) if result else 0
         
         if deleted > 0:
-            self.logger.info(f"Deleted {label} with {id_field}='{id_value}' and all its relationships")
+            self.logger.debug(f"Deleted {label} with {id_field}='{id_value}' and all its relationships")
             return True
         else:
             self.logger.warning(f"{label} with {id_field}='{id_value}' not found, nothing deleted")
@@ -390,16 +412,25 @@ class GraphRepository:
         RETURN rel
         """
         
-        self.client.execute_write(query, {
+        result = self.client.execute_write(query, {
             "source_id": relationship.source_id,
             "target_id": relationship.target_id,
             "properties": rel_props
         })
-        self.logger.info(
-            f"Created {relationship.relationship_label} relationship from "
-            f"{relationship.source_node_label}('{relationship.source_id}') to "
-            f"{relationship.target_node_label}('{relationship.target_id}')"
-        )
+        
+        if not result:
+            # Relationship wasn't created - check which node is missing
+            self.logger.warning(
+                f"Could not create {relationship.relationship_label} relationship: "
+                f"source {relationship.source_node_label}('{relationship.source_id}') or "
+                f"target {relationship.target_node_label}('{relationship.target_id}') not found"
+            )
+        else:
+            self.logger.debug(
+                f"Created {relationship.relationship_label} relationship from "
+                f"{relationship.source_node_label}('{relationship.source_id}') to "
+                f"{relationship.target_node_label}('{relationship.target_id}')"
+            )
     
     def delete_relationship(self, relationship: Relationship) -> bool:
         """
@@ -441,7 +472,7 @@ class GraphRepository:
         deleted = result[0].get("deleted_count", 0) if result else 0
         
         if deleted > 0:
-            self.logger.info(
+            self.logger.debug(
                 f"Deleted {relationship.relationship_label} relationship: "
                 f"{relationship.source_node_label}('{relationship.source_id}') -> "
                 f"{relationship.target_node_label}('{relationship.target_id}')"
@@ -553,8 +584,7 @@ class GraphRepository:
                 "resource": 0,
                 "topics": 0,
                 "people": 0,
-                "organizations": 0,
-                "events": 0
+                "organizations": 0
             },
             "relationships_created": 0,
             "success": False
@@ -563,41 +593,34 @@ class GraphRepository:
         try:
             # Insert resource node
             if nodes.get("resource"):
-                self.logger.info(f"Inserting resource node...")
+                self.logger.debug(f"Inserting resource node...")
                 self.create_node(nodes["resource"])
                 stats["nodes_created"]["resource"] = 1
             
             # Insert topic nodes
             if nodes.get("topics"):
-                self.logger.info(f"Inserting {len(nodes['topics'])} topic nodes...")
+                self.logger.debug(f"Inserting {len(nodes['topics'])} topic nodes...")
                 for topic in nodes["topics"]:
                     self.create_node(topic)
                     stats["nodes_created"]["topics"] += 1
             
             # Insert person nodes
             if nodes.get("people"):
-                self.logger.info(f"Inserting {len(nodes['people'])} person nodes...")
+                self.logger.debug(f"Inserting {len(nodes['people'])} person nodes...")
                 for person in nodes["people"]:
                     self.create_node(person)
                     stats["nodes_created"]["people"] += 1
             
             # Insert organization nodes
             if nodes.get("organizations"):
-                self.logger.info(f"Inserting {len(nodes['organizations'])} organization nodes...")
+                self.logger.debug(f"Inserting {len(nodes['organizations'])} organization nodes...")
                 for org in nodes["organizations"]:
                     self.create_node(org)
                     stats["nodes_created"]["organizations"] += 1
             
-            # Insert event nodes
-            if nodes.get("events"):
-                self.logger.info(f"Inserting {len(nodes['events'])} event nodes...")
-                for event in nodes["events"]:
-                    self.create_node(event)
-                    stats["nodes_created"]["events"] += 1
-            
             # Insert relationships
             if relationships:
-                self.logger.info(f"Inserting {len(relationships)} relationships...")
+                self.logger.debug(f"Inserting {len(relationships)} relationships...")
                 for rel in relationships:
                     self.create_relationship(rel)
                     stats["relationships_created"] += 1
@@ -609,8 +632,7 @@ class GraphRepository:
                 f"Nodes: {stats['nodes_created']['resource']} resource, "
                 f"{stats['nodes_created']['topics']} topics, "
                 f"{stats['nodes_created']['people']} people, "
-                f"{stats['nodes_created']['organizations']} organizations, "
-                f"{stats['nodes_created']['events']} events. "
+                f"{stats['nodes_created']['organizations']} organizations. "
                 f"Relationships: {stats['relationships_created']}"
             )
             
@@ -666,6 +688,47 @@ class GraphRepository:
         
         self.logger.info(f"Retrieved {len(nodes)} {label} nodes from knowledge graph")
         return nodes
+
+    def get_events_by_datasource_and_date(
+        self,
+        datasource_id: str,
+        target_date: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve events from a specific datasource that match a given date.
+        
+        An event matches if:
+        - For single-day events (end_date is null): start_date equals target_date
+        - For multi-day events: target_date falls within start_date to end_date range
+        
+        Args:
+            datasource_id: The datasource_id to filter events by (e.g., "wfa_causeway_htf")
+            target_date: The date to match in ISO format (YYYY-MM-DD)
+            
+        Returns:
+            List of event dictionaries with all their properties
+        """
+        query = """
+        MATCH (e:Event)
+        WHERE e.datasource_id = $datasource_id
+          AND date(datetime(e.start_date)) <= date($target_date)
+          AND (e.end_date IS NULL OR date(datetime(e.end_date)) >= date($target_date))
+        RETURN e
+        ORDER BY e.start_date
+        """
+        
+        results = self.client.execute_query(query, {
+            "datasource_id": datasource_id,
+            "target_date": target_date
+        })
+        
+        events = [result.get("e", {}) for result in results]
+        
+        self.logger.debug(
+            f"Found {len(events)} events for datasource '{datasource_id}' "
+            f"matching date '{target_date}'"
+        )
+        return events
 
     def update_node_aliases(
         self,
@@ -727,10 +790,11 @@ class GraphRepository:
         """
         # Check if there's already a path from target to source via ENCOMPASSES
         # If such a path exists, adding source->target would create a cycle
+        # Use OPTIONAL MATCH to avoid warnings when ENCOMPASSES relationship type doesn't exist yet
         query = """
-        MATCH path = (target:Topic {topic_id: $target_id})
-                     -[:ENCOMPASSES*]->(source:Topic {topic_id: $source_id})
-        RETURN path
+        OPTIONAL MATCH path = (target:Topic {topic_id: $target_id})
+                              -[:ENCOMPASSES*]->(source:Topic {topic_id: $source_id})
+        RETURN path IS NOT NULL as has_path
         LIMIT 1
         """
         
@@ -741,7 +805,7 @@ class GraphRepository:
         
         results = self.client.execute_query(query, params)
         
-        if results:
+        if results and results[0].get("has_path"):
             self.logger.warning(
                 f"Cycle detected: Path exists from {target_topic_id} to {source_topic_id}. "
                 f"Cannot add reverse relationship."
@@ -790,10 +854,11 @@ class GraphRepository:
         
         # Case 1: Check if there's already an indirect path from source to target
         # (Classic transitivity: A→B→C exists, trying to add A→C)
+        # Use OPTIONAL MATCH to avoid warnings when ENCOMPASSES relationship type doesn't exist yet
         query_case1 = """
-        MATCH path = (source:Topic {topic_id: $source_id})
-                     -[:ENCOMPASSES*2..]->(target:Topic {topic_id: $target_id})
-        RETURN path
+        OPTIONAL MATCH path = (source:Topic {topic_id: $source_id})
+                              -[:ENCOMPASSES*2..]->(target:Topic {topic_id: $target_id})
+        RETURN path IS NOT NULL as has_path
         LIMIT 1
         """
         
@@ -804,7 +869,7 @@ class GraphRepository:
         
         results = self.client.execute_query(query_case1, params)
         
-        if results:
+        if results and results[0].get("has_path"):
             self.logger.info(
                 f"Redundant relationship (Case 1): Indirect path exists from {source_topic_id} "
                 f"to {target_topic_id}. Direct relationship not needed."
@@ -825,16 +890,26 @@ class GraphRepository:
         
         # Case 2: Check if source and target share a common parent
         # (A→B and A→C exist, trying to add B→C suggests B and C are siblings)
+        # Use OPTIONAL MATCH with a single pattern to require BOTH relationships exist
+        # The pattern (parent)-[:ENCOMPASSES]->(source) and (parent)-[:ENCOMPASSES]->(target)
+        # ensures we only match when both source and target have the same parent
+        #
+        # TODO: This only finds ONE common parent due to LIMIT 1. If source and target have
+        # multiple common parents (e.g., B has parents A,F,G and C has parents K,T,A,F),
+        # we only detect and resolve the conflict for one parent (A). After LLM resolves
+        # A→B, A→C, the sibling relationship through F would still exist, potentially
+        # allowing a redundant B→C relationship to be created. To fully handle this,
+        # we'd need to collect ALL common parents and resolve conflicts for each.
         query_case2 = """
-        MATCH (parent:Topic)-[:ENCOMPASSES]->(source:Topic {topic_id: $source_id})
-        MATCH (parent)-[:ENCOMPASSES]->(target:Topic {topic_id: $target_id})
+        OPTIONAL MATCH (parent:Topic)-[:ENCOMPASSES]->(source:Topic {topic_id: $source_id})
+        WHERE EXISTS { (parent)-[:ENCOMPASSES]->(target:Topic {topic_id: $target_id}) }
         RETURN parent.topic_id AS common_parent
         LIMIT 1
         """
         
         results = self.client.execute_query(query_case2, params)
         
-        if results:
+        if results and results[0].get("common_parent"):
             common_parent = results[0].get("common_parent")
             self.logger.info(
                 f"Redundant relationship (Case 2): {source_topic_id} and {target_topic_id} "
@@ -859,16 +934,23 @@ class GraphRepository:
         
         # Case 3: Check if source and target both encompass a common child
         # (A→C and B→C exist, trying to add A→B suggests A and B are siblings)
+        # Use OPTIONAL MATCH with a single pattern to require BOTH relationships exist
+        # The pattern (source)-[:ENCOMPASSES]->(child)<-[:ENCOMPASSES]-(target) ensures
+        # we only match when both source and target have ENCOMPASSES to the same child
+        #
+        # TODO: Same limitation as Case 2 - only finds ONE common child due to LIMIT 1.
+        # If source and target both encompass multiple common children, we only detect
+        # and resolve the conflict for one. The sibling relationship through other
+        # common children could still allow redundant relationships to be created.
         query_case3 = """
-        MATCH (source:Topic {topic_id: $source_id})-[:ENCOMPASSES]->(child:Topic)
-        MATCH (target:Topic {topic_id: $target_id})-[:ENCOMPASSES]->(child)
+        OPTIONAL MATCH (source:Topic {topic_id: $source_id})-[:ENCOMPASSES]->(child:Topic)<-[:ENCOMPASSES]-(target:Topic {topic_id: $target_id})
         RETURN child.topic_id AS common_child
         LIMIT 1
         """
         
         results = self.client.execute_query(query_case3, params)
         
-        if results:
+        if results and results[0].get("common_child"):
             common_child = results[0].get("common_child")
             self.logger.info(
                 f"Redundant relationship (Case 3): {source_topic_id} and {target_topic_id} "
@@ -1237,8 +1319,8 @@ class GraphRepository:
                 (e.end_date IS NULL AND e.start_date IS NOT NULL AND datetime(e.start_date) >= datetime(start_param))
             )
         
-        // Find resources that mention this event
-        OPTIONAL MATCH (r:Resource)-[:MENTIONS_EVENT]->(e)
+        // Find resources that relate to this event
+        OPTIONAL MATCH (r:Resource)-[:RELATES_TO]->(e)
         
         // Find topics and organizations related to those resources
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -1359,8 +1441,8 @@ class GraphRepository:
                 (e.start_date IS NOT NULL AND datetime(e.start_date) >= datetime(start_param))
             )
         
-        // Find resources that mention this event
-        OPTIONAL MATCH (r:Resource)-[:MENTIONS_EVENT]->(e)
+        // Find resources that relate to this event
+        OPTIONAL MATCH (r:Resource)-[:RELATES_TO]->(e)
         
         // Find topics and organizations related to those resources
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -1481,7 +1563,7 @@ class GraphRepository:
              collect(DISTINCT t {.topic_id, .name, .classification}) AS topics,
              collect(DISTINCT o {.org_id, .name, .org_type}) AS orgs,
              collect(DISTINCT p {.person_id, .name, .email}) AS people,
-             collect(DISTINCT ds {.source_id, .name}) AS datasources,
+             collect(DISTINCT ds {.datasource_id, .name}) AS datasources,
              CASE
                  WHEN r.content_changed_at IS NOT NULL THEN
                      1.0 / (1.0 + duration.between(datetime(r.content_changed_at), datetime()).days / 30.0)
@@ -1501,7 +1583,7 @@ class GraphRepository:
             r.publish_date AS publish_date,
             r.scraped_at   AS scraped_at,
             r.content_changed_at AS content_changed_at,
-            r.first_seen_at AS first_seen_at,
+            r.created_at   AS created_at,
             r.importance   AS importance,
             update_recency_score AS update_recency_score,
             topics         AS topics,
@@ -1578,7 +1660,7 @@ class GraphRepository:
              collect(DISTINCT t {.topic_id, .name, .classification}) AS topics,
              collect(DISTINCT o {.org_id, .name, .org_type}) AS orgs,
              collect(DISTINCT p {.person_id, .name, .email}) AS people,
-             collect(DISTINCT ds {.source_id, .name}) AS datasources,
+             collect(DISTINCT ds {.datasource_id, .name}) AS datasources,
              CASE
                  WHEN r.publish_date IS NOT NULL THEN
                      1.0 / (1.0 + duration.between(datetime(r.publish_date), datetime()).days / 365.0)
@@ -1598,7 +1680,7 @@ class GraphRepository:
             r.publish_date AS publish_date,
             r.scraped_at   AS scraped_at,
             r.content_changed_at AS content_changed_at,
-            r.first_seen_at AS first_seen_at,
+            r.created_at   AS created_at,
             r.importance   AS importance,
             publish_recency_score AS publish_recency_score,
             topics         AS topics,
@@ -1671,3 +1753,181 @@ class GraphRepository:
             "updated_count": updated_count,
             "total_count": len(combined)
         }
+
+    # =========================================================================
+    # Ingestion Batch Methods
+    # =========================================================================
+    
+    def update_batch_status(
+        self,
+        batch_id: str,
+        status: str,
+        **kwargs
+    ) -> bool:
+        """
+        Update the status and optional fields of an ingestion batch.
+        
+        Args:
+            batch_id: The batch UUID
+            status: New status:
+                - 'retrieving': Retriever actively scraping (digester may also be processing)
+                - 'digesting': Retriever finished, digester still processing remaining items
+                - 'completed': All items digested successfully
+                - 'failed': Batch encountered errors
+            **kwargs: Additional fields to update (e.g., scrape_completed_at, items_scraped)
+            
+        Returns:
+            True if updated successfully
+        """
+        # Build SET clause dynamically
+        set_parts = ["b.status = $status"]
+        params = {"batch_id": batch_id, "status": status}
+        
+        # Handle datetime fields
+        datetime_fields = ['scrape_started_at', 'scrape_completed_at', 'digest_completed_at']
+        for key, value in kwargs.items():
+            if value is not None:
+                if key in datetime_fields:
+                    if isinstance(value, datetime):
+                        set_parts.append(f"b.{key} = datetime($_{key})")
+                        params[f"_{key}"] = value.isoformat()
+                    else:
+                        set_parts.append(f"b.{key} = datetime($_{key})")
+                        params[f"_{key}"] = value
+                else:
+                    set_parts.append(f"b.{key} = $_{key}")
+                    params[f"_{key}"] = value
+        
+        query = f"""
+        MATCH (b:IngestionBatch {{batch_id: $batch_id}})
+        SET {', '.join(set_parts)}
+        RETURN b.batch_id
+        """
+        
+        try:
+            results = self.client.execute_write(query, params)
+            if results:
+                self.logger.debug(f"Updated batch {batch_id} to status={status}")
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Failed to update batch status: {e}")
+            return False
+    
+    def increment_batch_digested(
+        self,
+        batch_id: str,
+        events_delta: int = 0,
+        resources_delta: int = 0
+    ) -> Optional[Dict[str, int]]:
+        """
+        Atomically increment the items_digested counter and type counts.
+        
+        Args:
+            batch_id: The batch UUID
+            events_delta: Number of events to add to count
+            resources_delta: Number of resources to add to count
+            
+        Returns:
+            Dict with current counts and status, or None on error
+        """
+        query = """
+        MATCH (b:IngestionBatch {batch_id: $batch_id})
+        SET b.items_digested = coalesce(b.items_digested, 0) + $delta,
+            b.events_count = coalesce(b.events_count, 0) + $events_delta,
+            b.resources_count = coalesce(b.resources_count, 0) + $resources_delta
+        RETURN b.items_digested as items_digested,
+               b.items_scraped as items_scraped,
+               b.events_count as events_count,
+               b.resources_count as resources_count,
+               b.status as status
+        """
+        
+        delta = events_delta + resources_delta
+        try:
+            results = self.client.execute_write(query, {
+                "batch_id": batch_id,
+                "delta": delta,
+                "events_delta": events_delta,
+                "resources_delta": resources_delta
+            })
+            if results:
+                return dict(results[0])
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to increment batch counter: {e}")
+            return None
+    
+    def increment_batch_scraped(
+        self,
+        batch_id: str,
+        delta: int = 1
+    ) -> Optional[int]:
+        """
+        Atomically increment the items_scraped counter.
+        
+        Called by the retriever each time an item is published to the queue.
+        
+        Args:
+            batch_id: The batch UUID
+            delta: Number of items to add (default 1)
+            
+        Returns:
+            New items_scraped count, or None on error
+        """
+        query = """
+        MATCH (b:IngestionBatch {batch_id: $batch_id})
+        SET b.items_scraped = coalesce(b.items_scraped, 0) + $delta
+        RETURN b.items_scraped as items_scraped
+        """
+        
+        try:
+            results = self.client.execute_write(query, {
+                "batch_id": batch_id,
+                "delta": delta
+            })
+            if results:
+                return results[0]["items_scraped"]
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to increment batch scraped counter: {e}")
+            return None
+    
+    def get_batches_by_status(
+        self,
+        status: Optional[List[str]] = None,
+        datasource_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get ingestion batches filtered by status and/or datasource.
+        
+        Args:
+            status: List of statuses to filter by (e.g., ['completed'], ['retrieving', 'digesting'])
+                   If None, returns all batches.
+            datasource_id: Optional filter by datasource
+            
+        Returns:
+            List of batch data dicts, ordered by scrape_started_at DESC
+        """
+        conditions = []
+        params = {}
+        
+        if status:
+            conditions.append("b.status IN $status")
+            params["status"] = status
+        
+        if datasource_id:
+            conditions.append("b.datasource_id = $datasource_id")
+            params["datasource_id"] = datasource_id
+        
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        
+        query = f"""
+        MATCH (b:IngestionBatch)
+        {where_clause}
+        RETURN b
+        ORDER BY b.scrape_started_at DESC
+        """
+        
+        results = self.client.execute_query(query, params)
+        return [dict(r["b"]) for r in results]

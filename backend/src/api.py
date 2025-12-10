@@ -4,12 +4,14 @@ from pydantic import BaseModel
 from typing import Any, Dict, List, Optional, cast
 from datetime import datetime
 import logging
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+logger = logging.getLogger(__name__)
 
 from src.services.query_engine import run_query
 from src.services import postgres
@@ -18,6 +20,28 @@ from src.services.news_service import get_news_service
 from src.routes import admin
 
 app = FastAPI(title="Aurora Backend API")
+
+# Run database schema on startup to apply any migrations
+@app.on_event("startup")
+async def apply_schema():
+    """Apply database schema (includes migration logic for existing databases)."""
+    try:
+        logger.info("Applying database schema...")
+        schema_file = Path(__file__).parent.parent / "db_schema.sql"
+        
+        if schema_file.exists():
+            with open(schema_file, 'r') as f:
+                schema_sql = f.read()
+            
+            conn = postgres.get_conn()
+            with conn.cursor() as cur:
+                cur.execute(schema_sql)
+            logger.info("✓ Database schema applied successfully")
+        else:
+            logger.warning(f"Schema file not found: {schema_file}")
+    except Exception as e:
+        logger.error(f"Error applying schema: {e}")
+        # Don't fail startup - database may already be configured
 
 # Include admin routes (router already has /admin prefix, accessed via nginx /api/ proxy)
 app.include_router(admin.router, prefix="")

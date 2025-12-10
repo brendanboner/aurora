@@ -27,14 +27,12 @@ class Settings(BaseSettings):
     neo4j_password: str = "password"
     neo4j_database: str = "neo4j"
     
-    # Scraper Configuration
-    scraper_delay: float = 0.5  # Delay between requests in seconds
-    scraper_max_redirects: int = 10
-    scraper_max_resources: int = -1  # Maximum number of resources to scrape per run (-1 = unlimited)
-    
-    # Output Configuration
-    output_mode: str = "rabbitmq"  # Options: "rabbitmq" or "json"
-    json_output_file: str = "{scraper}_test_messages.json"  # Default uses scraper name; can override via env var
+    # PostgreSQL Configuration (for config_manager)
+    postgres_host: str = "postgres"
+    postgres_port: int = 5432
+    postgres_user: str = "aurora"
+    postgres_password: str = "aurora_password"
+    postgres_db: str = "aurora"
     
     # Logging
     log_level: str = "INFO"
@@ -44,8 +42,13 @@ class Settings(BaseSettings):
     api_port: int = 8000
     
     # Scheduler Configuration
-    scrape_schedule_hour: int = 2  # Hour to run daily scrape (0-23)
-    scrape_schedule_minute: int = 0  # Minute to run daily scrape (0-59)
+    # Poll interval for checking cron schedules (in seconds)
+    # Datasource-specific schedules are stored in the database
+    scheduler_poll_interval: int = 60  # Check every 60 seconds
+    
+    # WFA Causeway Authentication
+    wfa_causeway_username: str = ""
+    wfa_causeway_password: str = ""
 
 
 settings = Settings()

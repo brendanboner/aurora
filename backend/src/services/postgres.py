@@ -147,12 +147,18 @@ def get_system_configuration(datasource_id: str = "default") -> Dict[str, Any]:
         return {
             "datasource_id": datasource_id,
             "name": datasource_id,
-            "scrape_frequency": "daily",
+            "scraper_type": None,
+            "resource_url": None,
+            "scrape_schedule": None,
+            "run_on_startup": False,
             "check_content_hash": True,
             "publish_weight": 1.0,
             "update_weight": 0.8,
             "event_weight": 0.9,
             "temporal_extraction_days": 90,
+            "discovery_mode": "incremental",
+            "consecutive_duplicates_limit": 5,
+            "full_refresh_schedule": None,
             "last_scraped_at": None
         }
     return result
@@ -161,30 +167,61 @@ def get_system_configuration(datasource_id: str = "default") -> Dict[str, Any]:
 def upsert_system_configuration(
     datasource_id: str,
     name: Optional[str] = None,
-    scrape_frequency: Optional[str] = None,
+    scraper_type: Optional[str] = None,
+    resource_url: Optional[str] = None,
+    scrape_schedule: Optional[str] = None,
+    run_on_startup: Optional[bool] = None,
     check_content_hash: Optional[bool] = None,
     publish_weight: Optional[float] = None,
     update_weight: Optional[float] = None,
     event_weight: Optional[float] = None,
-    temporal_extraction_days: Optional[int] = None
+    temporal_extraction_days: Optional[int] = None,
+    scraper_delay: Optional[float] = None,
+    max_resources: Optional[int] = None,
+    max_redirects: Optional[int] = None,
+    folders: Optional[List[str]] = None,
+    discovery_mode: Optional[str] = None,
+    consecutive_duplicates_limit: Optional[int] = None,
+    full_refresh_schedule: Optional[str] = None
 ) -> Dict[str, Any]:
     """Create or update system configuration for a datasource."""
+    import json
+    from psycopg2.extras import Json
+    
     query = """
         INSERT INTO system_configuration 
-            (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight, temporal_extraction_days)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (datasource_id, name, scraper_type, resource_url, scrape_schedule, run_on_startup,
+             check_content_hash, publish_weight, update_weight, event_weight, temporal_extraction_days,
+             scraper_delay, max_resources, max_redirects, folders,
+             discovery_mode, consecutive_duplicates_limit, full_refresh_schedule)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (datasource_id) DO UPDATE SET
             name = COALESCE(EXCLUDED.name, system_configuration.name),
-            scrape_frequency = COALESCE(EXCLUDED.scrape_frequency, system_configuration.scrape_frequency),
+            scraper_type = COALESCE(EXCLUDED.scraper_type, system_configuration.scraper_type),
+            resource_url = COALESCE(EXCLUDED.resource_url, system_configuration.resource_url),
+            scrape_schedule = COALESCE(EXCLUDED.scrape_schedule, system_configuration.scrape_schedule),
+            run_on_startup = COALESCE(EXCLUDED.run_on_startup, system_configuration.run_on_startup),
             check_content_hash = COALESCE(EXCLUDED.check_content_hash, system_configuration.check_content_hash),
             publish_weight = COALESCE(EXCLUDED.publish_weight, system_configuration.publish_weight),
             update_weight = COALESCE(EXCLUDED.update_weight, system_configuration.update_weight),
             event_weight = COALESCE(EXCLUDED.event_weight, system_configuration.event_weight),
             temporal_extraction_days = COALESCE(EXCLUDED.temporal_extraction_days, system_configuration.temporal_extraction_days),
+            scraper_delay = COALESCE(EXCLUDED.scraper_delay, system_configuration.scraper_delay),
+            max_resources = COALESCE(EXCLUDED.max_resources, system_configuration.max_resources),
+            max_redirects = COALESCE(EXCLUDED.max_redirects, system_configuration.max_redirects),
+            folders = COALESCE(EXCLUDED.folders, system_configuration.folders),
+            discovery_mode = COALESCE(EXCLUDED.discovery_mode, system_configuration.discovery_mode),
+            consecutive_duplicates_limit = COALESCE(EXCLUDED.consecutive_duplicates_limit, system_configuration.consecutive_duplicates_limit),
+            full_refresh_schedule = COALESCE(EXCLUDED.full_refresh_schedule, system_configuration.full_refresh_schedule),
             updated_at = NOW()
         RETURNING *
     """
-    params = (datasource_id, name, scrape_frequency, check_content_hash, publish_weight, update_weight, event_weight, temporal_extraction_days)
+    # Convert folders list to psycopg2 Json object for proper JSONB handling
+    folders_value = Json(folders) if folders is not None else None
+    params = (datasource_id, name, scraper_type, resource_url, scrape_schedule, run_on_startup,
+              check_content_hash, publish_weight, update_weight, event_weight, temporal_extraction_days,
+              scraper_delay, max_resources, max_redirects, folders_value,
+              discovery_mode, consecutive_duplicates_limit, full_refresh_schedule)
     return fetchone(query, params)
 
 

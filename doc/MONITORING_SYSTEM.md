@@ -78,7 +78,7 @@ This document describes the comprehensive monitoring system implemented for trac
 
 ### 2. Digester Instrumentation
 
-**Location**: `/digester/main.py`
+**Location**: `/digester/digester.py`
 
 **Key Changes**:
 - Added Redis client initialization in `__init__`

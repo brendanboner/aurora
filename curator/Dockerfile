@@ -19,15 +19,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
 
 # Install local shared libraries (neo4j-client)
-# These are outside of requirements.txt for better caching during development
 COPY neo4j-client ./neo4j-client
-RUN pip install -e neo4j-client
+RUN pip install --no-cache-dir ./neo4j-client
 
 # Copy curator application code
 COPY curator/ .
 
-# Make entrypoint executable
-RUN chmod +x entrypoint.sh
-
-# Run the application via entrypoint script
-CMD ["./entrypoint.sh"]
+# Run the curator service directly
+CMD ["python", "curator.py"]

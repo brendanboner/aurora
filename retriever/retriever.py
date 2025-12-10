@@ -10,16 +10,15 @@ Both operations run concurrently without blocking each other.
 
 import asyncio
 import logging
-from datetime import datetime, time as dt_time
+from datetime import datetime
 from contextlib import asynccontextmanager
-from typing import Optional, Dict, Any
-import aiohttp
+from typing import Optional, Dict, Any, List, Type
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, HttpUrl, Field
-import io
 
-from scrapers.WFA import WFAScraper
+from scrapers import WFAScraper, WFACausewayScraper
 from scrapers.base import BaseScraper, Resource
+from config_manager import ConfigManager
 from settings import settings
 
 # Configure logging
@@ -33,12 +32,14 @@ logger = logging.getLogger(__name__)
 logging.getLogger('pypdf').setLevel(logging.ERROR)
 logging.getLogger('pypdf._reader').setLevel(logging.ERROR)
 
-# Registry of all available scrapers
-SCRAPER_REGISTRY = {
+# Registry mapping scraper_type to scraper class
+# The scraper_type value in the database determines which class handles a datasource
+SCRAPER_CLASSES: Dict[str, Type[BaseScraper]] = {
     "wfa": WFAScraper,
-    # Add more scrapers here as they are implemented
-    # "example": ExampleScraper,
+    "wfa_causeway": WFACausewayScraper,
 }
+
+logger.info(f"Available scraper types: {list(SCRAPER_CLASSES.keys())}")
 
 
 class DocumentSubmitRequest(BaseModel):
@@ -76,10 +77,13 @@ class RetrieverService:
         self.active_scrapes: Dict[str, asyncio.Task] = {}
         self.scrapes_today: int = 0
         self.last_scrape_date: Optional[str] = None
+        self.config_manager: Optional[ConfigManager] = None
         
     async def start(self):
         """Start the scheduled scraper in the background"""
         logger.info("Starting retriever service with scheduled scraping")
+        # Create a single ConfigManager instance for reuse
+        self.config_manager = ConfigManager()
         self.scheduler_task = asyncio.create_task(self._run_scheduler())
         
     async def stop(self):
@@ -97,56 +101,140 @@ class RetrieverService:
         if self.active_scrapes:
             logger.info(f"Waiting for {len(self.active_scrapes)} active scrapes to complete")
             await asyncio.gather(*self.active_scrapes.values(), return_exceptions=True)
+        
+        # Close database connection
+        if self.config_manager:
+            self.config_manager.close()
+            self.config_manager = None
     
     async def _run_scheduler(self):
         """
-        Background scheduler that runs daily scrapes at a specified time.
-        Runs all scrapers from the registry.
+        Background scheduler that polls for due datasources based on cron schedules.
+        
+        The scheduler:
+        1. Runs startup datasources (run_on_startup=true) immediately
+        2. Polls every minute for datasources whose cron schedule is due
+        3. Detects missed windows (if last_scraped_at < previous scheduled time)
         """
-        # Schedule time (default: 2 AM daily)
-        schedule_hour = getattr(settings, 'scrape_schedule_hour', 2)
-        schedule_minute = getattr(settings, 'scrape_schedule_minute', 0)
+        poll_interval = getattr(settings, 'scheduler_poll_interval', 60)  # Default: 60 seconds
         
-        logger.info(f"Scheduler started - daily scrapes scheduled for {schedule_hour:02d}:{schedule_minute:02d}")
+        logger.info(f"Scheduler started - polling every {poll_interval} seconds for due datasources")
         
-        # Run initial scrape on startup
-        await self._run_all_scrapers(scrape_type="startup")
+        # Run startup datasources on service start
+        await self._run_startup_datasources()
         
         while True:
             try:
-                # Calculate time until next scheduled scrape
-                now = datetime.now()
-                target_time = now.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
+                # Poll for datasources that are due based on cron schedule
+                await self._run_due_datasources()
                 
-                # If target time has passed today, schedule for tomorrow
-                if now >= target_time:
-                    target_time = target_time.replace(day=target_time.day + 1)
-                
-                wait_seconds = (target_time - now).total_seconds()
-                logger.info(f"Next scheduled scrape at {target_time.strftime('%Y-%m-%d %H:%M:%S')} ({wait_seconds/3600:.1f} hours)")
-                
-                # Wait until scheduled time
-                await asyncio.sleep(wait_seconds)
-                
-                # Run all scrapers
-                await self._run_all_scrapers(scrape_type="scheduled")
+                # Wait before next poll
+                await asyncio.sleep(poll_interval)
                 
             except asyncio.CancelledError:
                 logger.info("Scheduler cancelled")
                 break
             except Exception as e:
                 logger.error(f"Scheduler error: {e}", exc_info=True)
-                # Wait 5 minutes before retrying after error
-                await asyncio.sleep(300)
+                # Wait before retrying after error
+                await asyncio.sleep(poll_interval)
     
-    async def _run_all_scrapers(self, scrape_type: str = "scheduled"):
+    async def _run_startup_datasources(self):
         """
-        Run scrape for all registered scrapers concurrently.
+        Run datasources marked with run_on_startup=true.
+        Called once when the service starts.
+        """
+        startup_datasources = self.config_manager.get_startup_datasources()
+        
+        if not startup_datasources:
+            logger.info("No datasources configured to run on startup")
+            return
+        
+        logger.info(f"Running {len(startup_datasources)} startup datasource(s):")
+        for ds in startup_datasources:
+            ds_id = ds.get('datasource_id', 'unknown')
+            ds_name = ds.get('name', ds_id)
+            ds_url = ds.get('resource_url', 'N/A')
+            logger.info(f"  - {ds_name} ({ds_id}) - URL: {ds_url}")
+        
+        # Group by scraper_type for session reuse
+        grouped = {}
+        for ds in startup_datasources:
+            scraper_type = ds.get('scraper_type', 'unknown')
+            if scraper_type not in grouped:
+                grouped[scraper_type] = []
+            grouped[scraper_type].append(ds)
+        
+        await self._run_grouped_datasources(grouped, scrape_type="startup")
+    
+    async def _run_due_datasources(self):
+        """
+        Run datasources whose cron schedule is due or was missed.
+        Also checks for datasources due for a full refresh.
+        Called on each poll interval.
+        """
+        due_datasources = self.config_manager.get_due_datasources()
+        due_ids = {ds.get('datasource_id') for ds in due_datasources}
+        
+        # Check for full refresh datasources
+        full_refresh_datasources = self.config_manager.get_full_refresh_datasources()
+        full_refresh_ids = {ds.get('datasource_id') for ds in full_refresh_datasources}
+        
+        if full_refresh_datasources:
+            logger.info(f"Found {len(full_refresh_datasources)} datasource(s) due for FULL REFRESH:")
+            for ds in full_refresh_datasources:
+                ds_id = ds.get('datasource_id', 'unknown')
+                ds_name = ds.get('name', ds_id)
+                ds_schedule = ds.get('full_refresh_schedule', 'N/A')
+                logger.info(f"  - {ds_name} ({ds_id}) - full refresh schedule: {ds_schedule}")
+                
+                # Add full refresh datasources to due list if not already there
+                if ds_id not in due_ids:
+                    ds['is_full_refresh'] = True
+                    due_datasources.append(ds)
+                    due_ids.add(ds_id)
+        
+        if not due_datasources:
+            # No datasources due - this is normal, just return quietly
+            return
+        
+        logger.info(f"Found {len(due_datasources)} datasource(s) due for scraping:")
+        for ds in due_datasources:
+            ds_id = ds.get('datasource_id', 'unknown')
+            ds_name = ds.get('name', ds_id)
+            ds_schedule = ds.get('scrape_schedule', 'N/A')
+            last_scraped = ds.get('last_scraped_at')
+            last_scraped_str = last_scraped.isoformat() if last_scraped else 'never'
+            
+            # Mark if this is a full refresh run (may already be marked above)
+            is_full_refresh = ds_id in full_refresh_ids
+            if is_full_refresh:
+                ds['is_full_refresh'] = True
+                logger.info(f"  - {ds_name} ({ds_id}) [FULL REFRESH]")
+            else:
+                logger.info(f"  - {ds_name} ({ds_id})")
+            logger.info(f"    Schedule: {ds_schedule}, Last scraped: {last_scraped_str}")
+        
+        # Group by scraper_type for session reuse
+        grouped = {}
+        for ds in due_datasources:
+            scraper_type = ds.get('scraper_type', 'unknown')
+            if scraper_type not in grouped:
+                grouped[scraper_type] = []
+            grouped[scraper_type].append(ds)
+        
+        await self._run_grouped_datasources(grouped, scrape_type="scheduled")
+    
+    async def _run_grouped_datasources(self, grouped_datasources: Dict[str, List[Dict[str, Any]]], scrape_type: str):
+        """
+        Run datasources grouped by scraper_type.
         
         Args:
-            scrape_type: Type of scrape (startup, scheduled, or manual)
+            grouped_datasources: Dict mapping scraper_type to list of datasource configs
+            scrape_type: Type of scrape (startup, scheduled, manual)
         """
-        logger.info(f"Running {scrape_type} scrape for all scrapers: {list(SCRAPER_REGISTRY.keys())}")
+        if not grouped_datasources:
+            return
         
         # Track scrapes per day
         today = datetime.now().strftime('%Y-%m-%d')
@@ -154,30 +242,76 @@ class RetrieverService:
             self.scrapes_today = 0
             self.last_scrape_date = today
         
-        # Run all scrapers concurrently
-        tasks = []
-        for scraper_name, scraper_class in SCRAPER_REGISTRY.items():
-            task = asyncio.create_task(
-                self._run_single_scraper(scraper_name, scraper_class)
-            )
-            tasks.append(task)
-        
-        # Wait for all to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Log results
-        for scraper_name, result in zip(SCRAPER_REGISTRY.keys(), results):
-            if isinstance(result, Exception):
-                logger.error(f"Scraper '{scraper_name}' failed: {result}")
-            else:
-                logger.info(f"Scraper '{scraper_name}' completed successfully")
+        # Process each scraper type
+        for scraper_type, datasources in grouped_datasources.items():
+            scraper_class = SCRAPER_CLASSES.get(scraper_type)
+            
+            if not scraper_class:
+                logger.warning(f"Unknown scraper_type '{scraper_type}' - skipping {len(datasources)} datasources")
+                continue
+            
+            logger.info(f"Running {scraper_type} scraper for {len(datasources)} datasource(s)")
+            
+            try:
+                await self._run_scraper_for_datasources(scraper_type, scraper_class, datasources)
+            except Exception as e:
+                logger.error(f"Error running {scraper_type} scraper: {e}", exc_info=True)
         
         self.scrapes_today += 1
-        logger.info(f"All {scrape_type} scrapers completed (total today: {self.scrapes_today})")
+        logger.info(f"Completed {scrape_type} scrape (total today: {self.scrapes_today})")
+    
+    async def _run_scraper_for_datasources(
+        self, 
+        scraper_type: str, 
+        scraper_class: Type[BaseScraper], 
+        datasources: List[Dict[str, Any]]
+    ):
+        """
+        Run a single scraper instance for multiple datasources.
+        
+        This allows session reuse (e.g., single authentication for Causeway).
+        
+        Args:
+            scraper_type: The scraper type identifier
+            scraper_class: Scraper class to instantiate
+            datasources: List of datasource configurations to process
+        """
+        task_id = f"{scraper_type}_{datetime.now().timestamp()}"
+        
+        try:
+            self.active_scrapes[task_id] = asyncio.current_task()
+            
+            # Create single scraper instance for all datasources of this type
+            async with scraper_class() as scraper:
+                logger.info(f"Started {scraper_type} scraper session")
+                
+                for ds_config in datasources:
+                    datasource_id = ds_config.get('datasource_id', 'unknown')
+                    datasource_name = ds_config.get('name', datasource_id)
+                    is_full_refresh = ds_config.get('is_full_refresh', False)
+                    
+                    try:
+                        refresh_mode = " (FULL REFRESH)" if is_full_refresh else ""
+                        logger.info(f"Processing datasource: {datasource_name}{refresh_mode}")
+                        await scraper.run_scraper(ds_config)
+                        logger.info(f"Completed datasource: {datasource_name}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing {datasource_name}: {e}", exc_info=True)
+                        # Continue with next datasource
+                        continue
+            
+            logger.info(f"Completed {scraper_type} scraper session")
+            
+        except Exception as e:
+            logger.error(f"Error in {scraper_type} scraper session: {e}", exc_info=True)
+            raise
+        finally:
+            self.active_scrapes.pop(task_id, None)
     
     async def _run_single_scraper(self, scraper_name: str, scraper_class: type):
         """
-        Run a single scraper.
+        Run a single scraper (legacy method for backwards compatibility).
         
         Args:
             scraper_name: Name identifier for the scraper
@@ -202,21 +336,39 @@ class RetrieverService:
     
     def get_status(self) -> Dict[str, Any]:
         """Get current status of the retriever service"""
-        now = datetime.now()
-        schedule_hour = getattr(settings, 'scrape_schedule_hour', 2)
-        schedule_minute = getattr(settings, 'scrape_schedule_minute', 0)
-        
-        target_time = now.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
-        if now >= target_time:
-            target_time = target_time.replace(day=target_time.day + 1)
-        
-        return {
-            "scheduler_running": self.scheduler_task is not None and not self.scheduler_task.done(),
-            "next_scheduled_scrape": target_time.strftime('%Y-%m-%d %H:%M:%S'),
-            "active_scrapes": len(self.active_scrapes),
-            "total_scrapes_today": self.scrapes_today,
-            "registered_scrapers": list(SCRAPER_REGISTRY.keys())
-        }
+        # Get datasources and their schedules from database
+        config_manager = ConfigManager()
+        try:
+            grouped_datasources = config_manager.get_datasources_by_scraper_type()
+            all_datasources = config_manager.get_all_scheduled_datasources()
+            
+            datasource_count = sum(len(ds_list) for ds_list in grouped_datasources.values())
+            poll_interval = getattr(settings, 'scheduler_poll_interval', 60)
+            
+            # Collect schedule info for each datasource
+            datasource_schedules = [
+                {
+                    "datasource_id": ds.get('datasource_id'),
+                    "name": ds.get('name'),
+                    "schedule": ds.get('scrape_schedule'),
+                    "run_on_startup": ds.get('run_on_startup'),
+                    "last_scraped_at": ds.get('last_scraped_at').isoformat() if ds.get('last_scraped_at') else None
+                }
+                for ds in all_datasources
+            ]
+            
+            return {
+                "scheduler_running": self.scheduler_task is not None and not self.scheduler_task.done(),
+                "poll_interval_seconds": poll_interval,
+                "active_scrapes": len(self.active_scrapes),
+                "total_scrapes_today": self.scrapes_today,
+                "available_scraper_types": list(SCRAPER_CLASSES.keys()),
+                "active_scraper_types": list(grouped_datasources.keys()),
+                "total_datasources": datasource_count,
+                "datasource_schedules": datasource_schedules
+            }
+        finally:
+            config_manager.close()
 
 
 # Global service instance
@@ -330,40 +482,210 @@ async def submit_file(
     )
 
 
-@app.post("/scrape/trigger/{scraper_name}")
-async def trigger_manual_scrape(scraper_name: str):
+
+@app.post("/scrape/datasource/{datasource_id}")
+async def trigger_datasource_scrape(datasource_id: str):
     """
-    Manually trigger a scrape for a specific scraper.
+    Manually trigger a scrape for a single datasource.
     
     Args:
-        scraper_name: Name of the scraper (e.g., 'wfa')
+        datasource_id: The datasource identifier (e.g., 'wfa_causeway_wifi7mtg')
     
-    The scraper will use the configured SCRAPER_MAX_RESOURCES setting to determine
-    how many resources to scrape (-1 = unlimited).
+    Note: For Causeway datasources, consider using /scrape/all to share authentication.
     """
-    if scraper_name not in SCRAPER_REGISTRY:
+    config_manager = ConfigManager()
+    try:
+        datasource = config_manager.get_datasource_config(datasource_id)
+        
+        # Check if datasource exists and has a scraper_type
+        if not datasource.get('scraper_type'):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Datasource '{datasource_id}' not found or has no scraper configured"
+            )
+        
+        scraper_type = datasource['scraper_type']
+        
+        if scraper_type not in SCRAPER_CLASSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Datasource '{datasource_id}' uses unknown scraper type '{scraper_type}'"
+            )
+        
+        datasource_name = datasource.get('name', datasource_id)
+        resource_url = datasource.get('resource_url', 'N/A')
+        last_scraped = datasource.get('last_scraped_at')
+        last_scraped_str = last_scraped.isoformat() if last_scraped else 'never'
+        
+        logger.info(f"Manual scrape triggered for datasource: {datasource_name} ({datasource_id})")
+        logger.info(f"  Scraper: {scraper_type}, URL: {resource_url}, Last scraped: {last_scraped_str}")
+        
+        # Run scraper in background for just this one datasource
+        asyncio.create_task(
+            retriever_service._run_scraper_for_datasources(
+                scraper_type,
+                SCRAPER_CLASSES[scraper_type],
+                [datasource]  # Single datasource in list
+            )
+        )
+        
+        return {
+            "status": "started",
+            "message": f"Scrape started for {datasource_name}",
+            "datasource_id": datasource_id,
+            "datasource_name": datasource_name,
+            "scraper_type": scraper_type
+        }
+    finally:
+        config_manager.close()
+
+
+@app.post("/scrape/datasource/{datasource_id}/collect")
+async def collect_datasource_scrape(datasource_id: str, max_items: int = 50):
+    """
+    Scrape a datasource and return the results as JSON instead of publishing to RabbitMQ.
+    
+    This is useful for testing/debugging scrapers or previewing what would be scraped.
+    The scraper runs synchronously and returns collected messages directly.
+    
+    Args:
+        datasource_id: The datasource identifier (e.g., 'wfa_resource_page')
+        max_items: Maximum number of items to collect (default: 50, use -1 for unlimited)
+    
+    Returns:
+        JSON object with collected resources and events
+    """
+    config_manager = ConfigManager()
+    try:
+        datasource = config_manager.get_datasource_config(datasource_id)
+        
+        # Check if datasource exists and has a scraper_type
+        if not datasource.get('scraper_type'):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Datasource '{datasource_id}' not found or has no scraper configured"
+            )
+        
+        scraper_type = datasource['scraper_type']
+        
+        if scraper_type not in SCRAPER_CLASSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Datasource '{datasource_id}' uses unknown scraper type '{scraper_type}'"
+            )
+        
+        scraper_class = SCRAPER_CLASSES[scraper_type]
+        datasource_name = datasource.get('name', datasource_id)
+        
+        # Override max_resources in config if max_items specified
+        if max_items > 0:
+            datasource['max_resources'] = max_items
+        
+        logger.info(f"Collect scrape for datasource: {datasource_name} ({datasource_id}), max_items={max_items}")
+    finally:
+        config_manager.close()
+    
+    try:
+        async with scraper_class() as scraper:
+            # Enable collect mode
+            scraper.enable_collect_mode()
+            
+            # Run the scraper
+            await scraper.run_scraper(datasource)
+            
+            # Get collected messages
+            messages = scraper.get_collected_messages()
+            
+            # Separate resources and events
+            resources = [m for m in messages if m.get('message_type') == 'resource']
+            events = [m for m in messages if m.get('message_type') == 'event']
+            
+            return {
+                "status": "success",
+                "datasource_id": datasource_id,
+                "datasource_name": datasource_name,
+                "scraper_type": scraper_type,
+                "total_collected": len(messages),
+                "resources_count": len(resources),
+                "events_count": len(events),
+                "resources": resources,
+                "events": events
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in collect scrape for {datasource_id}: {e}", exc_info=True)
         raise HTTPException(
-            status_code=404,
-            detail=f"Scraper '{scraper_name}' not found. Available: {list(SCRAPER_REGISTRY.keys())}"
+            status_code=500,
+            detail=f"Error scraping datasource: {str(e)}"
         )
+
+
+@app.post("/scrape/all")
+async def trigger_scrape_all():
+    """
+    Manually trigger a scrape for all configured datasources.
     
-    # Run scraper in background
-    asyncio.create_task(
-        retriever_service._run_single_scraper(
-            scraper_name,
-            SCRAPER_REGISTRY[scraper_name]
-        )
-    )
+    Datasources are grouped by scraper_type to allow session reuse 
+    (e.g., single Causeway authentication for all Causeway datasources).
     
-    max_resources = settings.scraper_max_resources
-    limit_msg = f"unlimited resources" if max_resources == -1 else f"up to {max_resources} resources"
-    
-    return {
-        "status": "started",
-        "message": f"Scrape started for {scraper_name} ({limit_msg})",
-        "scraper": scraper_name,
-        "max_resources": max_resources
-    }
+    Returns list of scraper types started and their datasources.
+    """
+    config_manager = ConfigManager()
+    try:
+        grouped_datasources = config_manager.get_datasources_by_scraper_type()
+        
+        if not grouped_datasources:
+            return {
+                "status": "no_datasources",
+                "message": "No active datasources found with scraper types configured",
+                "scraper_types": []
+            }
+        
+        started = []
+        skipped = []
+        
+        for scraper_type, datasources in grouped_datasources.items():
+            if scraper_type not in SCRAPER_CLASSES:
+                skipped.append({
+                    "scraper_type": scraper_type,
+                    "reason": f"Unknown scraper type",
+                    "datasources": [ds.get('datasource_id') for ds in datasources]
+                })
+                continue
+            
+            datasource_info = [
+                {"datasource_id": ds.get('datasource_id'), "name": ds.get('name', ds.get('datasource_id'))}
+                for ds in datasources
+            ]
+            
+            logger.info(f"Manual scrape triggered for scraper type '{scraper_type}' with {len(datasources)} datasource(s)")
+            for ds in datasources:
+                logger.info(f"  - {ds.get('name', ds.get('datasource_id'))} ({ds.get('datasource_id')})")
+            
+            # Run scraper in background
+            asyncio.create_task(
+                retriever_service._run_scraper_for_datasources(
+                    scraper_type,
+                    SCRAPER_CLASSES[scraper_type],
+                    datasources
+                )
+            )
+            
+            started.append({
+                "scraper_type": scraper_type,
+                "datasources": datasource_info
+            })
+        
+        total_datasources = sum(len(s["datasources"]) for s in started)
+        
+        return {
+            "status": "started",
+            "message": f"Scrape started for {total_datasources} datasource(s) across {len(started)} scraper type(s)",
+            "started": started,
+            "skipped": skipped
+        }
+    finally:
+        config_manager.close()
 
 
 if __name__ == "__main__":

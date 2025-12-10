@@ -52,8 +52,25 @@ class Settings(BaseSettings):
     queue_empty_wait_seconds: int = 30  # How long queue must be empty before proceeding
     max_wait_minutes: int = 60  # Maximum time to wait for digester
     
-    # Scheduling Configuration (for future use)
-    curation_interval_hours: int = 24
+    # Scheduler Configuration
+    # Topic organization: threshold-based (recommended) or cron-based (fallback)
+    # When threshold is enabled, organization triggers when X new topics are created
+    # When threshold is disabled, falls back to cron schedule
+    topic_threshold_enabled: bool = True  # Use threshold-based triggering (recommended)
+    topic_threshold_count: int = 50  # Number of new topics to trigger organization
+    topic_threshold_check_interval_seconds: int = 60  # How often to check for new topics
+    
+    # Cron schedule (only used when topic_threshold_enabled=False)
+    topic_organization_cron: str = "0 6 * * *"  # Cron expression: minute hour day month day_of_week
+    
+    # Event reconciliation checks for pending scrape completions on an interval
+    # Only does work when there are scrape:complete:* signals in Redis
+    event_reconciliation_check_interval_seconds: int = 60
+    event_reconciliation_enabled: bool = True
+    
+    # API Configuration
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000  # Internal container port (external port configured in docker-compose)
     
     # Logging
     log_level: str = "INFO"

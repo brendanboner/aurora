@@ -11,7 +11,7 @@ export
 include ../common/make-utils.mk
 
 .PHONY: help deploy-isolated deploy-shared clean-isolated clean-shared nuke validate-env \
-        ensure-network ensure-rabbitmq wait-for-rabbitmq run-json check-venv
+        ensure-network ensure-rabbitmq wait-for-rabbitmq check-venv
 	compose-up compose-down compose-restart
 
 # Default target
@@ -23,7 +23,6 @@ help:
 	@echo "  make compose-up       - Start retriever via root docker-compose (preferred shared)"
 	@echo "  make compose-down     - Stop retriever service (docker-compose)"
 	@echo "  make compose-restart  - Restart retriever service (docker-compose)"
-	@echo "  make run-json        - Run retriever locally with JSON output (generates test messages)"
 	@echo "  make clean-isolated  - Clean ALL isolated environments (all services)"
 	@echo "  make clean-shared   - Clean shared resources (use with caution)"
 	@echo "  make nuke           - 💥 Nuke everything (containers + images + system prune)"
@@ -111,13 +110,3 @@ check-requirements:
 	@venv/bin/pip show beautifulsoup4 > /dev/null 2>&1 || \
 		(echo "❌ Requirements not installed in venv. Installing..." && cd .. && retriever/venv/bin/pip install -r retriever/requirements.txt)
 	@echo "✅ All requirements installed (in venv)"
-
-# Run locally with JSON output (for generating test messages)
-run-json: check-venv check-requirements
-	@echo "🚀 Running retriever locally with JSON output..."
-	@echo "📝 Output Mode: json"
-	@echo "📄 JSON Output: $(JSON_OUTPUT_FILE)"
-	@echo ""
-	@OUTPUT_MODE=json venv/bin/python main.py
-	@echo ""
-	@echo "✅ Test messages generated: $(JSON_OUTPUT_FILE)"

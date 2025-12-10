@@ -36,31 +36,116 @@
       "name": "WFA Resource page",
       "org_id": "wfa",
       "source_type": "scraped_webpage",
-      "fetch_url": "https://www.wi-fi.org/resource-center"
+      "fetch_url": "https://www.wi-fi.org/resource-center",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_wifi7mtg",
+      "name": "WFA Causeway - Wi-Fi 7 MTG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/WiFi7MTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_broadcasttg",
+      "name": "WFA Causeway - Broadcast TG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/BroadcastTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_passpointmtg",
+      "name": "WFA Causeway - Passpoint MTG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/PasspointMTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_securitymtg",
+      "name": "WFA Causeway - Security MTG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/SecurityMTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_sensingtg",
+      "name": "WFA Causeway - Sensing TG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/SensingTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_wifi8mtg",
+      "name": "WFA Causeway - Wi-Fi 8 MTG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/WiFi8MTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_wifihalowtg",
+      "name": "WFA Causeway - Wi-Fi HaLow TG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/WiFiHaLowTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_wifilocationtg",
+      "name": "WFA Causeway - Wi-Fi Location TG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/WiFiLocationTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_xrmstg",
+      "name": "WFA Causeway - XRMS TG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/XRMSTG/document",
+      "has_events": true
+    },
+    {
+      "datasource_id": "wfa_causeway_regulatorytg",
+      "name": "WFA Causeway - Regulatory TG",
+      "org_id": "wfa",
+      "source_type": "authenticated_portal",
+      "fetch_url": "https://groups.wi-fi.org/wg/RegulatoryTG/document",
+      "has_events": true
     },
     {
       "name": "WBA Resource page",
       "org_id": "wba",
       "source_type": "scraped_webpage",
-      "fetch_url": "https://wballiance.com/resource/"
+      "fetch_url": "https://wballiance.com/resource/",
+      "has_events": true
     },
     {
       "name": "IEEE Explorer API",
       "org_id": "ieee",
       "source_type": "api",
-      "fetch_url": ""
+      "fetch_url": "",
+      "has_events": true
     },
     {
       "name": "IETF Datatracker API",
       "org_id": "ietf",
       "source_type": "api",
-      "fetch_url": "https://datatracker.ietf.org/"
+      "fetch_url": "https://datatracker.ietf.org/",
+      "has_events": true
     },
     {
       "name": "3GPP Resource page",
       "org_id": "3gpp",
       "source_type": "scraped_webpage",
-      "fetch_url": ""
+      "fetch_url": "",
+      "has_events": true
     }
   ]
 }

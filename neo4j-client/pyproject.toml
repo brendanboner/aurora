@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "neo4j>=5.26.0",
     "pydantic>=2.0.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -18,11 +19,15 @@ dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
 ]
-embeddings = [
+# Local embeddings using sentence-transformers (no API required, but heavy ~1.5GB with model)
+# Use EMBEDDING_PROVIDER=sentence-transformers to enable
+local-embeddings = [
     "sentence-transformers>=2.0.0",
-    "openai>=1.0.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["neo4j_client*"]
+
+[tool.setuptools.package-data]
+neo4j_client = ["*.json"]
