@@ -50,7 +50,7 @@ class PostService:
         self._store_sources(post_id, sources)
         return post_id
 
-    def fetch_posts(self, user_id: int, limit: int, offset: int) -> List[FeedPost]:
+    def fetch_posts(self, user_id: str, limit: int, offset: int) -> List[FeedPost]:
         rows = db.fetch_all(
             """
             WITH follows AS (
@@ -112,7 +112,7 @@ class PostService:
                 },
             )
 
-    def store_reaction(self, user_id: int, post_id: int, reaction: str) -> None:
+    def store_reaction(self, user_id: str, post_id: int, reaction: str) -> None:
         if reaction not in {"like", "dislike"}:
             raise HTTPException(status_code=400, detail="Invalid reaction")
         db.execute(
@@ -125,7 +125,7 @@ class PostService:
             (user_id, post_id, reaction),
         )
 
-    def remove_reaction(self, user_id: int, post_id: int) -> None:
+    def remove_reaction(self, user_id: str, post_id: int) -> None:
         db.execute(
             "DELETE FROM user_post_reaction WHERE user_id = %s AND post_id = %s",
             (user_id, post_id),

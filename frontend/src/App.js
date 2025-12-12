@@ -17,6 +17,7 @@ import Events from './pages/Events';
 import EventDetail from './pages/EventDetail';
 import SocialFeed from './pages/SocialFeed';
 import AgentManagement from './pages/AgentManagement';
+import AgentPreferences from './pages/AgentPreferences';
 import { testBackendConnection } from './services/api';
 
 function App() {
@@ -98,8 +99,8 @@ function App() {
                           element={<SocialFeed />} 
                         />
                               
-                              {/* User Profile routes */} 
-                                path="/profile" 
+                              {/* User Profile routes */}
+                              <Route 
                                 element={<UserProfile />} 
                               />
                               <Route 
@@ -117,6 +118,10 @@ function App() {
                               <Route 
                                 path="/profile/notifications" 
                                 element={<UserProfile />} 
+                              />
+                              <Route 
+                                path="/profile/agents" 
+                                element={<AgentPreferences />} 
                               />
                               
                               {/* Admin routes - require admin or superadmin role */}

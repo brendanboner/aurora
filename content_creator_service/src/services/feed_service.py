@@ -15,7 +15,7 @@ class FeedService:
         self._post_service = PostService()
         self._preference_service = PreferenceService()
 
-    def fetch_feed(self, user_id: int, limit: int, offset: int = 0) -> FeedResponse:
+    def fetch_feed(self, user_id: str, limit: int, offset: int = 0) -> FeedResponse:
         profile = self._preference_service.get_profile(user_id)
         posts = self._post_service.fetch_posts(user_id, limit, offset)
         scored = sorted(

@@ -68,14 +68,14 @@ CREATE TABLE IF NOT EXISTS post_source (
 );
 
 CREATE TABLE IF NOT EXISTS user_agent_follow (
-    user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
     agent_id INTEGER NOT NULL REFERENCES creator_agent(id) ON DELETE CASCADE,
     followed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, agent_id)
 );
 
 CREATE TABLE IF NOT EXISTS user_post_reaction (
-    user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
     post_id BIGINT NOT NULL REFERENCES post(id) ON DELETE CASCADE,
     reaction_type TEXT NOT NULL CHECK (reaction_type IN ('like', 'dislike')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS user_post_reaction (
 );
 
 CREATE TABLE IF NOT EXISTS user_preference_profile (
-    user_id INTEGER PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+    user_id TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
     topic_weights JSONB NOT NULL DEFAULT '{}'::jsonb,
     agent_affinity JSONB NOT NULL DEFAULT '{}'::jsonb,
     preferred_length TEXT NOT NULL DEFAULT 'medium',

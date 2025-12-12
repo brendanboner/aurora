@@ -14,7 +14,7 @@ _settings = get_settings()
 
 @router.get("", response_model=FeedResponse)
 async def get_feed(
-    user_id: int,
+    user_id: str,
     limit: int = Query(default=20, ge=1),
     offset: int = Query(default=0, ge=0),
 ) -> FeedResponse:

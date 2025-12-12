@@ -98,7 +98,6 @@ export const sendQuery = async (userId, question, conversationId = null) => {
   return response.data;
 };
 
-<<<<<<< HEAD
 // Chat Conversations
 export const getConversations = async (limit = 50) => {
   const response = await apiClient.get(`/backend/conversations?limit=${limit}`);
@@ -184,7 +183,21 @@ export const unfollowCreatorAgent = async (agentId, userId) => {
   return response.data;
 };
 
-export const triggerAgentPost = async (agentId, force = false, limit = 1) => {
+export const getUserFollowedAgents = async (userId) => {
+  const response = await creatorApi.get(`/agents/user/${userId}/followed`);
+  return response.data;
+};
+
+export const updateAgentPreferences = async (agentId, userId, relevance, lengthPreference) => {
+  const response = await creatorApi.put(`/agents/${agentId}/preferences`, {
+    user_id: userId,
+    relevance,
+    length_preference: lengthPreference,
+  });
+  return response.data;
+};
+
+export const triggerAgentPost = async (agentId, force = true, limit = 5) => {
   const response = await creatorApi.post(`/agents/${agentId}/trigger`, { force, limit });
   return response.data;
 };

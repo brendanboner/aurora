@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class UserPreferenceProfile(BaseModel):
-    user_id: int
+    user_id: str
     topic_weights: Dict[str, float] = Field(default_factory=dict)
     agent_affinity: Dict[str, float] = Field(default_factory=dict)
     preferred_length: str = "medium"

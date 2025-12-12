@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './AgentManagement.css';
-import { PlusIcon, SaveIcon, TrashIcon, WarningIcon } from '../components/icons';
+import { PlusIcon, SaveIcon, TrashIcon, WarningIcon, PlayIcon } from '../components/icons';
 import {
   getCreatorAgents,
   createCreatorAgent,
   updateCreatorAgent,
   deleteCreatorAgent,
+  triggerAgentPost,
 } from '../services/api';
 
 const initialForm = {
@@ -127,6 +128,20 @@ const AgentManagement = () => {
     }
   };
 
+  const handleTrigger = async (agentId) => {
+    try {
+      const result = await triggerAgentPost(agentId, true, 1);
+      if (result.status === 'success') {
+        setStatusMessage(`✓ Post created: ${result.event_title}`);
+      } else {
+        setStatusMessage(result.message || 'No content generated');
+      }
+    } catch (err) {
+      console.error('Trigger failed', err);
+      setStatusMessage('Unable to trigger post generation');
+    }
+  };
+
   const activeAgents = useMemo(() => agents.filter((agent) => agent.enabled), [agents]);
 
   return (
@@ -178,6 +193,10 @@ const AgentManagement = () => {
                   </div>
                 </div>
                 <div className="row-actions">
+                  <button className="ghost-btn" onClick={() => handleTrigger(agent.id)} title="Force post generation">
+                    <PlayIcon size={14} />
+                    <span>Trigger</span>
+                  </button>
                   <button className="ghost-btn" onClick={() => handleEdit(agent)}>Edit</button>
                   <button className="ghost-btn danger" onClick={() => handleDelete(agent.id)}>
                     <TrashIcon size={14} />

@@ -97,6 +97,10 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                   className={`sidebar-subitem ${isActive('/profile/people') ? 'active' : ''}`}
                 >People</Link>
                 <Link 
+                  to="/profile/agents" 
+                  className={`sidebar-subitem ${isActive('/profile/agents') ? 'active' : ''}`}
+                >Follow Agents</Link>
+                <Link 
                   to="/profile/notifications" 
                   className={`sidebar-subitem ${isActive('/profile/notifications') ? 'active' : ''}`}
                 >Notifications</Link>

@@ -13,7 +13,7 @@ _preference_service = PreferenceService()
 
 
 class ReactionRequest(BaseModel):
-    user_id: int
+    user_id: str  # Cognito UUID
 
 
 @router.post("/{post_id}/like")

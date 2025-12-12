@@ -21,12 +21,12 @@ class PreferenceUpdateRequest(BaseModel):
 
 
 @router.get("/{user_id}", response_model=UserPreferenceProfile)
-async def get_preference_profile(user_id: int) -> UserPreferenceProfile:
+async def get_preference_profile(user_id: str) -> UserPreferenceProfile:
     return _preference_service.get_profile(user_id)
 
 
 @router.put("/{user_id}", response_model=UserPreferenceProfile)
-async def update_preference_profile(user_id: int, payload: PreferenceUpdateRequest) -> UserPreferenceProfile:
+async def update_preference_profile(user_id: str, payload: PreferenceUpdateRequest) -> UserPreferenceProfile:
     return _preference_service.update_profile(
         user_id,
         preferred_length=payload.preferred_length,

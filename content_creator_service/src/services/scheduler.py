@@ -32,6 +32,7 @@ class AgentScheduler:
         self._monitor = KnowledgeMonitor()
         self._generation_service = GenerationService()
         self._post_service = PostService()
+        self._event_sample_limit = 5
         self._task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
 
@@ -75,22 +76,59 @@ class AgentScheduler:
         agents = self._agent_service.list_enabled_agents()
         for agent in agents:
             try:
-                self._maybe_run_agent(agent, now)
+                self._execute_agent(agent, now)
             except Exception as exc:  # pragma: no cover - log and continue
                 logger.exception("Agent %s run failed: %s", agent.name, exc)
 
-    def _maybe_run_agent(self, agent: CreatorAgent, now: datetime) -> None:
-        events = self._monitor.collect_for_agent(agent, limit=5)
-        event = self._select_event(agent, events)
+    def run_agent_once(
+        self,
+        agent_id: int,
+        *,
+        force: bool = False,
+        limit: Optional[int] = None,
+    ) -> tuple[Optional[int], Optional[KnowledgeEvent]]:
+        """Execute a single CreatorAgent run synchronously.
+
+        Args:
+            agent_id: Target CreatorAgent ID.
+            force: When True, bypass cadence & importance checks and allow
+                previously processed events.
+            limit: Optional override for how many events to sample.
+
+        Returns:
+            Tuple of (post_id, event) where post_id is None if no content was generated.
+        """
+
+        agent = self._agent_service.get_agent(agent_id)
+        now = datetime.now(timezone.utc)
+        return self._execute_agent(
+            agent,
+            now,
+            force=force,
+            limit=limit,
+            allow_repeat=force,
+        )
+
+    def _execute_agent(
+        self,
+        agent: CreatorAgent,
+        now: datetime,
+        *,
+        force: bool = False,
+        limit: Optional[int] = None,
+        allow_repeat: bool = False,
+    ) -> tuple[Optional[int], Optional[KnowledgeEvent]]:
+        events = self._monitor.collect_for_agent(agent, limit=limit or self._event_sample_limit)
+        event = self._select_event(agent, events, allow_repeat=allow_repeat)
         if event is None:
             logger.debug("Agent %s has no new events", agent.name)
-            return
-        if not self._event_meets_importance(agent, event):
+            return None, None
+        if not force and not self._event_meets_importance(agent, event):
             logger.debug("Agent %s event below importance threshold", agent.name)
-            return
-        if not self._should_run_agent(agent, now):
+            return None, event
+        if not force and not self._should_run_agent(agent, now):
             logger.debug("Agent %s skipped due to cadence window", agent.name)
-            return
+            return None, event
         payload = self._generation_service.generate_post_payload(
             agent,
             topics=event.topics or agent.expertise_topics,
@@ -99,12 +137,12 @@ class AgentScheduler:
         if not payload:
             logger.info("Agent %s generation returned no content", agent.name)
             self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
-            return
+            return None, event
         body = payload.get("body") or payload.get("summary")
         if not body:
             logger.info("Agent %s produced empty body", agent.name)
             self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
-            return
+            return None, event
         tags = payload.get("tags") or event.topics or agent.expertise_topics
         post_id = self._post_service.create_post(
             agent_id=agent.id,
@@ -119,8 +157,14 @@ class AgentScheduler:
         )
         self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=True)
         logger.info("CreatorAgent %s generated post %s", agent.name, post_id)
+        return post_id, event
 
-    def _select_event(self, agent: CreatorAgent, events: list[KnowledgeEvent]) -> Optional[KnowledgeEvent]:
+    def _select_event(
+        self,
+        agent: CreatorAgent,
+        events: list[KnowledgeEvent],
+        allow_repeat: bool = False,
+    ) -> Optional[KnowledgeEvent]:
         if not events:
             return None
         cursor = agent.last_event_cursor
@@ -128,7 +172,7 @@ class AgentScheduler:
             fingerprint = event.fingerprint()
             if not fingerprint:
                 continue
-            if cursor != fingerprint:
+            if cursor != fingerprint or allow_repeat:
                 return event
         # All events already processed; allow digest cadences with first item
         if self._normalise_cadence(agent.posting_cadence) in {"daily", "daily-digest", "weekly", "weekly-digest"}:

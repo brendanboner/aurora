@@ -7,7 +7,9 @@ export
 
 include ../common/make-utils.mk
 
-.PHONY: help deploy-shared clean-shared logs nuke validate-env run-local
+PYTHON_RUNNER ?= uv run python
+
+.PHONY: help deploy-shared clean-shared logs nuke validate-env run-local trigger-agent
 
 help:
 	@echo "Aurora Content Creator Service Commands:"
@@ -15,6 +17,7 @@ help:
 	@echo "  make clean-shared    - Stop service container"
 	@echo "  make logs            - Tail logs"
 	@echo "  make run-local       - Run uvicorn with local env"
+	@echo "  make trigger-agent   - Force a CreatorAgent to create a post"
 	@echo "  make nuke            - Remove image + container"
 
 validate-env:
@@ -69,3 +72,19 @@ logs:
 nuke:
 	-@docker rm -f $(SHARED_SERVICE_CONTAINER)
 	-@docker rmi $(SERVICE_IMAGE)
+
+trigger-agent:
+	@test -n "$(AGENT_ID)$(AGENT_NAME)" || (echo 'Provide AGENT_ID or AGENT_NAME' && exit 1)
+	@if [ -n "$(AGENT_ID)" ]; then \
+		AGENT="$(AGENT_ID)"; \
+	else \
+		echo "Resolving agent '$(AGENT_NAME)'..."; \
+		AGENT=$$(curl -s http://localhost:8003/agents?include_disabled=true | jq -r '.[] | select(.name | ascii_downcase == "$(shell echo $(AGENT_NAME) | tr A-Z a-z)") | .id'); \
+		if [ -z "$$AGENT" ]; then echo "❌ Agent '$(AGENT_NAME)' not found"; exit 1; fi; \
+	fi; \
+	FORCE_FLAG=$$([ -n "$(FORCE)" ] && echo "true" || echo "false"); \
+	LIMIT_VAL=$${LIMIT:-5}; \
+	echo "🚀 Triggering agent $$AGENT (force=$$FORCE_FLAG, limit=$$LIMIT_VAL)"; \
+	curl -s -X POST "http://localhost:8003/agents/$$AGENT/trigger" \
+		-H "Content-Type: application/json" \
+		-d "{\"force\": $$FORCE_FLAG, \"limit\": $$LIMIT_VAL}" | jq .

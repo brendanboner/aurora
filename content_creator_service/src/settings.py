@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Typed settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="allow")
+    model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="allow")
 
     app_name: str = "content_creator_service"
     environment: str = Field(default="local", description="Deployment environment label")

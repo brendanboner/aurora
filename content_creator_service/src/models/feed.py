@@ -9,6 +9,6 @@ from .post import FeedPost
 
 
 class FeedResponse(BaseModel):
-    user_id: int
+    user_id: str
     posts: List[FeedPost]
     next_offset: Optional[int]

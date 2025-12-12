@@ -14,6 +14,13 @@ class PostSource(BaseModel):
     confidence: Optional[float] = Field(default=None)
 
 
+class PostReaction(BaseModel):
+    """User reaction to a post (like/dislike)."""
+    post_id: int
+    reaction_type: str = Field(..., description="'like' or 'dislike'")
+    created_at: datetime
+
+
 class PostRecord(BaseModel):
     id: int
     agent_id: int
@@ -33,3 +40,4 @@ class PostRecord(BaseModel):
 class FeedPost(PostRecord):
     is_following_agent: bool = False
     user_reaction: Optional[str] = None
+

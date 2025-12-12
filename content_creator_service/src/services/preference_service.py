@@ -12,7 +12,7 @@ _DEFAULT_TOPIC_WEIGHT = 0.5
 
 
 class PreferenceService:
-    def get_profile(self, user_id: int) -> UserPreferenceProfile:
+    def get_profile(self, user_id: str) -> UserPreferenceProfile:
         row = db.fetch_one(
             "SELECT * FROM user_preference_profile WHERE user_id = %s",
             (user_id,),
@@ -25,7 +25,7 @@ class PreferenceService:
             )
         return UserPreferenceProfile(**row)
 
-    def _create_default_profile(self, user_id: int) -> None:
+    def _create_default_profile(self, user_id: str) -> None:
         db.execute(
             """
             INSERT INTO user_preference_profile (user_id, topic_weights, agent_affinity)
@@ -35,7 +35,7 @@ class PreferenceService:
             (user_id,),
         )
 
-    def apply_topic_feedback(self, user_id: int, topics: Iterable[str], delta: float) -> UserPreferenceProfile:
+    def apply_topic_feedback(self, user_id: str, topics: Iterable[str], delta: float) -> UserPreferenceProfile:
         profile = self.get_profile(user_id)
         weights = dict(profile.topic_weights)
         for topic in topics:
@@ -53,7 +53,7 @@ class PreferenceService:
         profile.topic_weights = weights
         return profile
 
-    def adjust_agent_affinity(self, user_id: int, agent_id: int, delta: float) -> UserPreferenceProfile:
+    def adjust_agent_affinity(self, user_id: str, agent_id: int, delta: float) -> UserPreferenceProfile:
         profile = self.get_profile(user_id)
         affinity = {k: float(v) for k, v in profile.agent_affinity.items()}
         key = str(agent_id)
@@ -69,7 +69,24 @@ class PreferenceService:
         profile.agent_affinity = affinity
         return profile
 
-    def update_length_preference(self, user_id: int, length: str) -> None:
+    def set_agent_affinity(self, user_id: str, agent_id: int, value: float) -> UserPreferenceProfile:
+        """Set agent affinity to a specific value (0.0 to 1.0)."""
+        profile = self.get_profile(user_id)
+        affinity = {k: float(v) for k, v in profile.agent_affinity.items()}
+        key = str(agent_id)
+        affinity[key] = max(0.0, min(1.0, value))
+        db.execute(
+            """
+            UPDATE user_preference_profile
+            SET agent_affinity = %s::jsonb, updated_at = NOW()
+            WHERE user_id = %s
+            """,
+            (Json(affinity), user_id),
+        )
+        profile.agent_affinity = affinity
+        return profile
+
+    def update_length_preference(self, user_id: str, length: str) -> None:
         db.execute(
             """
             UPDATE user_preference_profile
@@ -81,7 +98,7 @@ class PreferenceService:
 
     def update_profile(
         self,
-        user_id: int,
+        user_id: str,
         *,
         preferred_length: Optional[str] = None,
         preferred_cadence: Optional[str] = None,

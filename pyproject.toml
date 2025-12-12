@@ -11,6 +11,7 @@ members = [
     "rabbitmq-client",
     "backend",
     "cli",
+    "content_creator_service",
 ]
 
 [dependency-groups]
