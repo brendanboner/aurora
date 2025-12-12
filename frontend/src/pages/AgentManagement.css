@@ -1,0 +1,213 @@
+.agent-admin-shell {
+  padding: 2.5rem;
+  color: #0b1625;
+}
+
+.agent-admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.agent-admin-header h1 {
+  margin: 0 0 0.3rem;
+}
+
+.agent-admin-header p {
+  margin: 0;
+  color: #506073;
+}
+
+.agent-metrics {
+  display: flex;
+  gap: 1.5rem;
+  background: #f5f7fb;
+  border: 1px solid #dee6f2;
+  border-radius: 0.75rem;
+  padding: 0.8rem 1.2rem;
+}
+
+.agent-metrics span {
+  display: block;
+  font-size: 0.85rem;
+  color: #708095;
+}
+
+.agent-metrics strong {
+  font-size: 1.4rem;
+  color: #112032;
+}
+
+.agent-error {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #ffeceb;
+  border: 1px solid #ffb1a8;
+  color: #8b1520;
+  padding: 0.9rem 1rem;
+  border-radius: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.agent-admin-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 1.5rem;
+}
+
+.agent-list,
+.agent-form {
+  background: #fff;
+  border: 1px solid #dfe6ef;
+  border-radius: 1rem;
+  padding: 1.5rem;
+}
+
+.agent-list header,
+.agent-form header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.agent-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.agent-row {
+  border: 1px solid #e7edf5;
+  border-radius: 0.8rem;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.agent-row.disabled {
+  opacity: 0.55;
+}
+
+.agent-row h3 {
+  margin: 0 0 0.3rem;
+}
+
+.agent-row p {
+  margin: 0 0 0.8rem;
+  color: #4f5f75;
+}
+
+.agent-meta-line {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #5d6d84;
+}
+
+.row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.agent-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.agent-form label {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  gap: 0.4rem;
+}
+
+.agent-form input,
+.agent-form textarea,
+.agent-form select {
+  border: 1px solid #ced7e4;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.95rem;
+  font-family: 'Space Grotesk', 'IBM Plex Sans', sans-serif;
+}
+
+.agent-form textarea {
+  resize: vertical;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+  font-weight: 500;
+}
+
+.checkbox-field input {
+  width: auto;
+  margin-right: 0.5rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.primary {
+  background: #092b4c;
+  color: #fff;
+  border: none;
+  border-radius: 0.6rem;
+  padding: 0.55rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.ghost-btn {
+  background: transparent;
+  border: 1px solid #b2c1d6;
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.ghost-btn.danger {
+  border-color: #d05c44;
+  color: #b0442f;
+}
+
+.status-pill {
+  background: #f3f6ff;
+  border: 1px solid #b8c6ff;
+  color: #1a2f7a;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.empty-copy {
+  color: #5e6e84;
+}
+
+@media (max-width: 1100px) {
+  .agent-admin-grid {
+    grid-template-columns: 1fr;
+  }
+}

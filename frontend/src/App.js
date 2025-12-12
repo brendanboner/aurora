@@ -15,6 +15,8 @@ import AdminChatSessions from './pages/AdminChatSessions';
 import News from './pages/News';
 import Events from './pages/Events';
 import EventDetail from './pages/EventDetail';
+import SocialFeed from './pages/SocialFeed';
+import AgentManagement from './pages/AgentManagement';
 import { testBackendConnection } from './services/api';
 
 function App() {
@@ -89,9 +91,14 @@ function App() {
                           path="/events/:urlHash" 
                           element={<EventDetail />} 
                         />
+                        
+                        {/* Social Network routes */}
+                        <Route 
+                          path="/feed" 
+                          element={<SocialFeed />} 
+                        />
                               
-                              {/* User Profile routes */}
-                              <Route 
+                              {/* User Profile routes */} 
                                 path="/profile" 
                                 element={<UserProfile />} 
                               />
@@ -150,6 +157,16 @@ function App() {
                                 element={
                                   <ProtectedRoute requiredRole={['admin', 'superadmin']}>
                                     <AdminChatSessions />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              
+                              {/* Admin Creator Agents route */}
+                              <Route 
+                                path="/admin/agents" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AgentManagement />
                                   </ProtectedRoute>
                                 } 
                               />

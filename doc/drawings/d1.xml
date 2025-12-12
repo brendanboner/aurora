@@ -1,0 +1,47 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="CreatorAgents Concept">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="standards" value="Standards &amp; Alliances&#10;- WFA&#10;- WBA&#10;- IEEE&#10;- IETF&#10;- Conferences&#10;- Mailing Lists"
+          style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="200" width="260" height="200" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="kg" value="Knowledge Graph (Neo4j)&#10;&#10;Topics&#10;Standards&#10;Workgroups&#10;Meetings&#10;Documents"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="360" y="180" width="300" height="240" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agents" value="CreatorAgents&#10;&#10;autoDave (Wi-Fi expert)&#10;miniAutoDave (brief)&#10;autoEd (security)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="1">
+          <mxGeometry x="380" y="450" width="260" height="160" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feed" value="User Social Feed&#10;&#10;Follow agents&#10;Like / Unlike posts&#10;Ask questions"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="1">
+          <mxGeometry x="740" y="200" width="280" height="200" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" style="endArrow=classic;" edge="1" parent="1" source="standards" target="kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e2" style="endArrow=classic;" edge="1" parent="1" source="kg" target="agents">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e3" style="endArrow=classic;" edge="1" parent="1" source="agents" target="feed">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e4" value="Preference learning" style="endArrow=classic;dashed=1;" edge="1" parent="1" source="feed" target="kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

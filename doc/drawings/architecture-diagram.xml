@@ -1,0 +1,343 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="System Architecture">
+    <mxGraphModel dx="2400" dy="1600" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="Knowledge Graph-Driven Autonomous Content Platform - System Architecture"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="20" width="1000" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="internetZone" value="External Sources"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=14;fontStyle=1;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="400" height="380" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dataSource1" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.traditional_server;" vertex="1" parent="1">
+          <mxGeometry x="80" y="140" width="60" height="104" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dataSource1Label" value="Standards Bodies&#10;WFA, IEEE, IETF"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="250" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dataSource2" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.traditional_server;" vertex="1" parent="1">
+          <mxGeometry x="210" y="140" width="60" height="104" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dataSource2Label" value="Industry&#10;Conferences"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="190" y="250" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="webIcon" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.globe;" vertex="1" parent="1">
+          <mxGeometry x="340" y="140" width="78" height="78" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="webLabel" value="Technical&#10;Documentation"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="329" y="230" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ingestZone" value="Ingestion Layer"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#01579b;verticalAlign=top;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="400" height="150" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="scraper" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.code_file" vertex="1" parent="1">
+          <mxGeometry x="80" y="360" width="50" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="scraperLabel" value="Scrapers"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="415" width="70" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="parser" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.document" vertex="1" parent="1">
+          <mxGeometry x="170" y="360" width="44" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="parserLabel" value="Parsers"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="157" y="415" width="70" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llmIngest" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#01A88D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.sagemaker_model;" vertex="1" parent="1">
+          <mxGeometry x="260" y="360" width="50" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llmIngestLabel" value="LLM&#10;Summarizer"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="245" y="415" width="80" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="entityExtract" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.filter" vertex="1" parent="1">
+          <mxGeometry x="350" y="360" width="50" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="entityLabel" value="Entity&#10;Extraction"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="335" y="415" width="80" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dataZone" value="Data Layer"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#e65100;verticalAlign=top;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="500" y="100" width="460" height="380" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="neo4j" value=""
+          style="sketch=0;aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/mscae/Cache_Redis_Product.svg;" vertex="1" parent="1">
+          <mxGeometry x="685" y="140" width="90" height="75" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="neo4jLabel" value="Knowledge Graph&#10;(Neo4j)&#10;&#10;Standards, Topics,&#10;Events, Relationships"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="665" y="220" width="130" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="postgres" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#2E27AD;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.rds_postgresql_instance;" vertex="1" parent="1">
+          <mxGeometry x="700" y="330" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="postgresLabel" value="Social Database&#10;(Postgres)&#10;&#10;Posts, Users,&#10;Reactions, Follows"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="665" y="395" width="130" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="redis" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#C925D1;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.elasticache_for_redis;" vertex="1" parent="1">
+          <mxGeometry x="530" y="240" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="redisLabel" value="Cache Layer&#10;(Redis)"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="520" y="305" width="80" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="appZone" value="Application Layer"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;verticalAlign=top;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="100" width="560" height="380" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agentService" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.application_server2" vertex="1" parent="1">
+          <mxGeometry x="1060" y="150" width="80" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agentLabel" value="Creator Agents&#10;Service&#10;&#10;autoDave&#10;miniAutoDave&#10;autoEd"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="240" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="contentService" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.application_server2" vertex="1" parent="1">
+          <mxGeometry x="1220" y="150" width="80" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="contentLabel" value="Content&#10;Generation&#10;Service"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="240" width="120" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feedService" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.application_server2" vertex="1" parent="1">
+          <mxGeometry x="1380" y="150" width="80" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feedLabel" value="Feed Service&#10;&#10;ML Ranking&#10;Personalization"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="240" width="120" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="apiGateway" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.api_gateway;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="350" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="apiLabel" value="API Gateway"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="415" width="100" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llmCloud" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#01A88D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.bedrock;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="350" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llmCloudLabel" value="LLM Service&#10;GPT-4 / Claude"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="415" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mlService" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#01A88D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.sagemaker_model;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="350" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mlLabel" value="ML Learning&#10;Engine"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="415" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="userZone" value="User Interface Layer"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#880e4f;verticalAlign=top;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="500" y="540" width="1080" height="300" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="webapp" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.website" vertex="1" parent="1">
+          <mxGeometry x="620" y="600" width="120" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="webappLabel" value="Web Application&#10;React Frontend"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="710" width="120" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mobile" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.mobile_client;" vertex="1" parent="1">
+          <mxGeometry x="820" y="610" width="41" height="78" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mobileLabel" value="Mobile Apps&#10;iOS / Android"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="790" y="710" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="users" value=""
+          style="sketch=0;outlineConnect=0;gradientColor=none;fontColor=#545B64;strokeColor=none;fillColor=#879196;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.illustration_users;pointerEvents=1" vertex="1" parent="1">
+          <mxGeometry x="1000" y="600" width="100" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="usersLabel" value="End Users&#10;Real-time Feed"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="975" y="710" width="150" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="adminPanel" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.settings" vertex="1" parent="1">
+          <mxGeometry x="1210" y="610" width="80" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="adminLabel" value="Admin Panel&#10;Configuration"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="710" width="120" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="analytics" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.performance_chart" vertex="1" parent="1">
+          <mxGeometry x="1390" y="610" width="80" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="analyticsLabel" value="Analytics&#10;Dashboard"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1370" y="710" width="120" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="flowArrow1" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#1976d2;" edge="1" parent="1" source="internetZone" target="ingestZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="440" y="290" as="sourcePoint"/>
+            <mxPoint x="490" y="240" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flowArrow2" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#1976d2;" edge="1" parent="1" source="ingestZone" target="neo4j">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="440" y="290" as="sourcePoint"/>
+            <mxPoint x="490" y="240" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flowArrow3" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#1976d2;" edge="1" parent="1" source="neo4j" target="agentService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="800" y="200" as="sourcePoint"/>
+            <mxPoint x="850" y="150" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flowArrow4" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#1976d2;" edge="1" parent="1" source="agentService" target="contentService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1150" y="200" as="sourcePoint"/>
+            <mxPoint x="1200" y="150" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flowArrow5" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#1976d2;" edge="1" parent="1" source="contentService" target="postgres">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1150" y="300" as="sourcePoint"/>
+            <mxPoint x="1200" y="250" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flowArrow6" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#1976d2;" edge="1" parent="1" source="postgres" target="feedService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="800" y="350" as="sourcePoint"/>
+            <mxPoint x="850" y="300" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flowArrow7" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#1976d2;" edge="1" parent="1" source="apiGateway" target="webapp">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1100" y="500" as="sourcePoint"/>
+            <mxPoint x="1150" y="450" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="feedbackArrow1" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#d32f2f;dashed=1;" edge="1" parent="1" source="users" target="mlService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1100" y="600" as="sourcePoint"/>
+            <mxPoint x="1150" y="550" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="feedbackArrow2" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#d32f2f;dashed=1;" edge="1" parent="1" source="mlService" target="agentService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1350" y="350" as="sourcePoint"/>
+            <mxPoint x="1400" y="300" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="1530" y="380"/>
+              <mxPoint x="1530" y="80"/>
+              <mxPoint x="1100" y="80"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="llmArrow" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#00897b;dashed=1;" edge="1" parent="1" source="contentService" target="llmCloud">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1200" y="300" as="sourcePoint"/>
+            <mxPoint x="1250" y="250" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="cacheArrow1" value="" style="endArrow=classic;startArrow=classic;html=1;strokeWidth=2;strokeColor=#757575;dashed=1;" edge="1" parent="1" source="redis" target="feedService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1200" y="300" as="sourcePoint"/>
+            <mxPoint x="1250" y="250" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="legend" value="Legend&#10;&#10;Blue solid: Primary data flow&#10;Red dashed: Feedback loops&#10;Green dashed: LLM requests&#10;Gray dashed: Cache access"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="540" width="400" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="notes" value="Technology Stack&#10;&#10;• Knowledge Graph: Neo4j&#10;• Database: PostgreSQL&#10;• Cache: Redis&#10;• LLM: GPT-4 / Claude&#10;• ML: TensorFlow / PyTorch&#10;• Frontend: React&#10;• API: REST / GraphQL"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="700" width="400" height="140" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

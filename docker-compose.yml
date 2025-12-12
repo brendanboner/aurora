@@ -452,6 +452,55 @@ services:
       retries: 3
       start_period: 30s
 
+  content_creator_service:
+    build:
+      context: .
+      dockerfile: content_creator_service/Dockerfile
+    container_name: aurora-content-creator
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      - "${CONTENT_CREATOR_PORT:-8003}:8003"
+    environment:
+      PG_DSN: postgresql://${POSTGRES_USER:-aurora}:${POSTGRES_PASSWORD:-aurora_password}@postgres:5432/${POSTGRES_DB:-aurora}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aurora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aurora_password}
+      POSTGRES_DB: ${POSTGRES_DB:-aurora}
+
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-your_neo4j_password_here}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-user}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
+
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   frontend:
     build:
       context: ./frontend

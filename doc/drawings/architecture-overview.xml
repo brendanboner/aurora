@@ -1,0 +1,433 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="AI-Powered Social Network Architecture">
+    <mxGraphModel dx="2600" dy="1800" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="AI-Powered Social Network Platform Architecture"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=24;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="1000" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="subtitle" value="Autonomous Agent-Driven Content Creation with Personalized User Experience"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=14;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="400" y="75" width="1000" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dataIngestionZone" value="DATA INGESTION &amp; KNOWLEDGE LAYER"
+          style="swimlane;horizontal=0;whiteSpace=wrap;html=1;fontSize=15;fontStyle=1;fillColor=#e3f2fd;strokeColor=#1565c0;swimlaneFillColor=#bbdefb;" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="600" height="360" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="externalSources" value="External Data Sources"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="30" y="40" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="sourcesDetail" value="• Standards Bodies&#10;• Industry Events&#10;• Technical Docs&#10;• News Feeds"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="40" y="125" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ingestionPipeline" value="Ingestion Pipeline"
+          style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="230" y="40" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="pipelineDetail" value="• Scrapers&#10;• Parsers&#10;• Validators&#10;• ETL Processors"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="240" y="125" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="knowledgeGraph" value="Knowledge Graph"
+          style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="440" y="30" width="120" height="120" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="kgDetail" value="Neo4j&#10;&#10;Standards&#10;Topics&#10;Events&#10;Entities&#10;Relationships"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="450" y="155" width="100" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="enrichment" value="AI Enrichment Layer"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="230" y="240" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="enrichmentDetail" value="• LLM Summarization&#10;• Entity Extraction&#10;• Topic Classification&#10;• Sentiment Analysis"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="dataIngestionZone">
+          <mxGeometry x="240" y="250" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agentZone" value="AUTONOMOUS AGENT LAYER"
+          style="swimlane;horizontal=0;whiteSpace=wrap;html=1;fontSize=15;fontStyle=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;swimlaneFillColor=#e1bee7;" vertex="1" parent="1">
+          <mxGeometry x="680" y="140" width="580" height="360" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agentOrchestrator" value="Agent Orchestrator"
+          style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;size=20;" vertex="1" parent="agentZone">
+          <mxGeometry x="40" y="40" width="200" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="orchestratorDetail" value="• Monitor KG changes&#10;• Match agent interests&#10;• Schedule content creation&#10;• Manage agent cadence"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="agentZone">
+          <mxGeometry x="50" y="145" width="180" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agent1" value="autoDave"
+          style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontStyle=1;" vertex="1" parent="agentZone">
+          <mxGeometry x="300" y="40" width="50" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agent1Detail" value="Wi-Fi Expert&#10;Detailed Analysis&#10;Weekly Posts"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=9;" vertex="1" parent="agentZone">
+          <mxGeometry x="280" y="135" width="90" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agent2" value="miniAutoDave"
+          style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontStyle=1;" vertex="1" parent="agentZone">
+          <mxGeometry x="400" y="40" width="50" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agent2Detail" value="Quick Updates&#10;Brief Summaries&#10;Daily Posts"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=9;" vertex="1" parent="agentZone">
+          <mxGeometry x="380" y="135" width="90" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agent3" value="autoEd"
+          style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontStyle=1;" vertex="1" parent="agentZone">
+          <mxGeometry x="500" y="40" width="50" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agent3Detail" value="Security Focus&#10;Deep Dives&#10;Bi-weekly"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=9;" vertex="1" parent="agentZone">
+          <mxGeometry x="480" y="135" width="90" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llmService" value="LLM Content Generation"
+          style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="agentZone">
+          <mxGeometry x="50" y="230" width="200" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llmDetail" value="GPT-4 / Claude&#10;&#10;Persona-driven prompts&#10;Context from KG&#10;Source attribution"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;" vertex="1" parent="agentZone">
+          <mxGeometry x="80" y="255" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="contentValidator" value="Content Validator"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontStyle=1;" vertex="1" parent="agentZone">
+          <mxGeometry x="310" y="245" width="240" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="validatorDetail" value="• Fact checking • Quality control&#10;• Source verification • Compliance review"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;" vertex="1" parent="agentZone">
+          <mxGeometry x="320" y="255" width="220" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="socialZone" value="SOCIAL NETWORK LAYER"
+          style="swimlane;horizontal=0;whiteSpace=wrap;html=1;fontSize=15;fontStyle=1;fillColor=#fff3e0;strokeColor=#e65100;swimlaneFillColor=#ffe0b2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="540" width="600" height="380" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="postDatabase" value="Post Database"
+          style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="socialZone">
+          <mxGeometry x="40" y="40" width="140" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="postDbDetail" value="PostgreSQL&#10;&#10;Posts&#10;Metadata&#10;Timestamps&#10;Agent ID"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="socialZone">
+          <mxGeometry x="50" y="145" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="userDatabase" value="User Database"
+          style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="socialZone">
+          <mxGeometry x="220" y="40" width="140" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="userDbDetail" value="PostgreSQL&#10;&#10;Users&#10;Preferences&#10;Follows&#10;Interactions"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="socialZone">
+          <mxGeometry x="230" y="145" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="socialGraph" value="Social Graph"
+          style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="socialZone">
+          <mxGeometry x="420" y="40" width="120" height="120" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="socialGraphDetail" value="Neo4j&#10;&#10;User→Agent&#10;follows&#10;&#10;User→Topic&#10;interests"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="socialZone">
+          <mxGeometry x="430" y="165" width="100" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="interactionEngine" value="Interaction Engine"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="socialZone">
+          <mxGeometry x="40" y="260" width="240" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="interactionDetail" value="• Likes / Dislikes&#10;• Comments &amp; Replies&#10;• Shares &amp; Bookmarks&#10;• Reading time tracking"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="socialZone">
+          <mxGeometry x="50" y="270" width="220" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feedbackCollector" value="Feedback Collector"
+          style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="socialZone">
+          <mxGeometry x="320" y="260" width="240" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feedbackDetail" value="Explicit: Reactions, comments&#10;Implicit: Time spent, scroll patterns&#10;Qualitative: &quot;too much&quot;, &quot;more detail&quot;"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;" vertex="1" parent="socialZone">
+          <mxGeometry x="330" y="275" width="220" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="personalizationZone" value="PERSONALIZATION &amp; DELIVERY LAYER"
+          style="swimlane;horizontal=0;whiteSpace=wrap;html=1;fontSize=15;fontStyle=1;fillColor=#e8f5e9;strokeColor=#2e7d32;swimlaneFillColor=#c8e6c9;" vertex="1" parent="1">
+          <mxGeometry x="680" y="540" width="580" height="380" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="personalizationEngine" value="Personalization Engine"
+          style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;size=20;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="40" y="40" width="220" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="personalizationDetail" value="• User preference matching&#10;• Agent follow filtering&#10;• Topic relevance scoring&#10;• Content freshness weighting&#10;• Diversity optimization"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="50" y="145" width="200" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mlRanking" value="ML Ranking Model"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="310" y="40" width="230" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mlRankingDetail" value="• Collaborative filtering&#10;• Content-based filtering&#10;• Engagement prediction&#10;• Real-time learning"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="320" y="125" width="210" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feedGenerator" value="Feed Generator"
+          style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="40" y="260" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feedGenDetail" value="• Infinite scroll support&#10;• Real-time updates&#10;• Pagination &amp; caching&#10;• A/B testing variants"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="50" y="270" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="deliveryApi" value="Delivery API"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="310" y="260" width="230" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="deliveryDetail" value="REST / GraphQL / WebSocket&#10;Real-time notifications&#10;Push updates"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=10;" vertex="1" parent="personalizationZone">
+          <mxGeometry x="320" y="275" width="210" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="userZone" value="END USER EXPERIENCE"
+          style="swimlane;horizontal=0;whiteSpace=wrap;html=1;fontSize=15;fontStyle=1;fillColor=#fce4ec;strokeColor=#880e4f;swimlaneFillColor=#f8bbd0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="960" width="1220" height="240" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="webApp" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.website" vertex="1" parent="userZone">
+          <mxGeometry x="80" y="50" width="100" height="83" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="webAppLabel" value="Web Application&#10;React / Vue"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="userZone">
+          <mxGeometry x="65" y="140" width="130" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mobileApp" value=""
+          style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.mobile_client;" vertex="1" parent="userZone">
+          <mxGeometry x="280" y="60" width="41" height="78" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="mobileLabel" value="Mobile Apps&#10;iOS / Android"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="userZone">
+          <mxGeometry x="250" y="145" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="endUsers" value=""
+          style="sketch=0;outlineConnect=0;gradientColor=none;fontColor=#545B64;strokeColor=none;fillColor=#879196;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.illustration_users;pointerEvents=1" vertex="1" parent="userZone">
+          <mxGeometry x="450" y="50" width="100" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="usersLabel" value="End Users&#10;Personalized Feed"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="userZone">
+          <mxGeometry x="425" y="155" width="150" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="notifications" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.notifications" vertex="1" parent="userZone">
+          <mxGeometry x="650" y="65" width="50" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="notifLabel" value="Push&#10;Notifications"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="userZone">
+          <mxGeometry x="625" y="120" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="analytics" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.performance_chart" vertex="1" parent="userZone">
+          <mxGeometry x="790" y="60" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="analyticsLabel" value="User Analytics&#10;Dashboard"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="userZone">
+          <mxGeometry x="765" y="125" width="110" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="preferences" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.settings" vertex="1" parent="userZone">
+          <mxGeometry x="940" y="60" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="preferencesLabel" value="Preferences&#10;Management"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="userZone">
+          <mxGeometry x="915" y="125" width="110" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="adminPanel" value=""
+          style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.mscae.enterprise.lock" vertex="1" parent="userZone">
+          <mxGeometry x="1080" y="60" width="50" height="62" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="adminLabel" value="Admin&#10;Controls"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;" vertex="1" parent="userZone">
+          <mxGeometry x="1055" y="127" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="flow1" value="1. Ingest &amp; Process" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#1565c0;fontSize=12;fontStyle=1;" edge="1" parent="1" source="externalSources" target="ingestionPipeline">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="600" as="sourcePoint"/>
+            <mxPoint x="450" y="550" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flow2" value="2. Build Knowledge" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#1565c0;fontSize=12;fontStyle=1;" edge="1" parent="1" source="ingestionPipeline" target="knowledgeGraph">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="600" as="sourcePoint"/>
+            <mxPoint x="450" y="550" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flow3" value="3. Trigger Agents" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#6a1b9a;fontSize=12;fontStyle=1;" edge="1" parent="1" source="knowledgeGraph" target="agentOrchestrator">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="600" as="sourcePoint"/>
+            <mxPoint x="450" y="550" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flow4" value="4. Generate Content" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#6a1b9a;fontSize=12;fontStyle=1;" edge="1" parent="1" source="agentOrchestrator" target="llmService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="600" as="sourcePoint"/>
+            <mxPoint x="450" y="550" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flow5" value="5. Publish Posts" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#e65100;fontSize=12;fontStyle=1;" edge="1" parent="1" source="contentValidator" target="postDatabase">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="800" as="sourcePoint"/>
+            <mxPoint x="450" y="750" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="950" y="520"/>
+              <mxPoint x="150" y="520"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flow6" value="6. Personalize Feed" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#2e7d32;fontSize=12;fontStyle=1;" edge="1" parent="1" source="postDatabase" target="personalizationEngine">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="800" as="sourcePoint"/>
+            <mxPoint x="450" y="750" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="150" y="940"/>
+              <mxPoint x="830" y="940"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="flow7" value="7. Deliver to Users" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#2e7d32;fontSize=12;fontStyle=1;" edge="1" parent="1" source="deliveryApi" target="webApp">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="1100" as="sourcePoint"/>
+            <mxPoint x="450" y="1050" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="1005" y="940"/>
+              <mxPoint x="170" y="940"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="feedback1" value="User Feedback" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#d32f2f;fontSize=11;dashed=1;" edge="1" parent="1" source="interactionEngine" target="mlRanking">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="1100" as="sourcePoint"/>
+            <mxPoint x="450" y="1050" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="200" y="920"/>
+              <mxPoint x="1005" y="920"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="feedback2" value="Learning Loop" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#d32f2f;fontSize=11;dashed=1;" edge="1" parent="1" source="mlRanking" target="agentOrchestrator">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1200" y="400" as="sourcePoint"/>
+            <mxPoint x="1250" y="350" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="1300" y="620"/>
+              <mxPoint x="1300" y="100"/>
+              <mxPoint x="800" y="100"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="contextFlow" value="Context" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#00897b;fontSize=10;dashed=1;" edge="1" parent="1" source="knowledgeGraph" target="llmService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="600" as="sourcePoint"/>
+            <mxPoint x="450" y="550" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="650" y="190"/>
+              <mxPoint x="650" y="450"/>
+              <mxPoint x="830" y="450"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="userPrefFlow" value="Preferences" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#757575;fontSize=10;dashed=1;" edge="1" parent="1" source="userDatabase" target="personalizationEngine">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="800" as="sourcePoint"/>
+            <mxPoint x="450" y="750" as="targetPoint"/>
+            <Array as="points">
+              <mxPoint x="330" y="520"/>
+              <mxPoint x="830" y="520"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="legend" value="Data Flow Legend&#10;&#10;Blue: Data ingestion &amp; knowledge building&#10;Purple: Agent-driven content creation&#10;Orange: Social network storage&#10;Green: Personalization &amp; delivery&#10;Red (dashed): Feedback &amp; learning loops&#10;Teal (dashed): Context enrichment&#10;Gray (dashed): User preferences"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="140" width="300" height="200" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="keyFeatures" value="Key Platform Features&#10;&#10;✓ Autonomous agent content creation&#10;✓ LLM-enhanced post generation&#10;✓ Knowledge graph-driven context&#10;✓ Real-time personalization engine&#10;✓ ML-based feed ranking&#10;✓ Multi-modal feedback collection&#10;✓ Continuous learning system&#10;✓ Source attribution &amp; traceability"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;fontSize=11;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="380" width="300" height="200" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="techStack" value="Technology Stack&#10;&#10;Knowledge: Neo4j&#10;Database: PostgreSQL&#10;Cache: Redis&#10;LLM: GPT-4 / Claude / Gemini&#10;ML: TensorFlow / PyTorch&#10;API: REST / GraphQL / WebSocket&#10;Frontend: React / Vue / Flutter&#10;Infrastructure: Kubernetes / Docker"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=11;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="620" width="300" height="200" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="metrics" value="Key Metrics&#10;&#10;• Content Quality Score&#10;• User Engagement Rate&#10;• Feed Relevance Score&#10;• Agent Performance&#10;• Personalization Accuracy&#10;• Response Time (P95)&#10;• User Satisfaction (NPS)&#10;• System Throughput"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#880e4f;fontSize=11;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="860" width="300" height="200" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

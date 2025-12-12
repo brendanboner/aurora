@@ -1,0 +1,56 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Personalisation Loop">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="post" value="CreatorAgent Post"
+          style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="460" y="60" width="280" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feed" value="User Feed"
+          style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="200" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="interaction" value="User Interaction&#10;- Like / Dislike&#10;- Follow"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="1">
+          <mxGeometry x="460" y="360" width="280" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="engine" value="Preference Engine"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="1">
+          <mxGeometry x="120" y="200" width="260" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="kg" value="Knowledge Graph&#10;(weighted preferences)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="460" y="520" width="300" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" style="endArrow=classic;" edge="1" parent="1" source="post" target="feed">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e2" style="endArrow=classic;" edge="1" parent="1" source="feed" target="interaction">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e3" style="endArrow=classic;" edge="1" parent="1" source="interaction" target="engine">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e4" style="endArrow=classic;" edge="1" parent="1" source="engine" target="kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e5" value="Next selection" style="endArrow=classic;dashed=1;" edge="1" parent="1" source="kg" target="post">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

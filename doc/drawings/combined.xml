@@ -1,0 +1,56 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="End to End Architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="sources" value="Standards &amp; Alliances&#10;Documents&#10;Meetings&#10;Mailing Lists"
+          style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="120" width="260" height="160" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="kg" value="Knowledge Graph (Neo4j)&#10;&#10;Topics&#10;Standards&#10;Workgroups&#10;CreatorAgents&#10;User Preferences"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="360" y="100" width="320" height="200" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="creator" value="ContentCreator Service&#10;&#10;Match graph changes&#10;Apply agent personas&#10;Trigger LLM"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="1">
+          <mxGeometry x="360" y="360" width="320" height="180" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llm" value="LLM"
+          style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="400" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="feed" value="User Social Feed&#10;&#10;Follow agents&#10;Like / Unlike&#10;Ask questions"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="200" width="300" height="180" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" style="endArrow=classic;" edge="1" parent="1" source="sources" target="kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e2" style="endArrow=classic;" edge="1" parent="1" source="kg" target="creator">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e3" style="endArrow=classic;" edge="1" parent="1" source="creator" target="llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e4" style="endArrow=classic;" edge="1" parent="1" source="llm" target="feed">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e5" value="Feedback loop" style="endArrow=classic;dashed=1;" edge="1" parent="1" source="feed" target="kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon } from '../components/icons';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
   const location = useLocation();
@@ -55,6 +55,16 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
           >
             <span className="sidebar-icon"><CalendarIcon /></span>
             {isOpen && <span className="sidebar-label">Events</span>}
+          </Link>
+
+          {/* Social Feed */}
+          <Link 
+            to="/feed" 
+            className={`sidebar-item ${isActive('/feed') ? 'active' : ''}`}
+            title="Creator Feed"
+          >
+            <span className="sidebar-icon"><StarIcon /></span>
+            {isOpen && <span className="sidebar-label">Creator Feed</span>}
           </Link>
 
           {/* Profile Menu with expandable submenu */}
@@ -131,6 +141,13 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                 >
                   <span className="sidebar-icon"><MonitoringIcon size={16} /></span>
                   <span>Monitoring</span>
+                </Link>
+                <Link 
+                  to="/admin/agents" 
+                  className={`sidebar-subitem ${isActive('/admin/agents') ? 'active' : ''}`}
+                >
+                  <span className="sidebar-icon"><StarIcon size={16} /></span>
+                  <span>Creator Agents</span>
                 </Link>
                 <Link 
                   to="/admin/system-config" 

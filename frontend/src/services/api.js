@@ -1,4 +1,14 @@
 import apiClient from '../api/client';
+import axios from 'axios';
+
+const CREATOR_API_BASE_URL = process.env.REACT_APP_CREATOR_API_URL || 'http://localhost:8003';
+
+const creatorApi = axios.create({
+  baseURL: CREATOR_API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
 // Health check - test backend service via auth gateway
 export const testBackendConnection = async () => {
@@ -88,6 +98,7 @@ export const sendQuery = async (userId, question, conversationId = null) => {
   return response.data;
 };
 
+<<<<<<< HEAD
 // Chat Conversations
 export const getConversations = async (limit = 50) => {
   const response = await apiClient.get(`/backend/conversations?limit=${limit}`);
@@ -122,6 +133,79 @@ export const getConversationDetailAdmin = async (conversationId) => {
 // Admin - User Management
 export const syncUserToGraph = async (userId) => {
   const response = await apiClient.post(`/backend/admin/users/${userId}/sync`);
+  return response.data;
+};
+
+// Content Creator Service ----------------------------------------------------
+export const fetchSocialFeed = async (userId, limit = 20, offset = 0) => {
+  const response = await creatorApi.get('/feed', {
+    params: { user_id: userId, limit, offset },
+  });
+  return response.data;
+};
+
+export const likePost = async (postId, userId) => {
+  const response = await creatorApi.post(`/posts/${postId}/like`, { user_id: userId });
+  return response.data;
+};
+
+export const dislikePost = async (postId, userId) => {
+  const response = await creatorApi.post(`/posts/${postId}/dislike`, { user_id: userId });
+  return response.data;
+};
+
+export const getCreatorAgents = async (includeDisabled = false) => {
+  const response = await creatorApi.get('/agents', { params: { include_disabled: includeDisabled } });
+  return response.data;
+};
+
+export const createCreatorAgent = async (payload) => {
+  const response = await creatorApi.post('/agents', payload);
+  return response.data;
+};
+
+export const updateCreatorAgent = async (agentId, payload) => {
+  const response = await creatorApi.put(`/agents/${agentId}`, payload);
+  return response.data;
+};
+
+export const deleteCreatorAgent = async (agentId) => {
+  const response = await creatorApi.delete(`/agents/${agentId}`);
+  return response.data;
+};
+
+export const followCreatorAgent = async (agentId, userId) => {
+  const response = await creatorApi.post(`/agents/${agentId}/follow`, { user_id: userId });
+  return response.data;
+};
+
+export const unfollowCreatorAgent = async (agentId, userId) => {
+  const response = await creatorApi.post(`/agents/${agentId}/unfollow`, { user_id: userId });
+  return response.data;
+};
+
+export const triggerAgentPost = async (agentId, force = false, limit = 1) => {
+  const response = await creatorApi.post(`/agents/${agentId}/trigger`, { force, limit });
+  return response.data;
+};
+
+export const purgeAgentPosts = async (agentId) => {
+  const response = await creatorApi.delete(`/posts/agent/${agentId}/purge`);
+  return response.data;
+};
+
+export const purgeAllPosts = async () => {
+  const response = await creatorApi.delete('/posts/purge_all');
+  return response.data;
+};
+
+export const getPreferenceProfile = async (userId) => {
+  const response = await creatorApi.get(`/preferences/${userId}`);
+  return response.data;
+};
+
+export const updatePreferenceProfile = async (userId, payload) => {
+  const response = await creatorApi.put(`/preferences/${userId}`, payload);
   return response.data;
 };
 
