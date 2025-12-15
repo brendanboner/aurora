@@ -50,9 +50,23 @@ class PostService:
         self._store_sources(post_id, sources)
         return post_id
 
-    def fetch_posts(self, user_id: str, limit: int, offset: int) -> List[FeedPost]:
+    def fetch_posts(self, user_id: str, limit: int, offset: int, *, query: str | None = None) -> List[FeedPost]:  # Cognito UUID
+        where_clause = ""
+        params: Dict[str, Any] = {"user_id": user_id, "limit": limit, "offset": offset}
+        if query:
+            where_clause = (
+                "WHERE ("
+                "p.title ILIKE %(like_q)s OR "
+                "p.body ILIKE %(like_q)s OR "
+                "EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t ILIKE %(like_q)s) OR "
+                "REPLACE(LOWER(p.title), '-', '') LIKE REPLACE(LOWER(%(like_q)s), '-', '') OR "
+                "REPLACE(LOWER(p.body), '-', '') LIKE REPLACE(LOWER(%(like_q)s), '-', '')"
+                ")"
+            )
+            params["like_q"] = f"%{query}%"
+
         rows = db.fetch_all(
-            """
+            f"""
             WITH follows AS (
                 SELECT agent_id FROM user_agent_follow WHERE user_id = %(user_id)s
             ), reactions AS (
@@ -67,7 +81,7 @@ class PostService:
                    p.tags,
                    p.visibility,
                    p.importance,
-                     p.content_length,
+                   p.content_length,
                    p.created_at,
                    0.0 AS score,
                    (f.agent_id IS NOT NULL) AS is_following_agent,
@@ -76,10 +90,11 @@ class PostService:
             JOIN creator_agent ca ON ca.id = p.agent_id
             LEFT JOIN follows f ON f.agent_id = p.agent_id
             LEFT JOIN reactions r ON r.post_id = p.id
+            {where_clause}
             ORDER BY p.created_at DESC
             LIMIT %(limit)s OFFSET %(offset)s
             """,
-            {"user_id": user_id, "limit": limit, "offset": offset},
+            params,
         )
         posts: List[FeedPost] = []
         for row in rows:

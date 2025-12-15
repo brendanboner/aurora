@@ -29,6 +29,9 @@ const SocialFeed = ({ currentUser }) => {
   const [profile, setProfile] = useState(null);
   const [profileError, setProfileError] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
+  const [sortOrder, setSortOrder] = useState('relevance');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
     if (!currentUser) {
@@ -42,6 +45,22 @@ const SocialFeed = ({ currentUser }) => {
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+
+  // Debounce search input for instant search
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchTerm]);
+
+  // Refresh feed when sort or search changes
+  useEffect(() => {
+    if (!currentUser) return;
+    setPosts([]);
+    setOffset(0);
+    setHasMore(true);
+    loadFeed({ reset: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortOrder, debouncedSearch]);
 
   const loadProfile = async () => {
     if (!currentUser) {
@@ -65,7 +84,13 @@ const SocialFeed = ({ currentUser }) => {
     setError(null);
     try {
       const nextOffset = reset ? 0 : offset;
-      const data = await fetchSocialFeed(currentUser.id, PAGE_SIZE, nextOffset);
+      const data = await fetchSocialFeed(
+        currentUser.id,
+        PAGE_SIZE,
+        nextOffset,
+        sortOrder,
+        debouncedSearch || undefined
+      );
       const newPosts = reset ? data.posts : [...posts, ...(data.posts || [])];
       setPosts(newPosts);
       setOffset(data.next_offset ?? nextOffset + (data.posts?.length || 0));
@@ -168,6 +193,23 @@ const SocialFeed = ({ currentUser }) => {
           </div>
         </div>
         <div className="feed-actions">
+          <div className="feed-toolbar">
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Instant search posts..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <select
+              className="sort-select"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+            >
+              <option value="relevance">Sort: Relevance</option>
+              <option value="date">Sort: Most Recent</option>
+            </select>
+          </div>
           <button type="button" className="action-btn" onClick={refreshFeed} disabled={isLoading}>
             <RefreshIcon size={18} />
             <span>Refresh</span>

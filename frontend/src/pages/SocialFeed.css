@@ -33,6 +33,33 @@
   align-items: center;
 }
 
+.feed-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 8px;
+}
+
+.feed-toolbar .search-input {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 220px;
+}
+
+.feed-toolbar .search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.feed-toolbar .sort-select {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
 .feed-title h1 {
   margin: 0;
   font-size: 24px;

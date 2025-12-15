@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
+from typing import Literal, Optional
 
 from ..models.feed import FeedResponse
 from ..services.feed_service import FeedService
@@ -17,6 +18,14 @@ async def get_feed(
     user_id: str,
     limit: int = Query(default=20, ge=1),
     offset: int = Query(default=0, ge=0),
+    sort: Literal["relevance", "date"] = Query(default="relevance"),
+    q: Optional[str] = Query(default=None, description="Instant search query"),
 ) -> FeedResponse:
     limit = min(limit, _settings.max_feed_page_size)
-    return _feed_service.fetch_feed(user_id=user_id, limit=limit, offset=offset)
+    return _feed_service.fetch_feed(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+        sort=sort,
+        query=q,
+    )

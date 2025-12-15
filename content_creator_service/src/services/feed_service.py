@@ -15,16 +15,25 @@ class FeedService:
         self._post_service = PostService()
         self._preference_service = PreferenceService()
 
-    def fetch_feed(self, user_id: str, limit: int, offset: int = 0) -> FeedResponse:
+    def fetch_feed(
+        self,
+        user_id: str,  # Cognito UUID
+        limit: int,
+        offset: int = 0,
+        *,
+        sort: str = "relevance",
+        query: str | None = None,
+    ) -> FeedResponse:
         profile = self._preference_service.get_profile(user_id)
-        posts = self._post_service.fetch_posts(user_id, limit, offset)
-        scored = sorted(
-            (self._apply_score(post, profile) for post in posts),
-            key=lambda p: p.score,
-            reverse=True,
-        )
-        next_offset = offset + len(scored) if len(scored) == limit else None
-        return FeedResponse(user_id=user_id, posts=scored, next_offset=next_offset)
+        posts = self._post_service.fetch_posts(user_id, limit, offset, query=query)
+        # Always compute scores for display; order by requested sort
+        scored_posts = [self._apply_score(post, profile) for post in posts]
+        if sort == "date":
+            ordered = sorted(scored_posts, key=lambda p: p.created_at, reverse=True)
+        else:
+            ordered = sorted(scored_posts, key=lambda p: p.score, reverse=True)
+        next_offset = offset + len(ordered) if len(ordered) == limit else None
+        return FeedResponse(user_id=user_id, posts=ordered, next_offset=next_offset)
 
     def _apply_score(self, post: FeedPost, profile: UserPreferenceProfile) -> FeedPost:
         topic_score = self._topic_score(post, profile)

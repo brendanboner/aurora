@@ -136,9 +136,15 @@ export const syncUserToGraph = async (userId) => {
 };
 
 // Content Creator Service ----------------------------------------------------
-export const fetchSocialFeed = async (userId, limit = 20, offset = 0) => {
+export const fetchSocialFeed = async (
+  userId,
+  limit = 20,
+  offset = 0,
+  sort = 'relevance',
+  q = undefined
+) => {
   const response = await creatorApi.get('/feed', {
-    params: { user_id: userId, limit, offset },
+    params: { user_id: userId, limit, offset, sort, q },
   });
   return response.data;
 };
