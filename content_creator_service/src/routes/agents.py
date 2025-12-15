@@ -1,8 +1,8 @@
 """CreatorAgent management endpoints."""
-from __future__ import annotations
 
 import asyncio
-from fastapi import APIRouter, HTTPException, Query
+from typing import List
+from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel
 
 from ..models.agent import CreatorAgent, CreatorAgentCreate, CreatorAgentUpdate
@@ -26,8 +26,13 @@ class AgentPreferenceUpdate(BaseModel):
     length_preference: str  # 'short', 'medium', 'long'
 
 
-@router.get("", response_model=list[CreatorAgent])
-async def list_agents(include_disabled: bool = Query(default=False)) -> list[CreatorAgent]:
+class TriggerRequest(BaseModel):
+    force: bool = False
+    limit: int = 5
+
+
+@router.get("", response_model=List[CreatorAgent])
+async def list_agents(include_disabled: bool = Query(default=False)) -> List[CreatorAgent]:
     return _agent_service.list_agents(include_disabled=include_disabled)
 
 
@@ -101,7 +106,7 @@ async def update_agent_preferences(agent_id: int, request: AgentPreferenceUpdate
 
 
 @router.post("/{agent_id}/trigger")
-async def trigger_agent_run(agent_id: int, request: TriggerRequest) -> dict:
+async def trigger_agent_run(agent_id: int, request: TriggerRequest = Body(...)) -> dict:
     """Force a CreatorAgent to run immediately."""
     try:
         post_id, event = await asyncio.to_thread(

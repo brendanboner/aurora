@@ -46,15 +46,16 @@ class Neo4jContextGateway:
         WHERE (
             ($has_topics AND EXISTS {
                 MATCH (r)-[:RELATES_TO]->(topic:Topic)
-                WHERE topic.name IN $topics
+                WHERE toLower(topic.name) IN [x IN $topics | toLower(x)]
             }) OR
             ($has_orgs AND EXISTS {
                 MATCH (r)-[:MENTIONS]->(org:Organization)
-                WHERE org.name IN $organisations
+                WHERE toLower(org.name) IN [x IN $organisations | toLower(x)]
             })
         )
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        WITH r, collect(DISTINCT t.name) AS topics, collect(DISTINCT o.name) AS organisations
         RETURN r.title AS title,
                r.summary AS summary,
                r.publish_date AS start_date,
@@ -62,8 +63,8 @@ class Neo4jContextGateway:
                r.url AS url,
                COALESCE(r.importance, 'normal') AS importance,
                COALESCE(r.last_updated, r.publish_date) AS last_updated,
-               collect(DISTINCT t.name) AS topics,
-               collect(DISTINCT o.name) AS organisations
+               topics,
+               organisations
         ORDER BY COALESCE(r.last_updated, r.publish_date, datetime()) DESC
         LIMIT $limit
         """
@@ -81,7 +82,7 @@ class Neo4jContextGateway:
             return []
         query = """
         MATCH (r:Resource)-[:MENTIONS]->(o:Organization)
-        WHERE o.name IN $orgs
+        WHERE toLower(o.name) IN [x IN $orgs | toLower(x)]
         RETURN r.title AS title,
                r.summary AS summary,
                r.url AS url,
@@ -119,16 +120,17 @@ class Neo4jContextGateway:
         WHERE (
             ($has_topics AND EXISTS {
                 MATCH (r)-[:RELATES_TO]->(topic:Topic)
-                WHERE topic.name IN $topics
+                WHERE toLower(topic.name) IN [x IN $topics | toLower(x)]
             }) OR
             ($has_orgs AND EXISTS {
                 MATCH (r)-[:MENTIONS]->(org:Organization)
-                WHERE org.name IN $organisations
+                WHERE toLower(org.name) IN [x IN $organisations | toLower(x)]
             })
         )
         AND r.publish_date >= datetime() - duration({days: $window_days})
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        WITH r, collect(DISTINCT t.name) AS topics, collect(DISTINCT o.name) AS organisations
         RETURN r.title AS title,
                r.summary AS summary,
                r.publish_date AS start_date,
@@ -136,8 +138,8 @@ class Neo4jContextGateway:
                r.url AS url,
                COALESCE(r.importance, 'normal') AS importance,
                COALESCE(r.last_updated, r.publish_date) AS last_updated,
-               collect(DISTINCT t.name) AS topics,
-               collect(DISTINCT o.name) AS organisations
+               topics,
+               organisations
         ORDER BY COALESCE(r.last_updated, r.publish_date) DESC
         LIMIT $limit
         """
@@ -171,13 +173,13 @@ class Neo4jContextGateway:
         )
         query = """
         MATCH (primary_topic:Topic)
-        WHERE primary_topic.name IN $topics
+        WHERE toLower(primary_topic.name) IN [x IN $topics | toLower(x)]
         MATCH (primary_topic)<-[:RELATES_TO]-(r:Resource)-[:RELATES_TO]->(adjacent_topic:Topic)
-        WHERE adjacent_topic.name NOT IN $topics
+        WHERE NOT toLower(adjacent_topic.name) IN [x IN $topics | toLower(x)]
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
-        WHERE NOT ($has_orgs) OR o.name IN $organisations
-        RETURN DISTINCT
-               r.title AS title,
+        WHERE o IS NULL OR toLower(o.name) IN [x IN $organisations | toLower(x)]
+        WITH r, adjacent_topic, collect(DISTINCT o.name) AS organisations
+        RETURN r.title AS title,
                r.summary AS summary,
                r.publish_date AS start_date,
                r.publish_date AS end_date,
@@ -185,14 +187,13 @@ class Neo4jContextGateway:
                COALESCE(r.importance, 'normal') AS importance,
                COALESCE(r.last_updated, r.publish_date) AS last_updated,
                [adjacent_topic.name] AS topics,
-               collect(DISTINCT o.name) AS organisations
+               organisations
         ORDER BY COALESCE(r.last_updated, r.publish_date, datetime()) DESC
         LIMIT $limit
         """
         params = {
             "topics": topics,
             "organisations": organisations,
-            "has_orgs": bool(organisations),
             "limit": limit,
         }
         return self._client.execute_query(query, params)

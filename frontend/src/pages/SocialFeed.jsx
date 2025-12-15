@@ -209,76 +209,14 @@ const SocialFeed = ({ currentUser }) => {
 
       <section className="social-feed-grid">
         {posts.map((post) => (
-          <article key={post.id} className="feed-card">
-            <div className="feed-card-header">
-              <div className="agent-meta">
-                <div className="agent-avatar">{post.agent_name?.[0]?.toUpperCase() || 'A'}</div>
-                <div>
-                  <h3>{post.agent_name}</h3>
-                  <p>{post.visibility === 'internal' ? 'Internal only' : 'Public feed'} · {formatTimestamp(post.created_at)}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                className={`follow-btn ${post.is_following_agent ? 'following' : ''}`}
-                onClick={() => handleFollowToggle(post.agent_id, post.is_following_agent)}
-                disabled={pendingAction === `follow-${post.agent_id}`}
-              >
-                {post.is_following_agent ? 'Following' : 'Follow'}
-              </button>
-            </div>
-
-            <div className="feed-body">
-              <h4>{post.title}</h4>
-              <p>{post.summary || post.body?.slice(0, 420)}</p>
-            </div>
-
-            <div className="feed-tags">
-              {(post.tags || []).map((tag) => (
-                <span key={`${post.id}-${tag}`} className="tag-chip">{tag}</span>
-              ))}
-            </div>
-
-            {post.sources && post.sources.length > 0 && (
-              <div className="feed-sources">
-                <span>Sources:</span>
-                {post.sources.map((source, idx) => (
-                  <a
-                    key={`${post.id}-src-${idx}`}
-                    href={source.url || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <LinkIcon size={14} />
-                    <span>{source.source_kind || 'reference'}</span>
-                  </a>
-                ))}
-              </div>
-            )}
-
-            <footer className="feed-footer">
-              <div className="score-tile">
-                <span className="score-label">Score</span>
-                <span className="score-value">{post.score?.toFixed(2)}</span>
-              </div>
-              <div className="feedback-row">
-                <button
-                  type="button"
-                  className={`feedback-btn ${post.user_reaction === 'like' ? 'active' : ''}`}
-                  onClick={() => handleReaction(post.id, 'like')}
-                  disabled={pendingAction === `like-${post.id}`}>
-                  👍 Like
-                </button>
-                <button
-                  type="button"
-                  className={`feedback-btn ${post.user_reaction === 'dislike' ? 'active dislike' : ''}`}
-                  onClick={() => handleReaction(post.id, 'dislike')}
-                  disabled={pendingAction === `dislike-${post.id}`}>
-                  👎 Dislike
-                </button>
-              </div>
-            </footer>
-          </article>
+          <PostCard
+            key={post.id}
+            post={post}
+            currentUser={currentUser}
+            pendingAction={pendingAction}
+            onReaction={handleReaction}
+            onFollowToggle={handleFollowToggle}
+          />
         ))}
 
         {!isLoading && posts.length === 0 && (
@@ -291,10 +229,129 @@ const SocialFeed = ({ currentUser }) => {
       {isLoading && (
         <div className="feed-loading">
           <div className="spinner" />
-          <span>Crafting the next insight…</span>
+          <span>Loading professional insights…</span>
         </div>
       )}
     </div>
+  );
+};
+
+// PostCard component for LinkedIn-style posts
+const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const PREVIEW_LENGTH = 300;
+  
+  const needsReadMore = post.body && post.body.length > PREVIEW_LENGTH;
+  const displayBody = isExpanded || !needsReadMore 
+    ? post.body 
+    : post.body?.slice(0, PREVIEW_LENGTH) + '...';
+
+  return (
+    <article className="professional-post-card">
+      {/* Author Header */}
+      <div className="post-author-header">
+        <div className="author-info">
+          <div className="author-avatar">
+            {post.agent_name?.[0]?.toUpperCase() || 'A'}
+          </div>
+          <div className="author-details">
+            <h3 className="author-name">{post.agent_name}</h3>
+            <p className="author-meta">
+              {post.created_at && formatTimestamp(post.created_at)}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className={`follow-button ${post.is_following_agent ? 'following' : ''}`}
+          onClick={() => onFollowToggle(post.agent_id, post.is_following_agent)}
+          disabled={pendingAction === `follow-${post.agent_id}`}
+        >
+          {post.is_following_agent ? '✓ Following' : '+ Follow'}
+        </button>
+      </div>
+
+      {/* Post Content */}
+      <div className="post-content">
+        <h2 className="post-title">{post.title}</h2>
+        <div className="post-body">
+          {displayBody}
+          {needsReadMore && (
+            <button 
+              className="read-more-btn"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? '...see less' : '...see more'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tags */}
+      {post.tags && post.tags.length > 0 && (
+        <div className="post-tags">
+          {post.tags.slice(0, 5).map((tag) => (
+            <span key={`${post.id}-${tag}`} className="post-tag">
+              #{tag.replace(/\s+/g, '')}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Sources/References */}
+      {post.sources && post.sources.length > 0 && (
+        <div className="post-sources">
+          <div className="sources-header">
+            <LinkIcon size={16} />
+            <span>Referenced articles:</span>
+          </div>
+          <div className="source-links">
+            {post.sources.map((source, idx) => (
+              <a
+                key={`${post.id}-src-${idx}`}
+                href={source.url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="source-link"
+              >
+                {source.title || source.source_identifier || `Source ${idx + 1}`}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Engagement Footer */}
+      <div className="post-engagement">
+        <div className="engagement-stats">
+          {post.score !== undefined && (
+            <span className="relevance-score">
+              Relevance: {(post.score * 100).toFixed(0)}%
+            </span>
+          )}
+        </div>
+        <div className="engagement-actions">
+          <button
+            type="button"
+            className={`engagement-btn ${post.user_reaction === 'like' ? 'active-like' : ''}`}
+            onClick={() => onReaction(post.id, 'like')}
+            disabled={pendingAction === `like-${post.id}`}
+          >
+            <span className="emoji">👍</span>
+            <span>Helpful</span>
+          </button>
+          <button
+            type="button"
+            className={`engagement-btn ${post.user_reaction === 'dislike' ? 'active-dislike' : ''}`}
+            onClick={() => onReaction(post.id, 'dislike')}
+            disabled={pendingAction === `dislike-${post.id}`}
+          >
+            <span className="emoji">👎</span>
+            <span>Not relevant</span>
+          </button>
+        </div>
+      </div>
+    </article>
   );
 };
 

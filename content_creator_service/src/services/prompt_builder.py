@@ -21,33 +21,41 @@ class PromptBuilder:
         Build system prompt with agent personality, guidelines, and constraints.
         """
         base = (
-            f"You are {agent.name}, an autonomous expert persona. "
-            "Respond only with factual statements grounded in supplied context. "
-            "Cite sources for all claims."
+            f"You are {agent.name}, a seasoned industry professional and thought leader. "
+            "You write LinkedIn-style professional content that synthesizes recent industry developments, "
+            "provides expert analysis, and shares insights based on your expertise.\n\n"
+            "CRITICAL RULES:\n"
+            "- DO NOT copy or repeat article text verbatim\n"
+            "- DO reference articles naturally (e.g., 'According to recent reports...', 'A new study shows...', 'Industry sources indicate...')\n"
+            "- Provide YOUR professional perspective and analysis\n"
+            "- Connect multiple sources to tell a bigger story\n"
+            "- Write in first person when sharing opinions or observations\n"
+            "- Keep tone professional but conversational\n"
+            "- Use markdown formatting sparingly (bold for emphasis, lists for clarity)"
         )
 
         if agent.persona:
-            base += f"\n\nPersona Details:\n{agent.persona}"
+            base += f"\n\nYour Professional Background:\n{agent.persona}"
 
         # Tone and style guidance
         tone_guidance = {
-            "analytical": "Provide in-depth analysis with data and reasoning.",
-            "conversational": "Adopt a friendly, accessible tone suitable for broad audiences.",
-            "technical": "Use precise technical terminology and focus on implementation details.",
-            "journalistic": "Report facts objectively with news-style narrative.",
-            "opinion": "Clearly distinguish fact from interpretation and personal analysis.",
+            "analytical": "Provide data-driven insights with clear reasoning. Break down complex topics for your network.",
+            "conversational": "Share insights in an accessible way, like you're explaining to a colleague over coffee.",
+            "technical": "Dive into technical details while keeping it readable. Your audience respects precision.",
+            "journalistic": "Report on developments objectively, then add your expert take on what it means.",
+            "opinion": "Lead with your perspective, then back it up with facts and industry context.",
         }
-        tone = tone_guidance.get(agent.tone_style, "Maintain a professional tone.")
-        base += f"\n\nStyle: {tone}"
+        tone = tone_guidance.get(agent.tone_style, "Maintain a professional, thoughtful tone.")
+        base += f"\n\nYour Writing Style: {tone}"
 
         # Content length guidance
         length_guidance = {
-            "short": "Keep summaries to 1-2 sentences; bodies to 2-3 paragraphs.",
-            "medium": "Provide balanced summaries and 3-5 paragraph bodies.",
-            "long": "Produce detailed summaries and comprehensive 6-10 paragraph bodies with examples.",
+            "short": "Keep posts concise: 2-3 short paragraphs (150-250 words total). Get to the point quickly.",
+            "medium": "Write 3-5 paragraphs (300-500 words). Balance depth with readability.",
+            "long": "Develop comprehensive posts with 5-8 paragraphs (600-1000 words). Include examples and thorough analysis.",
         }
-        length = length_guidance.get(agent.content_length_preference, "Provide balanced length.")
-        base += f"\n\n{length}"
+        length = length_guidance.get(agent.content_length_preference, "Write 3-5 balanced paragraphs.")
+        base += f"\n\nPost Length: {length}"
 
         return base
 
@@ -69,7 +77,15 @@ class PromptBuilder:
             recent_posts: Agent's last 5 posts (for deduplication)
             user_reactions: Like/dislike counts from user feedback
         """
-        prompt = "Generate a new post with title, summary, body, tags, and sources.\n\n"
+        prompt = (
+            "Write a professional LinkedIn-style post that synthesizes the following recent industry developments. "
+            "Your post should:\n"
+            "1. Lead with a hook or key insight that grabs attention\n"
+            "2. Reference 2-3 of the most relevant articles naturally (don't list them)\n"
+            "3. Provide YOUR expert analysis and perspective\n"
+            "4. Connect the dots between different developments if applicable\n"
+            "5. End with a thought-provoking question or call-to-action\n\n"
+        )
 
         # Context sources
         prompt += self._format_context_section(events, documents)
@@ -84,16 +100,18 @@ class PromptBuilder:
 
         # Structure expectations
         prompt += (
-            "\nRespond with a JSON object containing:\n"
+            "\n## OUTPUT FORMAT\n"
+            "Respond with a JSON object:\n"
             "{\n"
-            '  "title": "string",\n'
-            '  "summary": "string (1-2 sentences)",\n'
-            '  "body": "string (main content)",\n'
-            '  "tags": ["array", "of", "topic", "tags"],\n'
+            '  "title": "Engaging headline (60-100 chars)",\n'
+            '  "summary": "One compelling sentence that captures the main point",\n'
+            '  "body": "Your full post in markdown format. Write 2-5 paragraphs that flow naturally. Reference articles inline like a professional would.",\n'
+            '  "tags": ["industry-relevant", "topic-tags"],\n'
             '  "sources": [\n'
-            '    {"source_kind": "event|document", "source_identifier": "url", "url": "url"}\n'
+            '    {"source_kind": "event", "source_identifier": "url", "url": "url", "title": "article title"}\n'
             "  ]\n"
-            "}\n"
+            "}\n\n"
+            "REMEMBER: Synthesize and analyze - don't copy. You're a professional sharing insights, not a news aggregator."
         )
 
         return prompt
@@ -104,25 +122,26 @@ class PromptBuilder:
         documents: List[Dict[str, Any]],
     ) -> str:
         """Format events and documents as context for the LLM."""
-        prompt = "## Current Context\n\n"
+        prompt = "## RECENT INDUSTRY DEVELOPMENTS\n\n"
+        prompt += "Here are the latest articles and updates in your domain. Synthesize these into a cohesive narrative:\n\n"
 
         if events:
-            prompt += "### Recent Events:\n"
+            prompt += "### Articles & News:\n"
             for i, event in enumerate(events[:8], 1):
                 prompt += (
-                    f"{i}. **{event.get('title', 'Untitled')}** "
-                    f"(Importance: {event.get('importance', 'normal')})\n"
-                    f"   {event.get('summary', '')}\n"
+                    f"{i}. **{event.get('title', 'Untitled')}**\n"
+                    f"   Summary: {event.get('summary', 'No summary available')}\n"
                     f"   Topics: {', '.join(event.get('topics', []))}\n"
+                    f"   Importance: {event.get('importance', 'normal')}\n"
                     f"   URL: {event.get('url', 'N/A')}\n\n"
                 )
 
         if documents:
-            prompt += "### Relevant Documents:\n"
+            prompt += "### Additional Resources:\n"
             for i, doc in enumerate(documents[:5], 1):
                 prompt += (
                     f"{i}. **{doc.get('title', 'Untitled')}**\n"
-                    f"   {doc.get('summary', '')}\n"
+                    f"   {doc.get('summary', 'No summary available')}\n"
                     f"   URL: {doc.get('url', 'N/A')}\n\n"
                 )
 
@@ -133,11 +152,11 @@ class PromptBuilder:
         if not recent_posts:
             return ""
 
-        prompt = "## Recent Posts (Avoid Duplicating):\n"
+        prompt = "## YOUR RECENT POSTS (Don't repeat these topics/angles):\n"
         for post in recent_posts[:5]:
-            prompt += f"- **{post.get('title', 'Untitled')}**: {post.get('body', '')[:100]}...\n"
+            prompt += f"- **{post.get('title', 'Untitled')}**: {post.get('body', '')[:150]}...\n"
 
-        prompt += "\nEnsure the new post differs in angle, depth, or recency from above.\n\n"
+        prompt += "\nMake sure your new post covers different aspects or provides a fresh perspective.\n\n"
         return prompt
 
     def _format_preference_signals_section(self, user_reactions: Dict[str, int]) -> str:
