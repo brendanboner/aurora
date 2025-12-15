@@ -196,8 +196,13 @@ class AgentScheduler:
 
     def _event_meets_importance(self, agent: CreatorAgent, event: KnowledgeEvent) -> bool:
         hierarchy = {"low": 0, "normal": 1, "important": 2, "critical": 3}
-        threshold = hierarchy.get((agent.importance_threshold or "normal").lower(), 1)
-        event_rank = hierarchy.get((event.importance or "normal").lower(), 1)
+        def norm(val: Optional[str]) -> str:
+            try:
+                return str(val or "normal").strip().lower()
+            except Exception:
+                return "normal"
+        threshold = hierarchy.get(norm(agent.importance_threshold), 1)
+        event_rank = hierarchy.get(norm(getattr(event, "importance", None)), 1)
         return event_rank >= threshold
 
     def _normalise_cadence(self, cadence: Optional[str]) -> str:

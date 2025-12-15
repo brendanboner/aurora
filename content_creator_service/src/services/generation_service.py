@@ -162,12 +162,14 @@ class GenerationService:
 
         for event in events:
             url = event.get("url")
+            title = event.get("title")
             if url:
                 sources.append(
                     PostSource(
                         source_kind="event",
                         source_identifier=url,
                         url=url,
+                        title=title,
                     )
                 )
             if len(sources) >= 2:
@@ -177,12 +179,14 @@ class GenerationService:
 
         for doc in documents:
             url = doc.get("url")
+            title = doc.get("title")
             if url:
                 sources.append(
                     PostSource(
                         source_kind="document",
                         source_identifier=url,
                         url=url,
+                        title=title,
                     )
                 )
             if len(sources) >= 2:

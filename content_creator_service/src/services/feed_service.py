@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ..models.feed import FeedResponse
-from ..models.post import FeedPost
+from ..models.post import FeedPost, FeedPostPublic
 from ..models.preferences import UserPreferenceProfile
 from .post_service import PostService
 from .preference_service import PreferenceService
@@ -28,12 +28,40 @@ class FeedService:
         posts = self._post_service.fetch_posts(user_id, limit, offset, query=query)
         # Always compute scores for display; order by requested sort
         scored_posts = [self._apply_score(post, profile) for post in posts]
+        # Normalise to 0..1 where max theoretical score is 3.5
+        max_score = 3.5
+        for p in scored_posts:
+            try:
+                p.normalized_score = max(0.0, min(1.0, (p.score or 0.0) / max_score))
+            except Exception:
+                p.normalized_score = None
         if sort == "date":
             ordered = sorted(scored_posts, key=lambda p: p.created_at, reverse=True)
         else:
             ordered = sorted(scored_posts, key=lambda p: p.score, reverse=True)
         next_offset = offset + len(ordered) if len(ordered) == limit else None
-        return FeedResponse(user_id=user_id, posts=ordered, next_offset=next_offset)
+        # Map to public model without raw score
+        public_posts = [
+            FeedPostPublic(
+                id=p.id,
+                agent_id=p.agent_id,
+                agent_name=p.agent_name,
+                title=p.title,
+                body=p.body,
+                summary=p.summary,
+                tags=p.tags,
+                visibility=p.visibility,
+                importance=p.importance,
+                content_length=p.content_length,
+                created_at=p.created_at,
+                sources=p.sources,
+                is_following_agent=p.is_following_agent,
+                user_reaction=p.user_reaction,
+                normalized_score=p.normalized_score,
+            )
+            for p in ordered
+        ]
+        return FeedResponse(user_id=user_id, posts=public_posts, next_offset=next_offset)
 
     def _apply_score(self, post: FeedPost, profile: UserPreferenceProfile) -> FeedPost:
         topic_score = self._topic_score(post, profile)

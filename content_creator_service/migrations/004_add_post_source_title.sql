@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE IF EXISTS post_source
+    ADD COLUMN IF NOT EXISTS title TEXT;
+
+COMMIT;

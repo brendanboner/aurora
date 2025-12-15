@@ -5,10 +5,10 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from .post import FeedPost
+from .post import FeedPostPublic
 
 
 class FeedResponse(BaseModel):
-    user_id: str
-    posts: List[FeedPost]
+    user_id: str  # Cognito UUID
+    posts: List[FeedPostPublic]
     next_offset: Optional[int]

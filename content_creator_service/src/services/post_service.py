@@ -106,7 +106,7 @@ class PostService:
 
     def _load_sources(self, post_id: int) -> List[PostSource]:
         rows = db.fetch_all(
-            "SELECT source_kind, source_identifier, url, confidence FROM post_source WHERE post_id = %s",
+            "SELECT source_kind, source_identifier, url, confidence, title FROM post_source WHERE post_id = %s",
             (post_id,),
         )
         return [PostSource(**dict(row)) for row in rows]
@@ -118,8 +118,8 @@ class PostService:
             payload = source.model_dump()
             db.execute(
                 """
-                INSERT INTO post_source (post_id, source_kind, source_identifier, url, confidence)
-                VALUES (%(post_id)s, %(source_kind)s, %(source_identifier)s, %(url)s, %(confidence)s)
+                INSERT INTO post_source (post_id, source_kind, source_identifier, url, confidence, title)
+                VALUES (%(post_id)s, %(source_kind)s, %(source_identifier)s, %(url)s, %(confidence)s, %(title)s)
                 """,
                 {
                     "post_id": post_id,

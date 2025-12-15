@@ -348,17 +348,51 @@ const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle
             <span>Referenced articles:</span>
           </div>
           <div className="source-links">
-            {post.sources.map((source, idx) => (
-              <a
-                key={`${post.id}-src-${idx}`}
-                href={source.url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="source-link"
-              >
-                {source.title || source.source_identifier || `Source ${idx + 1}`}
-              </a>
-            ))}
+            {post.sources.map((source, idx) => {
+              const computeLabel = () => {
+                const id = (source.source_identifier || '').toString().trim();
+                const title = (source.title || '').toString().trim();
+                const url = (source.url || '').toString().trim();
+                // Prefer a non-placeholder title
+                if (title && title.toLowerCase() !== 'url') return title;
+                // If URL is present, show a nice host name
+                if (url) {
+                  try {
+                    const u = new URL(url);
+                    return u.hostname.replace(/^www\./, '');
+                  } catch {
+                    return url.length > 60 ? url.slice(0, 57) + '…' : url;
+                  }
+                }
+                // If identifier looks like a URL, also reduce to host
+                if (id) {
+                  if (id.toLowerCase() === 'url') return `Source ${idx + 1}`;
+                  if (/^https?:\/\//i.test(id)) {
+                    try {
+                      const u = new URL(id);
+                      return u.hostname.replace(/^www\./, '');
+                    } catch {
+                      return id.length > 60 ? id.slice(0, 57) + '…' : id;
+                    }
+                  }
+                  return id;
+                }
+                return `Source ${idx + 1}`;
+              };
+              const label = computeLabel();
+              const href = source.url || (/^https?:\/\//i.test(source.source_identifier || '') ? source.source_identifier : '#');
+              return (
+                <a
+                  key={`${post.id}-src-${idx}`}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="source-link"
+                >
+                  {label}
+                </a>
+              );
+            })}
           </div>
         </div>
       )}
@@ -366,9 +400,13 @@ const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle
       {/* Engagement Footer */}
       <div className="post-engagement">
         <div className="engagement-stats">
-          {post.score !== undefined && (
+          {(post.normalized_score !== undefined && post.normalized_score !== null) && (
             <span className="relevance-score">
-              Relevance: {(post.score * 100).toFixed(0)}%
+              {(() => {
+                const base = post.normalized_score || 0;
+                const pct = Math.max(0, Math.min(100, Math.round(base * 100)));
+                return `Relevance: ${pct}%`;
+              })()}
             </span>
           )}
         </div>
