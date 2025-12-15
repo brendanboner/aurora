@@ -32,3 +32,17 @@ async def dislike_post(post_id: int, request: ReactionRequest) -> dict:
     _preference_service.apply_topic_feedback(request.user_id, post.tags, delta=-0.1)
     _preference_service.update_length_preference(request.user_id, post.content_length)
     return {"status": "disliked"}
+
+
+@router.delete("/agent/{agent_id}/purge")
+async def purge_agent_posts(agent_id: int) -> dict:
+    """Delete all posts (and associated sources/reactions) for a specific agent."""
+    count = _post_service.purge_agent_posts(agent_id)
+    return {"status": "purged", "agent_id": agent_id, "deleted": count}
+
+
+@router.delete("/purge_all")
+async def purge_all_posts() -> dict:
+    """Delete all posts (and associated sources/reactions) across all agents."""
+    count = _post_service.purge_all_posts()
+    return {"status": "purged", "deleted": count}

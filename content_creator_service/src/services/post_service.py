@@ -146,6 +146,18 @@ class PostService:
             (user_id, post_id),
         )
 
+    def purge_agent_posts(self, agent_id: int) -> int:
+        """Delete all posts for a given agent. Returns count deleted."""
+        row = db.fetch_one("SELECT COUNT(*) AS cnt FROM post WHERE agent_id = %s", (agent_id,))
+        db.execute("DELETE FROM post WHERE agent_id = %s", (agent_id,))
+        return int(row["cnt"]) if row else 0
+
+    def purge_all_posts(self) -> int:
+        """Delete all posts in the system. Returns count deleted."""
+        row = db.fetch_one("SELECT COUNT(*) AS cnt FROM post", ())
+        db.execute("DELETE FROM post", ())
+        return int(row["cnt"]) if row else 0
+
     def get_post(self, post_id: int) -> PostRecord:
         row = db.fetch_one(
             """
