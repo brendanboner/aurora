@@ -210,10 +210,9 @@ class BaseScraper:
                 # Handle both Resource and Event objects
                 if isinstance(item, Event):
                     processing_data = {
-                        "name": item.name,
+                        "title": item.name,  # Use 'title' for consistency with digester
                         "url": item.url or "",
-                        "event_type": item.event_type,
-                        "start_date": item.start_date,
+                        "category": "event",  # Events are categorized as 'event'
                         "status": "retrieving",
                         "stage": stage,
                         "started_at": datetime.now().isoformat(),

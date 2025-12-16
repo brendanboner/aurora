@@ -110,6 +110,15 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
 h1 {
   font-family: 'Source Sans Pro', sans-serif;
   font-size: var(--text-2xl);

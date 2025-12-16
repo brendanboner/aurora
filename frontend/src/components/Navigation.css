@@ -38,8 +38,8 @@
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  gap: 10px;
+  padding: 10px 16px;
   color: var(--muted-foreground);
   text-decoration: none;
   border-radius: var(--radius-button);

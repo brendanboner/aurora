@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 import logging
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from .client import Neo4jClient
 from .models import *
 
@@ -1286,11 +1286,9 @@ class GraphRepository:
               "organisations": [ {org props}, ... ]
             }
         """
-        from datetime import date as date_module
-        
         # Default to today if no start_date provided
         if not start_date:
-            start_date = date_module.today().isoformat()
+            start_date = date.today().isoformat()
         
         topics = topics or []
         organisations = organisations or []
@@ -1399,11 +1397,9 @@ class GraphRepository:
         Returns:
             List of dicts containing event data with associated resources
         """
-        from datetime import date as date_module
-        
         # Default to today if no end_date provided
         if not end_date:
-            end_date = date_module.today().isoformat()
+            end_date = date.today().isoformat()
         
         topics = topics or []
         organisations = organisations or []
@@ -1515,8 +1511,6 @@ class GraphRepository:
         Returns:
             List of dicts containing document data with update_recency_score
         """
-        from datetime import datetime, timedelta
-        
         # Default to last 7 days if not provided
         if not start_date:
             start_date = (datetime.now() - timedelta(days=7)).date().isoformat()
@@ -1615,8 +1609,6 @@ class GraphRepository:
         Returns:
             List of dicts containing document data with publish_recency_score
         """
-        from datetime import datetime
-        
         if not end_date:
             end_date = datetime.now().date().isoformat()
         
@@ -1716,8 +1708,6 @@ class GraphRepository:
         Returns:
             Dict with documents, published_count, updated_count, total_count
         """
-        from datetime import datetime
-        
         if not end_date:
             end_date = datetime.now().date().isoformat()
         
@@ -1931,3 +1921,128 @@ class GraphRepository:
         
         results = self.client.execute_query(query, params)
         return [dict(r["b"]) for r in results]
+
+    # ========================================================================
+    # DataSource Configuration Methods (for ConfigManager)
+    # ========================================================================
+    
+    def get_datasource_config(self, datasource_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get configuration for a specific datasource.
+        
+        Args:
+            datasource_id: Identifier for the datasource (e.g., 'wfa_resource_page')
+            
+        Returns:
+            Configuration dict with all DataSource node properties, or None if not found
+        """
+        query = """
+        MATCH (ds:DataSource {datasource_id: $datasource_id})
+        RETURN ds
+        """
+        
+        results = self.client.execute_query(query, {"datasource_id": datasource_id})
+        if results:
+            return dict(results[0]["ds"])
+        return None
+    
+    def get_all_datasources_with_scraper(self) -> List[Dict[str, Any]]:
+        """
+        Get all datasources that have a scraper_type configured.
+        
+        Returns:
+            List of datasource configurations with scraper_type set
+        """
+        query = """
+        MATCH (ds:DataSource)
+        WHERE ds.scraper_type IS NOT NULL
+        RETURN ds
+        ORDER BY ds.scraper_type, ds.datasource_id
+        """
+        
+        results = self.client.execute_query(query)
+        return [dict(r["ds"]) for r in results]
+    
+    def get_startup_datasources(self) -> List[Dict[str, Any]]:
+        """
+        Get datasources that should run on retriever startup.
+        
+        Returns:
+            List of datasource configurations where run_on_startup=true
+        """
+        query = """
+        MATCH (ds:DataSource)
+        WHERE ds.scraper_type IS NOT NULL
+          AND ds.run_on_startup = true
+        RETURN ds
+        ORDER BY ds.scraper_type, ds.datasource_id
+        """
+        
+        results = self.client.execute_query(query)
+        return [dict(r["ds"]) for r in results]
+    
+    def get_scheduled_datasources(self) -> List[Dict[str, Any]]:
+        """
+        Get all datasources with a scrape_schedule configured.
+        
+        Returns:
+            List of datasource configurations with scrape_schedule set
+        """
+        query = """
+        MATCH (ds:DataSource)
+        WHERE ds.scraper_type IS NOT NULL
+          AND ds.scrape_schedule IS NOT NULL
+        RETURN ds
+        ORDER BY ds.scraper_type, ds.datasource_id
+        """
+        
+        results = self.client.execute_query(query)
+        return [dict(r["ds"]) for r in results]
+    
+    def get_full_refresh_datasources(self) -> List[Dict[str, Any]]:
+        """
+        Get all datasources with a full_refresh_schedule configured.
+        
+        Returns:
+            List of datasource configurations with full_refresh_schedule set
+        """
+        query = """
+        MATCH (ds:DataSource)
+        WHERE ds.scraper_type IS NOT NULL
+          AND ds.full_refresh_schedule IS NOT NULL
+        RETURN ds
+        ORDER BY ds.scraper_type, ds.datasource_id
+        """
+        
+        results = self.client.execute_query(query)
+        return [dict(r["ds"]) for r in results]
+    
+    def update_datasource_last_scraped(self, datasource_id: str, timestamp: Optional[datetime] = None):
+        """
+        Update the last_scraped_at timestamp for a datasource.
+        
+        Args:
+            datasource_id: Identifier for the datasource
+            timestamp: Timestamp to set (defaults to current time)
+        """
+        if timestamp is None:
+            timestamp = datetime.now()
+        
+        query = """
+        MATCH (ds:DataSource {datasource_id: $datasource_id})
+        SET ds.last_scraped_at = $timestamp
+        RETURN ds.datasource_id
+        """
+        
+        try:
+            results = self.client.execute_write(query, {
+                "datasource_id": datasource_id,
+                "timestamp": timestamp
+            })
+            if results:
+                self.logger.info(f"Updated last_scraped_at for {datasource_id}")
+            else:
+                self.logger.warning(f"Datasource {datasource_id} not found - skipping timestamp update")
+        except Exception as e:
+            self.logger.error(f"Error updating last_scraped for {datasource_id}: {e}")
+

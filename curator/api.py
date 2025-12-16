@@ -7,12 +7,13 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel
 
 from services.topic_organizer import TopicOrganizer
 from services.event_reconciler import EventReconciler
 from utils.logger import setup_logger
+from common.auth_middleware import get_user_context, require_role
 
 logger = setup_logger(__name__)
 
@@ -89,8 +90,18 @@ async def health_check():
 
 
 @app.get("/status", response_model=ServiceStatus)
-async def get_status():
-    """Get detailed service status including job information."""
+async def get_status(user: Optional[dict] = Depends(get_user_context)):
+    """
+    Get detailed service status including job information.
+    
+    Can be called by authenticated users OR internal services.
+    If user context is present, log the access for monitoring.
+    """
+    if user:
+        logger.info(f"Status check by user {user['email']} (role: {user['role']})")
+    else:
+        logger.debug("Status check by internal service")
+    
     if _start_time is None:
         uptime = 0.0
     else:
@@ -120,8 +131,14 @@ async def get_status():
 
 
 @app.post("/trigger/topics", response_model=TriggerResponse)
-async def trigger_topic_organization(background_tasks: BackgroundTasks):
-    """Manually trigger topic organization job."""
+@require_role(["admin", "superadmin"])
+async def trigger_topic_organization(background_tasks: BackgroundTasks, user: Optional[dict] = Depends(get_user_context)):
+    """
+    Manually trigger topic organization job.
+    Requires admin or superadmin role.
+    """
+    logger.info(f"Manual topic organization triggered by {user['email']} (role: {user['role']})")
+    
     if _job_state["topic_organization"]["is_running"]:
         raise HTTPException(
             status_code=409,
@@ -158,8 +175,14 @@ async def trigger_topic_organization(background_tasks: BackgroundTasks):
 
 
 @app.post("/trigger/reconcile", response_model=TriggerResponse)
-async def trigger_event_reconciliation(background_tasks: BackgroundTasks):
-    """Manually trigger event reconciliation job."""
+@require_role(["admin", "superadmin"])
+async def trigger_event_reconciliation(background_tasks: BackgroundTasks, user: Optional[dict] = Depends(get_user_context)):
+    """
+    Manually trigger event reconciliation job.
+    Requires admin or superadmin role.
+    """
+    logger.info(f"Manual event reconciliation triggered by {user['email']} (role: {user['role']})")
+    
     if _job_state["event_reconciliation"]["is_running"]:
         raise HTTPException(
             status_code=409,

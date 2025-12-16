@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, ResetIcon, WarningIcon } from '../components/icons';
 import { getUserPreferences, updateUserPreferences, getTopics, getOrganisations, getPeople } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import './UserProfile.css';
 
-const UserProfile = ({ currentUser }) => {
+const UserProfile = () => {
+  const { user } = useAuth();
   const [preferences, setPreferences] = useState({
     topics: [], organisations: [], people: [], sources: [], notify_email: true, notify_digest: true,
   });
@@ -40,7 +42,7 @@ const UserProfile = ({ currentUser }) => {
     : path.includes('/profile/notifications') ? 'notifications'
     : null;
 
-  useEffect(() => { loadData(); }, [currentUser]);
+  useEffect(() => { loadData(); }, [user]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -55,11 +57,11 @@ const UserProfile = ({ currentUser }) => {
   }, []);
 
   const loadData = async () => {
-    if (!currentUser) return;
+    if (!user) return;
     setLoading(true); setError(null);
     try {
       const [prefs, topicsData, orgsData, peopleData] = await Promise.all([
-        getUserPreferences(currentUser.id), getTopics(), getOrganisations(), getPeople()
+        getUserPreferences(user.user_id), getTopics(), getOrganisations(), getPeople()
       ]);
       setPreferences(prefs);
       setSavedPreferences(prefs);
@@ -74,13 +76,13 @@ const UserProfile = ({ currentUser }) => {
 
   // Debounced auto-save only when dirty & actually changed
   useEffect(() => {
-    if (!currentUser || !initialLoaded || !dirty) return;
+    if (!user || !initialLoaded || !dirty) return;
     const changed = JSON.stringify(preferences) !== JSON.stringify(savedPreferences);
     if (!changed) { setDirty(false); return; }
     const timeout = setTimeout(async () => {
       setSaving(true);
       try {
-        const updated = await updateUserPreferences(currentUser.id, preferences);
+        const updated = await updateUserPreferences(user.user_id, preferences);
         setPreferences(updated);
         setSavedPreferences(updated);
         setDirty(false);
@@ -91,7 +93,7 @@ const UserProfile = ({ currentUser }) => {
       } finally { setSaving(false); }
     }, 600);
     return () => clearTimeout(timeout);
-  }, [preferences, currentUser, initialLoaded, dirty, savedPreferences]);
+  }, [preferences, user, initialLoaded, dirty, savedPreferences]);
 
   const togglePreference = (type, id) => {
     setPreferences(prev => {
@@ -137,13 +139,13 @@ const UserProfile = ({ currentUser }) => {
 
   const filteredPeople = availablePeople.filter(p => p.name?.toLowerCase().includes(peopleSearch.toLowerCase()));
 
-  if (!currentUser) {
+  if (!user) {
     return (
       <div className="profile-container">
         <div className="profile-empty">
           <div className="empty-icon"><ProfileIcon size={48} /></div>
-          <h2>No User Selected</h2>
-          <p>Please create or select a user in the Admin page to manage preferences.</p>
+          <h2>Please Log In</h2>
+          <p>Please log in to manage your preferences.</p>
         </div>
       </div>
     );
@@ -154,8 +156,8 @@ const UserProfile = ({ currentUser }) => {
       <div className="profile-header">
         <div className="profile-avatar"><ProfileIcon size={48} /></div>
         <div className="profile-info">
-          <h1>{currentUser.display_name || currentUser.email}</h1>
-          <p className="profile-email">{currentUser.email}</p>
+          <h1>{user.email}</h1>
+          <p className="profile-email">Role: {user.role || 'user'}</p>
         </div>
       </div>
 

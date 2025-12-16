@@ -38,6 +38,11 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+# Auth service test artifacts (stored in tests/ subdirectory)
+auth/tests/.pytest_cache/
+auth/tests/.coverage
+auth/tests/htmlcov/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -49,6 +54,7 @@ ipython_config.py
 .env
 .env_old
 .env_new
+.env.backup
 .venv
 env/
 venv/

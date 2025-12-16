@@ -23,6 +23,8 @@ Configuration:
 import asyncio
 from bs4 import BeautifulSoup
 import re
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 from urllib.parse import urljoin, urlparse
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
@@ -909,9 +911,6 @@ class WFACausewayScraper(BaseScraper):
         Returns:
             List of event page URLs to scrape
         """
-        from datetime import datetime
-        from dateutil.relativedelta import relativedelta
-        
         now = datetime.now()
         today = now.date()
         

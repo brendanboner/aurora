@@ -13,13 +13,14 @@ import logging
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any, List, Type
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel, HttpUrl, Field
 
 from scrapers import WFAScraper, WFACausewayScraper
 from scrapers.base import BaseScraper, Resource
 from config_manager import ConfigManager
 from settings import settings
+from common.auth_middleware import get_user_context, require_role
 
 # Configure logging
 logging.basicConfig(
@@ -411,22 +412,33 @@ async def health():
 
 
 @app.get("/status", response_model=SchedulerStatus)
-async def status():
-    """Get current status of the retriever service"""
+async def status(user: Optional[dict] = Depends(get_user_context)):
+    """
+    Get current status of the retriever service.
+    
+    Can be called by authenticated users OR internal services.
+    """
+    if user:
+        logger.info(f"Status check by user {user['email']} (role: {user['role']})")
+    
     status_data = retriever_service.get_status()
     return status_data
 
 
 @app.post("/submit/url", response_model=DocumentSubmitResponse)
-async def submit_url(request: DocumentSubmitRequest):
+@require_role(["admin", "superadmin"])
+async def submit_url(request: DocumentSubmitRequest, user: Optional[dict] = Depends(get_user_context)):
     """
     Submit a URL for immediate processing.
+    Requires admin or superadmin role.
     
     The URL will be fetched, processed, and sent to the pipeline without waiting
     for the next scheduled scrape.
     
     NOTE: This endpoint is not yet implemented.
     """
+    logger.info(f"URL submission by {user['email']} (role: {user['role']}): {request.url}")
+    
     if not request.url:
         raise HTTPException(status_code=400, detail="URL is required")
     
@@ -484,15 +496,19 @@ async def submit_file(
 
 
 @app.post("/scrape/datasource/{datasource_id}")
-async def trigger_datasource_scrape(datasource_id: str):
+@require_role(["admin", "superadmin"])
+async def trigger_datasource_scrape(datasource_id: str, user: Optional[dict] = Depends(get_user_context)):
     """
     Manually trigger a scrape for a single datasource.
+    Requires admin or superadmin role.
     
     Args:
         datasource_id: The datasource identifier (e.g., 'wfa_causeway_wifi7mtg')
     
     Note: For Causeway datasources, consider using /scrape/all to share authentication.
     """
+    logger.info(f"Manual datasource scrape triggered by {user['email']} (role: {user['role']}): {datasource_id}")
+    
     config_manager = ConfigManager()
     try:
         datasource = config_manager.get_datasource_config(datasource_id)
@@ -621,15 +637,19 @@ async def collect_datasource_scrape(datasource_id: str, max_items: int = 50):
 
 
 @app.post("/scrape/all")
-async def trigger_scrape_all():
+@require_role(["admin", "superadmin"])
+async def trigger_scrape_all(user: Optional[dict] = Depends(get_user_context)):
     """
     Manually trigger a scrape for all configured datasources.
+    Requires admin or superadmin role.
     
     Datasources are grouped by scraper_type to allow session reuse 
     (e.g., single Causeway authentication for all Causeway datasources).
     
     Returns list of scraper types started and their datasources.
     """
+    logger.warning(f"Manual scrape of ALL datasources triggered by {user['email']} (role: {user['role']})")
+    
     config_manager = ConfigManager()
     try:
         grouped_datasources = config_manager.get_datasources_by_scraper_type()

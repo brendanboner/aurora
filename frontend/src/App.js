@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import Chatbot from './pages/Chatbot';
@@ -9,12 +11,14 @@ import AdminUsers from './pages/AdminUsers';
 import AdminKnowledgeGraph from './pages/AdminKnowledgeGraph';
 import AdminMonitoring from './pages/AdminMonitoring';
 import AdminSystemConfig from './pages/AdminSystemConfig';
+import AdminChatSessions from './pages/AdminChatSessions';
 import News from './pages/News';
+import Events from './pages/Events';
+import EventDetail from './pages/EventDetail';
 import { testBackendConnection } from './services/api';
 
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
-  const [currentUser, setCurrentUser] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
@@ -30,16 +34,6 @@ function App() {
     };
 
     checkBackend();
-    
-    // Try to load user from localStorage
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      try {
-        setCurrentUser(JSON.parse(savedUser));
-      } catch (e) {
-        localStorage.removeItem('currentUser');
-      }
-    }
 
     // Check if mobile on initial load
     const handleResize = () => {
@@ -52,81 +46,126 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleUserChange = (user) => {
-    setCurrentUser(user);
-    if (user) {
-      localStorage.setItem('currentUser', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('currentUser');
-    }
-  };
-
   const toggleSidebar = () => {
     setSidebarOpen(prev => !prev);
   };
 
   return (
-    <Router>
-      <div className="App">
-        <div className="app-shell">
-          <Header 
-            currentUser={currentUser}
-            onLogout={() => handleUserChange(null)}
-          />
-          <div className="app-layout">
-              <main className={`main-content ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-                <div className={`layout-inner ${sidebarOpen ? 'with-sidebar' : 'collapsed-sidebar'}`}>
-                  <div className={`sidebar-container ${sidebarOpen ? 'open' : 'closed'}`}>
-                    <Sidebar 
-                      isOpen={sidebarOpen}
-                      onToggle={toggleSidebar}
-                      backendStatus={backendStatus}
-                    />
-                  </div>
-                  <div className="page-container">
-                    <Routes>
-                <Route 
-                  path="/" 
-                  element={<Chatbot currentUser={currentUser} backendStatus={backendStatus} />} 
-                />
-                <Route 
-                  path="/news" 
-                  element={<News currentUser={currentUser} backendStatus={backendStatus} />} 
-                />
-                {/* New discrete admin pages */}
-                <Route path="/admin/users" element={<AdminUsers onUserChange={handleUserChange} currentUser={currentUser} />} />
-                <Route path="/admin/knowledge-graph" element={<AdminKnowledgeGraph />} />
-                <Route path="/admin/monitoring" element={<AdminMonitoring />} />
-                <Route path="/admin/system-config" element={<AdminSystemConfig />} />
-                <Route 
-                  path="/profile" 
-                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
-                />
-                <Route 
-                  path="/profile/topics" 
-                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
-                />
-                <Route 
-                  path="/profile/organisations" 
-                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
-                />
-                <Route 
-                  path="/profile/people" 
-                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
-                />
-                <Route 
-                  path="/profile/notifications" 
-                  element={<UserProfile currentUser={currentUser} onUserChange={handleUserChange} />} 
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </div>
-              </div>
-            </main>
-          </div>
+    <AuthProvider>
+      <Router>
+        <div className="App">
+          <Routes>
+            {/* All routes are protected - unauthenticated users redirect to Cognito */}
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <div className="app-shell">
+                    <Header onMenuToggle={toggleSidebar} />
+                    <div className="sidebar-container">
+                      <Sidebar 
+                        isOpen={sidebarOpen}
+                        onToggle={toggleSidebar}
+                        backendStatus={backendStatus}
+                      />
+                    </div>
+                    <div className="page-container">
+                      <Routes>
+                        <Route 
+                          path="/" 
+                          element={<Chatbot backendStatus={backendStatus} />} 
+                        />
+                        <Route 
+                          path="/news" 
+                          element={<News backendStatus={backendStatus} />} 
+                        />
+                        
+                        {/* Events routes */}
+                        <Route 
+                          path="/events" 
+                          element={<Events />} 
+                        />
+                        <Route 
+                          path="/events/:urlHash" 
+                          element={<EventDetail />} 
+                        />
+                              
+                              {/* User Profile routes */}
+                              <Route 
+                                path="/profile" 
+                                element={<UserProfile />} 
+                              />
+                              <Route 
+                                path="/profile/topics" 
+                                element={<UserProfile />} 
+                              />
+                              <Route 
+                                path="/profile/organisations" 
+                                element={<UserProfile />} 
+                              />
+                              <Route 
+                                path="/profile/people" 
+                                element={<UserProfile />} 
+                              />
+                              <Route 
+                                path="/profile/notifications" 
+                                element={<UserProfile />} 
+                              />
+                              
+                              {/* Admin routes - require admin or superadmin role */}
+                              <Route 
+                                path="/admin/users" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminUsers />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              <Route 
+                                path="/admin/knowledge-graph" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminKnowledgeGraph />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              <Route 
+                                path="/admin/monitoring" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminMonitoring />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              <Route 
+                                path="/admin/system-config" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminSystemConfig />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              <Route 
+                                path="/admin/chat-sessions" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminChatSessions />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              
+                              {/* Redirect unknown routes to home */}
+                              <Route path="*" element={<Navigate to="/" replace />} />
+                            </Routes>
+                          </div>
+                        </div>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
         </div>
-      </div>
-    </Router>
+      </Router>
+    </AuthProvider>
   );
 }
 

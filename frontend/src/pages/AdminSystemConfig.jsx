@@ -15,7 +15,7 @@ const AdminSystemConfig = () => {
   const fetchConfigurations = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/system-configuration');
+      const response = await fetch('/api/backend/admin/system-configuration');
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Failed to fetch configurations: ${response.status} ${response.statusText} - ${errorText}`);
@@ -33,7 +33,7 @@ const AdminSystemConfig = () => {
 
   const handleCreate = async (formData) => {
     try {
-      const response = await fetch('/api/admin/system-configuration', {
+      const response = await fetch('/api/backend/admin/system-configuration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -48,7 +48,7 @@ const AdminSystemConfig = () => {
 
   const handleUpdate = async (datasourceId, formData) => {
     try {
-      const response = await fetch(`/api/admin/system-configuration/${datasourceId}`, {
+      const response = await fetch(`/api/backend/admin/system-configuration/${datasourceId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -65,7 +65,7 @@ const AdminSystemConfig = () => {
     if (!window.confirm(`Delete configuration for ${datasourceId}?`)) return;
     
     try {
-      const response = await fetch(`/api/admin/system-configuration/${datasourceId}`, {
+      const response = await fetch(`/api/backend/admin/system-configuration/${datasourceId}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete configuration');
@@ -79,7 +79,7 @@ const AdminSystemConfig = () => {
     if (!window.confirm('⚠️ WARNING: This will delete ALL pending documents in the queue!\n\nAre you sure you want to purge the queue?')) return;
     
     try {
-      const response = await fetch('/api/admin/purge-queue', {
+      const response = await fetch('/api/backend/admin/purge-queue', {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to purge queue');

@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from settings import settings
 from utils.logger import setup_logger
+from utils.document_parser import DocumentParser
 from rabbitmq_client import RabbitMQConsumer, RabbitMQProducer
 from services.metadata_extractor import MetadataExtractor
 from services.event_associator import EventAssociator
@@ -26,7 +27,6 @@ from neo4j_client import Neo4jClient, GraphRepository, NodeDeduplicator
 from neo4j_client.models import Person, ResourceUploadedByPerson
 import redis
 import json
-
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -110,7 +110,6 @@ class DocumentDigester:
         self._last_heartbeat_time = 0.0
         
         # Initialize document parser for binary files
-        from utils.document_parser import DocumentParser
         self.doc_parser = DocumentParser()
         
         logger.info("Document Digester initialized")
@@ -345,8 +344,9 @@ class DocumentDigester:
         """Record successfully completed document in Redis."""
         resource_data = message.get("resource_data", {})
         event_data = message.get("event_data", {})
+        
         completed_data = {
-            "title": resource_data.get("title") or event_data.get("name") or "Unknown",
+            "title": self._get_message_title(message),
             "url": resource_data.get("url") or event_data.get("url") or "",
             "category": resource_data.get("category") or "event" if event_data else "unknown",
             "status": "completed",
@@ -373,8 +373,9 @@ class DocumentDigester:
         """Record failed document in Redis."""
         resource_data = message.get("resource_data", {})
         event_data = message.get("event_data", {})
+        
         failed_data = {
-            "title": resource_data.get("title") or event_data.get("name") or "Unknown",
+            "title": self._get_message_title(message),
             "url": resource_data.get("url") or event_data.get("url") or "",
             "category": resource_data.get("category") or "event" if event_data else "unknown",
             "status": "failed",
@@ -730,13 +731,13 @@ class DocumentDigester:
         batch_id = message.get("batch_id")
         
         logger.info(f"Processing event: {event_name}")
-        self.update_current_processing({"title": event_name, "url": event_data.get("url", ""), "category": "event"}, "validating")
+        self.update_current_processing(message, "validating")
         
         # Validate event message
         self.validate_event_message(message)
         
         logger.info("Building Event model...")
-        self.update_current_processing({"title": event_name, "url": event_data.get("url", ""), "category": "event"}, "building model")
+        self.update_current_processing(message, "building model")
         
         # Build Event model using model_builder
         event_model = build_event_model(
@@ -747,7 +748,7 @@ class DocumentDigester:
         )
         
         logger.info("Inserting event into knowledge graph...")
-        self.update_current_processing({"title": event_name, "url": event_data.get("url", ""), "category": "event"}, "inserting into graph")
+        self.update_current_processing(message, "inserting into graph")
         
         # create_node automatically creates INGESTED_FROM relationship via datasource_id
         result = self.graph_repository.create_node(event_model)
@@ -758,8 +759,8 @@ class DocumentDigester:
         if batch_id:
             self._update_batch_progress(batch_id, item_type="event")
         
-        # # Record success
-        self.record_completed({"title": event_name, "url": event_data.get("url", ""), "category": "event", "datasource_id": message.get("datasource_id", "")}, None)
+        # Record success
+        self.record_completed(message, None)
         self.clear_current_processing()
         
         # Clear delivery attempt counter on success
@@ -781,7 +782,7 @@ class DocumentDigester:
         title = resource_data.get("title", "Unknown")
         
         logger.info(f"Processing resource: {title}")
-        self.update_current_processing({"title": title, "url": resource_data.get("url", ""), "category": resource_data.get("category", "unknown")}, "validating")
+        self.update_current_processing(message, "validating")
         
         # Validate resource message
         self.validate_resource_message(message)
@@ -805,7 +806,7 @@ class DocumentDigester:
                 logger.warning(f"Could not retrieve/parse cached content for {url}")
 
         logger.info("Extracting and validating metadata nodes from content...")
-        self.update_current_processing({"title": title, "url": resource_data.get("url", ""), "category": resource_data.get("category", "unknown")}, "extracting metadata")
+        self.update_current_processing(message, "extracting metadata")
         metadata = self.metadata_extractor.extract_metadata(message)            
 
         logger.info("Building validated models from metadata...")
@@ -833,7 +834,7 @@ class DocumentDigester:
         models = self.deduplicator.deduplicate_nodes(models)
 
         logger.info("Inserting entities into knowledge graph...")
-        self.update_current_processing({"title": title, "url": resource_data.get("url", ""), "category": resource_data.get("category", "unknown")}, "inserting into graph")
+        self.update_current_processing(message, "inserting into graph")
         stats = self.graph_repository.insert_entities(models)
 
         # # Create UPLOADED_BY relationship if uploaded_by field is present
@@ -877,8 +878,7 @@ class DocumentDigester:
             self._update_batch_progress(batch_id, item_type="resource")
         
         # Record success
-        record_msg = {"title": title, "url": resource_data.get("url", ""), "category": resource_data.get("category", "unknown"), "datasource_id": message.get("datasource_id", ""), "publish_date": resource_data.get("publish_date", ""), "uploaded_by": message.get("uploaded_by", "")}
-        self.record_completed(record_msg, metadata)
+        self.record_completed(message, metadata)
         self.clear_current_processing()
         
         # Clear delivery attempt counter on success

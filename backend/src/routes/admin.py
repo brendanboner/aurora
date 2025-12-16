@@ -10,7 +10,9 @@ import redis
 import json
 import subprocess
 import logging
-from src.services import postgres
+import time
+from neo4j_client.client import Neo4jClient
+from src.services import postgres, graph_service
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 logger = logging.getLogger(__name__)
@@ -71,10 +73,23 @@ class ProcessingStatus(BaseModel):
     recent_failed: List[ProcessingResource]
 
 
+class BatchProgress(BaseModel):
+    """Ingestion batch progress information."""
+    batch_id: str
+    datasource_id: str
+    status: str  # "scraping", "scraped", "digesting", "completed", "failed"
+    items_scraped: int
+    items_digested: int
+    started_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    progress_percent: float
+
+
 class AdminDashboard(BaseModel):
     """Complete admin dashboard data."""
     queue_status: QueueStatus
     processing_status: ProcessingStatus
+    active_batches: List[BatchProgress]
     timestamp: str
 
 
@@ -198,16 +213,26 @@ async def get_queue_status():
                     
                     try:
                         message = json.loads(body)
-                        url = message.get("url", "")
+                        
+                        # Extract data from nested structure (resource_data or event_data)
+                        resource_data = message.get("resource_data", {})
+                        event_data = message.get("event_data", {})
+                        
+                        # Get fields from appropriate nested object
+                        title = resource_data.get("title") or event_data.get("name") or "Unknown"
+                        url = resource_data.get("url") or event_data.get("url") or ""
+                        category = resource_data.get("category") or ("event" if event_data else "unknown")
+                        publish_date = resource_data.get("publish_date")
+                        scraped_at = message.get("scraped_at", 0)
                         
                         # Only add if we haven't seen this URL yet
                         if url and url not in seen_urls:
                             resources.append(QueueResource(
-                                title=message.get("title", "Unknown"),
+                                title=title,
                                 url=url,
-                                category=message.get("category", "unknown"),
-                                publish_date=message.get("publish_date"),
-                                scraped_at=message.get("scraped_at", 0),
+                                category=category,
+                                publish_date=publish_date,
+                                scraped_at=scraped_at,
                                 position=position
                             ))
                             seen_urls.add(url)
@@ -248,7 +273,8 @@ async def get_queue_status():
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get queue status: {str(e)}")
+        logger.error(f"Failed to get queue status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve queue status")
 
 
 @router.get("/processing-status", response_model=ProcessingStatus)
@@ -327,8 +353,8 @@ async def get_processing_status():
             )
             
     except Exception as e:
-        logger.error(f"Failed to get processing status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get processing status: {str(e)}")
+        logger.error(f"Failed to get processing status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve processing status")
 
 
 @router.get("/dashboard", response_model=AdminDashboard)
@@ -339,15 +365,93 @@ async def get_admin_dashboard():
     try:
         queue_status = await get_queue_status()
         processing_status = await get_processing_status()
+        active_batches = await get_active_batches()
         
         return AdminDashboard(
             queue_status=queue_status,
             processing_status=processing_status,
+            active_batches=active_batches,
             timestamp=datetime.now().isoformat()
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get dashboard data: {str(e)}")
+        logger.error(f"Failed to get dashboard data: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load monitoring dashboard")
+
+
+@router.get("/active-batches", response_model=List[BatchProgress])
+async def get_active_batches():
+    """
+    Get currently active ingestion batches from Neo4j.
+    """
+    try:
+        # Get Neo4j connection details from environment
+        uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
+        user = os.getenv("NEO4J_USER", "neo4j")
+        password = os.getenv("NEO4J_PASSWORD", "password")
+        database = os.getenv("NEO4J_DATABASE", "neo4j")
+        
+        # Create client and connect
+        neo4j_client = Neo4jClient(uri=uri, user=user, password=password, database=database)
+        neo4j_client.connect()
+        
+        # Query for batches that are not completed or failed
+        query = """
+        MATCH (b:IngestionBatch)
+        WHERE b.status IN ['retrieving', 'digesting']
+        RETURN b.batch_id AS batch_id,
+               b.datasource_id AS datasource_id,
+               b.status AS status,
+               b.items_scraped AS items_scraped,
+               b.items_digested AS items_digested,
+               b.scrape_started_at AS started_at,
+               b.digest_completed_at AS updated_at
+        ORDER BY b.scrape_started_at DESC
+        LIMIT 10
+        """
+        
+        results = neo4j_client.execute_query(query)
+        
+        batches = []
+        for record in results:
+            items_scraped = record.get("items_scraped", 0)
+            items_digested = record.get("items_digested", 0)
+            progress_percent = (items_digested / items_scraped * 100) if items_scraped > 0 else 0
+            
+            # Convert datetime objects to ISO strings if present
+            started_at = record.get("started_at")
+            updated_at = record.get("updated_at")
+            
+            if started_at and hasattr(started_at, 'isoformat'):
+                started_at = started_at.isoformat()
+            elif started_at:
+                started_at = str(started_at)
+                
+            if updated_at and hasattr(updated_at, 'isoformat'):
+                updated_at = updated_at.isoformat()
+            elif updated_at:
+                updated_at = str(updated_at)
+            
+            batches.append(BatchProgress(
+                batch_id=record["batch_id"],
+                datasource_id=record["datasource_id"],
+                status=record["status"],
+                items_scraped=items_scraped,
+                items_digested=items_digested,
+                started_at=started_at,
+                updated_at=updated_at,
+                progress_percent=round(progress_percent, 1)
+            ))
+        
+        # Close connection
+        neo4j_client.close()
+        
+        return batches
+        
+    except Exception as e:
+        logger.error(f"Failed to get active batches: {e}", exc_info=True)
+        # Return empty list instead of error to not break dashboard
+        return []
 
 
 @router.delete("/clear-completed")
@@ -362,8 +466,8 @@ async def clear_completed():
     except redis.ConnectionError:
         raise HTTPException(status_code=503, detail="Redis not available")
     except Exception as e:
-        logger.error(f"Failed to clear completed list: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear completed list: {str(e)}")
+        logger.error(f"Failed to clear completed list: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to clear completed list")
 
 
 @router.delete("/clear-failed")
@@ -378,8 +482,8 @@ async def clear_failed():
     except redis.ConnectionError:
         raise HTTPException(status_code=503, detail="Redis not available")
     except Exception as e:
-        logger.error(f"Failed to clear failed list: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear failed list: {str(e)}")
+        logger.error(f"Failed to clear failed list: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to clear failed list")
 
 
 @router.delete("/purge-queue")
@@ -551,10 +655,10 @@ class SystemConfigurationUpdate(BaseModel):
 @router.get("/system-configuration", response_model=List[SystemConfigurationResponse])
 async def get_all_system_configurations():
     """
-    Get all system configurations.
+    Get all system configurations from Neo4j DataSource nodes.
     """
     try:
-        configs = postgres.get_all_system_configurations()
+        configs = graph_service.get_all_datasource_configurations()
         return configs
     except Exception as e:
         logger.error(f"Failed to get system configurations: {e}")
@@ -564,10 +668,10 @@ async def get_all_system_configurations():
 @router.get("/system-configuration/{datasource_id}", response_model=SystemConfigurationResponse)
 async def get_system_configuration(datasource_id: str):
     """
-    Get system configuration for a specific datasource.
+    Get system configuration for a specific datasource from Neo4j.
     """
     try:
-        config = postgres.get_system_configuration(datasource_id)
+        config = graph_service.get_datasource_configuration(datasource_id)
         if not config:
             raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
         return config
@@ -581,10 +685,10 @@ async def get_system_configuration(datasource_id: str):
 @router.post("/system-configuration", response_model=SystemConfigurationResponse, status_code=201)
 async def create_system_configuration(config: SystemConfigurationCreate):
     """
-    Create or update system configuration for a datasource.
+    Create or update system configuration for a datasource in Neo4j.
     """
     try:
-        result = postgres.upsert_system_configuration(
+        result = graph_service.upsert_datasource_configuration(
             datasource_id=config.datasource_id,
             name=config.name,
             scraper_type=config.scraper_type,
@@ -613,16 +717,16 @@ async def create_system_configuration(config: SystemConfigurationCreate):
 @router.patch("/system-configuration/{datasource_id}", response_model=SystemConfigurationResponse)
 async def update_system_configuration(datasource_id: str, config: SystemConfigurationUpdate):
     """
-    Update system configuration for a datasource.
+    Update system configuration for a datasource in Neo4j.
     Only updates provided fields, leaving others unchanged.
     """
     try:
         # Check if configuration exists
-        existing = postgres.get_system_configuration(datasource_id)
-        if not existing.get("created_at"):
+        existing = graph_service.get_datasource_configuration(datasource_id)
+        if not existing:
             raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
         
-        result = postgres.upsert_system_configuration(
+        result = graph_service.upsert_datasource_configuration(
             datasource_id=datasource_id,
             name=config.name,
             scraper_type=config.scraper_type,
@@ -653,16 +757,17 @@ async def update_system_configuration(datasource_id: str, config: SystemConfigur
 @router.delete("/system-configuration/{datasource_id}")
 async def delete_system_configuration(datasource_id: str):
     """
-    Delete system configuration for a datasource.
+    Delete system configuration for a datasource from Neo4j.
     """
     try:
         # Check if configuration exists
-        existing = postgres.get_system_configuration(datasource_id)
-        if not existing.get("created_at"):
+        existing = graph_service.get_datasource_configuration(datasource_id)
+        if not existing:
             raise HTTPException(status_code=404, detail=f"Configuration for datasource '{datasource_id}' not found")
         
-        query = "DELETE FROM system_configuration WHERE datasource_id = %s"
-        postgres.execute(query, (datasource_id,))
+        success = graph_service.delete_datasource_configuration(datasource_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete configuration")
         
         return {"status": "success", "message": f"Configuration for datasource '{datasource_id}' deleted"}
     except HTTPException:
@@ -670,3 +775,173 @@ async def delete_system_configuration(datasource_id: str):
     except Exception as e:
         logger.error(f"Failed to delete system configuration: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete system configuration: {str(e)}")
+
+
+# ========== Chat Analytics Endpoints ==========
+
+class ConversationWithUserResponse(BaseModel):
+    """Conversation with user details for admin view."""
+    id: int
+    user_id: str
+    title: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    email: str
+    display_name: Optional[str]
+    message_count: int
+
+
+class ConversationDetailWithUserResponse(BaseModel):
+    """Conversation detail with user info for admin view."""
+    id: int
+    user_id: str
+    title: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    email: str
+    display_name: Optional[str]
+
+
+class MessageResponse(BaseModel):
+    """Chat message."""
+    id: int
+    conversation_id: int
+    user_id: str
+    role: str
+    content: str
+    metadata: Optional[Dict[str, Any]]
+    created_at: datetime
+
+
+class ChatStatisticsResponse(BaseModel):
+    """Chat statistics for admin dashboard."""
+    total_conversations: int
+    unique_users: int
+    total_messages: int
+    user_messages: int
+    assistant_messages: int
+    avg_messages_per_conversation: float
+    recent_conversations: int
+
+
+@router.get("/conversations", response_model=List[ConversationWithUserResponse])
+async def get_all_conversations_admin(limit: int = 100, user_id: Optional[str] = None):
+    """
+    Get all conversations for admin view.
+    Includes user email and message count.
+    Optionally filter by user_id.
+    """
+    try:
+        conversations = postgres.get_all_conversations_admin(limit=limit, user_id=user_id)
+        return [ConversationWithUserResponse(**conv) for conv in conversations]
+    except Exception as e:
+        logger.error(f"Error fetching conversations for admin: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversations/{conversation_id}")
+async def get_conversation_detail_admin(conversation_id: int):
+    """
+    Get conversation details with all messages for admin view.
+    Includes user information.
+    """
+    try:
+        conversation = postgres.get_conversation_with_user_admin(conversation_id)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        messages = postgres.get_conversation_messages(conversation_id)
+        
+        return {
+            "conversation": ConversationDetailWithUserResponse(**conversation),
+            "messages": [MessageResponse(**msg) for msg in messages]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching conversation {conversation_id} for admin: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chat-statistics", response_model=ChatStatisticsResponse)
+async def get_chat_statistics():
+    """
+    Get overall chat statistics for admin dashboard.
+    """
+    try:
+        stats = postgres.get_chat_statistics()
+        return ChatStatisticsResponse(**stats)
+    except Exception as e:
+        logger.error(f"Error fetching chat statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/users/{user_id}/sync")
+async def sync_user_to_graph(user_id: str):
+    """
+    Sync a user from Postgres to Neo4j as a Person node.
+    Uses the same deduplication logic as the login process to avoid creating duplicates.
+    
+    Args:
+        user_id: UUID of the user to sync
+        
+    Returns:
+        Success message with sync details
+    """
+    
+    try:
+        # Get user from Postgres
+        user = postgres.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        logger.info(f"Syncing user {user_id} ({user['email']}) to Neo4j graph")
+        
+        # Use the same sync logic as login (handles deduplication)
+        try:
+            postgres._ensure_user_in_neo4j(
+                user_uuid=user['id'],
+                email=user['email'],
+                full_name=user['display_name'] or user['email']
+            )
+            logger.info(f"_ensure_user_in_neo4j completed for user {user_id}")
+        except Exception as sync_error:
+            logger.error(f"Error in _ensure_user_in_neo4j for user {user_id}: {sync_error}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to sync user to Neo4j: {str(sync_error)}")
+        
+        # Give Neo4j a moment to ensure transaction is committed
+        time.sleep(0.5)
+        
+        # Check if user now exists in graph
+        synced = graph_service.check_user_in_graph(user['id'])
+        logger.info(f"User {user_id} sync status check: synced={synced}")
+        
+        if not synced:
+            logger.warning(f"User {user_id} sync completed but user not found in graph - checking Neo4j connection")
+            # Additional diagnostic query to check if any Person nodes exist
+            try:
+                repo = graph_service.get_repo()
+                check_query = "MATCH (p:Person) WHERE p.user_uuid = $user_uuid OR p.email = $email RETURN p LIMIT 1"
+                results = repo.client.execute_query(check_query, {"user_uuid": user['id'], "email": user['email']})
+                if results:
+                    person = dict(results[0]['p'])
+                    logger.warning(f"Found Person node but not by user_uuid: {person}")
+                    return {
+                        "success": True,
+                        "message": f"User {user['email']} found in graph but user_uuid may need updating",
+                        "synced_to_graph": False,
+                        "debug_info": {"found_person": person}
+                    }
+            except Exception as debug_error:
+                logger.error(f"Debug query failed: {debug_error}")
+        
+        return {
+            "success": True,
+            "message": f"User {user['email']} synced to graph using deduplication logic",
+            "synced_to_graph": synced
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing user {user_id} to graph: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

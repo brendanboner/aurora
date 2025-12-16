@@ -1,47 +1,73 @@
-.app-layout { flex: 1; display: flex; }
-.main-content { flex:1; padding:0; min-height:calc(100vh - 60px); }
-.layout-inner { display:flex; height:calc(100vh - 60px); }
-/* Outer application shell margin and radius */
+/* Root Application Layout - CSS Grid with 12px gaps */
+.App {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: var(--background);
+}
+
+/* App shell with grid layout */
 .app-shell {
-  margin:13px;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 50px 1fr;
+  gap: 12px;
+  padding: 12px;
+  grid-template-areas:
+    "header header"
+    "sidebar content";
+}
+
+/* Header spans full width */
+.app-header {
+  grid-area: header;
+  height: 50px;
+}
+
+/* Sidebar - left column */
+.sidebar-container {
+  grid-area: sidebar;
+  overflow: hidden;
+}
+
+/* Content area - scrollable */
+.page-container {
+  grid-area: content;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  overflow:hidden;
+  padding: 24px;
 }
 
-/* Ensure header respects shell rounding if header has background */
-.app-shell > header, .app-shell > .header, .app-shell > .app-header {
-  border-top-left-radius: var(--radius-card);
-  border-top-right-radius: var(--radius-card);
+/* Remove old layout classes */
+.app-layout,
+.main-content,
+.layout-inner {
+  display: contents;
 }
 
-/* Sidebar column: fixed height below header with internal scroll */
-.sidebar-container {
-  height:100%;
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: 50px 1fr;
+    grid-template-areas:
+      "header"
+      "content";
+  }
+  
+  /* Sidebar becomes overlay on mobile */
+  .sidebar-container {
+    display: contents;
+  }
+  
+  .page-container {
+    padding: 16px;
+  }
 }
-.sidebar-container .sidebar {
-  height:100%;
-}
-
-/* Provide internal padding left so sidebar content aligns with header left edge while outer shell margin applies */
-.sidebar-container {
-  padding-left:0; /* outer margin handles gap */
-}
-
-/* When collapsed/open add consistent separation from page content */
-.sidebar-container.open { margin-right:24px; }
-.sidebar-container.closed { margin-right:16px; }
-.layout-inner.with-sidebar .page-container { flex:1; padding:24px; overflow-y:auto; }
-.layout-inner.collapsed-sidebar .page-container { flex:1; padding:24px; overflow-y:auto; }
-.sidebar-container { display:flex; }
-.sidebar-container.open { margin-right:24px; }
-.sidebar-container.closed { margin-right:16px; }
-@media (max-width:768px){
-  .layout-inner { flex-direction:column; }
-  .sidebar-container.open { margin-right:0; margin-bottom:16px; }
-  .page-container { padding:16px !important; }
-}
-
-/* Cleaned legacy sidebar offset styles; layout now handled via .layout-inner and .page-container */
 
 /* Common button styles */
 .btn {
@@ -171,7 +197,6 @@ select.input {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-right: 8px;
 }
 
 .status-connected {

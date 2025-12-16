@@ -5,6 +5,7 @@ import { MonitoringIcon, AdminIcon, LinkIcon } from '../components/icons';
 const AdminMonitoring = () => {
   const [queueStatus, setQueueStatus] = useState(null);
   const [processingStatus, setProcessingStatus] = useState(null);
+  const [activeBatches, setActiveBatches] = useState([]);
   const [error, setError] = useState(null);
   const [queuePage, setQueuePage] = useState(1);
   const queueItemsPerPage = 5;
@@ -14,11 +15,12 @@ const AdminMonitoring = () => {
     let interval;
     const loadMonitoringData = async () => {
       try {
-        const response = await fetch('http://localhost:8000/admin/dashboard');
+        const response = await fetch('/api/backend/admin/dashboard');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         setQueueStatus(data.queue_status);
         setProcessingStatus(data.processing_status);
+        setActiveBatches(data.active_batches || []);
         setError(null);
       } catch (err) {
         setError('Failed to load monitoring data');
@@ -31,15 +33,16 @@ const AdminMonitoring = () => {
 
   const handleClearCompleted = async () => {
     try {
-      const response = await fetch('http://localhost:8000/admin/clear-completed', {
+      const response = await fetch('/api/backend/admin/clear-completed', {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       // Refresh data immediately
-      const dashboardResponse = await fetch('http://localhost:8000/admin/dashboard');
+      const dashboardResponse = await fetch('/api/backend/admin/dashboard');
       const data = await dashboardResponse.json();
       setQueueStatus(data.queue_status);
       setProcessingStatus(data.processing_status);
+      setActiveBatches(data.active_batches || []);
     } catch (err) {
       setError('Failed to clear completed list');
     }
@@ -47,15 +50,16 @@ const AdminMonitoring = () => {
 
   const handleClearFailed = async () => {
     try {
-      const response = await fetch('http://localhost:8000/admin/clear-failed', {
+      const response = await fetch('/api/backend/admin/clear-failed', {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       // Refresh data immediately
-      const dashboardResponse = await fetch('http://localhost:8000/admin/dashboard');
+      const dashboardResponse = await fetch('/api/backend/admin/dashboard');
       const data = await dashboardResponse.json();
       setQueueStatus(data.queue_status);
       setProcessingStatus(data.processing_status);
+      setActiveBatches(data.active_batches || []);
     } catch (err) {
       setError('Failed to clear failed list');
     }
@@ -127,6 +131,40 @@ const AdminMonitoring = () => {
               </div>
             </div>
           </div>
+          
+          {/* Batch Progress Section */}
+          {activeBatches && activeBatches.length > 0 && (
+            <div className="monitoring-section">
+              <h2>Active Ingestion Batches</h2>
+              <div className="batch-list">
+                {activeBatches.map((batch) => (
+                  <div key={batch.batch_id} className="batch-item">
+                    <div className="batch-header">
+                      <div className="batch-source">{batch.datasource_id}</div>
+                      <div className={`batch-status status-${batch.status}`}>{batch.status}</div>
+                    </div>
+                    <div className="batch-progress-container">
+                      <div className="batch-progress-bar">
+                        <div 
+                          className="batch-progress-fill" 
+                          style={{ width: `${batch.progress_percent}%` }}
+                        ></div>
+                      </div>
+                      <div className="batch-progress-text">
+                        {batch.items_digested} / {batch.items_scraped} items ({batch.progress_percent}%)
+                      </div>
+                    </div>
+                    <div className="batch-meta">
+                      {batch.started_at && <span>Started: {new Date(batch.started_at).toLocaleString()}</span>}
+                      {batch.updated_at && <span>Updated: {new Date(batch.updated_at).toLocaleString()}</span>}
+                      {!batch.started_at && !batch.updated_at && <span>No timestamps available</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
           <div className="monitoring-section">
             <h2>Processing Queue</h2>
             {queueStatus && (

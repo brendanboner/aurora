@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Copy common utilities (auth middleware)
+COPY common ./common
+
 # Copy rabbitmq-client from parent context
 COPY rabbitmq-client ./rabbitmq-client
 COPY neo4j-client ./neo4j-client

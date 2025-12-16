@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon } from '../components/icons';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
   const location = useLocation();
@@ -45,6 +45,16 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
           >
             <span className="sidebar-icon"><NewsIcon /></span>
             {isOpen && <span className="sidebar-label">News & Events</span>}
+          </Link>
+
+          {/* Events */}
+          <Link 
+            to="/events" 
+            className={`sidebar-item ${isActive('/events') || location.pathname.startsWith('/events/') ? 'active' : ''}`}
+            title="Events"
+          >
+            <span className="sidebar-icon"><CalendarIcon /></span>
+            {isOpen && <span className="sidebar-label">Events</span>}
           </Link>
 
           {/* Profile Menu with expandable submenu */}
@@ -129,14 +139,21 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                   <span className="sidebar-icon">⚙️</span>
                   <span>System Config</span>
                 </Link>
+                <Link 
+                  to="/admin/chat-sessions" 
+                  className={`sidebar-subitem ${isActive('/admin/chat-sessions') ? 'active' : ''}`}
+                >
+                  <span className="sidebar-icon"><ChatIcon size={16} /></span>
+                  <span>Chat Sessions</span>
+                </Link>
               </div>
             )}
           </div>
         </nav>
 
         {/* Status indicator at bottom */}
-        {isOpen && (
-          <div className="sidebar-footer">
+        <div className="sidebar-footer">
+          {isOpen ? (
             <div className="status-badge">
               <span className={getStatusClass()}></span>
               <span className="status-text">
@@ -144,8 +161,12 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                  backendStatus === 'disconnected' ? 'Disconnected' : 'Checking...'}
               </span>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="status-badge-collapsed">
+              <span className={getStatusClass()}></span>
+            </div>
+          )}
+        </div>
       </aside>
     </>
   );

@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     neo4j_password: str = "password"
     neo4j_database: str = "neo4j"
     
-    # PostgreSQL Configuration (for config_manager)
+    # PostgreSQL Configuration (for user data, preferences, event attendance)
+    # Note: Datasource configuration has been migrated to Neo4j
     postgres_host: str = "postgres"
     postgres_port: int = 5432
     postgres_user: str = "aurora"
@@ -43,7 +44,7 @@ class Settings(BaseSettings):
     
     # Scheduler Configuration
     # Poll interval for checking cron schedules (in seconds)
-    # Datasource-specific schedules are stored in the database
+    # Datasource-specific schedules are stored in Neo4j DataSource nodes
     scheduler_poll_interval: int = 60  # Check every 60 seconds
     
     # WFA Causeway Authentication

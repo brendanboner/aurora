@@ -1,8 +1,7 @@
 .chatbot-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
-  max-width: 1200px;
+  height: 100%;
   margin: 0 auto;
 }
 
@@ -96,8 +95,16 @@
   flex-shrink: 0;
 }
 
+.message-user {
+  flex-direction: row-reverse;
+}
+
 .message-user .message-avatar {
   background-color: rgba(137, 129, 229, 0.3);
+}
+
+.message-user .message-header {
+  flex-direction: row-reverse;
 }
 
 .message-content {
@@ -164,6 +171,17 @@
 .message-text pre code {
   background: none;
   padding: 0;
+}
+
+.message-text a {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(137, 129, 229, 0.3);
+  transition: border-color 0.2s ease;
+}
+
+.message-text a:hover {
+  border-bottom-color: var(--primary);
 }
 
 .message-filters {

@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { createUser, getAllUsers, deleteUser } from '../services/api';
+import { getAllUsers, deleteUser, syncUserToGraph } from '../services/api';
 import './Admin.css';
-import { PlusIcon, TrashIcon, ProfileIcon, CheckIcon } from '../components/icons';
+import { TrashIcon, ProfileIcon } from '../components/icons';
 
-const AdminUsers = ({ onUserChange, currentUser }) => {
+const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserName, setNewUserName] = useState('');
+  const [syncingUsers, setSyncingUsers] = useState(new Set());
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -25,82 +24,88 @@ const AdminUsers = ({ onUserChange, currentUser }) => {
     }
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    if (!newUserEmail || !newUserName) return;
-    try {
-      const newUser = await createUser(newUserEmail, newUserName);
-      setUsers([newUser, ...users]);
-      setNewUserEmail('');
-      setNewUserName('');
-      setError(null);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create user');
-    }
-  };
-
   const handleDeleteUser = async (userId) => {
     if (!window.confirm('Delete this user?')) return;
     try {
       await deleteUser(userId);
       setUsers(users.filter(u => u.id !== userId));
-      if (currentUser?.id === userId) onUserChange(null);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete user');
     }
   };
 
-  const handleSelectUser = (user) => onUserChange(user);
+  const handleSyncUser = async (userId) => {
+    setSyncingUsers(prev => new Set(prev).add(userId));
+    setError(null);
+    try {
+      await syncUserToGraph(userId);
+      // Reload users to get updated sync status
+      await loadUsers();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to sync user to graph');
+    } finally {
+      setSyncingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    }
+  };
 
   return (
     <div className="admin-container">
       <div className="admin-header">
         <h1>Users</h1>
-        <p>Manage application users</p>
+        <p>View and manage application users</p>
       </div>
       {error && <div className="admin-error">{error}</div>}
       {loading && <div className="spinner" />}
       {!loading && (
         <div className="admin-content">
           <div className="admin-section">
-            <h2><PlusIcon size={18} /> Create New User</h2>
-            <form className="user-form" onSubmit={handleCreateUser}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Email</label>
-                  <input type="email" className="input" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} required />
-                </div>
-                <div className="form-group">
-                  <label>Display Name</label>
-                  <input type="text" className="input" value={newUserName} onChange={e => setNewUserName(e.target.value)} required />
-                </div>
-              </div>
-              <button type="submit" className="btn btn-primary"><PlusIcon size={16} /> Create User</button>
-            </form>
-          </div>
-          <div className="admin-section">
-            <h2><ProfileIcon size={18} /> Existing Users ({users.length})</h2>
+            <h2><ProfileIcon size={18} /> Application Users ({users.length})</h2>
+            <p className="section-note">
+              Users are authenticated through AWS Cognito. 
+              This view shows users who have accessed the application.
+            </p>
             <div className="users-list">
-              {users.map(user => (
-                <div key={user.id} className={`user-card ${currentUser?.id === user.id ? 'selected' : ''}`}>
-                  <div className="user-info">
-                    <div className="user-avatar" aria-label="user avatar"><ProfileIcon size={28} /></div>
-                    <div className="user-details">
-                      <div className="user-name">{user.display_name}</div>
-                      <div className="user-email">{user.email}</div>
-                      <div className="user-meta">Created: {new Date(user.created_at).toLocaleDateString()}</div>
+              {users.length === 0 ? (
+                <div className="empty-state">
+                  <p>No users have accessed the application yet.</p>
+                </div>
+              ) : (
+                users.map(user => (
+                  <div key={user.id} className="user-card">
+                    <div className="user-info">
+                      <div className="user-avatar" aria-label="user avatar"><ProfileIcon size={28} /></div>
+                      <div className="user-details">
+                        <div className="user-name">{user.display_name || user.email}</div>
+                        <div className="user-email">{user.email}</div>
+                        <div className="user-meta">
+                          Created: {new Date(user.created_at).toLocaleDateString()}
+                          <span className={`sync-status ${user.synced_to_graph ? 'synced' : 'not-synced'}`}>
+                            {user.synced_to_graph ? '● Synced to Graph' : '○ Not in Graph'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="user-actions">
+                      {!user.synced_to_graph && (
+                        <button 
+                          className="btn btn-primary" 
+                          onClick={() => handleSyncUser(user.id)}
+                          disabled={syncingUsers.has(user.id)}
+                        >
+                          {syncingUsers.has(user.id) ? 'Syncing...' : 'Sync to Graph'}
+                        </button>
+                      )}
+                      <button className="btn btn-danger" onClick={() => handleDeleteUser(user.id)}>
+                        <TrashIcon size={14} /> Delete
+                      </button>
                     </div>
                   </div>
-                  <div className="user-actions">
-                    {currentUser?.id !== user.id ? (
-                      <button className="btn btn-secondary" onClick={() => handleSelectUser(user)}>Select</button>
-                    ) : (
-                      <span className="badge"><CheckIcon size={12} /> Active</span>
-                    )}
-                    <button className="btn btn-danger" onClick={() => handleDeleteUser(user.id)}><TrashIcon size={14} /> Delete</button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

@@ -49,20 +49,20 @@ class NewsService:
         
         logger.info("NewsService initialized")
     
-    def _get_cache_key(self, user_id: int, time_range: str) -> str:
+    def _get_cache_key(self, user_id: str, time_range: str) -> str:  # Changed from int to str
         """Generate cache key for news content."""
         return f"news:user:{user_id}:range:{time_range}"
     
-    def _get_last_refresh_key(self, user_id: int) -> str:
+    def _get_last_refresh_key(self, user_id: str) -> str:  # Changed from int to str
         """Generate cache key for last refresh timestamp."""
         return f"news:user:{user_id}:last_refresh"
     
-    def should_refresh(self, user_id: int, force: bool = False) -> bool:
+    def should_refresh(self, user_id: str, force: bool = False) -> bool:  # Changed from int to str
         """
         Check if news should be refreshed for this user.
         
         Args:
-            user_id: The user ID
+            user_id: The user ID (Cognito UUID)
             force: If True, always return True
             
         Returns:
@@ -83,12 +83,12 @@ class NewsService:
             logger.warning(f"Error checking refresh status: {e}")
             return True
     
-    def get_cached_news(self, user_id: int, time_range: str) -> Optional[Dict[str, Any]]:
+    def get_cached_news(self, user_id: str, time_range: str) -> Optional[Dict[str, Any]]:  # Changed from int to str
         """
         Get cached news content if available.
         
         Args:
-            user_id: The user ID
+            user_id: The user ID (Cognito UUID)
             time_range: Time range (1week, 1month, 6months, 1year)
             
         Returns:
@@ -103,12 +103,12 @@ class NewsService:
             logger.warning(f"Error retrieving cached news: {e}")
         return None
     
-    def cache_news(self, user_id: int, time_range: str, content: Dict[str, Any]):
+    def cache_news(self, user_id: str, time_range: str, content: Dict[str, Any]):  # Changed from int to str
         """
         Cache news content with TTL.
         
         Args:
-            user_id: The user ID
+            user_id: The user ID (Cognito UUID)
             time_range: Time range
             content: News content to cache
         """
@@ -397,7 +397,7 @@ Return ONLY valid JSON, no additional text."""
     
     def generate_news(
         self,
-        user_id: int,
+        user_id: str,  # Changed from int to str
         user_preferences: Dict[str, Any],
         time_range: str = "1month",
         force_refresh: bool = False
@@ -406,7 +406,7 @@ Return ONLY valid JSON, no additional text."""
         Generate curated news for a user.
         
         Args:
-            user_id: The user ID
+            user_id: The user ID (Cognito UUID)
             user_preferences: User preferences including topics, organisations, people
             time_range: Time range (1week, 1month, 6months, 1year)
             force_refresh: If True, bypass cache and regenerate

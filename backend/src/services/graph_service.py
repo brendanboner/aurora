@@ -478,3 +478,185 @@ def get_graph_statistics() -> Dict[str, Any]:
         "datasources": 0,
         "relationships": 0
     }
+
+
+# =============================================================================
+# DataSource Configuration Management (Admin UI)
+# =============================================================================
+
+def get_all_datasource_configurations() -> List[Dict[str, Any]]:
+    """
+    Get all datasource configurations from Neo4j.
+    Returns all DataSource nodes with their properties.
+    """
+    repo = get_repo()
+    query = """
+    MATCH (ds:DataSource)
+    RETURN ds
+    ORDER BY ds.datasource_id
+    """
+    results = repo.client.execute_query(query, {})
+    configs = []
+    for record in results:
+        ds_node = dict(record["ds"])
+        # Convert datetime fields to strings for JSON serialization
+        for field in ["last_scraped_at", "created_at", "updated_at"]:
+            if field in ds_node:
+                ds_node[field] = _convert_datetime_to_string(ds_node[field])
+        configs.append(ds_node)
+    return configs
+
+
+def get_datasource_configuration(datasource_id: str) -> Dict[str, Any] | None:
+    """
+    Get a specific datasource configuration from Neo4j.
+    """
+    repo = get_repo()
+    query = """
+    MATCH (ds:DataSource {datasource_id: $datasource_id})
+    RETURN ds
+    """
+    results = repo.client.execute_query(query, {"datasource_id": datasource_id})
+    if not results:
+        return None
+    
+    ds_node = dict(results[0]["ds"])
+    # Convert datetime fields to strings
+    for field in ["last_scraped_at", "created_at", "updated_at"]:
+        if field in ds_node:
+            ds_node[field] = _convert_datetime_to_string(ds_node[field])
+    return ds_node
+
+
+def upsert_datasource_configuration(
+    datasource_id: str,
+    name: str | None = None,
+    scraper_type: str | None = None,
+    resource_url: str | None = None,
+    scrape_schedule: str | None = None,
+    run_on_startup: bool | None = None,
+    check_content_hash: bool | None = None,
+    publish_weight: float | None = None,
+    update_weight: float | None = None,
+    event_weight: float | None = None,
+    temporal_extraction_days: int | None = None,
+    scraper_delay: float | None = None,
+    max_resources: int | None = None,
+    max_redirects: int | None = None,
+    folders: List[str] | None = None,
+    discovery_mode: str | None = None,
+    consecutive_duplicates_limit: int | None = None,
+    full_refresh_schedule: str | None = None
+) -> Dict[str, Any]:
+    """
+    Create or update a datasource configuration in Neo4j.
+    Only updates provided fields (non-None values).
+    """
+    from datetime import datetime
+    
+    repo = get_repo()
+    
+    # Build SET clause for properties that were provided
+    set_parts = []
+    params = {"datasource_id": datasource_id}
+    
+    # Always update updated_at timestamp
+    set_parts.append("ds.updated_at = datetime()")
+    
+    # Add provided fields to update
+    field_map = {
+        "name": name,
+        "scraper_type": scraper_type,
+        "resource_url": resource_url,
+        "scrape_schedule": scrape_schedule,
+        "run_on_startup": run_on_startup,
+        "check_content_hash": check_content_hash,
+        "publish_weight": publish_weight,
+        "update_weight": update_weight,
+        "event_weight": event_weight,
+        "temporal_extraction_days": temporal_extraction_days,
+        "scraper_delay": scraper_delay,
+        "max_resources": max_resources,
+        "max_redirects": max_redirects,
+        "folders": folders,
+        "discovery_mode": discovery_mode,
+        "consecutive_duplicates_limit": consecutive_duplicates_limit,
+        "full_refresh_schedule": full_refresh_schedule
+    }
+    
+    for field, value in field_map.items():
+        if value is not None:
+            set_parts.append(f"ds.{field} = ${field}")
+            params[field] = value
+    
+    # Check if node exists to determine if we need to set created_at
+    check_query = "MATCH (ds:DataSource {datasource_id: $datasource_id}) RETURN ds"
+    existing = repo.client.execute_query(check_query, {"datasource_id": datasource_id})
+    
+    if not existing:
+        # New node - set created_at
+        set_parts.append("ds.created_at = datetime()")
+        # Set defaults for required fields if not provided
+        if name is None:
+            set_parts.append("ds.name = $datasource_id")
+    
+    # Build the MERGE + SET query
+    set_clause = ", ".join(set_parts)
+    query = f"""
+    MERGE (ds:DataSource {{datasource_id: $datasource_id}})
+    SET {set_clause}
+    RETURN ds
+    """
+    
+    results = repo.client.execute_write(query, params)
+    if not results:
+        raise Exception(f"Failed to upsert datasource configuration for {datasource_id}")
+    
+    ds_node = dict(results[0]["ds"])
+    # Convert datetime fields to strings
+    for field in ["last_scraped_at", "created_at", "updated_at"]:
+        if field in ds_node:
+            ds_node[field] = _convert_datetime_to_string(ds_node[field])
+    return ds_node
+
+
+def delete_datasource_configuration(datasource_id: str) -> bool:
+    """
+    Delete a datasource configuration from Neo4j.
+    Returns True if deleted, False if not found.
+    """
+    repo = get_repo()
+    query = """
+    MATCH (ds:DataSource {datasource_id: $datasource_id})
+    DETACH DELETE ds
+    RETURN count(ds) as deleted_count
+    """
+    results = repo.client.execute_write(query, {"datasource_id": datasource_id})
+    if results and results[0]["deleted_count"] > 0:
+        return True
+    return False
+
+
+def check_user_in_graph(user_uuid: str) -> bool:
+    """
+    Check if a user exists in the Neo4j graph as a Person node.
+    
+    Args:
+        user_uuid: The UUID of the user from Postgres
+        
+    Returns:
+        True if the user exists in the graph, False otherwise
+    """
+    try:
+        repo = get_repo()
+        query = """
+        MATCH (p:Person {user_uuid: $user_uuid})
+        RETURN p.person_id as person_id
+        LIMIT 1
+        """
+        results = repo.client.execute_query(query, {"user_uuid": user_uuid})
+        has_user = len(results) > 0
+        return has_user
+    except Exception as e:
+        log.warning(f"Failed to check user in graph: {e}")
+        return False

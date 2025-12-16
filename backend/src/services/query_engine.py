@@ -3,15 +3,15 @@ import logging
 
 from src.services.llm_service import parse_query_to_filters, summarise_documents
 from src.services.graph_service import query_documents_from_filters, query_upcoming_events, query_past_events, query_temporal_documents
-from src.services import postgres
+from src.services import postgres, graph_service
 
 log = logging.getLogger("query_engine")
 
 
-def run_query(user_id: int, question: str) -> Dict[str, Any]:
+def run_query(user_id: str, question: str) -> Dict[str, Any]:  # Changed from int to str
     """Full question-answering pipeline:
     
-    1. Accept a question and user_id
+    1. Accept a question and user_id (Cognito UUID)
     2. Load user preferences from Postgres (topics, organisations, people)
     3. Send question to LLM to extract structured filters
     4. Merge LLM-generated filters with user preferences as relevance signals
@@ -54,12 +54,19 @@ def run_query(user_id: int, question: str) -> Dict[str, Any]:
     log.info(f"  Date range: {llm_filters.get('start_date')} to {llm_filters.get('end_date')}")
     log.info(f"  Limit: {llm_filters.get('limit', 20)}")
     
-    # Step 2.5: Load system configuration for relevance weights
-    system_config = postgres.get_system_configuration("default")
-    publish_weight = system_config.get("publish_weight", 1.0)
-    update_weight = system_config.get("update_weight", 0.8)
-    event_weight = system_config.get("event_weight", 0.9)
-    log.info(f"✓ Loaded relevance weights: publish={publish_weight}, update={update_weight}, event={event_weight}")
+    # Step 2.5: Load system configuration for relevance weights from Neo4j
+    try:
+        system_config = graph_service.get_datasource_configuration("default")
+        publish_weight = system_config.get("publish_weight", 1.0)
+        update_weight = system_config.get("update_weight", 0.8)
+        event_weight = system_config.get("event_weight", 0.9)
+        log.info(f"✓ Loaded relevance weights from Neo4j: publish={publish_weight}, update={update_weight}, event={event_weight}")
+    except Exception as e:
+        # Fallback to defaults if config not found in Neo4j
+        log.warning(f"Could not load config from Neo4j, using defaults: {e}")
+        publish_weight = 1.0
+        update_weight = 0.8
+        event_weight = 0.9
     
     # Detect if this is a meta-query about the knowledge base itself
     # Meta-queries ask about stats, counts, or structure rather than content

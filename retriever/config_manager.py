@@ -1,42 +1,31 @@
 """
 Configuration manager for scrapers.
-Loads datasource configuration from PostgreSQL to control scraping behavior.
+Loads datasource configuration from Neo4j to control scraping behavior.
 Handles cron-based scheduling for datasource scraping.
 """
-import os
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
-import psycopg2
-import psycopg2.extras
+
+from neo4j_client.client import Neo4jClient
+from neo4j_client import GraphRepository
+from settings import settings
 
 try:
     from croniter import croniter
     CRONITER_AVAILABLE = True
 except ImportError:
     CRONITER_AVAILABLE = False
-    # Note: This warning appears at module import time before logger is configured.
-    # Consider moving croniter usage behind a lazy check instead of import-time warning.
 
 logger = logging.getLogger(__name__)
 
 if not CRONITER_AVAILABLE:
     logger.warning("croniter not installed - cron scheduling will be disabled")
 
-# PostgreSQL connection parameters from environment
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "aurora")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "aurora_password")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "aurora")
-
-# Construct connection string
-PG_DSN = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-
 
 class ConfigManager:
     """
-    Manages scraper configuration from PostgreSQL.
+    Manages scraper configuration from Neo4j.
     
     Handles cron-based scheduling:
     - get_due_datasources(): Returns datasources that should run NOW
@@ -45,40 +34,48 @@ class ConfigManager:
     """
     
     def __init__(self):
-        self.conn = None
-        self._connect()
+        """Initialize ConfigManager with Neo4j connection."""
+        self.neo4j_client = None
+        self.graph_repository = None
+        self._connect(settings)
     
-    def _connect(self):
-        """Establish PostgreSQL connection."""
+    def _connect(self, settings):
+        """Establish Neo4j connection."""
         try:
-            self.conn = psycopg2.connect(PG_DSN)
-            self.conn.autocommit = True
-            logger.info("Connected to PostgreSQL for configuration management")
+            self.neo4j_client = Neo4jClient(
+                uri=settings.neo4j_uri,
+                user=settings.neo4j_user,
+                password=settings.neo4j_password,
+                database=settings.neo4j_database
+            )
+            self.neo4j_client.connect()
+            self.graph_repository = GraphRepository(self.neo4j_client)
+            logger.info("Connected to Neo4j for configuration management")
         except Exception as e:
-            logger.warning(f"Failed to connect to PostgreSQL: {e}. Using default configuration.")
-            self.conn = None
+            logger.warning(f"Failed to connect to Neo4j: {e}. Using default configuration.")
+            self.neo4j_client = None
+            self.graph_repository = None
     
     def _ensure_connection(self) -> bool:
-        """Ensure database connection is active, reconnect if needed."""
-        if self.conn is None:
+        """Ensure Neo4j connection is active, reconnect if needed."""
+        if self.graph_repository is None or self.neo4j_client is None:
             logger.debug("No connection, attempting to connect...")
-            self._connect()
+            self._connect(settings)
         
-        if self.conn is None:
+        if self.graph_repository is None:
             return False
         
         try:
-            # Test connection
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT 1")
+            # Test connection with a simple query
+            self.neo4j_client.execute_query("RETURN 1 as test")
             return True
         except Exception as e:
             # Connection lost, try to reconnect
-            logger.warning(f"PostgreSQL connection lost ({e}), attempting to reconnect...")
-            self._connect()
-            if self.conn is not None:
-                logger.info("Successfully reconnected to PostgreSQL")
-            return self.conn is not None
+            logger.warning(f"Neo4j connection lost ({e}), attempting to reconnect...")
+            self._connect(settings)
+            if self.graph_repository is not None:
+                logger.info("Successfully reconnected to Neo4j")
+            return self.graph_repository is not None
     
     def get_datasource_config(self, datasource_id: str) -> Dict[str, Any]:
         """
@@ -88,7 +85,7 @@ class ConfigManager:
             datasource_id: Identifier for the datasource (e.g., 'wfa_resource_page')
             
         Returns:
-            Configuration dict with all columns from system_configuration
+            Configuration dict with all columns from DataSource node
         """
         default_config = {
             "datasource_id": datasource_id,
@@ -111,10 +108,8 @@ class ConfigManager:
             return default_config
         
         try:
-            with self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM system_configuration WHERE datasource_id = %s", (datasource_id,))
-                result = cur.fetchone()
-                return dict(result) if result else default_config
+            result = self.graph_repository.get_datasource_config(datasource_id)
+            return result if result else default_config
         except Exception as e:
             logger.error(f"Error fetching configuration for {datasource_id}: {e}")
             return default_config
@@ -177,7 +172,14 @@ class ConfigManager:
         Returns:
             List of datasource configurations where run_on_startup=true
         """
-        return self._get_datasources("run_on_startup = TRUE")
+        if not self._ensure_connection():
+            return []
+        
+        try:
+            return self.graph_repository.get_startup_datasources()
+        except Exception as e:
+            logger.error(f"Error fetching startup datasources: {e}")
+            return []
     
     def get_due_datasources(self) -> List[Dict[str, Any]]:
         """
@@ -193,7 +195,14 @@ class ConfigManager:
             logger.warning("croniter not available - returning no due datasources")
             return []
         
-        all_scheduled = self._get_datasources("scrape_schedule IS NOT NULL")
+        if not self._ensure_connection():
+            return []
+        
+        try:
+            all_scheduled = self.graph_repository.get_scheduled_datasources()
+        except Exception as e:
+            logger.error(f"Error fetching scheduled datasources: {e}")
+            return []
         
         # Filter to only those that are due
         due_datasources = []
@@ -240,33 +249,6 @@ class ConfigManager:
                 grouped[scraper_type].append(ds)
         return grouped
     
-    def _get_datasources(self, where_clause: str = "", params: tuple = ()) -> List[Dict[str, Any]]:
-        """
-        Fetch datasources from system_configuration with a custom WHERE clause.
-        
-        Args:
-            where_clause: SQL WHERE clause (without 'WHERE' keyword), e.g., 'run_on_startup = TRUE'
-            params: Parameters to pass to the query for parameterized values
-            
-        Returns:
-            List of datasource configurations matching the criteria
-        """
-        if not self._ensure_connection():
-            return []
-        
-        try:
-            with self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                base_query = "SELECT * FROM system_configuration WHERE scraper_type IS NOT NULL"
-                if where_clause:
-                    query = f"{base_query} AND {where_clause} ORDER BY scraper_type, datasource_id"
-                else:
-                    query = f"{base_query} ORDER BY scraper_type, datasource_id"
-                cur.execute(query, params)
-                return [dict(row) for row in cur.fetchall()]
-        except Exception as e:
-            logger.error(f"Error fetching datasources: {e}")
-            return []
-
     def get_all_scheduled_datasources(self) -> List[Dict[str, Any]]:
         """
         Get all datasources that have a scraper_type configured.
@@ -275,7 +257,14 @@ class ConfigManager:
         Returns:
             List of all datasource configurations with scraper_type set
         """
-        return self._get_datasources()
+        if not self._ensure_connection():
+            return []
+        
+        try:
+            return self.graph_repository.get_all_datasources_with_scraper()
+        except Exception as e:
+            logger.error(f"Error fetching all datasources: {e}")
+            return []
     
     def get_datasources_by_scraper_type(self) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -302,7 +291,14 @@ class ConfigManager:
             logger.warning("croniter not available - returning no full refresh datasources")
             return []
         
-        all_with_refresh = self._get_datasources("full_refresh_schedule IS NOT NULL")
+        if not self._ensure_connection():
+            return []
+        
+        try:
+            all_with_refresh = self.graph_repository.get_full_refresh_datasources()
+        except Exception as e:
+            logger.error(f"Error fetching full refresh datasources: {e}")
+            return []
         
         # Filter to only those that are due
         # We use last_scraped_at as the reference (could add a separate last_full_refresh_at column later)
@@ -330,24 +326,13 @@ class ConfigManager:
             return
         
         try:
-            with self.conn.cursor() as cur:
-                query = """
-                UPDATE system_configuration 
-                SET last_scraped_at = NOW(),
-                    updated_at = NOW()
-                WHERE datasource_id = %s
-                """
-                cur.execute(query, (datasource_id,))
-                
-                if cur.rowcount > 0:
-                    logger.info(f"Updated last_scraped_at for {datasource_id}")
-                else:
-                    logger.warning(f"Datasource {datasource_id} not found - skipping timestamp update")
+            self.graph_repository.update_datasource_last_scraped(datasource_id)
         except Exception as e:
             logger.error(f"Error updating last_scraped for {datasource_id}: {e}")
     
     def close(self):
-        """Close database connection."""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        """Close Neo4j connection."""
+        if self.neo4j_client:
+            self.neo4j_client.close()
+            self.neo4j_client = None
+            self.graph_repository = None

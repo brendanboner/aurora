@@ -1,0 +1,363 @@
+.event-detail-container {
+  padding: 0;
+  max-width: 100%;
+  margin: 0;
+}
+
+.back-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+  transition: all 0.2s;
+}
+
+.back-button:hover {
+  background: var(--card);
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+
+.event-detail-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 2rem;
+}
+
+.event-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.event-detail-header h1 {
+  margin: 0;
+  font-size: 2rem;
+  color: var(--foreground);
+  line-height: 1.3;
+  flex: 1;
+}
+
+.event-link-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  text-decoration: none;
+  border-radius: var(--radius-button);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.event-link-button:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-sm);
+}
+
+.event-detail-meta {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.event-type-badge {
+  padding: 0.4rem 1rem;
+  background: rgba(137, 129, 229, 0.2);
+  color: var(--primary);
+  border-radius: var(--radius-chip);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.event-status-badge {
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius-chip);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.event-status-badge.status-cancelled {
+  background: rgba(237, 95, 86, 0.2);
+  color: var(--destructive);
+}
+.event-status-badge.status-rescheduled {
+  background: rgba(255, 165, 0, 0.2);
+  color: #ff9800;
+}
+
+.event-status-badge.status-completed {
+  background: rgba(117, 191, 99, 0.2);
+  color: var(--chart-3);
+}
+
+.past-badge {
+  padding: 0.4rem 1rem;
+  background: rgba(186, 188, 206, 0.2);
+  color: var(--muted-foreground);
+  border-radius: var(--radius-chip);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.event-detail-section {
+  margin-bottom: 2.5rem;
+}
+
+.event-detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.event-detail-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.3rem;
+  margin: 0 0 1rem 0;
+  color: var(--foreground);
+}
+
+.event-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.date-item {
+  font-size: 1rem;
+  color: var(--muted-foreground);
+}
+
+.date-item strong {
+  color: var(--foreground);
+  margin-right: 0.5rem;
+}
+
+.event-description-text {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.attendance-stats {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-item strong {
+  font-size: 2rem;
+  color: var(--primary);
+}
+
+.stat-item span {
+  font-size: 0.9rem;
+  color: var(--muted-foreground);
+}
+
+.attendance-actions {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.attendance-button,
+.presenting-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.attendance-button:hover:not(:disabled),
+.presenting-button:hover:not(:disabled) {
+  background: rgba(137, 129, 229, 0.1);
+  transform: translateY(-2px);
+}
+
+.attendance-button.attending {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.attendance-button.attending:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-sm);
+}
+
+.presenting-button.presenting {
+  background: var(--chart-3);
+  border-color: var(--chart-3);
+  color: white;
+}
+
+.presenting-button.presenting:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-sm);
+}
+
+.attendance-button:disabled,
+.presenting-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.attendees-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.show-attendees-button {
+  padding: 0.75rem 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--foreground);
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.show-attendees-button:hover {
+  background: var(--background);
+  border-color: var(--primary);
+}
+
+.attendees-list {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.attendee-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--background);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+}
+
+.attendee-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.attendee-info strong {
+  color: var(--foreground);
+  font-size: 1rem;
+}
+
+.attendee-email {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.presenting-badge {
+  padding: 0.35rem 0.75rem;
+  background: rgba(117, 191, 99, 0.2);
+  color: var(--chart-3);
+  border-radius: var(--radius-chip);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.loading-message,
+.error-message {
+  text-align: center;
+  padding: 3rem;
+  font-size: 1.1rem;
+}
+
+.loading-message {
+  color: var(--muted-foreground);
+}
+
+.error-message {
+  background: rgba(230, 75, 75, 0.1);
+  color: var(--foreground);
+  border-radius: var(--radius-card);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .event-detail-container {
+    padding: 1rem;
+  }
+
+  .event-detail-card {
+    padding: 1.5rem;
+  }
+
+  .event-detail-header {
+    flex-direction: column;
+  }
+
+  .event-detail-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .event-link-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .attendance-stats {
+    gap: 1.5rem;
+  }
+
+  .stat-item strong {
+    font-size: 1.5rem;
+  }
+
+  .attendance-actions {
+    flex-direction: column;
+  }
+
+  .attendance-button,
+  .presenting-button {
+    width: 100%;
+    justify-content: center;
+  }
+}

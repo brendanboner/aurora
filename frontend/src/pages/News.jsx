@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './News.css';
+import { useAuth } from '../contexts/AuthContext';
+import apiClient from '../api/client';
 import { NewsIcon, RefreshIcon, CalendarIcon, BookIcon, BuildingIcon, StarIcon } from '../components/icons';
 
-const News = ({ currentUser, backendStatus }) => {
+const News = ({ backendStatus }) => {
+  const { user } = useAuth();
   const [newsContent, setNewsContent] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -19,8 +22,8 @@ const News = ({ currentUser, backendStatus }) => {
   ];
 
   const loadNews = async (forceRefresh = false) => {
-    if (!currentUser) {
-      setError('Please select or create a user to view news.');
+    if (!user) {
+      setError('Please log in to view news.');
       return;
     }
 
@@ -33,24 +36,13 @@ const News = ({ currentUser, backendStatus }) => {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/news', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          time_range: timeRange,
-          force_refresh: forceRefresh
-        }),
+      const response = await apiClient.post('/backend/news', {
+        user_id: user.user_id,
+        time_range: timeRange,
+        force_refresh: forceRefresh
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = response.data;
       setNewsContent(data);
       
       // Expand all sections by default
@@ -71,7 +63,7 @@ const News = ({ currentUser, backendStatus }) => {
   // Load news on mount and when user/timeRange changes
   useEffect(() => {
     loadNews();
-  }, [currentUser, timeRange]);
+  }, [user, timeRange]);
 
   const handleRefresh = () => {
     loadNews(true);
@@ -100,7 +92,7 @@ const News = ({ currentUser, backendStatus }) => {
     return '#44dd44';
   };
 
-  if (!currentUser) {
+  if (!user) {
     return (
       <div className="news-container">
         <div className="news-header">
@@ -110,7 +102,7 @@ const News = ({ currentUser, backendStatus }) => {
           </div>
         </div>
         <div className="news-empty-state">
-          <p>Please select or create a user to view curated news and events.</p>
+          <p>Please log in to view curated news and events.</p>
         </div>
       </div>
     );

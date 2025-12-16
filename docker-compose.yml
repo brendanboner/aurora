@@ -1,5 +1,9 @@
 #version: "3.9"
 
+# =============================================================================
+# Aurora Docker Compose Configuration
+# =============================================================================
+
 # Shared network for all services
 networks:
   aurora-network:
@@ -22,6 +26,8 @@ services:
   # =============================================================================
   # Infrastructure Services
   # =============================================================================
+  # NOTE: These ports are exposed for development/debugging convenience
+  # For production: Remove port mappings or restrict with firewall rules
   
   postgres:
     image: postgres:16-alpine
@@ -48,7 +54,7 @@ services:
       start_period: 10s
 
   neo4j:
-    image: ${NEO4J_IMAGE:-neo4j:2025-community}
+    image: neo4j:2025-community
     container_name: aurora-neo4j
     restart: unless-stopped
     networks:
@@ -73,7 +79,7 @@ services:
       start_period: 40s
 
   rabbitmq:
-    image: ${RABBITMQ_IMAGE:-rabbitmq:4.2.0-management-alpine}
+    image: rabbitmq:4.2.0-management-alpine
     container_name: aurora-rabbitmq
     restart: unless-stopped
     networks:
@@ -143,6 +149,56 @@ services:
   # =============================================================================
   # Application Services
   # =============================================================================
+  
+  # Auth Service - API Gateway and Authentication
+  # This is the ONLY publicly exposed application service
+  # All user requests go through this service for authentication
+  auth:
+    build:
+      context: .
+      dockerfile: auth/Dockerfile
+    container_name: aurora-auth
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      - "${AUTH_PORT:-8000}:8000"
+    environment:
+      # AWS Cognito Configuration
+      AWS_REGION: ${AWS_REGION}
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID}
+      COGNITO_APP_CLIENT_ID: ${COGNITO_APP_CLIENT_ID}
+      COGNITO_APP_CLIENT_SECRET: ${COGNITO_APP_CLIENT_SECRET}
+      COGNITO_DOMAIN: ${COGNITO_DOMAIN}
+      # Auto-constructed
+      COGNITO_JWKS_URL: https://cognito-idp.${AWS_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}/.well-known/jwks.json
+      COGNITO_TOKEN_ENDPOINT: https://${COGNITO_DOMAIN}/oauth2/token
+      
+      # Service URLs (internal Docker network - use container names)
+      BACKEND_SERVICE_URL: ${BACKEND_SERVICE_URL:-http://backend:8000}
+      CURATOR_SERVICE_URL: ${CURATOR_SERVICE_URL:-http://curator:8000}
+      RETRIEVER_SERVICE_URL: ${RETRIEVER_SERVICE_URL:-http://retriever:8000}
+      
+      # Application Configuration
+      APPLICATION_URL: ${APPLICATION_URL:-http://localhost:3000}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   backend:
     build:
@@ -152,8 +208,6 @@ services:
     restart: unless-stopped
     networks:
       - aurora-network
-    ports:
-      - "8000:8000"
     environment:
       # Database
       PG_DSN: postgresql://${POSTGRES_USER:-aurora}:${POSTGRES_PASSWORD:-aurora_password}@postgres:5432/${POSTGRES_DB:-aurora}
@@ -214,8 +268,6 @@ services:
     restart: unless-stopped
     networks:
       - aurora-network
-    ports:
-      - "${SCRAPER_API_PORT:-8001}:8000"
     environment:
       # PostgreSQL
       POSTGRES_HOST: postgres
@@ -333,8 +385,6 @@ services:
     restart: unless-stopped
     networks:
       - aurora-network
-    ports:
-      - "${CURATOR_API_PORT:-8002}:8000"
     environment:
       # Neo4j
       NEO4J_URI: bolt://neo4j:7687
@@ -411,11 +461,9 @@ services:
     networks:
       - aurora-network
     ports:
-      - "3000:80"
-    environment:
-      REACT_APP_BACKEND_URL: http://localhost:8000
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
-      backend:
+      auth:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/ || exit 1"]

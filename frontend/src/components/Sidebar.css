@@ -15,10 +15,15 @@
 }
 
 .sidebar.open { width: 240px; }
-.sidebar.closed { width: 64px; }
+.sidebar.closed { width: 60px; }
 
-/* Allow sidebar content to scroll independently below header */
-.sidebar-nav { max-height: calc(100vh - 60px - 44px - 26px); }
+/* Sidebar scrolling */
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+}
 
 .hamburger-btn {
   width: 100%;
@@ -132,11 +137,13 @@
 }
 
 .sidebar-subitem {
-  display: block;
-  padding: 10px 16px 10px 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 10px 26px;
   color: var(--muted-foreground);
   text-decoration: none;
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   transition: all 0.2s ease;
 }
 
@@ -158,6 +165,14 @@
   margin-top: auto;
 }
 
+/* Collapsed footer - centered dot only */
+.sidebar.closed .sidebar-footer {
+  padding: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 .status-badge {
   display: flex;
   align-items: center;
@@ -165,6 +180,13 @@
   padding: 8px;
   background-color: rgba(0, 0, 0, 0.2);
   border-radius: var(--radius);
+}
+
+.status-badge-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
 }
 
 .status-indicator {
@@ -201,7 +223,7 @@
   50% { opacity: 0.5; }
 }
 
-/* Mobile overlay */
+/* Mobile overlay and full-screen nav */
 @media (max-width: 768px) {
   .sidebar-overlay {
     display: block;
@@ -210,10 +232,30 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 890;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+    backdrop-filter: blur(2px);
   }
-  .sidebar { position: relative; height: auto; }
-  .sidebar.closed { display: none; }
-  .sidebar.open { width: 100%; }
+
+  .sidebar {
+    position: fixed;
+    top: 62px; /* 50px header + 12px gap */
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto !important;
+    z-index: 1000;
+    transform: translateX(-110%);
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Always show labels and expand icons on mobile when open */
+  .sidebar.open .sidebar-label,
+  .sidebar.open .expand-icon {
+    display: block;
+  }
 }

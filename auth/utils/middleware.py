@@ -1,0 +1,65 @@
+"""JWT validation middleware utilities."""
+
+from fastapi import Request, HTTPException, status
+from .oauth import validate_jwt_token, refresh_access_token, extract_user_info
+from settings import get_settings
+
+settings = get_settings()
+
+
+async def validate_request_token(request: Request) -> dict:
+    """
+    Middleware function to validate JWT token from cookies.
+    Automatically refreshes token if expired.
+    Returns user info dict.
+    """
+    # Get tokens from cookies
+    access_token = request.cookies.get("access_token")
+    id_token = request.cookies.get("id_token")
+    refresh_token = request.cookies.get("refresh_token")
+    
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No access token provided"
+        )
+    
+    try:
+        # Validate access token (for authentication)
+        await validate_jwt_token(access_token)
+        
+        # Extract user info from ID token (has user claims)
+        if id_token:
+            id_token_claims = await validate_jwt_token(id_token, access_token=access_token)
+            user_info = extract_user_info(id_token_claims)
+        else:
+            # Fallback: try to extract from access token (may have limited info)
+            access_token_claims = await validate_jwt_token(access_token)
+            user_info = extract_user_info(access_token_claims)
+        
+        return user_info
+    
+    except HTTPException as e:
+        # If access token expired, try to refresh
+        if "expired" in str(e.detail).lower() and refresh_token:
+            try:
+                # Get new access token using refresh token
+                new_tokens = await refresh_access_token(refresh_token)
+                new_access_token = new_tokens["access_token"]
+                
+                # Validate new token and extract user info
+                token_claims = await validate_jwt_token(new_access_token)
+                user_info = extract_user_info(token_claims)
+                
+                # Store new token for response (will be set by proxy)
+                request.state.new_access_token = new_access_token
+                return user_info
+            
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token refresh failed. Please login again."
+                )
+        
+        # Re-raise original exception if not expired or no refresh token
+        raise e

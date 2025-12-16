@@ -2,18 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendQuery } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import { ProfileIcon, ChatIcon, BookIcon, BuildingIcon, WarningIcon, HourglassIcon, SendIcon, CalendarIcon } from '../components/icons';
 import ChevronLeftIcon from '../components/icons/ChevronLeftIcon';
 import ChevronRightIcon from '../components/icons/ChevronRightIcon';
 import Icon from '../components/Icon.jsx';
 import './Chatbot.css';
 
-const Chatbot = ({ currentUser, backendStatus }) => {
+const Chatbot = ({ backendStatus }) => {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [currentDocumentIndex, setCurrentDocumentIndex] = useState({});
+  const [conversationId, setConversationId] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -25,22 +28,30 @@ const Chatbot = ({ currentUser, backendStatus }) => {
   }, [messages]);
 
   useEffect(() => {
-    // Load chat history from localStorage when currentUser changes
-    if (!currentUser) {
-      // Show welcome message when no user is selected
+    // Load chat history from localStorage when user changes
+    if (!user) {
+      // Show welcome message when no user is authenticated
       setMessages([
         {
           role: 'assistant',
-          content: 'Hello! I\'m Aurora, your knowledge management assistant. Please select or create a user to start chatting.',
+          content: 'Hello! I\'m Aurora, your knowledge management assistant. Please log in to start chatting.',
           timestamp: new Date(),
         },
       ]);
+      setConversationId(null);
       return;
     }
 
-    // Load user-specific chat history
-    const chatHistoryKey = `chatHistory_${currentUser.id}`;
+    // Load user-specific chat history and conversation ID
+    const chatHistoryKey = `chatHistory_${user.user_id}`;
+    const conversationIdKey = `conversationId_${user.user_id}`;
     const savedMessages = localStorage.getItem(chatHistoryKey);
+    const savedConversationId = localStorage.getItem(conversationIdKey);
+    
+    // Restore conversation ID if it exists
+    if (savedConversationId) {
+      setConversationId(parseInt(savedConversationId, 10));
+    }
     
     if (savedMessages) {
       try {
@@ -57,7 +68,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
         setMessages([
           {
             role: 'assistant',
-            content: `Hello ${currentUser.display_name || currentUser.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
+            content: `Hello ${user.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
             timestamp: new Date(),
           },
         ]);
@@ -67,27 +78,35 @@ const Chatbot = ({ currentUser, backendStatus }) => {
       setMessages([
         {
           role: 'assistant',
-          content: `Hello ${currentUser.display_name || currentUser.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
+          content: `Hello ${user.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
           timestamp: new Date(),
         },
       ]);
     }
-  }, [currentUser]);
+  }, [user]);
 
   // Save messages to localStorage whenever they change (user-specific)
   useEffect(() => {
-    if (currentUser && messages.length > 0) {
-      const chatHistoryKey = `chatHistory_${currentUser.id}`;
+    if (user && messages.length > 0) {
+      const chatHistoryKey = `chatHistory_${user.user_id}`;
       localStorage.setItem(chatHistoryKey, JSON.stringify(messages));
     }
-  }, [messages, currentUser]);
+  }, [messages, user]);
+
+  // Save conversation ID to localStorage whenever it changes
+  useEffect(() => {
+    if (user && conversationId !== null) {
+      const conversationIdKey = `conversationId_${user.user_id}`;
+      localStorage.setItem(conversationIdKey, conversationId.toString());
+    }
+  }, [conversationId, user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
-    if (!currentUser) {
-      setError('Please select or create a user in the Admin page first.');
+    if (!user) {
+      setError('Please log in to start chatting.');
       return;
     }
 
@@ -108,7 +127,11 @@ const Chatbot = ({ currentUser, backendStatus }) => {
     setError(null);
 
     try {
-      const response = await sendQuery(currentUser.id, userMessage.content);
+      // Send query with conversation_id if we have one
+      const response = await sendQuery(user.user_id, userMessage.content, conversationId);
+
+      // Store the conversation_id from the response for subsequent messages
+      setConversationId(response.conversation_id);
 
       const assistantMessage = {
         role: 'assistant',
@@ -116,6 +139,7 @@ const Chatbot = ({ currentUser, backendStatus }) => {
         timestamp: new Date(),
         filters: response.filters,
         documents: response.documents,
+        messageId: response.message_id,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -144,12 +168,12 @@ const Chatbot = ({ currentUser, backendStatus }) => {
   };
 
   const handleNewChat = () => {
-    if (!currentUser) return;
+    if (!user) return;
     
     // Clear current messages and start fresh with welcome message
     const welcomeMessage = {
       role: 'assistant',
-      content: `Hello ${currentUser.display_name || currentUser.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
+      content: `Hello ${user.email}! I'm Aurora, your knowledge management assistant. Ask me anything about standards, events, and documents in our knowledge base.`,
       timestamp: new Date(),
     };
     
@@ -157,9 +181,14 @@ const Chatbot = ({ currentUser, backendStatus }) => {
     setCurrentDocumentIndex({});
     setError(null);
     
-    // Clear the saved chat history for this user
-    const chatHistoryKey = `chatHistory_${currentUser.id}`;
+    // Clear conversation_id to start a new conversation
+    setConversationId(null);
+    
+    // Clear the saved chat history and conversation ID for this user
+    const chatHistoryKey = `chatHistory_${user.user_id}`;
+    const conversationIdKey = `conversationId_${user.user_id}`;
     localStorage.removeItem(chatHistoryKey);
+    localStorage.removeItem(conversationIdKey);
   };
 
   return (
@@ -168,18 +197,18 @@ const Chatbot = ({ currentUser, backendStatus }) => {
         <div className="chat-header-content">
           <div className="chat-header-text">
             <h1>Knowledge Assistant</h1>
-            {currentUser && (
+            {user && (
               <p className="chat-subtitle">
-                Chatting as <strong>{currentUser.display_name || currentUser.email}</strong>
+                Chatting as <strong>{user.email}</strong>
               </p>
             )}
-            {!currentUser && (
+            {!user && (
               <p className="chat-warning">
-                <Icon Component={WarningIcon} size={16} /> Please create or select a user in the Admin page to start chatting
+                <Icon Component={WarningIcon} size={16} /> Please log in to start chatting
               </p>
             )}
           </div>
-          {currentUser && messages.length > 1 && (
+          {user && messages.length > 1 && (
             <button 
               className="btn btn-secondary new-chat-btn" 
               onClick={handleNewChat}
@@ -399,14 +428,14 @@ const Chatbot = ({ currentUser, backendStatus }) => {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder={currentUser ? "Ask me anything..." : "Please select a user first..."}
+          placeholder={user ? "Ask me anything..." : "Please log in first..."}
           rows="3"
-          disabled={!currentUser || isLoading || backendStatus !== 'connected'}
+          disabled={!user || isLoading || backendStatus !== 'connected'}
         />
         <button
           type="submit"
           className="btn btn-primary"
-          disabled={!currentUser || !inputValue.trim() || isLoading || backendStatus !== 'connected'}
+          disabled={!user || !inputValue.trim() || isLoading || backendStatus !== 'connected'}
         >
           {isLoading ? (<><HourglassIcon size={16} /> Thinking...</>) : (<><SendIcon size={16} /> Send</>)}
         </button>

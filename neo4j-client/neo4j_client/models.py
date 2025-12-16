@@ -336,12 +336,12 @@ class Relationship(BaseModel):
 
 
 class DataSource(Node):
-    """DataSource node - represents a data source."""
+    """DataSource node - represents a data source with full scraping configuration."""
 
     node_label: str = "DataSource"
     id_field: str = "datasource_id"
     
-    # Unique identifier for the data source
+    # Core Identity
     datasource_id: str = Field(
         default="",
         description="Unique identifier for the data source (auto-generated from name if not provided)"
@@ -354,7 +354,7 @@ class DataSource(Node):
     
     source_type: str = Field(
         ...,
-        description="Type of data source (e.g., 'api', 'webpage', 'sharepoint', 'rss', 'database')"
+        description="Type of data source (e.g., 'api', 'webpage', 'sharepoint', 'rss', 'database', 'scraped_webpage', 'authenticated_portal')"
     )
     
     fetch_url: Optional[str] = Field(
@@ -367,10 +367,103 @@ class DataSource(Node):
         description="Whether this datasource contains events (calendar, conference listings, etc.)"
     )
     
+    # Scraper Configuration
+    scraper_type: Optional[str] = Field(
+        None,
+        description="Scraper class to use (e.g., 'wfa', 'wfa_causeway'). NULL = manual only"
+    )
+    
+    resource_url: Optional[str] = Field(
+        None,
+        description="URL path to scrape (e.g., '/resource-center', '/wg/WiFi7MTG/document')"
+    )
+    
+    # Scheduling
+    scrape_schedule: Optional[str] = Field(
+        None,
+        description="Cron expression for scheduling (e.g., '0 2 * * *' = 2 AM daily). NULL = manual only"
+    )
+    
+    run_on_startup: bool = Field(
+        default=False,
+        description="Run immediately when retriever starts"
+    )
+    
+    full_refresh_schedule: Optional[str] = Field(
+        None,
+        description="Cron expression for content update checks (e.g., weekly full scan)"
+    )
+    
+    last_scraped_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp of last successful scrape"
+    )
+    
+    # Content Processing
+    check_content_hash: bool = Field(
+        default=True,
+        description="Whether to check content hash for deduplication"
+    )
+    
+    # Scoring Weights
+    publish_weight: float = Field(
+        default=1.0,
+        description="Weight for newly published documents"
+    )
+    
+    update_weight: float = Field(
+        default=0.8,
+        description="Weight for updated documents"
+    )
+    
+    event_weight: float = Field(
+        default=0.9,
+        description="Weight for events"
+    )
+    
+    temporal_extraction_days: Optional[int] = Field(
+        default=90,
+        description="Days threshold for extracting events from documents"
+    )
+    
+    # Scraper Behavior Settings
+    scraper_delay: float = Field(
+        default=0.5,
+        description="Delay between requests in seconds"
+    )
+    
+    max_resources: int = Field(
+        default=150,
+        description="Max resources to scrape per run (-1 = unlimited)"
+    )
+    
+    max_redirects: int = Field(
+        default=10,
+        description="Max redirects to follow when resolving URLs"
+    )
+    
+    discovery_mode: str = Field(
+        default='incremental',
+        description="Discovery strategy: 'date_based' (Causeway) or 'incremental' (WFA public)"
+    )
+    
+    consecutive_duplicates_limit: int = Field(
+        default=5,
+        description="For incremental mode: stop after N consecutive duplicates"
+    )
+    
+    # Causeway-specific (hierarchical scrapers)
+    folders: Optional[List[str]] = Field(
+        None,
+        description="Folder paths for hierarchical scrapers (e.g., Causeway working groups)"
+    )
+    
     NORMALIZE = {
         "name": "title",
         "source_type": "lower",
-        "fetch_url": "lower"
+        "fetch_url": "lower",
+        "scraper_type": "lower",
+        "discovery_mode": "lower"
     }
     
     @model_validator(mode='after')
@@ -757,6 +850,11 @@ class Person(Node):
     email: Optional[str] = Field(
         None,
         description="Email address of the person"
+    )
+    
+    user_uuid: Optional[str] = Field(
+        None,
+        description="UUID from Postgres users table (if this person is a registered user)"
     )
     
     # Deduplication metadata (populated during deduplication process)
@@ -1236,6 +1334,29 @@ class ResourceRelatesToEvent(Relationship):
         "evidence": "sentence",
         "context_type": "lower"
     }
+
+
+class PersonAttendingEvent(Relationship):
+    """Person - attending -> Event
+    
+    Represents a user's intention to attend an event.
+    Users can mark/unmark attendance and indicate if they're presenting.
+    """
+    source_node_label: str = "Person"
+    source_id_field: str = "person_id"
+    target_node_label: str = "Event"
+    target_id_field: str = "url_hash"
+    relationship_label: str = "ATTENDING"
+    
+    marked_at: datetime = Field(
+        ...,
+        description="Timestamp when user marked/updated their attendance"
+    )
+    
+    is_presenting: bool = Field(
+        default=False,
+        description="Whether the person is presenting at this event"
+    )
 
 
 def slugify(text: str) -> str:

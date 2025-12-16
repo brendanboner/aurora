@@ -1,6 +1,8 @@
 -- Users
+-- id is now TEXT to store Cognito UUID (sub claim)
+-- This matches the user_id from X-User-Id header passed by auth service
 CREATE TABLE IF NOT EXISTS app_users (
-    id              SERIAL PRIMARY KEY,
+    id              TEXT PRIMARY KEY,  -- Cognito user UUID (sub claim)
     email           TEXT NOT NULL UNIQUE,
     display_name    TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -9,7 +11,7 @@ CREATE TABLE IF NOT EXISTS app_users (
 
 -- Per-user preferences
 CREATE TABLE IF NOT EXISTS user_preferences (
-    user_id         INTEGER PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+    user_id         TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,  -- Changed from INTEGER to TEXT
     topics          TEXT[] DEFAULT '{}',
     organisations   TEXT[] DEFAULT '{}',
     people          TEXT[] DEFAULT '{}',
@@ -22,7 +24,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 
 -- Event attendance (links users to Neo4j events)
 CREATE TABLE IF NOT EXISTS event_attendance (
-    user_id         INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,  -- Changed from INTEGER to TEXT
     event_id        TEXT NOT NULL,
     status          TEXT NOT NULL,
     role            TEXT,
@@ -31,43 +33,33 @@ CREATE TABLE IF NOT EXISTS event_attendance (
     PRIMARY KEY (user_id, event_id)
 );
 
--- System Configuration
-CREATE TABLE IF NOT EXISTS system_configuration (
-    datasource_id               TEXT PRIMARY KEY,
-    name                        TEXT NOT NULL,
-    scraper_type                TEXT DEFAULT NULL,              -- Scraper class to use (e.g., 'wfa', 'wfa_causeway')
-    resource_url                TEXT DEFAULT NULL,              -- URL path to scrape (e.g., '/resource-center', '/wg/WiFi7MTG/document')
-    scrape_schedule             TEXT DEFAULT NULL,              -- Cron expression for scheduling (e.g., '0 2 * * *' = 2 AM daily), NULL = manual only
-    run_on_startup              BOOLEAN NOT NULL DEFAULT FALSE, -- Run immediately when retriever starts
-    check_content_hash          BOOLEAN NOT NULL DEFAULT TRUE,
-    last_scraped_at             TIMESTAMPTZ,
-    publish_weight              REAL NOT NULL DEFAULT 1.0,      -- Weight for newly published docs
-    update_weight               REAL NOT NULL DEFAULT 0.8,      -- Weight for updated docs
-    event_weight                REAL NOT NULL DEFAULT 0.9,      -- Weight for events
-    temporal_extraction_days    INTEGER DEFAULT 90,             -- Days threshold for extracting events from documents
-    folders                     JSONB DEFAULT NULL,             -- Folder paths for hierarchical scrapers (e.g., Causeway)
-    scraper_delay               REAL DEFAULT 0.5,               -- Delay between requests in seconds
-    max_resources               INTEGER DEFAULT 150,            -- Max resources to scrape per run (-1 = unlimited)
-    max_redirects               INTEGER DEFAULT 10,             -- Max redirects to follow when resolving URLs
-    discovery_mode              TEXT DEFAULT 'incremental',     -- 'date_based' (Causeway), 'incremental' (WFA public)
-    consecutive_duplicates_limit INTEGER DEFAULT 5,             -- For incremental mode: stop after N consecutive dupes
-    full_refresh_schedule       TEXT DEFAULT NULL,              -- Cron for content update checks (e.g., weekly full scan)
-    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Chat conversations (tracks user chat sessions)
+CREATE TABLE IF NOT EXISTS chat_conversations (
+    id              SERIAL PRIMARY KEY,
+    user_id         TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    title           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for querying datasources with schedules
-CREATE INDEX IF NOT EXISTS idx_system_config_scrape_schedule 
-ON system_configuration(scrape_schedule) WHERE scrape_schedule IS NOT NULL;
+-- Chat messages (tracks individual messages in conversations)
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id              SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content         TEXT NOT NULL,
+    metadata        JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- Index for querying by temporal extraction threshold
-CREATE INDEX IF NOT EXISTS idx_system_config_temporal_threshold 
-ON system_configuration(temporal_extraction_days);
+-- Indexes for efficient chat queries
+CREATE INDEX IF NOT EXISTS idx_chat_conversations_user_id ON chat_conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_conversations_created_at ON chat_conversations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at);
 
--- Index for querying by scraper type (for grouping datasources by scraper)
-CREATE INDEX IF NOT EXISTS idx_system_config_scraper_type 
-ON system_configuration(scraper_type);
-
--- Index for startup datasources
-CREATE INDEX IF NOT EXISTS idx_system_config_run_on_startup
-ON system_configuration(run_on_startup) WHERE run_on_startup = TRUE;
+-- Note: system_configuration table has been migrated to Neo4j DataSource nodes
+-- All datasource configuration including scraper settings, schedules, and weights
+-- are now stored as properties on DataSource nodes in the knowledge graph.

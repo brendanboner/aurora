@@ -5,6 +5,9 @@ FROM python:3.13-slim
 # Set working directory
 WORKDIR /app
 
+# Copy common utilities (auth middleware)
+COPY common ./common
+
 # Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
