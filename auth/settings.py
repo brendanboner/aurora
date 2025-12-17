@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     backend_service_url: str
     curator_service_url: str
     retriever_service_url: str
+    content_creator_service_url: str
     
     # Application
     application_url: str

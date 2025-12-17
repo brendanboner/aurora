@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import './SocialFeed.css';
 import { NewsIcon, StarIcon, RefreshIcon, LinkIcon } from '../components/icons';
 import {
@@ -20,7 +21,8 @@ const formatTimestamp = (value) => {
   }
 };
 
-const SocialFeed = ({ currentUser }) => {
+const SocialFeed = () => {
+  const { user: currentUser, loading: authLoading } = useAuth();
   const [posts, setPosts] = useState([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -34,6 +36,8 @@ const SocialFeed = ({ currentUser }) => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
+    if (authLoading) return;
+    
     if (!currentUser) {
       setPosts([]);
       setOffset(0);
@@ -44,7 +48,7 @@ const SocialFeed = ({ currentUser }) => {
     refreshFeed();
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id]);
+  }, [currentUser?.id, authLoading]);
 
   // Debounce search input for instant search
   useEffect(() => {

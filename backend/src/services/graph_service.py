@@ -503,6 +503,20 @@ def get_all_datasource_configurations() -> List[Dict[str, Any]]:
         for field in ["last_scraped_at", "created_at", "updated_at"]:
             if field in ds_node:
                 ds_node[field] = _convert_datetime_to_string(ds_node[field])
+        
+        # Provide default values for missing weight fields
+        ds_node.setdefault("publish_weight", 1.0)
+        ds_node.setdefault("update_weight", 0.8)
+        ds_node.setdefault("event_weight", 0.9)
+        ds_node.setdefault("check_content_hash", True)
+        ds_node.setdefault("temporal_extraction_days", 90)
+        ds_node.setdefault("scraper_delay", 0.5)
+        ds_node.setdefault("max_resources", 150)
+        ds_node.setdefault("max_redirects", 10)
+        ds_node.setdefault("discovery_mode", "incremental")
+        ds_node.setdefault("consecutive_duplicates_limit", 5)
+        ds_node.setdefault("run_on_startup", False)
+        
         configs.append(ds_node)
     return configs
 
@@ -525,6 +539,20 @@ def get_datasource_configuration(datasource_id: str) -> Dict[str, Any] | None:
     for field in ["last_scraped_at", "created_at", "updated_at"]:
         if field in ds_node:
             ds_node[field] = _convert_datetime_to_string(ds_node[field])
+    
+    # Provide default values for missing weight fields
+    ds_node.setdefault("publish_weight", 1.0)
+    ds_node.setdefault("update_weight", 0.8)
+    ds_node.setdefault("event_weight", 0.9)
+    ds_node.setdefault("check_content_hash", True)
+    ds_node.setdefault("temporal_extraction_days", 90)
+    ds_node.setdefault("scraper_delay", 0.5)
+    ds_node.setdefault("max_resources", 150)
+    ds_node.setdefault("max_redirects", 10)
+    ds_node.setdefault("discovery_mode", "incremental")
+    ds_node.setdefault("consecutive_duplicates_limit", 5)
+    ds_node.setdefault("run_on_startup", False)
+    
     return ds_node
 
 

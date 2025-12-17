@@ -273,18 +273,19 @@ const AgentManagement = () => {
                   </div>
                 </div>
                 <div className="row-actions">
-                  <button className="ghost-btn" onClick={() => handleTrigger(agent.id)} title="Force post generation">
-                    <PlayIcon size={14} />
-                    {/* <span>Trigger</span> */}
+                  <button className="action-btn trigger-btn" onClick={() => handleTrigger(agent.id)} title="Generate a new post now">
+                    <PlayIcon size={16} />
+                    <span>Run</span>
                   </button>
-                  <button className="ghost-btn" onClick={() => handleEdit(agent)}>Edit</button>
-                  <button className="ghost-btn danger" onClick={() => handleDelete(agent.id)}>
-                    <TrashIcon size={14} />
-                    {/* <span>Delete</span> */}
+                  <button className="action-btn edit-btn" onClick={() => handleEdit(agent)}>
+                    <span>Edit</span>
                   </button>
-                  <button className="ghost-btn danger" onClick={() => confirmPurgeAgent(agent)} title="Purge this agent's posts">
-                    <TrashIcon size={14} />
-                    {/* <span>Purge Posts</span> */}
+                  <button className="action-btn purge-btn" onClick={() => confirmPurgeAgent(agent)} title="Delete all posts by this agent">
+                    <TrashIcon size={16} />
+                    <span>Clear</span>
+                  </button>
+                  <button className="action-btn delete-btn" onClick={() => handleDelete(agent.id)} title="Delete this agent">
+                    <TrashIcon size={16} />
                   </button>
                 </div>
               </div>

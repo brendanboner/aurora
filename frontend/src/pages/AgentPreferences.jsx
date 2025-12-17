@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { 
-  getCreatorAgents, 
+  getCreatorAgents,
   followCreatorAgent, 
   unfollowCreatorAgent,
   getUserFollowedAgents,
@@ -9,40 +10,37 @@ import {
 import './AgentPreferences.css';
 
 function AgentPreferences() {
+  const { user, loading: authLoading } = useAuth();
   const [allAgents, setAllAgents] = useState([]);
   const [followedAgents, setFollowedAgents] = useState([]);
   const [agentPreferences, setAgentPreferences] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
-  
-  // Get userId from localStorage (set when user is selected)
-  const userId = (() => {
-    try {
-      const user = JSON.parse(localStorage.getItem('currentUser'));
-      return user?.id || 1;
-    } catch {
-      return 1;
-    }
-  })();
 
   useEffect(() => {
-    loadAgents();
+    if (!authLoading && user) {
+      loadAgents();
+    }
+  }, [user, authLoading]);
+
+  useEffect(() => {
     // Clear status message after 3 seconds
     const timer = statusMessage ? setTimeout(() => setStatusMessage(''), 3000) : null;
     return () => timer && clearTimeout(timer);
   }, [statusMessage]);
 
-  useEffect(() => {
-    // Reload agents when component mounts
-    loadAgents();
-  }, [userId]);
-
   const loadAgents = async () => {
+    if (!user?.id) {
+      setStatusMessage('User not authenticated');
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
     try {
       const [allAgentsData, followedData] = await Promise.all([
         getCreatorAgents(false), // Only enabled agents
-        getUserFollowedAgents(userId)
+        getUserFollowedAgents(user.id)
       ]);
       
       setAllAgents(allAgentsData);
@@ -70,8 +68,10 @@ function AgentPreferences() {
   };
 
   const handleFollow = async (agentId) => {
+    if (!user?.id) return;
+    
     try {
-      await followCreatorAgent(agentId, userId);
+      await followCreatorAgent(agentId, user.id);
       setAgentPreferences(prev => ({
         ...prev,
         [agentId]: { relevance: 0.5, lengthPreference: 'medium' }
@@ -85,8 +85,10 @@ function AgentPreferences() {
   };
 
   const handleUnfollow = async (agentId) => {
+    if (!user?.id) return;
+    
     try {
-      await unfollowCreatorAgent(agentId, userId);
+      await unfollowCreatorAgent(agentId, user.id);
       setAgentPreferences(prev => {
         const updated = { ...prev };
         delete updated[agentId];
@@ -107,10 +109,12 @@ function AgentPreferences() {
       [agentId]: { ...prev[agentId], relevance }
     }));
 
+    if (!user?.id) return;
+
     try {
       await updateAgentPreferences(
         agentId, 
-        userId, 
+        user.id, 
         relevance, 
         agentPreferences[agentId]?.lengthPreference || 'medium'
       );
@@ -125,10 +129,12 @@ function AgentPreferences() {
       [agentId]: { ...prev[agentId], lengthPreference: value }
     }));
 
+    if (!user?.id) return;
+
     try {
       await updateAgentPreferences(
         agentId, 
-        userId, 
+        user.id, 
         agentPreferences[agentId]?.relevance || 0.5,
         value
       );
@@ -138,7 +144,12 @@ function AgentPreferences() {
   };
 
   if (isLoading) {
-    return <div className="agent-preferences-container loading">Loading agents...</div>;
+    return (
+      <div className="agent-preferences-container loading">
+        <div className="spinner"></div>
+        <p>Loading agents...</p>
+      </div>
+    );
   }
 
   return (

@@ -178,6 +178,7 @@ services:
       BACKEND_SERVICE_URL: ${BACKEND_SERVICE_URL:-http://backend:8000}
       CURATOR_SERVICE_URL: ${CURATOR_SERVICE_URL:-http://curator:8000}
       RETRIEVER_SERVICE_URL: ${RETRIEVER_SERVICE_URL:-http://retriever:8000}
+      CONTENT_CREATOR_SERVICE_URL: ${CONTENT_CREATOR_SERVICE_URL:-http://content_creator_service:8003}
       
       # Application Configuration
       APPLICATION_URL: ${APPLICATION_URL:-http://localhost:3000}

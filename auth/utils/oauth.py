@@ -152,10 +152,10 @@ async def refresh_access_token(refresh_token: str) -> Dict[str, str]:
 def extract_user_info(id_token_claims: Dict[str, Any]) -> Dict[str, str]:
     """
     Extract user information from ID token claims.
-    Returns dict with user_id, email, role.
+    Returns dict with id, email, role.
     """
     return {
-        "user_id": id_token_claims.get("sub"),
+        "id": id_token_claims.get("sub"),
         "email": id_token_claims.get("email"),
         "role": id_token_claims.get("custom:role", "user"),  # Default to 'user' if not set
     }

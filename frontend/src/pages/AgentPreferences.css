@@ -14,6 +14,12 @@
   color: var(--muted-foreground);
 }
 
+/* Mono spinner override for this page */
+.agent-preferences-container .spinner {
+  border: 3px solid var(--border);
+  border-top: 3px solid var(--border);
+}
+
 .agent-preferences-header {
   margin-bottom: 2rem;
 }

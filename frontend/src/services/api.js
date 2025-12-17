@@ -1,14 +1,29 @@
 import apiClient from '../api/client';
 import axios from 'axios';
 
-const CREATOR_API_BASE_URL = process.env.REACT_APP_CREATOR_API_URL || 'http://localhost:8003';
-
+// Dedicated client for the Content Creator Service via auth gateway
 const creatorApi = axios.create({
-  baseURL: CREATOR_API_BASE_URL,
+  baseURL: '/api/content_creator_service',
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Mirror global 401 handling to keep sessions consistent
+creatorApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/login' && !currentPath.includes('/api/auth/')) {
+        console.log('Authentication required (creatorApi) - redirecting to login');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Health check - test backend service via auth gateway
 export const testBackendConnection = async () => {
@@ -143,59 +158,59 @@ export const fetchSocialFeed = async (
   sort = 'relevance',
   q = undefined
 ) => {
-  const response = await creatorApi.get('/feed', {
+  const response = await apiClient.get('/content_creator_service/feed', {
     params: { user_id: userId, limit, offset, sort, q },
   });
   return response.data;
 };
 
 export const likePost = async (postId, userId) => {
-  const response = await creatorApi.post(`/posts/${postId}/like`, { user_id: userId });
+  const response = await apiClient.post(`/content_creator_service/posts/${postId}/like`, { user_id: userId });
   return response.data;
 };
 
 export const dislikePost = async (postId, userId) => {
-  const response = await creatorApi.post(`/posts/${postId}/dislike`, { user_id: userId });
+  const response = await apiClient.post(`/content_creator_service/posts/${postId}/dislike`, { user_id: userId });
   return response.data;
 };
 
 export const getCreatorAgents = async (includeDisabled = false) => {
-  const response = await creatorApi.get('/agents', { params: { include_disabled: includeDisabled } });
+  const response = await apiClient.get('/content_creator_service/agents', { params: { include_disabled: includeDisabled } });
   return response.data;
 };
 
 export const createCreatorAgent = async (payload) => {
-  const response = await creatorApi.post('/agents', payload);
+  const response = await apiClient.post('/content_creator_service/agents', payload);
   return response.data;
 };
 
 export const updateCreatorAgent = async (agentId, payload) => {
-  const response = await creatorApi.put(`/agents/${agentId}`, payload);
+  const response = await apiClient.put(`/content_creator_service/agents/${agentId}`, payload);
   return response.data;
 };
 
 export const deleteCreatorAgent = async (agentId) => {
-  const response = await creatorApi.delete(`/agents/${agentId}`);
+  const response = await apiClient.delete(`/content_creator_service/agents/${agentId}`);
   return response.data;
 };
 
 export const followCreatorAgent = async (agentId, userId) => {
-  const response = await creatorApi.post(`/agents/${agentId}/follow`, { user_id: userId });
+  const response = await apiClient.post(`/content_creator_service/agents/${agentId}/follow`, { user_id: userId });
   return response.data;
 };
 
 export const unfollowCreatorAgent = async (agentId, userId) => {
-  const response = await creatorApi.post(`/agents/${agentId}/unfollow`, { user_id: userId });
+  const response = await apiClient.post(`/content_creator_service/agents/${agentId}/unfollow`, { user_id: userId });
   return response.data;
 };
 
 export const getUserFollowedAgents = async (userId) => {
-  const response = await creatorApi.get(`/agents/user/${userId}/followed`);
+  const response = await apiClient.get(`/content_creator_service/agents/user/${userId}/followed`);
   return response.data;
 };
 
 export const updateAgentPreferences = async (agentId, userId, relevance, lengthPreference) => {
-  const response = await creatorApi.put(`/agents/${agentId}/preferences`, {
+  const response = await apiClient.put(`/content_creator_service/agents/${agentId}/preferences`, {
     user_id: userId,
     relevance,
     length_preference: lengthPreference,
@@ -204,27 +219,27 @@ export const updateAgentPreferences = async (agentId, userId, relevance, lengthP
 };
 
 export const triggerAgentPost = async (agentId, force = true, limit = 5) => {
-  const response = await creatorApi.post(`/agents/${agentId}/trigger`, { force, limit });
+  const response = await apiClient.post(`/content_creator_service/agents/${agentId}/trigger`, { force, limit });
   return response.data;
 };
 
 export const purgeAgentPosts = async (agentId) => {
-  const response = await creatorApi.delete(`/posts/agent/${agentId}/purge`);
+  const response = await apiClient.delete(`/content_creator_service/posts/agent/${agentId}/purge`);
   return response.data;
 };
 
 export const purgeAllPosts = async () => {
-  const response = await creatorApi.delete('/posts/purge_all');
+  const response = await apiClient.delete('/content_creator_service/posts/purge_all');
   return response.data;
 };
 
 export const getPreferenceProfile = async (userId) => {
-  const response = await creatorApi.get(`/preferences/${userId}`);
+  const response = await apiClient.get(`/content_creator_service/preferences/${userId}`);
   return response.data;
 };
 
 export const updatePreferenceProfile = async (userId, payload) => {
-  const response = await creatorApi.put(`/preferences/${userId}`, payload);
+  const response = await apiClient.put(`/content_creator_service/preferences/${userId}`, payload);
   return response.data;
 };
 

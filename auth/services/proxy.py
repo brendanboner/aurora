@@ -12,6 +12,7 @@ SERVICE_ROUTES = {
     "/api/backend": settings.backend_service_url,
     "/api/curator": settings.curator_service_url,
     "/api/retriever": settings.retriever_service_url,
+    "/api/content_creator_service": settings.content_creator_service_url,
 }
 
 # Safe headers to forward (allowlist approach)
@@ -70,7 +71,7 @@ async def proxy_request(
     }
     
     # Add user context headers (these are trusted as they come from our validation)
-    headers["X-User-Id"] = user_info["user_id"]
+    headers["X-User-Id"] = user_info["id"]
     headers["X-User-Email"] = user_info["email"]
     headers["X-User-Role"] = user_info["role"]
     
@@ -89,11 +90,18 @@ async def proxy_request(
                 timeout=30.0
             )
             
+            # Filter response headers - only pass through safe headers
+            # Don't pass content-length, server, date as FastAPI will set these
+            safe_response_headers = {
+                k: v for k, v in response.headers.items()
+                if k.lower() not in ('content-length', 'server', 'date', 'transfer-encoding', 'connection')
+            }
+            
             # Create response with same status and content
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=safe_response_headers,
                 media_type=response.headers.get("content-type")
             )
         
