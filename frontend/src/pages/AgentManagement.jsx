@@ -275,16 +275,16 @@ const AgentManagement = () => {
                 <div className="row-actions">
                   <button className="ghost-btn" onClick={() => handleTrigger(agent.id)} title="Force post generation">
                     <PlayIcon size={14} />
-                    <span>Trigger</span>
+                    {/* <span>Trigger</span> */}
                   </button>
                   <button className="ghost-btn" onClick={() => handleEdit(agent)}>Edit</button>
                   <button className="ghost-btn danger" onClick={() => handleDelete(agent.id)}>
                     <TrashIcon size={14} />
-                    <span>Delete</span>
+                    {/* <span>Delete</span> */}
                   </button>
                   <button className="ghost-btn danger" onClick={() => confirmPurgeAgent(agent)} title="Purge this agent's posts">
                     <TrashIcon size={14} />
-                    <span>Purge Posts</span>
+                    {/* <span>Purge Posts</span> */}
                   </button>
                 </div>
               </div>
