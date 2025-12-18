@@ -8,9 +8,13 @@ from pathlib import Path
 import pika
 import os
 import json
+import time
 
 # Import auth middleware
 from common.auth_middleware import get_user_context, require_user_context, require_role
+
+# Import OpenTelemetry instrumentation
+from common.telemetry import init_telemetry, instrument_fastapi
 
 # Configure logging
 logging.basicConfig(
@@ -26,7 +30,16 @@ from src.services.news_service import get_news_service
 from src.routes import admin
 from src.routes import events
 
+# Initialize OpenTelemetry
+tracer, meter = init_telemetry(
+    service_name="aurora-backend",
+    service_version="1.0.0"
+)
+
 app = FastAPI(title="Aurora Backend API")
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app)
 
 
 # Run database schema on startup to apply any migrations
@@ -255,78 +268,103 @@ async def query(req: QueryRequest, user: Optional[dict] = Depends(get_user_conte
     Requires authentication - only authenticated users can query.
     Auto-creates user if first query.
     """
-    try:
-        logger.info(f"Query from user {user['email']} (role: {user['role']}): {req.question}")
+    # Create a span for the entire orchestration pipeline
+    with tracer.start_as_current_span("orchestrator.query_pipeline") as span:
+        pipeline_start = time.time()
         
-        # Ensure user_id from request matches authenticated user (security check)
-        if req.user_id != user["user_id"]:
-            raise HTTPException(status_code=403, detail="User ID mismatch")
-        
-        # User must exist from login sync
-        user_data = postgres.get_user_by_id(req.user_id)
-        if not user_data:
-            logger.error(f"User {req.user_id} not found - login sync failed")
-            raise HTTPException(status_code=500, detail="User not synced - please log out and log back in")
-        
-        # Create or get conversation
-        conversation_id = req.conversation_id
-        if conversation_id:
-            # Verify conversation belongs to user
-            conversation = postgres.get_conversation(conversation_id)
-            if not conversation or conversation["user_id"] != req.user_id:
-                raise HTTPException(status_code=403, detail="Invalid conversation ID")
-        else:
-            # Create new conversation
-            conversation = postgres.create_conversation(req.user_id)
-            conversation_id = conversation["id"]
-            logger.info(f"Created new conversation {conversation_id} for user {req.user_id}")
-        
-        # Save user's question to database
-        user_message = postgres.save_message(
-            conversation_id=conversation_id,
-            user_id=req.user_id,
-            role="user",
-            content=req.question,
-            metadata=None
-        )
-        logger.info(f"Saved user message {user_message['id']} to conversation {conversation_id}")
-        
-        # Run the query
-        result = run_query(req.user_id, req.question)
-        
-        # Save assistant's response to database
-        assistant_metadata = {
-            "filters": result["filters"],
-            "documents": result["documents"]
-        }
-        assistant_message = postgres.save_message(
-            conversation_id=conversation_id,
-            user_id=req.user_id,
-            role="assistant",
-            content=result["answer"],
-            metadata=assistant_metadata
-        )
-        logger.info(f"Saved assistant message {assistant_message['id']} to conversation {conversation_id}")
-        
-        # Auto-generate conversation title from first user message if not set
-        if not conversation.get("title"):
-            # Use first 50 chars of question as title
-            title = req.question[:50] + ("..." if len(req.question) > 50 else "")
-            postgres.update_conversation_title(conversation_id, title)
-            logger.info(f"Set conversation {conversation_id} title to: {title}")
-        
-        return QueryResponse(
-            answer=result["answer"],
-            filters=result["filters"],
-            documents=[Document(**d) for d in result["documents"]],
-            conversation_id=conversation_id,
-            message_id=assistant_message["id"]
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Provide a structured error while preserving CORS headers.
-        raise HTTPException(status_code=500, detail=f"Query failed: {e}")
+        try:
+            logger.info(f"Query from user {user['email']} (role: {user['role']}): {req.question}")
+            
+            # Ensure user_id from request matches authenticated user (security check)
+            if req.user_id != user["user_id"]:
+                raise HTTPException(status_code=403, detail="User ID mismatch")
+            
+            # User must exist from login sync
+            user_data = postgres.get_user_by_id(req.user_id)
+            if not user_data:
+                logger.error(f"User {req.user_id} not found - login sync failed")
+                raise HTTPException(status_code=500, detail="User not synced - please log out and log back in")
+            
+            # Create or get conversation
+            conversation_id = req.conversation_id
+            if conversation_id:
+                # Verify conversation belongs to user
+                conversation = postgres.get_conversation(conversation_id)
+                if not conversation or conversation["user_id"] != req.user_id:
+                    raise HTTPException(status_code=403, detail="Invalid conversation ID")
+            else:
+                # Create new conversation
+                conversation = postgres.create_conversation(req.user_id)
+                conversation_id = conversation["id"]
+                logger.info(f"Created new conversation {conversation_id} for user {req.user_id}")
+            
+            # Save user's question to database
+            user_message = postgres.save_message(
+                conversation_id=conversation_id,
+                user_id=req.user_id,
+                role="user",
+                content=req.question,
+                metadata=None
+            )
+            logger.info(f"Saved user message {user_message['id']} to conversation {conversation_id}")
+            
+            # Run the query
+            result = run_query(req.user_id, req.question)
+            
+            # Save assistant's response to database
+            assistant_metadata = {
+                "filters": result["filters"],
+                "documents": result["documents"]
+            }
+            assistant_message = postgres.save_message(
+                conversation_id=conversation_id,
+                user_id=req.user_id,
+                role="assistant",
+                content=result["answer"],
+                metadata=assistant_metadata
+            )
+            logger.info(f"Saved assistant message {assistant_message['id']} to conversation {conversation_id}")
+            
+            # Auto-generate conversation title from first user message if not set
+            if not conversation.get("title"):
+                # Use first 50 chars of question as title
+                title = req.question[:50] + ("..." if len(req.question) > 50 else "")
+                postgres.update_conversation_title(conversation_id, title)
+                logger.info(f"Set conversation {conversation_id} title to: {title}")
+            
+            # Record total pipeline duration
+            pipeline_duration_ms = (time.time() - pipeline_start) * 1000
+            span.set_attribute("orchestrator.pipeline.total_ms", pipeline_duration_ms)
+            span.set_attribute("user.id", req.user_id)
+            span.set_attribute("conversation.id", conversation_id)
+            
+            # Record metric
+            pipeline_counter = meter.create_counter(
+                name="orchestrator.pipeline.count",
+                description="Number of query pipeline executions",
+                unit="1"
+            )
+            pipeline_counter.add(1, {"user.id": req.user_id})
+            
+            pipeline_histogram = meter.create_histogram(
+                name="orchestrator.pipeline.duration_ms",
+                description="Query pipeline duration in milliseconds",
+                unit="ms"
+            )
+            pipeline_histogram.record(pipeline_duration_ms, {"user.id": req.user_id})
+            
+            return QueryResponse(
+                answer=result["answer"],
+                filters=result["filters"],
+                documents=[Document(**d) for d in result["documents"]],
+                conversation_id=conversation_id,
+                message_id=assistant_message["id"]
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            # Provide a structured error while preserving CORS headers.
+            raise HTTPException(status_code=500, detail=f"Query failed: {e}")
 
 
 # ========== User Management Endpoints ==========

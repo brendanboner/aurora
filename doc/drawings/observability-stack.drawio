@@ -1,0 +1,734 @@
+<mxfile host="app.diagrams.net" modified="2025-12-18T00:00:00.000Z" agent="draw.io" version="22.1.11">
+  <diagram name="Observability Stack" id="observability-stack">
+    <mxGraphModel dx="1434" dy="796" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Title -->
+        <mxCell id="title" value="Aurora OpenTelemetry Observability Stack" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=28;fontStyle=1;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="400" y="30" width="800" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- Layer 1: Application Services -->
+        <mxCell id="app-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="1440" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="app-layer-label" value="LAYER 1: APPLICATION SERVICES" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="100" y="130" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Backend Service -->
+        <mxCell id="backend" value="Backend Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;fontSize=13;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="120" y="180" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="backend-icon" value="⚙️" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24" vertex="1" parent="1">
+          <mxGeometry x="120" y="185" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="backend-details" value="Query Pipeline&#xa;3 LLM Calls&#xa;PostgreSQL" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="165" y="190" width="110" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Auth Service -->
+        <mxCell id="auth" value="Auth Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;fontSize=13;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="310" y="180" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="auth-icon" value="🔐" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24" vertex="1" parent="1">
+          <mxGeometry x="310" y="185" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="auth-details" value="OAuth/JWT&#xa;Token Validation&#xa;User Proxy" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="355" y="190" width="110" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Retriever Service -->
+        <mxCell id="retriever" value="Retriever Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;fontSize=13;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="500" y="180" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="retriever-icon" value="🌐" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24" vertex="1" parent="1">
+          <mxGeometry x="500" y="185" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="retriever-details" value="Web Scraping&#xa;Doc Processing&#xa;RabbitMQ Pub" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="545" y="190" width="110" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Digester Service -->
+        <mxCell id="digester" value="Digester Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;fontSize=13;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="690" y="180" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="digester-icon" value="📄" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24" vertex="1" parent="1">
+          <mxGeometry x="690" y="185" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="digester-details" value="RabbitMQ Sub&#xa;Metadata LLM&#xa;Neo4j Write" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="735" y="190" width="110" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Curator Service -->
+        <mxCell id="curator" value="Curator Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;fontSize=13;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="880" y="180" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="curator-icon" value="📊" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24" vertex="1" parent="1">
+          <mxGeometry x="880" y="185" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="curator-details" value="Topic Organize&#xa;Event Reconcile&#xa;Job Scheduling" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="925" y="190" width="110" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Content Creator Service -->
+        <mxCell id="content-creator" value="Content Creator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;fontSize=13;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="180" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="content-icon" value="✍️" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24" vertex="1" parent="1">
+          <mxGeometry x="1070" y="185" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="content-details" value="AI Agents&#xa;Feed Generation&#xa;Post Ranking" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1115" y="190" width="110" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Shared Libraries Box -->
+        <mxCell id="shared-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="165" width="230" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="shared-label" value="Shared Libraries" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="170" width="230" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="neo4j-client" value="Neo4j Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;fontColor=#FFFFFF;fontStyle=1;fontSize=11;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="205" width="190" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="neo4j-details" value="@instrument_neo4j_client" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="220" width="190" height="15" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="rabbitmq-client" value="RabbitMQ Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;fontColor=#FFFFFF;fontStyle=1;fontSize=11;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="255" width="190" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="rabbitmq-details" value="Trace Context Propagation" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="270" width="190" height="15" as="geometry" />
+        </mxCell>
+        
+        <!-- Layer 2: OpenTelemetry SDK -->
+        <mxCell id="otel-sdk-layer" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="80" y="360" width="1440" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="otel-sdk-label" value="LAYER 2: OPENTELEMETRY SDK &amp; INSTRUMENTATION" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;fontColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="100" y="370" width="600" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Core Telemetry -->
+        <mxCell id="telemetry-core" value="telemetry.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="120" y="420" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="telemetry-details" value="✓ init_telemetry()&#xa;✓ Global Sampling&#xa;✓ OTLP Exporter" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="130" y="440" width="180" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Neo4j Instrumentation -->
+        <mxCell id="neo4j-instr" value="neo4j_instrumentation.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="350" y="420" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="neo4j-instr-details" value="✓ Query Tracing&#xa;✓ Optional Hashing&#xa;✓ Duration Metrics" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="360" y="440" width="180" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- LLM Instrumentation -->
+        <mxCell id="llm-instr" value="llm_instrumentation.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="580" y="420" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="llm-instr-details" value="✓ Token Tracking&#xa;✓ Prompt Type Labels&#xa;✓ LLM Metrics" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="590" y="440" width="180" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- RabbitMQ Instrumentation -->
+        <mxCell id="rabbitmq-instr" value="rabbitmq_instrumentation.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="810" y="420" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="rabbitmq-instr-details" value="✓ inject_trace_context()&#xa;✓ extract_trace_context()&#xa;✓ AMQP Headers" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="820" y="440" width="180" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Auto Instrumentors -->
+        <mxCell id="auto-instr" value="Auto-Instrumentors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7B1FA2;strokeColor=#6A1B9A;fontColor=#FFFFFF;fontStyle=1;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="420" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="auto-instr-details" value="✓ FastAPI&#xa;✓ httpx&#xa;✓ psycopg2 / Redis" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="440" width="180" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Config Box -->
+        <mxCell id="config-box" value="ENV Configuration" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#6A1B9A;fontColor=#4A148C;fontStyle=1;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="420" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="config-details" value="OTEL_ENABLED=true&#xa;OTEL_SAMPLE_RATE=1.0&#xa;OTEL_HASH_CYPHER_QUERIES=false" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontFamily=Courier New;fontColor=#4A148C;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="445" width="200" height="35" as="geometry" />
+        </mxCell>
+        
+        <!-- OTLP Export Arrow -->
+        <mxCell id="otlp-arrow" value="" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#9C27B0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="otel-sdk-layer" target="otel-collector">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="800" y="520" as="sourcePoint" />
+            <mxPoint x="800" y="580" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="otlp-label" value="OTLP Protocol (gRPC :4317 / HTTP :4318)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fillColor=#FFFFFF;strokeColor=#9C27B0;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="650" y="535" width="300" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Layer 3: Collector -->
+        <mxCell id="collector-layer" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#1B5E20;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="80" y="580" width="1440" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="collector-label" value="LAYER 3: OPENTELEMETRY COLLECTOR" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="100" y="590" width="500" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- OTEL Collector -->
+        <mxCell id="otel-collector" value="OpenTelemetry Collector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#43A047;strokeColor=#1B5E20;fontColor=#FFFFFF;fontStyle=1;fontSize=16;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="650" y="630" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="collector-icon" value="🔄" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=32" vertex="1" parent="1">
+          <mxGeometry x="660" y="640" width="50" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="collector-details" value="Receivers: OTLP (gRPC/HTTP)&#xa;Processors: Batch, Memory Limiter&#xa;Exporters: Prometheus, Tempo, Loki" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="720" y="645" width="220" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Config File Reference -->
+        <mxCell id="collector-config" value="📄 otel-collector-config.yaml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A5D6A7;strokeColor=#1B5E20;fontStyle=2;fontSize=11;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="650" width="220" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Export Info Boxes -->
+        <mxCell id="export-info-1" value="Port :4317 (gRPC)&#xa;Port :4318 (HTTP)&#xa;Port :8889 (Metrics)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#1B5E20;fontSize=10;align=left;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="640" width="140" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- Layer 4: Storage & Visualization -->
+        <mxCell id="storage-layer" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F57F17;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="80" y="760" width="1440" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="storage-label" value="LAYER 4: STORAGE &amp; VISUALIZATION" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;fontColor=#F57F17;" vertex="1" parent="1">
+          <mxGeometry x="100" y="770" width="500" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Prometheus -->
+        <mxCell id="prometheus" value="Prometheus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;fontColor=#000000;fontStyle=1;fontSize=15;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="150" y="830" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="prom-icon" value="📊" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=36" vertex="1" parent="1">
+          <mxGeometry x="160" y="845" width="60" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="prometheus-details" value="Metrics Storage&#xa;&#xa;Port: 9090&#xa;Scrapes: :8889 every 15s&#xa;Retention: Configurable" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="230" y="850" width="190" height="70" as="geometry" />
+        </mxCell>
+        
+        <!-- Tempo -->
+        <mxCell id="tempo" value="Tempo" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;fontColor=#000000;fontStyle=1;fontSize=15;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="470" y="830" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="tempo-icon" value="🔍" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=36" vertex="1" parent="1">
+          <mxGeometry x="480" y="845" width="60" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="tempo-details" value="Distributed Tracing&#xa;&#xa;Port: 3200&#xa;Protocol: OTLP&#xa;Retention: 48 hours" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="550" y="850" width="190" height="70" as="geometry" />
+        </mxCell>
+        
+        <!-- Loki -->
+        <mxCell id="loki" value="Loki" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;fontColor=#000000;fontStyle=1;fontSize=15;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="790" y="830" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="loki-icon" value="📝" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=36" vertex="1" parent="1">
+          <mxGeometry x="800" y="845" width="60" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="loki-details" value="Log Aggregation&#xa;&#xa;Port: 3100&#xa;Source: Collector&#xa;Trace Correlation: Yes" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="870" y="850" width="190" height="70" as="geometry" />
+        </mxCell>
+        
+        <!-- Grafana -->
+        <mxCell id="grafana" value="Grafana Dashboard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF6F00;strokeColor=#E65100;fontColor=#FFFFFF;fontStyle=1;fontSize=16;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="830" width="380" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana-icon" value="📈" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=42" vertex="1" parent="1">
+          <mxGeometry x="1120" y="845" width="70" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana-details" value="Unified Visualization&#xa;&#xa;Port: 3001 (admin/admin)&#xa;Data Sources: Prometheus, Tempo, Loki&#xa;Features: Dashboards, Alerts, Correlation" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="850" width="280" height="70" as="geometry" />
+        </mxCell>
+        
+        <!-- Metrics Info Box -->
+        <mxCell id="metrics-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1976D2;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="150" y="960" width="920" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="metrics-title" value="📊 KEY METRICS TRACKED:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="160" y="965" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="metrics-content" value="llm.request.count, llm.tokens.total  •  graph.query.count, graph.query.duration_ms  •  orchestrator.pipeline.duration_ms  •  agent.execution.count  •  feed.generation.count" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontFamily=Courier New;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="160" y="990" width="900" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#424242;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="960" width="380" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="LEGEND" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#424242;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="963" width="80" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-app-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="990" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-app-text" value="Services" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#424242;" vertex="1" parent="1">
+          <mxGeometry x="1165" y="988" width="70" height="24" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-lib-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="990" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-lib-text" value="Libraries" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#424242;" vertex="1" parent="1">
+          <mxGeometry x="1275" y="988" width="70" height="24" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-otel-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="990" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-otel-text" value="OTEL SDK" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#424242;" vertex="1" parent="1">
+          <mxGeometry x="1385" y="988" width="70" height="24" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-storage-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="1460" y="990" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-storage-text" value="Storage" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#424242;" vertex="1" parent="1">
+          <mxGeometry x="1495" y="988" width="70" height="24" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows from Collector to Backends -->
+        <mxCell id="arrow-collector-prometheus" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#43A047;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;curved=1;" edge="1" parent="1" source="otel-collector" target="prometheus">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="710" y="720" as="sourcePoint" />
+            <mxPoint x="290" y="810" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="prom-export-label" value="Metrics&#xa;:8889" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=1;fillColor=#C8E6C9;strokeColor=#1B5E20;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="750" width="60" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-collector-tempo" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#43A047;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="otel-collector" target="tempo">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="800" y="720" as="sourcePoint" />
+            <mxPoint x="610" y="810" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tempo-export-label" value="Traces&#xa;OTLP" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=1;fillColor=#C8E6C9;strokeColor=#1B5E20;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="730" y="750" width="60" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-collector-loki" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#43A047;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;curved=1;" edge="1" parent="1" source="otel-collector" target="loki">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="890" y="720" as="sourcePoint" />
+            <mxPoint x="930" y="810" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="loki-export-label" value="Logs" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=1;fillColor=#C8E6C9;strokeColor=#1B5E20;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="750" width="50" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows from Backends to Grafana -->
+        <mxCell id="arrow-prom-grafana" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF6F00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="prometheus" target="grafana">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="440" y="880" as="sourcePoint" />
+            <mxPoint x="1090" y="855" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-tempo-grafana" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF6F00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="tempo" target="grafana">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="760" y="880" as="sourcePoint" />
+            <mxPoint x="1090" y="880" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-loki-grafana" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF6F00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="loki" target="grafana">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1080" y="880" as="sourcePoint" />
+            <mxPoint x="1090" y="905" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="datasources-label" value="Query Data Sources" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="865" width="100" height="30" as="geometry" />
+        </mxCell>
+        </mxCell>
+        
+        <!-- Application Services Layer -->
+        <mxCell id="app-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#01579B;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="1320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="app-layer-label" value="Application Services" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="50" y="90" width="200" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Backend Service -->
+        <mxCell id="backend" value="Backend&#xa;Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="80" y="140" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="backend-details" value="• FastAPI&#xa;• Query Pipeline&#xa;• 3 LLM calls" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="85" y="170" width="110" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Auth Service -->
+        <mxCell id="auth" value="Auth&#xa;Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="230" y="140" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="auth-details" value="• OAuth&#xa;• JWT Validation&#xa;• Proxy" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="235" y="170" width="110" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Retriever Service -->
+        <mxCell id="retriever" value="Retriever&#xa;Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="380" y="140" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="retriever-details" value="• Web Scraping&#xa;• Doc Processing&#xa;• RabbitMQ Pub" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="385" y="170" width="110" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Digester Service -->
+        <mxCell id="digester" value="Digester&#xa;Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="530" y="140" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="digester-details" value="• RabbitMQ Sub&#xa;• Metadata LLM&#xa;• Neo4j Write" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="535" y="170" width="110" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Curator Service -->
+        <mxCell id="curator" value="Curator&#xa;Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="680" y="140" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="curator-details" value="• Topic Org&#xa;• Event Recon&#xa;• Scheduling" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="685" y="170" width="110" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Content Creator Service -->
+        <mxCell id="content-creator" value="Content Creator&#xa;Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="830" y="140" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="content-details" value="• Agents&#xa;• Feed Gen&#xa;• Post Ranking" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="835" y="170" width="110" height="45" as="geometry" />
+        </mxCell>
+        
+        <!-- Shared Libraries Layer -->
+        <mxCell id="shared-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="980" y="80" width="360" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="shared-layer-label" value="Shared Libraries" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="990" y="90" width="200" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Neo4j Client -->
+        <mxCell id="neo4j-client" value="Neo4j Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1000" y="140" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="neo4j-details" value="@instrument_neo4j_client" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="1000" y="182" width="150" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- RabbitMQ Client -->
+        <mxCell id="rabbitmq-client" value="RabbitMQ Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1170" y="140" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="rabbitmq-details" value="Trace Context Propagation" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="1170" y="182" width="150" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- OpenTelemetry SDK Layer -->
+        <mxCell id="otel-sdk-layer" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#4A148C;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="40" y="290" width="1320" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="otel-sdk-label" value="OpenTelemetry SDK Layer" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="50" y="300" width="250" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Core Telemetry Module -->
+        <mxCell id="telemetry-core" value="common/telemetry.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="80" y="340" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="telemetry-details" value="• init_telemetry()&#xa;• Global sampling&#xa;• OTLP exporter" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="85" y="355" width="170" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Neo4j Instrumentation -->
+        <mxCell id="neo4j-instr" value="neo4j_instrumentation.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="290" y="340" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="neo4j-instr-details" value="• Query tracing&#xa;• Optional hashing&#xa;• Duration metrics" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="295" y="355" width="170" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- LLM Instrumentation -->
+        <mxCell id="llm-instr" value="llm_instrumentation.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="500" y="340" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="llm-instr-details" value="• Token tracking&#xa;• Prompt type labels&#xa;• LLM metrics" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="505" y="355" width="170" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- RabbitMQ Instrumentation -->
+        <mxCell id="rabbitmq-instr" value="rabbitmq_instrumentation.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="710" y="340" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rabbitmq-instr-details" value="• inject_trace_context()&#xa;• extract_trace_context()&#xa;• AMQP headers" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="715" y="355" width="170" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Auto Instrumentors -->
+        <mxCell id="auto-instr" value="Auto-Instrumentors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="920" y="340" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="auto-instr-details" value="• FastAPI&#xa;• httpx&#xa;• psycopg2/Redis" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="925" y="355" width="170" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Config Box -->
+        <mxCell id="config-box" value="Configuration" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;fontColor=#FFFFFF;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1130" y="340" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="config-details" value="OTEL_ENABLED=true&#xa;OTEL_SAMPLE_RATE=1.0&#xa;OTEL_HASH_CYPHER_QUERIES=false" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=8;fontFamily=Courier New" vertex="1" parent="1">
+          <mxGeometry x="1135" y="355" width="200" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- OTLP Export Arrow -->
+        <mxCell id="otlp-arrow" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#9C27B0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" target="otel-collector">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="410" as="sourcePoint" />
+            <mxPoint x="700" y="460" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="otlp-label" value="OTLP (gRPC :4317 / HTTP :4318)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="550" y="420" width="300" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Collector Layer -->
+        <mxCell id="collector-layer" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="40" y="460" width="1320" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="collector-label" value="OpenTelemetry Collector" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="50" y="470" width="280" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- OTEL Collector -->
+        <mxCell id="otel-collector" value="OTEL Collector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#66BB6A;strokeColor=#2E7D32;fontColor=#FFFFFF;fontStyle=1;fontSize=14" vertex="1" parent="1">
+          <mxGeometry x="580" y="510" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="collector-details" value="Receivers: OTLP gRPC/HTTP&#xa;Processors: Batch, Memory Limiter&#xa;Exporters: Prometheus, Tempo, Loki" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="585" y="525" width="230" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Collector Config -->
+        <mxCell id="collector-config" value="observability/&#xa;otel-collector-config.yaml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A5D6A7;strokeColor=#2E7D32;fontStyle=2;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="860" y="520" width="180" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Storage/Visualization Layer -->
+        <mxCell id="storage-layer" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F57F17;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="40" y="630" width="1320" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="storage-label" value="Storage &amp; Visualization Backends" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="50" y="640" width="320" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Prometheus -->
+        <mxCell id="prometheus" value="Prometheus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;fontColor=#000000;fontStyle=1;fontSize=14" vertex="1" parent="1">
+          <mxGeometry x="100" y="700" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="prometheus-details" value="Port: 9090&#xa;Scrapes: collector:8889&#xa;Interval: 15s&#xa;&#xa;Stores: Metrics" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="110" y="720" width="180" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Tempo -->
+        <mxCell id="tempo" value="Tempo" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;fontColor=#000000;fontStyle=1;fontSize=14" vertex="1" parent="1">
+          <mxGeometry x="350" y="700" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="tempo-details" value="Port: 3200&#xa;Receives: OTLP traces&#xa;Retention: 48h&#xa;&#xa;Stores: Distributed Traces" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="360" y="720" width="180" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Loki -->
+        <mxCell id="loki" value="Loki" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;fontColor=#000000;fontStyle=1;fontSize=14" vertex="1" parent="1">
+          <mxGeometry x="600" y="700" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="loki-details" value="Port: 3100&#xa;Receives: Logs from collector&#xa;&#xa;Stores: Application Logs" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="610" y="720" width="180" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Grafana -->
+        <mxCell id="grafana" value="Grafana" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF6F00;strokeColor=#E65100;fontColor=#FFFFFF;fontStyle=1;fontSize=16" vertex="1" parent="1">
+          <mxGeometry x="900" y="700" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana-details" value="Port: 3001 (admin/admin)&#xa;&#xa;Visualizes: Metrics, Traces, Logs&#xa;Features: Dashboards, Alerting, Trace-to-Log correlation" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#FFFFFF" vertex="1" parent="1">
+          <mxGeometry x="910" y="720" width="360" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows from Services to SDK -->
+        <mxCell id="arrow-backend-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="backend">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="140" y="230" as="sourcePoint" />
+            <mxPoint x="140" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-auth-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="auth">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="290" y="230" as="sourcePoint" />
+            <mxPoint x="290" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-retriever-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="retriever">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="440" y="230" as="sourcePoint" />
+            <mxPoint x="440" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-digester-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="digester">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="590" y="230" as="sourcePoint" />
+            <mxPoint x="590" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-curator-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="curator">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="740" y="230" as="sourcePoint" />
+            <mxPoint x="740" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-content-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="content-creator">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="890" y="230" as="sourcePoint" />
+            <mxPoint x="890" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-neo4j-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF9800;exitX=0.25;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="neo4j-client">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1037" y="200" as="sourcePoint" />
+            <mxPoint x="400" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-rabbitmq-sdk" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF9800;exitX=0.25;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="rabbitmq-client">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1207" y="200" as="sourcePoint" />
+            <mxPoint x="850" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Arrows from Collector to Backends -->
+        <mxCell id="arrow-collector-prometheus" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#66BB6A;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="otel-collector" target="prometheus">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="640" y="600" as="sourcePoint" />
+            <mxPoint x="200" y="680" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="prom-label" value="Metrics Export&#xa;:8889/metrics" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="300" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-collector-tempo" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#66BB6A;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="otel-collector" target="tempo">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="600" as="sourcePoint" />
+            <mxPoint x="450" y="680" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tempo-label" value="Traces Export&#xa;OTLP" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="520" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-collector-loki" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#66BB6A;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="otel-collector" target="loki">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="760" y="600" as="sourcePoint" />
+            <mxPoint x="700" y="680" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="loki-label" value="Logs Export" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="740" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows from Backends to Grafana -->
+        <mxCell id="arrow-prom-grafana" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FBC02D;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="prometheus" target="grafana">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="310" y="740" as="sourcePoint" />
+            <mxPoint x="880" y="720" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-tempo-grafana" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FBC02D;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="tempo" target="grafana">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="560" y="740" as="sourcePoint" />
+            <mxPoint x="880" y="740" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow-loki-grafana" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FBC02D;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="loki" target="grafana">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="810" y="740" as="sourcePoint" />
+            <mxPoint x="880" y="760" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="datasources-label" value="Data Sources" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="820" y="725" width="80" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="480" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1120" y="485" width="220" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-app" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="510" width="40" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-app-text" value="Application Services" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="1175" y="507" width="150" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-lib" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="530" width="40" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-lib-text" value="Shared Libraries" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="1175" y="527" width="150" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-otel" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="550" width="40" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-otel-text" value="OpenTelemetry SDK" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="1175" y="547" width="150" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-backend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBC02D;strokeColor=#F57F17;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="570" width="40" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-backend-text" value="Storage Backends" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="1175" y="567" width="150" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Key Metrics Box -->
+        <mxCell id="metrics-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1976D2;" vertex="1" parent="1">
+          <mxGeometry x="80" y="480" width="450" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="metrics-title" value="Key Metrics Tracked" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="90" y="485" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="metrics-content" value="• llm.request.count, llm.tokens.total&#xa;• graph.query.count, graph.query.duration_ms&#xa;• orchestrator.pipeline.duration_ms&#xa;• agent.execution.count, agent.execution.duration_ms&#xa;• feed.generation.count, feed.generation.duration_ms" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;fontFamily=Courier New" vertex="1" parent="1">
+          <mxGeometry x="90" y="510" width="430" height="70" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

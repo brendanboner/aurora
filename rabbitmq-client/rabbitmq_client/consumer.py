@@ -9,6 +9,25 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, Future
 import threading
 
+# Import instrumentation from common
+import sys
+import os
+# Add parent directory to path to import from common
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+try:
+    from common.rabbitmq_instrumentation import extract_trace_context
+    from common.telemetry import get_tracer
+    from opentelemetry.context import detach
+    INSTRUMENTATION_AVAILABLE = True
+except ImportError:
+    INSTRUMENTATION_AVAILABLE = False
+    def extract_trace_context(properties):
+        return None
+    def get_tracer():
+        return None
+    def detach(token):
+        pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +188,29 @@ class RabbitMQConsumer:
     def _consume_sync(self, callback: Callable[[Dict[str, Any]], bool], prefetch_count: int):
         """Synchronous message consumption (original behavior)."""
         def on_message(ch, method, properties, body):
+            tracer = get_tracer() if INSTRUMENTATION_AVAILABLE else None
+            token = None
+            span_context = None
+            
+            # Extract trace context from message properties
+            if INSTRUMENTATION_AVAILABLE and properties:
+                props_dict = {
+                    'headers': properties.headers if properties.headers else {}
+                }
+                token = extract_trace_context(props_dict)
+            
+            # Create span for message processing
+            if tracer:
+                span_context = tracer.start_as_current_span(
+                    "rabbitmq.process",
+                    attributes={
+                        "messaging.system": "rabbitmq",
+                        "messaging.source": self.queue,
+                        "messaging.operation": "process",
+                    }
+                )
+                span_context.__enter__()
+            
             try:
                 # Deserialize JSON message
                 message = json.loads(body)
@@ -196,6 +238,8 @@ class RabbitMQConsumer:
                 self.logger.error(f"Failed to decode message as JSON: {e}")
                 # Acknowledge to remove invalid message from queue
                 ch.basic_ack(delivery_tag=method.delivery_tag)
+                if span_context:
+                    span_context.__exit__(type(e), e, e.__traceback__)
             except (pika.exceptions.AMQPConnectionError,
                     pika.exceptions.AMQPChannelError,
                     pika.exceptions.StreamLostError,
@@ -203,6 +247,8 @@ class RabbitMQConsumer:
                     pika.exceptions.ChannelClosedByBroker) as e:
                 # Connection errors - re-raise to trigger reconnection in outer loop
                 self.logger.error(f"Connection error during message handling: {e}")
+                if span_context:
+                    span_context.__exit__(type(e), e, e.__traceback__)
                 raise
             except Exception as e:
                 self.logger.error(f"Error processing message: {e}", exc_info=True)
@@ -211,7 +257,23 @@ class RabbitMQConsumer:
                     ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
                 except Exception:
                     self.logger.warning("Could not NACK message - connection may be dead")
+                    if span_context:
+                        span_context.__exit__(type(e), e, e.__traceback__)
                     raise
+                if span_context:
+                    span_context.__exit__(type(e), e, e.__traceback__)
+            finally:
+                # Clean up span and trace context
+                if span_context:
+                    try:
+                        span_context.__exit__(None, None, None)
+                    except:
+                        pass
+                if token and INSTRUMENTATION_AVAILABLE:
+                    try:
+                        detach(token)
+                    except:
+                        pass
         
         # Set QoS
         self.channel.basic_qos(prefetch_count=prefetch_count)

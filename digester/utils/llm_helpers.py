@@ -14,6 +14,15 @@ from openai import AzureOpenAI
 from settings import settings
 from utils.logger import setup_logger
 
+try:
+    from common.llm_instrumentation import create_llm_span_manually
+except ImportError:
+    # Fallback if common module unavailable
+    from contextlib import contextmanager
+    @contextmanager
+    def create_llm_span_manually(*args, **kwargs):
+        yield None
+
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -99,22 +108,33 @@ def call_llm_with_retry(
     
     for attempt in range(max_retries + 1):  # +1 for initial attempt
         try:
-            response = client.chat.completions.create(
-                model=deployment,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            
-            # Check if response was truncated due to token limit
-            if check_truncation:
-                finish_reason = response.choices[0].finish_reason
-                if finish_reason == "length":
-                    error_msg = f"LLM response truncated due to max_tokens limit ({max_tokens}). Content too large for current token limit."
-                    logger.error(error_msg)
-                    raise ValueError(error_msg)
-            
-            return response.choices[0].message.content
+            with create_llm_span_manually(
+                prompt_type="extract",
+                model_provider="azure_openai"
+            ) as span:
+                response = client.chat.completions.create(
+                    model=deployment,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                
+                # Record token usage if span is available
+                if span and hasattr(response, 'usage') and response.usage:
+                    span.set_attribute("llm.tokens.prompt", response.usage.prompt_tokens)
+                    span.set_attribute("llm.tokens.completion", response.usage.completion_tokens)
+                    span.set_attribute("llm.tokens.total", response.usage.total_tokens)
+                    span.set_attribute("llm.model", deployment)
+                
+                # Check if response was truncated due to token limit
+                if check_truncation:
+                    finish_reason = response.choices[0].finish_reason
+                    if finish_reason == "length":
+                        error_msg = f"LLM response truncated due to max_tokens limit ({max_tokens}). Content too large for current token limit."
+                        logger.error(error_msg)
+                        raise ValueError(error_msg)
+                
+                return response.choices[0].message.content
         
         except ValueError:
             # Re-raise ValueError (token limit errors) - these won't be fixed by retrying

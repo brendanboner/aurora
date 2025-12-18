@@ -6,6 +6,22 @@ import time
 from typing import Dict, Any, List, Optional
 import logging
 
+# Import instrumentation from common
+import sys
+import os
+# Add parent directory to path to import from common
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+try:
+    from common.rabbitmq_instrumentation import inject_trace_context
+    from common.telemetry import get_tracer
+    INSTRUMENTATION_AVAILABLE = True
+except ImportError:
+    INSTRUMENTATION_AVAILABLE = False
+    def inject_trace_context(properties):
+        return properties
+    def get_tracer():
+        return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +116,38 @@ class RabbitMQProducer:
         """
         self._ensure_connected()
         
+        tracer = get_tracer() if INSTRUMENTATION_AVAILABLE else None
+        
+        # Create span for message publish
+        span_context = None
+        if tracer:
+            span_context = tracer.start_as_current_span(
+                "rabbitmq.publish",
+                attributes={
+                    "messaging.system": "rabbitmq",
+                    "messaging.destination": self.queue,
+                    "messaging.operation": "publish",
+                }
+            )
+            span_context.__enter__()
+        
         try:
             # Serialize to JSON
             body = json.dumps(message)
             
             # Set message properties
+            properties_dict = {
+                'delivery_mode': 2 if persistent else 1,  # 2 = persistent
+                'headers': {}
+            }
+            
+            # Inject trace context into headers
+            if INSTRUMENTATION_AVAILABLE:
+                properties_dict = inject_trace_context(properties_dict)
+            
             properties = pika.BasicProperties(
-                delivery_mode=2 if persistent else 1  # 2 = persistent
+                delivery_mode=properties_dict['delivery_mode'],
+                headers=properties_dict.get('headers', {})
             )
             
             # Publish
@@ -129,10 +170,20 @@ class RabbitMQProducer:
             
         except (TypeError, ValueError) as e:
             self.logger.error(f"Failed to serialize message: {e}")
+            if span_context:
+                span_context.__exit__(type(e), e, e.__traceback__)
             raise
         except Exception as e:
             self.logger.error(f"Failed to publish message: {e}", exc_info=True)
+            if span_context:
+                span_context.__exit__(type(e), e, e.__traceback__)
             raise
+        finally:
+            if span_context:
+                try:
+                    span_context.__exit__(None, None, None)
+                except:
+                    pass
     
     def publish_batch(self, messages: List[Dict[str, Any]], persistent: bool = True):
         """

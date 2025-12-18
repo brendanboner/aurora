@@ -18,6 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
 
 # Install local shared libraries outside of requirements.txt so docker can cache the other requirements
+COPY common ./common
 COPY rabbitmq-client ./rabbitmq-client
 COPY neo4j-client ./neo4j-client
 

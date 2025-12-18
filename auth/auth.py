@@ -18,9 +18,25 @@ from services.proxy import proxy_request
 from utils.logger import setup_logger
 from utils.state_storage import store_oauth_state, get_oauth_state, delete_oauth_state
 
+# Import OpenTelemetry instrumentation
+try:
+    from common.telemetry import init_telemetry, instrument_fastapi
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 settings = get_settings()
 log_level = os.getenv("LOG_LEVEL", "INFO")
 logger = setup_logger("auth", level=log_level)
+
+# Initialize OpenTelemetry
+if OTEL_AVAILABLE:
+    tracer, meter = init_telemetry(
+        service_name="aurora-auth",
+        service_version="1.0.0"
+    )
+else:
+    tracer, meter = None, None
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -34,6 +50,10 @@ app = FastAPI(
 # Add rate limiter to app state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Instrument FastAPI with OpenTelemetry
+if OTEL_AVAILABLE:
+    instrument_fastapi(app)
 
 # CORS middleware
 app.add_middleware(

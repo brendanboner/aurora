@@ -22,6 +22,13 @@ from config_manager import ConfigManager
 from settings import settings
 from common.auth_middleware import get_user_context, require_role
 
+# Import OpenTelemetry instrumentation
+try:
+    from common.telemetry import init_telemetry, instrument_fastapi
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper()),
@@ -32,6 +39,15 @@ logger = logging.getLogger(__name__)
 # Suppress verbose pypdf warnings - only show errors
 logging.getLogger('pypdf').setLevel(logging.ERROR)
 logging.getLogger('pypdf._reader').setLevel(logging.ERROR)
+
+# Initialize OpenTelemetry
+if OTEL_AVAILABLE:
+    tracer, meter = init_telemetry(
+        service_name="aurora-retriever",
+        service_version="1.0.0"
+    )
+else:
+    tracer, meter = None, None
 
 # Registry mapping scraper_type to scraper class
 # The scraper_type value in the database determines which class handles a datasource
@@ -393,6 +409,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Instrument FastAPI with OpenTelemetry
+if OTEL_AVAILABLE:
+    instrument_fastapi(app)
 
 
 @app.get("/")

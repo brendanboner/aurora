@@ -6,3 +6,13 @@ openai
 pika
 redis
 python-dateutil
+
+# OpenTelemetry
+opentelemetry-api>=1.0.0
+opentelemetry-sdk>=1.0.0
+opentelemetry-exporter-otlp>=0.40.0
+opentelemetry-instrumentation>=0.40.0
+opentelemetry-instrumentation-fastapi>=0.40.0
+opentelemetry-instrumentation-httpx>=0.40.0
+opentelemetry-instrumentation-psycopg2>=0.40.0
+opentelemetry-instrumentation-redis>=0.40.0

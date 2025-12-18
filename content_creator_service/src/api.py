@@ -12,11 +12,31 @@ from .routes import agents, feed, posts, preferences
 from .services.scheduler import AgentScheduler
 from .settings import get_settings
 
+# Import OpenTelemetry instrumentation
+try:
+    from common.telemetry import init_telemetry, instrument_fastapi
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+# Initialize OpenTelemetry
+if OTEL_AVAILABLE:
+    tracer, meter = init_telemetry(
+        service_name="aurora-content-creator",
+        service_version="0.1.0"
+    )
+else:
+    tracer, meter = None, None
 
 app = FastAPI(title="Aurora Content Creator Service", version="0.1.0")
 settings = get_settings()
 scheduler = AgentScheduler()
+
+# Instrument FastAPI with OpenTelemetry
+if OTEL_AVAILABLE:
+    instrument_fastapi(app)
 
 app.add_middleware(
     CORSMiddleware,

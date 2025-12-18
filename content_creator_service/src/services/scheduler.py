@@ -4,7 +4,18 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
+import time
 from typing import Optional
+
+try:
+    from common.telemetry import get_tracer, get_meter
+    tracer = get_tracer(__name__)
+    meter = get_meter(__name__)
+    OTEL_AVAILABLE = True
+except ImportError:
+    tracer = None
+    meter = None
+    OTEL_AVAILABLE = False
 
 from ..events import KnowledgeEvent
 from ..models.agent import CreatorAgent
@@ -118,46 +129,87 @@ class AgentScheduler:
         limit: Optional[int] = None,
         allow_repeat: bool = False,
     ) -> tuple[Optional[int], Optional[KnowledgeEvent]]:
-        events = self._monitor.collect_for_agent(agent, limit=limit or self._event_sample_limit)
-        event = self._select_event(agent, events, allow_repeat=allow_repeat)
-        if event is None:
-            logger.debug("Agent %s has no new events", agent.name)
-            return None, None
-        if not force and not self._event_meets_importance(agent, event):
-            logger.debug("Agent %s event below importance threshold", agent.name)
-            return None, event
-        if not force and not self._should_run_agent(agent, now):
-            logger.debug("Agent %s skipped due to cadence window", agent.name)
-            return None, event
-        payload = self._generation_service.generate_post_payload(
-            agent,
-            topics=event.topics or agent.expertise_topics,
-            organisations=event.organisations or agent.expertise_organisations,
-        )
-        if not payload:
-            logger.info("Agent %s generation returned no content", agent.name)
-            self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
-            return None, event
-        body = payload.get("body") or payload.get("summary")
-        if not body:
-            logger.info("Agent %s produced empty body", agent.name)
-            self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
-            return None, event
-        tags = payload.get("tags") or event.topics or agent.expertise_topics
-        post_id = self._post_service.create_post(
-            agent_id=agent.id,
-            title=payload.get("title") or event.title or f"Update from {agent.name}",
-            body=body,
-            summary=payload.get("summary"),
-            tags=tags,
-            visibility=payload.get("visibility", "public"),
-            importance=payload.get("importance", agent.importance_threshold),
-            content_length=payload.get("content_length", agent.content_length_preference),
-            sources=payload.get("sources", []),
-        )
-        self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=True)
-        logger.info("CreatorAgent %s generated post %s", agent.name, post_id)
-        return post_id, event
+        # Create span for agent execution
+        if OTEL_AVAILABLE and tracer:
+            span = tracer.start_span("agent.execution")
+            span.set_attribute("agent.name", agent.name)
+            span.set_attribute("agent.id", agent.id)
+            execution_start = time.time()
+        else:
+            span = None
+            execution_start = None
+        
+        try:
+            events = self._monitor.collect_for_agent(agent, limit=limit or self._event_sample_limit)
+            event = self._select_event(agent, events, allow_repeat=allow_repeat)
+            if event is None:
+                logger.debug("Agent %s has no new events", agent.name)
+                return None, None
+            if not force and not self._event_meets_importance(agent, event):
+                logger.debug("Agent %s event below importance threshold", agent.name)
+                return None, event
+            if not force and not self._should_run_agent(agent, now):
+                logger.debug("Agent %s skipped due to cadence window", agent.name)
+                return None, event
+            payload = self._generation_service.generate_post_payload(
+                agent,
+                topics=event.topics or agent.expertise_topics,
+                organisations=event.organisations or agent.expertise_organisations,
+            )
+            if not payload:
+                logger.info("Agent %s generation returned no content", agent.name)
+                self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
+                return None, event
+            body = payload.get("body") or payload.get("summary")
+            if not body:
+                logger.info("Agent %s produced empty body", agent.name)
+                self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
+                return None, event
+            tags = payload.get("tags") or event.topics or agent.expertise_topics
+            post_id = self._post_service.create_post(
+                agent_id=agent.id,
+                title=payload.get("title") or event.title or f"Update from {agent.name}",
+                body=body,
+                summary=payload.get("summary"),
+                tags=tags,
+                visibility=payload.get("visibility", "public"),
+                importance=payload.get("importance", agent.importance_threshold),
+                content_length=payload.get("content_length", agent.content_length_preference),
+                sources=payload.get("sources", []),
+            )
+            self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=True)
+            logger.info("CreatorAgent %s generated post %s", agent.name, post_id)
+            
+            # Record metrics
+            if OTEL_AVAILABLE and span and execution_start:
+                execution_duration_ms = (time.time() - execution_start) * 1000
+                span.set_attribute("agent.execution.duration_ms", execution_duration_ms)
+                span.set_attribute("agent.post.generated", True)
+                span.set_attribute("agent.post.id", post_id)
+            
+            return post_id, event
+        finally:
+            # End span and record metrics
+            if OTEL_AVAILABLE and span and execution_start:
+                execution_duration_ms = (time.time() - execution_start) * 1000
+                span.end()
+                
+                # Record execution count
+                if meter:
+                    execution_counter = meter.create_counter(
+                        name="agent.execution.count",
+                        description="Number of agent executions",
+                        unit="1"
+                    )
+                    execution_counter.add(1, {"agent.name": agent.name})
+                    
+                    # Record execution duration
+                    execution_histogram = meter.create_histogram(
+                        name="agent.execution.duration_ms",
+                        description="Agent execution duration in milliseconds",
+                        unit="ms"
+                    )
+                    execution_histogram.record(execution_duration_ms, {"agent.name": agent.name})
 
     def _select_event(
         self,

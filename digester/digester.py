@@ -28,7 +28,17 @@ from neo4j_client.models import Person, ResourceUploadedByPerson
 import redis
 import json
 
+# Import OpenTelemetry instrumentation
+from common.telemetry import init_telemetry
+
 logger = setup_logger(__name__, settings.log_level)
+
+# Initialize OpenTelemetry
+tracer, meter = init_telemetry(
+    service_name="aurora-digester",
+    service_version="1.0.0"
+)
+
 
 
 # Redis TTL constants (in seconds)

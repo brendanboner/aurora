@@ -9,6 +9,10 @@ try:
 except Exception:  # pragma: no cover - library import failures should not break app
     AzureOpenAI = None  # type: ignore
 
+# Import OpenTelemetry instrumentation
+from common.llm_instrumentation import instrument_llm_call, create_llm_span_manually
+from common.telemetry import get_tracer
+
 _client: Optional[AzureOpenAI] = None
 
 log = logging.getLogger("llm_service")
@@ -223,13 +227,23 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
                 '- When temporal_focus is set, resolve relative dates: "last week" = 7 days ago to today, "last month" = 30 days ago to today, "last year" = 365 days ago to today'
             ),
         }
-        resp = client.chat.completions.create(
-            model=deployment,
-            messages=[system_msg, user_msg],
-            temperature=0.0,
-            max_tokens=512,
-            response_format={"type": "json_object"},
-        )
+        
+        # Create instrumentation span for LLM call
+        tracer = get_tracer()
+        with create_llm_span_manually(tracer, "query_parse", deployment) as span:
+            resp = client.chat.completions.create(
+                model=deployment,
+                messages=[system_msg, user_msg],
+                temperature=0.0,
+                max_tokens=512,
+                response_format={"type": "json_object"},
+            )
+            # Record token usage in span
+            if span and hasattr(resp, 'usage'):
+                span.set_attribute("llm.tokens.prompt", resp.usage.prompt_tokens)
+                span.set_attribute("llm.tokens.completion", resp.usage.completion_tokens)
+                span.set_attribute("llm.tokens.total", resp.usage.total_tokens)
+        
         content = resp.choices[0].message.content
         data = json.loads(content)
     except Exception as e:
@@ -388,12 +402,25 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
                 "role": "user",
                 "content": question,
             }
-            resp = client.chat.completions.create(
-                model=deployment,
-                messages=[system_msg, user_msg],
-                temperature=0.3,
-                max_tokens=500,
-            )
+            
+            with create_llm_span_manually(
+                prompt_type="meta_query",
+                model_provider="azure_openai"
+            ) as span:
+                resp = client.chat.completions.create(
+                    model=deployment,
+                    messages=[system_msg, user_msg],
+                    temperature=0.3,
+                    max_tokens=500,
+                )
+                
+                # Record token usage
+                if span and hasattr(resp, 'usage') and resp.usage:
+                    span.set_attribute("llm.tokens.prompt", resp.usage.prompt_tokens)
+                    span.set_attribute("llm.tokens.completion", resp.usage.completion_tokens)
+                    span.set_attribute("llm.tokens.total", resp.usage.total_tokens)
+                    span.set_attribute("llm.model", deployment)
+                
             return resp.choices[0].message.content.strip()
         except Exception as e:
             log.error(f"LLM meta-query response failed: {e}")
@@ -573,12 +600,25 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
             "role": "user",
             "content": json.dumps(context_data, indent=2),
         }
-        resp = client.chat.completions.create(
-            model=deployment,
-            messages=[system_msg, user_msg],
-            temperature=0.3,
-            max_tokens=800,
-        )
+        
+        with create_llm_span_manually(
+            prompt_type="summarization",
+            model_provider="azure_openai"
+        ) as span:
+            resp = client.chat.completions.create(
+                model=deployment,
+                messages=[system_msg, user_msg],
+                temperature=0.3,
+                max_tokens=800,
+            )
+            
+            # Record token usage
+            if span and hasattr(resp, 'usage') and resp.usage:
+                span.set_attribute("llm.tokens.prompt", resp.usage.prompt_tokens)
+                span.set_attribute("llm.tokens.completion", resp.usage.completion_tokens)
+                span.set_attribute("llm.tokens.total", resp.usage.total_tokens)
+                span.set_attribute("llm.model", deployment)
+            
         return resp.choices[0].message.content.strip()
     except Exception as e:
         log.error(f"LLM summarisation failed; using fallback: {e}")

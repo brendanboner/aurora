@@ -15,7 +15,23 @@ from services.event_reconciler import EventReconciler
 from utils.logger import setup_logger
 from common.auth_middleware import get_user_context, require_role
 
+# Import OpenTelemetry instrumentation
+try:
+    from common.telemetry import init_telemetry, instrument_fastapi
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 logger = setup_logger(__name__)
+
+# Initialize OpenTelemetry
+if OTEL_AVAILABLE:
+    tracer, meter = init_telemetry(
+        service_name="aurora-curator",
+        service_version="1.0.0"
+    )
+else:
+    tracer, meter = None, None
 
 
 class JobStatus(BaseModel):
@@ -47,6 +63,10 @@ app = FastAPI(
     description="Event reconciliation and topic organization service",
     version="1.0.0",
 )
+
+# Instrument FastAPI with OpenTelemetry
+if OTEL_AVAILABLE:
+    instrument_fastapi(app)
 
 # Global state - will be set by curator.py
 _scheduler = None

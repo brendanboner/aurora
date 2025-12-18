@@ -6,10 +6,25 @@ import logging
 import json
 from pathlib import Path
 
+# Import instrumentation from common
+import sys
+import os
+# Add parent directory to path to import from common
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+try:
+    from common.neo4j_instrumentation import instrument_neo4j_client
+    INSTRUMENTATION_AVAILABLE = True
+except ImportError:
+    INSTRUMENTATION_AVAILABLE = False
+    def instrument_neo4j_client(cls):
+        """No-op decorator if instrumentation not available."""
+        return cls
+
 
 logger = logging.getLogger(__name__)
 
 
+@instrument_neo4j_client
 class Neo4jClient:
     """Client for connecting to and interacting with Neo4j."""
     

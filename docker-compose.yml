@@ -21,6 +21,14 @@ volumes:
     driver: local
   redis-data:
     driver: local
+  tempo-data:
+    driver: local
+  loki-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
 
 services:
   # =============================================================================
@@ -191,6 +199,12 @@ services:
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
     depends_on:
       redis:
         condition: service_healthy
@@ -245,6 +259,12 @@ services:
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -295,6 +315,12 @@ services:
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
       
       # API
       API_HOST: 0.0.0.0
@@ -363,6 +389,12 @@ services:
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -439,6 +471,12 @@ services:
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
     depends_on:
       neo4j-init:
         condition: service_completed_successfully
@@ -488,6 +526,12 @@ services:
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
 
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -521,3 +565,129 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  # =============================================================================
+  # Observability Stack
+  # =============================================================================
+  
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    container_name: aurora-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    networks:
+      - aurora-network
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8889:8889"   # Prometheus metrics exporter
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      OTEL_LOG_LEVEL: ${OTEL_LOG_LEVEL:-info}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Tempo - Distributed Tracing Backend
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: aurora-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yaml"]
+    networks:
+      - aurora-network
+    ports:
+      - "3200:3200"   # Tempo HTTP
+      - "4317"        # OTLP gRPC receiver
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/tmp/tempo
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: aurora-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - aurora-network
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Prometheus - Metrics Storage
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: aurora-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - aurora-network
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Grafana - Observability UI
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: aurora-grafana
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
