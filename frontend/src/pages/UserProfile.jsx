@@ -61,7 +61,7 @@ const UserProfile = () => {
     setLoading(true); setError(null);
     try {
       const [prefs, topicsData, orgsData, peopleData] = await Promise.all([
-        getUserPreferences(user.user_id), getTopics(), getOrganisations(), getPeople()
+        getUserPreferences(user.id), getTopics(), getOrganisations(), getPeople()
       ]);
       setPreferences(prefs);
       setSavedPreferences(prefs);
@@ -82,7 +82,7 @@ const UserProfile = () => {
     const timeout = setTimeout(async () => {
       setSaving(true);
       try {
-        const updated = await updateUserPreferences(user.user_id, preferences);
+        const updated = await updateUserPreferences(user.id, preferences);
         setPreferences(updated);
         setSavedPreferences(updated);
         setDirty(false);

@@ -37,7 +37,7 @@ const News = ({ backendStatus }) => {
 
     try {
       const response = await apiClient.post('/backend/news', {
-        user_id: user.user_id,
+        user_id: user.id,
         time_range: timeRange,
         force_refresh: forceRefresh
       });

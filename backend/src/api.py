@@ -95,6 +95,10 @@ class Document(BaseModel):
     summary: str | None = None
     topics: List[str] = []
     organisations: List[str] = []
+    
+    class Config:
+        # Allow extra fields from query engine
+        extra = "allow"
 
 
 class QueryResponse(BaseModel):
@@ -171,6 +175,10 @@ class NewsResponse(BaseModel):
     time_range: str
     document_count: int
     generated_at: str
+    
+    class Config:
+        # Allow extra fields from LLM response
+        extra = "allow"
 
 
 class ConversationResponse(BaseModel):

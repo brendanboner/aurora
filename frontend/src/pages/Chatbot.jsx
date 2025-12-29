@@ -43,8 +43,8 @@ const Chatbot = ({ backendStatus }) => {
     }
 
     // Load user-specific chat history and conversation ID
-    const chatHistoryKey = `chatHistory_${user.user_id}`;
-    const conversationIdKey = `conversationId_${user.user_id}`;
+    const chatHistoryKey = `chatHistory_${user.id}`;
+    const conversationIdKey = `conversationId_${user.id}`;
     const savedMessages = localStorage.getItem(chatHistoryKey);
     const savedConversationId = localStorage.getItem(conversationIdKey);
     
@@ -88,7 +88,7 @@ const Chatbot = ({ backendStatus }) => {
   // Save messages to localStorage whenever they change (user-specific)
   useEffect(() => {
     if (user && messages.length > 0) {
-      const chatHistoryKey = `chatHistory_${user.user_id}`;
+      const chatHistoryKey = `chatHistory_${user.id}`;
       localStorage.setItem(chatHistoryKey, JSON.stringify(messages));
     }
   }, [messages, user]);
@@ -96,7 +96,7 @@ const Chatbot = ({ backendStatus }) => {
   // Save conversation ID to localStorage whenever it changes
   useEffect(() => {
     if (user && conversationId !== null) {
-      const conversationIdKey = `conversationId_${user.user_id}`;
+      const conversationIdKey = `conversationId_${user.id}`;
       localStorage.setItem(conversationIdKey, conversationId.toString());
     }
   }, [conversationId, user]);
@@ -128,7 +128,7 @@ const Chatbot = ({ backendStatus }) => {
 
     try {
       // Send query with conversation_id if we have one
-      const response = await sendQuery(user.user_id, userMessage.content, conversationId);
+      const response = await sendQuery(user.id, userMessage.content, conversationId);
 
       // Store the conversation_id from the response for subsequent messages
       setConversationId(response.conversation_id);
@@ -185,8 +185,8 @@ const Chatbot = ({ backendStatus }) => {
     setConversationId(null);
     
     // Clear the saved chat history and conversation ID for this user
-    const chatHistoryKey = `chatHistory_${user.user_id}`;
-    const conversationIdKey = `conversationId_${user.user_id}`;
+    const chatHistoryKey = `chatHistory_${user.id}`;
+    const conversationIdKey = `conversationId_${user.id}`;
     localStorage.removeItem(chatHistoryKey);
     localStorage.removeItem(conversationIdKey);
   };
