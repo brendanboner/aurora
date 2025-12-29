@@ -7,6 +7,7 @@ from openai import AzureOpenAI
 
 from neo4j_client.client import Neo4jClient
 from neo4j_client.repository import GraphRepository
+from common.llm_instrumentation import create_llm_span_manually
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +44,16 @@ def _chat_json_prompt(messages: List[Dict[str, str]], temperature: float = 0.0) 
     client = get_azure_client()
     deployment = client._deployment_name
 
-    resp = client.chat.completions.create(
-        model=deployment,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=512,
-        response_format={"type": "json_object"},
-    )
+    with create_llm_span_manually(prompt_type="json_prompt", model_provider="azure_openai") as ctx:
+        resp = client.chat.completions.create(
+            model=deployment,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=512,
+            response_format={"type": "json_object"},
+        )
+        ctx.record_response(resp)
+    
     content = resp.choices[0].message.content
     return json.loads(content)
 
@@ -113,13 +117,16 @@ def parse_user_query(nl_query: str, client: Optional[AzureOpenAI] = None) -> Dic
         ),
     }
 
-    resp = client.chat.completions.create(
-        model=deployment,
-        messages=[system_msg, user_msg],
-        temperature=0.0,
-        max_tokens=512,
-        response_format={"type": "json_object"},
-    )
+    with create_llm_span_manually(prompt_type="query_parse", model_provider="azure_openai") as ctx:
+        resp = client.chat.completions.create(
+            model=deployment,
+            messages=[system_msg, user_msg],
+            temperature=0.0,
+            max_tokens=512,
+            response_format={"type": "json_object"},
+        )
+        ctx.record_response(resp)
+    
     content = resp.choices[0].message.content
     try:
         data = json.loads(content)
@@ -190,12 +197,15 @@ def summarise_results(
         ),
     }
 
-    resp = client.chat.completions.create(
-        model=deployment,
-        messages=[system_msg, user_msg],
-        temperature=0.2,
-        max_tokens=700,
-    )
+    with create_llm_span_manually(prompt_type="summarization", model_provider="azure_openai") as ctx:
+        resp = client.chat.completions.create(
+            model=deployment,
+            messages=[system_msg, user_msg],
+            temperature=0.2,
+            max_tokens=700,
+        )
+        ctx.record_response(resp)
+    
     return resp.choices[0].message.content.strip()
 
 

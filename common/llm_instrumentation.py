@@ -310,29 +310,163 @@ def _extract_llm_metrics(result: Any, span=None, attributes=None) -> Dict[str, A
 
 
 def create_llm_span_manually(
-    tracer,
-    prompt_type: str,
-    model: str,
+    prompt_type: str = "general",
     model_provider: str = "azure_openai",
+    tracer=None,
+    model: str = None,
 ):
     """
-    Create an LLM span manually for wrapping existing code.
+    Create an LLM span manually with automatic metrics emission.
+    
+    This context manager creates both traces AND emits metrics when the LLM call completes.
+    It automatically extracts token usage from the Azure OpenAI response.
     
     Usage:
+        with create_llm_span_manually(prompt_type="query_parse") as ctx:
+            response = client.chat.completions.create(...)
+            ctx.record_response(response)  # This emits metrics
+    
+    Or for backward compatibility (span-only mode):
         with create_llm_span_manually(tracer, "query_parse", "gpt-4") as span:
             response = client.chat.completions.create(...)
-            # Update span with metrics
             span.set_attribute("llm.tokens.total", response.usage.total_tokens)
     """
-    if not tracer:
-        from contextlib import nullcontext
-        return nullcontext()
+    from contextlib import contextmanager
     
-    return tracer.start_as_current_span(
-        "llm.completion",
-        attributes={
-            "llm.provider": model_provider,
-            "llm.prompt_type": prompt_type,
-            "llm.model": model,
-        }
-    )
+    # Backward compatibility: if first arg is a tracer object, use old behavior
+    if tracer is None:
+        tracer = get_tracer()
+    elif hasattr(tracer, 'start_as_current_span'):
+        # Old API: create_llm_span_manually(tracer, prompt_type, model)
+        # In this case, prompt_type is actually the tracer
+        actual_tracer = prompt_type if hasattr(prompt_type, 'start_as_current_span') else tracer
+        actual_prompt_type = model_provider if isinstance(model_provider, str) else prompt_type
+        actual_model = model if model else "unknown"
+        
+        if not actual_tracer:
+            from contextlib import nullcontext
+            return nullcontext()
+        
+        return actual_tracer.start_as_current_span(
+            "llm.completion",
+            attributes={
+                "llm.provider": "azure_openai",
+                "llm.prompt_type": actual_prompt_type,
+                "llm.model": actual_model,
+            }
+        )
+    
+    # New API with metrics emission
+    meter = get_meter()
+    
+    @contextmanager
+    def llm_context():
+        """Context manager that emits both traces and metrics."""
+        start_time = time.time()
+        
+        # Create metrics instruments
+        request_counter = None
+        duration_histogram = None
+        prompt_tokens_counter = None
+        completion_tokens_counter = None
+        total_tokens_counter = None
+        
+        if meter:
+            request_counter = meter.create_counter(
+                "llm.request.count",
+                description="Number of LLM requests",
+                unit="1",
+            )
+            duration_histogram = meter.create_histogram(
+                "llm.request.duration_ms",
+                description="LLM request duration",
+                unit="ms",
+            )
+            prompt_tokens_counter = meter.create_counter(
+                "llm.tokens.prompt",
+                description="Number of prompt tokens",
+                unit="1",
+            )
+            completion_tokens_counter = meter.create_counter(
+                "llm.tokens.completion",
+                description="Number of completion tokens",
+                unit="1",
+            )
+            total_tokens_counter = meter.create_counter(
+                "llm.tokens.total",
+                description="Total number of tokens",
+                unit="1",
+            )
+        
+        # Create span
+        span = None
+        if tracer:
+            span = tracer.start_as_current_span(
+                "llm.completion",
+                attributes={
+                    "llm.provider": model_provider,
+                    "llm.prompt_type": prompt_type,
+                }
+            ).__enter__()
+        
+        # Create context object for recording response
+        class LLMContext:
+            def __init__(self):
+                self.response = None
+                self.error = None
+            
+            def record_response(self, response):
+                """Record the LLM response to emit metrics."""
+                self.response = response
+                if span and response:
+                    metrics = _extract_llm_metrics(response, span)
+        
+        ctx = LLMContext()
+        
+        try:
+            yield ctx
+            
+            # Emit metrics on success
+            duration_ms = (time.time() - start_time) * 1000
+            
+            if meter and ctx.response:
+                metrics = _extract_llm_metrics(ctx.response, span)
+                metric_attrs = {
+                    "llm.model": metrics.get("model", model or "unknown"),
+                    "llm.provider": model_provider,
+                    "llm.prompt_type": prompt_type,
+                }
+                
+                request_counter.add(1, metric_attrs)
+                duration_histogram.record(duration_ms, metric_attrs)
+                
+                if metrics.get("prompt_tokens"):
+                    prompt_tokens_counter.add(metrics["prompt_tokens"], metric_attrs)
+                if metrics.get("completion_tokens"):
+                    completion_tokens_counter.add(metrics["completion_tokens"], metric_attrs)
+                if metrics.get("total_tokens"):
+                    total_tokens_counter.add(metrics["total_tokens"], metric_attrs)
+            
+            if span:
+                span.set_status(Status(StatusCode.OK))
+        
+        except Exception as e:
+            # Record error
+            if span:
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+            
+            if meter and request_counter:
+                request_counter.add(1, {
+                    "llm.provider": model_provider,
+                    "llm.prompt_type": prompt_type,
+                    "error": "true",
+                })
+            
+            raise
+        
+        finally:
+            if span:
+                span.__exit__(None, None, None)
+    
+    return llm_context()

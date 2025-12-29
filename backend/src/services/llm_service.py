@@ -228,9 +228,8 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
             ),
         }
         
-        # Create instrumentation span for LLM call
-        tracer = get_tracer()
-        with create_llm_span_manually(tracer, "query_parse", deployment) as span:
+        # Create instrumentation span for LLM call with metrics
+        with create_llm_span_manually(prompt_type="query_parse", model_provider="azure_openai") as ctx:
             resp = client.chat.completions.create(
                 model=deployment,
                 messages=[system_msg, user_msg],
@@ -238,11 +237,8 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
                 max_tokens=512,
                 response_format={"type": "json_object"},
             )
-            # Record token usage in span
-            if span and hasattr(resp, 'usage'):
-                span.set_attribute("llm.tokens.prompt", resp.usage.prompt_tokens)
-                span.set_attribute("llm.tokens.completion", resp.usage.completion_tokens)
-                span.set_attribute("llm.tokens.total", resp.usage.total_tokens)
+            # Record response to emit metrics
+            ctx.record_response(resp)
         
         content = resp.choices[0].message.content
         data = json.loads(content)
@@ -406,20 +402,15 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
             with create_llm_span_manually(
                 prompt_type="meta_query",
                 model_provider="azure_openai"
-            ) as span:
+            ) as ctx:
                 resp = client.chat.completions.create(
                     model=deployment,
                     messages=[system_msg, user_msg],
                     temperature=0.3,
                     max_tokens=500,
                 )
-                
-                # Record token usage
-                if span and hasattr(resp, 'usage') and resp.usage:
-                    span.set_attribute("llm.tokens.prompt", resp.usage.prompt_tokens)
-                    span.set_attribute("llm.tokens.completion", resp.usage.completion_tokens)
-                    span.set_attribute("llm.tokens.total", resp.usage.total_tokens)
-                    span.set_attribute("llm.model", deployment)
+                # Record response to emit metrics
+                ctx.record_response(resp)
                 
             return resp.choices[0].message.content.strip()
         except Exception as e:
@@ -604,20 +595,15 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
         with create_llm_span_manually(
             prompt_type="summarization",
             model_provider="azure_openai"
-        ) as span:
+        ) as ctx:
             resp = client.chat.completions.create(
                 model=deployment,
                 messages=[system_msg, user_msg],
                 temperature=0.3,
                 max_tokens=800,
             )
-            
-            # Record token usage
-            if span and hasattr(resp, 'usage') and resp.usage:
-                span.set_attribute("llm.tokens.prompt", resp.usage.prompt_tokens)
-                span.set_attribute("llm.tokens.completion", resp.usage.completion_tokens)
-                span.set_attribute("llm.tokens.total", resp.usage.total_tokens)
-                span.set_attribute("llm.model", deployment)
+            # Record response to emit metrics
+            ctx.record_response(resp)
             
         return resp.choices[0].message.content.strip()
     except Exception as e:

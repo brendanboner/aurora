@@ -11,6 +11,7 @@ import os
 from openai import AzureOpenAI
 
 from neo4j_client import Neo4jClient
+from common.llm_instrumentation import create_llm_span_manually
 
 logger = logging.getLogger(__name__)
 
@@ -365,15 +366,17 @@ Focus on:
 Return ONLY valid JSON, no additional text."""
 
         try:
-            response = self.llm_client.chat.completions.create(
-                model=self.deployment,
-                messages=[
-                    {"role": "system", "content": "You are a professional news curator and technical writer. Always respond with valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=4096
-            )
+            with create_llm_span_manually(prompt_type="news_generation", model_provider="azure_openai") as ctx:
+                response = self.llm_client.chat.completions.create(
+                    model=self.deployment,
+                    messages=[
+                        {"role": "system", "content": "You are a professional news curator and technical writer. Always respond with valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=4096
+                )
+                ctx.record_response(response)
             
             content = response.choices[0].message.content
             

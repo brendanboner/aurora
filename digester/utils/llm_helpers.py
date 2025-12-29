@@ -111,20 +111,15 @@ def call_llm_with_retry(
             with create_llm_span_manually(
                 prompt_type="extract",
                 model_provider="azure_openai"
-            ) as span:
+            ) as ctx:
                 response = client.chat.completions.create(
                     model=deployment,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
-                
-                # Record token usage if span is available
-                if span and hasattr(response, 'usage') and response.usage:
-                    span.set_attribute("llm.tokens.prompt", response.usage.prompt_tokens)
-                    span.set_attribute("llm.tokens.completion", response.usage.completion_tokens)
-                    span.set_attribute("llm.tokens.total", response.usage.total_tokens)
-                    span.set_attribute("llm.model", deployment)
+                # Record response to emit metrics
+                ctx.record_response(response)
                 
                 # Check if response was truncated due to token limit
                 if check_truncation:
