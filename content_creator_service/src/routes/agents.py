@@ -31,6 +31,10 @@ class TriggerRequest(BaseModel):
     limit: int = 5
 
 
+class LinkedInParseRequest(BaseModel):
+    profile_text: str
+
+
 @router.get("", response_model=List[CreatorAgent])
 async def list_agents(include_disabled: bool = Query(default=False)) -> List[CreatorAgent]:
     return _agent_service.list_agents(include_disabled=include_disabled)
@@ -39,6 +43,27 @@ async def list_agents(include_disabled: bool = Query(default=False)) -> List[Cre
 @router.post("", response_model=CreatorAgent)
 async def create_agent(payload: CreatorAgentCreate) -> CreatorAgent:
     return _agent_service.create_agent(payload)
+
+
+@router.post("/from-linkedin")
+async def parse_linkedin_profile(request: LinkedInParseRequest) -> dict:
+    """
+    Parse a LinkedIn profile paste to generate agent configuration.
+    Returns a draft agent config for review before creation.
+    """
+    try:
+        agent_config = await asyncio.to_thread(
+            _agent_service.parse_linkedin_profile,
+            request.profile_text
+        )
+        return agent_config
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse LinkedIn profile: {str(exc)}"
+        ) from exc
 
 
 @router.get("/user/{user_id}/followed")

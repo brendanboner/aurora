@@ -179,3 +179,91 @@ class PromptBuilder:
             f"Total reactions: {total_reactions}\n\n"
         )
         return prompt
+
+    def build_linkedin_parsing_prompt(self, linkedin_text: str) -> tuple[str, str]:
+        """
+        Build prompts to parse LinkedIn profile content into CreatorAgentBase config.
+        
+        Args:
+            linkedin_text: Raw paste of LinkedIn profile page including posts
+            
+        Returns:
+            Tuple of (system_prompt, user_prompt)
+        """
+        system_prompt = (
+            "You are an expert at analyzing LinkedIn profiles and writing samples to create "
+            "creator agent personas. Your task is to extract structured information from a "
+            "LinkedIn profile paste and generate a complete agent configuration.\n\n"
+            "CRITICAL REQUIREMENTS:\n"
+            "- The profile created must be fictional and inspired by the real professional\n"
+            "- Extract only factual information present in the paste\n"
+            "- Infer tone, style, and expertise from actual posts shown\n"
+            "- Use sensible defaults for any missing information\n"
+            "- Ignore LinkedIn UI boilerplate (navigation, buttons, etc.)\n"
+            "- Return valid JSON matching the exact schema provided"
+        )
+        
+        user_prompt = (
+            "Analyze the following LinkedIn profile content and extract agent configuration.\n\n"
+            f"## LINKEDIN PROFILE CONTENT\n\n{linkedin_text}\n\n"
+            "## EXTRACTION INSTRUCTIONS\n\n"
+            "1. **name**: Create a short handle (e.g., 'Brendan Wireless', 'Sarah Security'). "
+            "Base it on the person's actual initials, but always generate a fictional first name.\n\n"
+            "2. **description**: Write a 2-3 paragraph summary of the fictional persona's background and expertise "
+            "for UI/documentation purposes. Example: 'Dave is a highly experienced wireless standards "
+            "expert with over two decades of hands-on involvement in Wi-Fi and related alliance activity. "
+            "He actively follows Wi-Fi Alliance workgroups and observes adjacent bodies.' Focus on their "
+            "professional domain, key areas of focus, and what they're known for.\n\n"
+            "3. **persona**: Write detailed behavioral instructions for an LLM to embody this writing style. "
+            "MUST START with: 'You are [fictional name with same initials], a [role/title based on their "
+            "expertise]. This is a fictional internal creator agent inspired by writing samples from a real "
+            "professional.'\n\n"
+            "Then provide specific instructions covering:\n"
+            "- Writing tone and style (confident, analytical, conversational, technical, etc.)\n"
+            "- Content preferences (brevity, depth, structure)\n"
+            "- What to prioritize (specific topics, organizations, standards)\n"
+            "- What to avoid (hype, marketing language, speculation, off-topic content)\n"
+            "- How to handle different scenarios (major news vs. incremental updates)\n"
+            "- Specific behavioral rules derived from their actual post patterns\n\n"
+            "Write this as direct instructions to the LLM in second person ('You write with...', "
+            "'You avoid...', 'You prioritize...'). Be specific and actionable.\n\n"
+            "4. **expertise_topics**: Extract 5-10 key topics from posts (e.g., ['Wi-Fi', '6 GHz spectrum', "
+            "'wireless standards', 'AFC']). Look for recurring themes and hashtags.\n\n"
+            "5. **expertise_organisations**: List 5-10 organizations mentioned frequently (e.g., "
+            "['Extreme Networks', 'Wi-Fi Alliance', 'WBA']). Include companies, standards bodies, "
+            "associations.\n\n"
+            "6. **expertise_standards**: List technical standards or protocols mentioned (e.g., "
+            "['802.11ax', 'Wi-Fi 6E', 'Wi-Fi 7']). Leave empty if none found.\n\n"
+            "7. **tone_style**: Analyze post tone. Choose one: 'analytical', 'conversational', "
+            "'technical', 'journalistic', 'opinion'. Default: 'analytical'.\n\n"
+            "8. **posting_cadence**: Infer from post frequency patterns. Choose one: 'daily', "
+            "'per-event', 'weekly', 'as-needed'. Default: 'per-event'.\n\n"
+            "9. **content_length_preference**: Analyze typical post length. Choose one: 'short' "
+            "(2-3 paragraphs), 'medium' (3-5 paragraphs), 'long' (5+ paragraphs). Default: 'medium'.\n\n"
+            "10. **importance_threshold**: Based on post seriousness. Choose one: 'high' (only major news), "
+            "'normal' (balanced coverage), 'low' (broad topics). Default: 'normal'.\n\n"
+            "11. **discovery_tolerance**: How exploratory are topics? Range 0.0-1.0. If posts stick to "
+            "narrow expertise: 0.3-0.5. If they explore adjacent areas: 0.6-0.8. Default: 0.5\n\n"
+            "12. **cadence_window_days**: Infer posting frequency. If posting daily: 3-5 days. "
+            "Weekly: 7-14 days. Less frequent: 21-30 days. Default: 7\n\n"
+            "13. **enabled**: Always true\n\n"
+            "## OUTPUT FORMAT\n\n"
+            "Return ONLY valid JSON with this exact structure:\n"
+            "{\n"
+            '  "name": "handle_style_name",\n'
+            '  "description": "Profile tagline/headline",\n'
+            '  "persona": "Disclaimer + 2-3 paragraphs about style and expertise",\n'
+            '  "expertise_topics": ["topic1", "topic2"],\n'
+            '  "expertise_organisations": ["org1", "org2"],\n'
+            '  "expertise_standards": ["standard1", "standard2"],\n'
+            '  "tone_style": "analytical",\n'
+            '  "posting_cadence": "per-event",\n'
+            '  "content_length_preference": "medium",\n'
+            '  "importance_threshold": "normal",\n'
+            '  "discovery_tolerance": 0.5,\n'
+            '  "cadence_window_days": 7,\n'
+            '  "enabled": true\n'
+            "}"
+        )
+        
+        return system_prompt, user_prompt

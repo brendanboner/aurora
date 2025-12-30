@@ -1,12 +1,19 @@
 """Agent persistence helpers."""
 from __future__ import annotations
 
-from typing import List, Optional
+import json
+import logging
+import re
+from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
 from .. import db
 from ..models.agent import CreatorAgent, CreatorAgentCreate, CreatorAgentUpdate
+from ..llm_client import get_llm_client
+from .prompt_builder import PromptBuilder
+
+logger = logging.getLogger(__name__)
 
 
 class AgentService:
@@ -135,3 +142,77 @@ class AgentService:
                 "agent_id": agent_id,
             },
         )
+
+    def parse_linkedin_profile(self, linkedin_text: str) -> Dict[str, Any]:
+        """
+        Parse LinkedIn profile paste using LLM to extract agent configuration.
+        
+        Args:
+            linkedin_text: Raw paste of LinkedIn profile page
+            
+        Returns:
+            Dict with CreatorAgentBase fields ready for form population
+            
+        Raises:
+            HTTPException: If LLM fails or returns invalid JSON
+        """
+        # Basic text cleanup - remove excessive whitespace
+        cleaned_text = re.sub(r'\n{3,}', '\n\n', linkedin_text)
+        cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
+        cleaned_text = cleaned_text.strip()
+        
+        # Build prompts
+        prompt_builder = PromptBuilder()
+        system_prompt, user_prompt = prompt_builder.build_linkedin_parsing_prompt(cleaned_text)
+        
+        # Call LLM
+        try:
+            llm_client = get_llm_client()
+            result = llm_client.generate(system_prompt, user_prompt)
+            
+            # Validate required fields are present
+            required_fields = {'name', 'enabled'}
+            missing = required_fields - set(result.keys())
+            if missing:
+                logger.error(f"LLM response missing required fields: {missing}")
+                raise ValueError(f"Missing required fields: {missing}")
+            
+            # Ensure lists for array fields
+            for field in ['expertise_topics', 'expertise_organisations', 'expertise_standards']:
+                if field not in result:
+                    result[field] = []
+                elif not isinstance(result[field], list):
+                    result[field] = []
+            
+            # Ensure numeric types
+            if 'discovery_tolerance' in result:
+                try:
+                    result['discovery_tolerance'] = float(result['discovery_tolerance'])
+                except (ValueError, TypeError):
+                    result['discovery_tolerance'] = 0.5
+            else:
+                result['discovery_tolerance'] = 0.5
+                
+            if 'cadence_window_days' in result:
+                try:
+                    result['cadence_window_days'] = int(result['cadence_window_days'])
+                except (ValueError, TypeError):
+                    result['cadence_window_days'] = 7
+            else:
+                result['cadence_window_days'] = 7
+            
+            logger.info(f"Successfully parsed LinkedIn profile, generated agent: {result.get('name')}")
+            return result
+            
+        except json.JSONDecodeError as exc:
+            logger.error(f"LLM returned invalid JSON: {exc}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to parse LLM response. Please try again."
+            ) from exc
+        except Exception as exc:
+            logger.error(f"LinkedIn profile parsing failed: {exc}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to parse LinkedIn profile: {str(exc)}"
+            ) from exc

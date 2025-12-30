@@ -184,6 +184,13 @@ export const createCreatorAgent = async (payload) => {
   return response.data;
 };
 
+export const parseLinkedInProfile = async (profileText) => {
+  const response = await apiClient.post('/content_creator_service/agents/from-linkedin', {
+    profile_text: profileText,
+  });
+  return response.data;
+};
+
 export const updateCreatorAgent = async (agentId, payload) => {
   const response = await apiClient.put(`/content_creator_service/agents/${agentId}`, payload);
   return response.data;

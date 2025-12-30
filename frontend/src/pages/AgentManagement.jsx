@@ -10,6 +10,7 @@ import {
   triggerAgentPost,
   purgeAgentPosts,
   purgeAllPosts,
+  parseLinkedInProfile,
 } from '../services/api';
 
 const initialForm = {
@@ -23,6 +24,8 @@ const initialForm = {
   tone_style: 'analytical',
   content_length_preference: 'medium',
   importance_threshold: 'normal',
+  discovery_tolerance: 0.5,
+  cadence_window_days: 7,
   enabled: true,
 };
 
@@ -56,6 +59,10 @@ const AgentManagement = () => {
     requireText: '',
     onConfirm: null,
   });
+  const [linkedInModalOpen, setLinkedInModalOpen] = useState(false);
+  const [linkedInText, setLinkedInText] = useState('');
+  const [linkedInParsing, setLinkedInParsing] = useState(false);
+  const [linkedInError, setLinkedInError] = useState(null);
 
   const loadAgents = async () => {
     try {
@@ -122,6 +129,8 @@ const AgentManagement = () => {
       expertise_topics: (agent.expertise_topics || []).join(', '),
       expertise_organisations: (agent.expertise_organisations || []).join(', '),
       expertise_standards: (agent.expertise_standards || []).join(', '),
+      discovery_tolerance: agent.discovery_tolerance ?? 0.5,
+      cadence_window_days: agent.cadence_window_days ?? 7,
     });
   };
 
@@ -216,6 +225,59 @@ const AgentManagement = () => {
     }
   };
 
+  const openLinkedInModal = () => {
+    setLinkedInModalOpen(true);
+    setLinkedInText('');
+    setLinkedInError(null);
+  };
+
+  const closeLinkedInModal = () => {
+    setLinkedInModalOpen(false);
+    setLinkedInText('');
+    setLinkedInError(null);
+    setLinkedInParsing(false);
+  };
+
+  const handleLinkedInParse = async () => {
+    if (!linkedInText.trim()) {
+      setLinkedInError('Please paste LinkedIn profile content');
+      return;
+    }
+
+    setLinkedInParsing(true);
+    setLinkedInError(null);
+
+    try {
+      const parsed = await parseLinkedInProfile(linkedInText);
+      
+      // Populate form with parsed data
+      setFormState({
+        name: parsed.name || '',
+        description: parsed.description || '',
+        persona: parsed.persona || '',
+        expertise_topics: (parsed.expertise_topics || []).join(', '),
+        expertise_organisations: (parsed.expertise_organisations || []).join(', '),
+        expertise_standards: (parsed.expertise_standards || []).join(', '),
+        posting_cadence: parsed.posting_cadence || 'per-event',
+        tone_style: parsed.tone_style || 'analytical',
+        content_length_preference: parsed.content_length_preference || 'medium',
+        importance_threshold: parsed.importance_threshold || 'normal',
+        discovery_tolerance: parsed.discovery_tolerance ?? 0.5,
+        cadence_window_days: parsed.cadence_window_days ?? 7,
+        enabled: parsed.enabled ?? true,
+      });
+      
+      setEditingId(null);
+      setStatusMessage('LinkedIn profile parsed - review and save');
+      closeLinkedInModal();
+    } catch (err) {
+      console.error('LinkedIn parse failed', err);
+      setLinkedInError(err.response?.data?.detail || 'Failed to parse LinkedIn profile. Please try again.');
+    } finally {
+      setLinkedInParsing(false);
+    }
+  };
+
   const activeAgents = useMemo(() => agents.filter((agent) => agent.enabled), [agents]);
 
   return (
@@ -254,10 +316,15 @@ const AgentManagement = () => {
         <section className="agent-list">
           <header>
             <h2>Existing personas</h2>
-            <button className="ghost-btn" onClick={resetForm}>
-              <PlusIcon size={16} />
-              <span>New agent</span>
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="ghost-btn" onClick={resetForm}>
+                <PlusIcon size={16} />
+                <span>New agent</span>
+              </button>
+              <button className="ghost-btn" onClick={openLinkedInModal}>
+                <span>📄 From LinkedIn</span>
+              </button>
+            </div>
           </header>
           {agents.length === 0 && <p className="empty-copy">No agents yet. Create one to get started.</p>}
           <div className="agent-table">
@@ -400,6 +467,30 @@ const AgentManagement = () => {
                 placeholder="normal | important | critical"
               />
             </label>
+            <div className="two-col">
+              <label>
+                Discovery tolerance (0-1)
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={formState.discovery_tolerance}
+                  onChange={(e) => setFormState((prev) => ({ ...prev, discovery_tolerance: parseFloat(e.target.value) }))}
+                />
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{formState.discovery_tolerance.toFixed(1)}</span>
+              </label>
+              <label>
+                Cadence window (days)
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={formState.cadence_window_days}
+                  onChange={(e) => setFormState((prev) => ({ ...prev, cadence_window_days: parseInt(e.target.value) || 7 }))}
+                />
+              </label>
+            </div>
             <label className="checkbox-field">
               <input
                 type="checkbox"
@@ -431,6 +522,43 @@ const AgentManagement = () => {
         onCancel={closeConfirm}
         onConfirm={handleConfirm}
       />
+
+      {linkedInModalOpen && (
+        <div className="modal-backdrop" onClick={closeLinkedInModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px', maxHeight: '80vh' }}>
+            <div className="modal-header">
+              <h2>Import from LinkedIn</h2>
+              <button className="modal-close" onClick={closeLinkedInModal}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>
+                Paste the content from a LinkedIn profile page (including posts). The AI will analyze it to create an agent configuration.
+              </p>
+              <textarea
+                value={linkedInText}
+                onChange={(e) => setLinkedInText(e.target.value)}
+                placeholder="Paste LinkedIn profile content here (up to ~800 lines)..."
+                rows={15}
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                disabled={linkedInParsing}
+              />
+              {linkedInError && (
+                <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--error-bg)', border: '1px solid var(--error-border)', borderRadius: '4px', color: 'var(--error-text)' }}>
+                  {linkedInError}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button className="ghost-btn" onClick={closeLinkedInModal} disabled={linkedInParsing}>
+                Cancel
+              </button>
+              <button className="primary" onClick={handleLinkedInParse} disabled={linkedInParsing || !linkedInText.trim()}>
+                {linkedInParsing ? 'Parsing...' : 'Parse Profile'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

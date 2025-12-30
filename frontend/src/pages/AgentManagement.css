@@ -332,20 +332,48 @@
   z-index: 1000;
 }
 
-.modal {
+.modal,
+.modal-content {
   width: min(520px, 92vw);
   background: var(--linkedin-card);
   border: 1px solid var(--linkedin-border);
   border-radius: 0.9rem;
   box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  overflow: auto;
 }
 
 .modal-header {
   padding: 1rem 1.2rem 0.5rem;
   border-bottom: 1px solid var(--linkedin-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.modal-header h3 { margin: 0; }
+.modal-header h2,
+.modal-header h3 { 
+  margin: 0; 
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--linkedin-text-muted);
+  cursor: pointer;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.modal-close:hover {
+  background: var(--linkedin-border);
+  color: var(--linkedin-text);
+}
 
 .modal-body {
   padding: 1rem 1.2rem;
