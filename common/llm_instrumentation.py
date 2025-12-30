@@ -10,7 +10,7 @@ from functools import wraps
 
 from opentelemetry.trace import Status, StatusCode
 
-from .telemetry import get_tracer, get_meter, hash_text
+from .telemetry import get_tracer, get_meter, hash_text, log_llm_request
 
 
 def instrument_llm_call(
@@ -127,10 +127,22 @@ def _execute_llm_with_instrumentation(
                     if metrics.get("total_tokens"):
                         total_tokens_counter.add(metrics["total_tokens"], metric_attrs)
                 
+                # Log to Loki
+                if metrics:
+                    log_llm_request(
+                        prompt_type=prompt_type,
+                        model=metrics.get("model", "unknown"),
+                        prompt_tokens=metrics.get("prompt_tokens", 0),
+                        completion_tokens=metrics.get("completion_tokens", 0),
+                        duration_ms=duration_ms,
+                        status="success",
+                    )
+                
                 span.set_status(Status(StatusCode.OK))
                 return result
                 
             except Exception as e:
+                duration_ms = (time.time() - start_time) * 1000
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 
@@ -141,6 +153,17 @@ def _execute_llm_with_instrumentation(
                         "llm.prompt_type": prompt_type,
                         "error": "true",
                     })
+                
+                # Log error to Loki
+                log_llm_request(
+                    prompt_type=prompt_type,
+                    model="unknown",
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    duration_ms=duration_ms,
+                    status="error",
+                    error=str(e),
+                )
                 
                 raise
     else:

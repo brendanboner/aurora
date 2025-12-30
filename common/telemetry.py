@@ -15,10 +15,14 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION, SERVICE_INSTANCE_ID
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
 # Try multiple import paths for exporter and instrumentation (different package versions)
 OTLPSpanExporter = None
 OTLPMetricExporter = None
+OTLPLogExporter = None
 FastAPIInstrumentor = None
 HTTPXClientInstrumentor = None
 Psycopg2Instrumentor = None
@@ -27,8 +31,10 @@ RedisInstrumentor = None
 try:
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as _OTLPSpanExporter
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter as _OTLPMetricExporter
+    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter as _OTLPLogExporter
     OTLPSpanExporter = _OTLPSpanExporter
     OTLPMetricExporter = _OTLPMetricExporter
+    OTLPLogExporter = _OTLPLogExporter
 except ImportError:
     try:
         from opentelemetry.exporter.otlp.trace_exporter import OTLPSpanExporter as _OTLPSpanExporter
@@ -159,6 +165,30 @@ def init_telemetry(
                 _meter = metrics.get_meter(service_name, service_version)
         except Exception as e:
             logger.warning(f"Failed to configure metrics exporter: {e}. Metrics will be disabled.")
+        
+        # Configure logging
+        try:
+            if OTLPLogExporter:
+                log_exporter = OTLPLogExporter(
+                    endpoint=otlp_endpoint,
+                    insecure=True,
+                    timeout=10,
+                )
+                logger_provider = LoggerProvider(resource=resource)
+                logger_provider.add_log_record_processor(
+                    BatchLogRecordProcessor(log_exporter)
+                )
+                set_logger_provider(logger_provider)
+                
+                # Attach OTLP handler to root logger
+                handler = LoggingHandler(
+                    level=logging.INFO,
+                    logger_provider=logger_provider,
+                )
+                logging.getLogger().addHandler(handler)
+                logger.debug("Configured OpenTelemetry log export to OTLP")
+        except Exception as e:
+            logger.warning(f"Failed to configure log exporter: {e}. Log export will be disabled.")
         
         # Auto-instrument common libraries
         try:
@@ -293,3 +323,105 @@ def record_exception(exception: Exception, span: Optional[trace.Span] = None):
     if span:
         span.set_status(Status(StatusCode.ERROR, str(exception)))
         span.record_exception(exception)
+
+
+def log_structured(
+    level: str,
+    message: str,
+    attributes: Optional[Dict[str, Any]] = None,
+    logger_name: str = "aurora",
+):
+    """
+    Log structured data that will be sent to Loki via OpenTelemetry.
+    
+    Args:
+        level: Log level (INFO, WARNING, ERROR, etc.)
+        message: Log message
+        attributes: Additional structured attributes
+        logger_name: Logger name for categorization
+    """
+    log = logging.getLogger(logger_name)
+    log_level = getattr(logging, level.upper(), logging.INFO)
+    
+    # Add attributes as extra fields for structured logging
+    extra = {"attributes": attributes} if attributes else {}
+    log.log(log_level, message, extra=extra)
+
+
+def log_llm_request(
+    prompt_type: str,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    duration_ms: float,
+    status: str = "success",
+    error: Optional[str] = None,
+):
+    """
+    Log LLM request details to Loki.
+    
+    Args:
+        prompt_type: Type of prompt (e.g., 'linkedin_parse', 'query_parse')
+        model: Model name
+        prompt_tokens: Number of prompt tokens
+        completion_tokens: Number of completion tokens
+        duration_ms: Request duration in milliseconds
+        status: Request status ('success' or 'error')
+        error: Error message if failed
+    """
+    attributes = {
+        "llm.prompt_type": prompt_type,
+        "llm.model": model,
+        "llm.prompt_tokens": prompt_tokens,
+        "llm.completion_tokens": completion_tokens,
+        "llm.total_tokens": prompt_tokens + completion_tokens,
+        "llm.duration_ms": duration_ms,
+        "llm.status": status,
+    }
+    if error:
+        attributes["llm.error"] = error
+    
+    level = "ERROR" if status == "error" else "INFO"
+    message = f"LLM request completed: {prompt_type} using {model} ({prompt_tokens + completion_tokens} tokens in {duration_ms:.1f}ms)"
+    log_structured(level, message, attributes, logger_name="aurora.llm")
+
+
+def log_neo4j_query(
+    query_type: str,
+    cypher: str,
+    duration_ms: float,
+    rows_returned: int,
+    status: str = "success",
+    error: Optional[str] = None,
+):
+    """
+    Log Neo4j query details to Loki.
+    
+    Args:
+        query_type: Type of query ('read' or 'write')
+        cypher: Cypher query (will be hashed if configured)
+        duration_ms: Query duration in milliseconds
+        rows_returned: Number of rows returned
+        status: Query status ('success' or 'error')
+        error: Error message if failed
+    """
+    hash_queries = os.getenv("OTEL_HASH_CYPHER_QUERIES", "false").lower() in ("true", "1", "yes")
+    
+    attributes = {
+        "graph.query_type": query_type,
+        "graph.duration_ms": duration_ms,
+        "graph.rows_returned": rows_returned,
+        "graph.status": status,
+    }
+    
+    if hash_queries:
+        attributes["graph.cypher_hash"] = hash_text(cypher, prefix="cypher_")
+    else:
+        attributes["graph.cypher"] = cypher[:500]  # Truncate to 500 chars
+    
+    if error:
+        attributes["graph.error"] = error
+    
+    level = "ERROR" if status == "error" else "INFO"
+    message = f"Neo4j {query_type} query completed: {rows_returned} rows in {duration_ms:.1f}ms"
+    log_structured(level, message, attributes, logger_name="aurora.neo4j")

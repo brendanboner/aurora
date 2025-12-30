@@ -11,7 +11,7 @@ from functools import wraps
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from .telemetry import get_tracer, get_meter, hash_text, sanitize_cypher_query
+from .telemetry import get_tracer, get_meter, hash_text, sanitize_cypher_query, log_neo4j_query
 
 # Get configuration
 HASH_CYPHER_QUERIES = os.getenv("OTEL_HASH_CYPHER_QUERIES", "false").lower() in ("true", "1", "yes")
@@ -114,9 +114,19 @@ def _execute_with_instrumentation(
                     duration_histogram.record(duration_ms, metric_attrs)
                     rows_histogram.record(row_count, metric_attrs)
                 
+                # Log to Loki
+                log_neo4j_query(
+                    query_type=query_type,
+                    cypher=query,
+                    duration_ms=duration_ms,
+                    rows_returned=row_count,
+                    status="success",
+                )
+                
                 return result
                 
             except Exception as e:
+                duration_ms = (time.time() - start_time) * 1000
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 
@@ -127,6 +137,16 @@ def _execute_with_instrumentation(
                         "graph.cypher_hash": attributes["graph.cypher_hash"],
                         "error": "true",
                     })
+                
+                # Log error to Loki
+                log_neo4j_query(
+                    query_type=query_type,
+                    cypher=query,
+                    duration_ms=duration_ms,
+                    rows_returned=0,
+                    status="error",
+                    error=str(e),
+                )
                 
                 raise
     else:
