@@ -18,7 +18,8 @@
 }
 
 .social-feed-header {
-  max-width: 680px;
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto 24px;
   display: flex;
   justify-content: space-between;
@@ -115,7 +116,8 @@
 
 /* Profile Signal Card */
 .feed-context {
-  max-width: 680px;
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto 16px;
 }
 
@@ -168,7 +170,8 @@
 
 /* Feed Grid */
 .social-feed-grid {
-  max-width: 680px;
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -474,6 +477,110 @@
   padding: 12px 16px;
   border-radius: 8px;
   margin: 16px auto;
-  max-width: 680px;
+  width: 100%;
+  max-width: 1200px;
   font-size: 14px;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 1280px) {
+  .social-feed-shell {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .social-feed-shell {
+    padding: 16px;
+  }
+
+  .social-feed-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .feed-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .feed-title h1 {
+    font-size: 20px;
+  }
+
+  .feed-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .feed-toolbar {
+    width: 100%;
+    flex-direction: column;
+    margin-right: 0;
+  }
+
+  .feed-toolbar .search-input,
+  .feed-toolbar .sort-select {
+    width: 100%;
+  }
+
+  .action-btn {
+    flex: 1;
+  }
+
+  .post-author-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .author-info {
+    width: 100%;
+  }
+
+  .follow-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .social-feed-shell {
+    padding: 12px;
+  }
+
+  .feed-title h1 {
+    font-size: 18px;
+  }
+
+  .feed-title p {
+    font-size: 13px;
+  }
+
+  .topic-chips {
+    gap: 6px;
+  }
+
+  .topic-chip {
+    font-size: 12px;
+    padding: 3px 10px;
+  }
+
+  .post-title {
+    font-size: 16px;
+  }
+
+  .post-body {
+    font-size: 13px;
+  }
+
+  .engagement-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 6px;
+  }
+
+  .engagement-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
