@@ -1,0 +1,299 @@
+# NOTICE - Third-Party Software Attributions
+
+Aurora Knowledge Management System
+Copyright © 2025-2026 Extreme Networks, Inc.
+
+This product includes software developed by third parties and distributed under various open source licenses. This file provides required attributions and notices for third-party components.
+
+---
+
+## Machine Learning Models
+
+### Sentence-Transformers: all-mpnet-base-v2
+
+**Model:** sentence-transformers/all-mpnet-base-v2  
+**Model Repository:** https://huggingface.co/sentence-transformers/all-mpnet-base-v2  
+**Model License:** Apache License 2.0  
+**Package License:** Apache License 2.0  
+**Model Size:** ~420MB (compressed), ~1.5GB (uncompressed in cache)
+
+#### Attribution
+This software uses the `all-mpnet-base-v2` sentence embedding model developed by the Sentence-Transformers project:
+
+- **Authors:** Nils Reimers and Iryna Gurevych
+- **Paper:** "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks" (EMNLP 2019)
+- **Paper URL:** https://arxiv.org/abs/1908.10084
+- **Project:** https://www.sbert.net/
+
+#### Model Details
+- **Base Model:** microsoft/mpnet-base
+- **Training Data:** MS MARCO passage ranking dataset (Microsoft)
+- **Purpose:** Semantic text embeddings for similarity search
+- **Dimensions:** 768-dimensional dense vectors
+- **Max Sequence Length:** 384 tokens
+
+#### Training Data License
+The MS MARCO dataset is released by Microsoft under the Microsoft Research License:
+- **Dataset:** MS MARCO (Microsoft Machine Reading Comprehension)
+- **URL:** https://microsoft.github.io/msmarco/
+- **License:** Microsoft Research Data License Agreement
+- **Usage:** The pre-trained model weights derived from this data are released under Apache 2.0
+
+#### Apache License 2.0 Compliance
+The Sentence-Transformers library and all-mpnet-base-v2 model are licensed under the Apache License 2.0, which permits commercial use, modification, distribution, and private use, provided that:
+
+1. **Attribution:** This NOTICE file provides required attribution
+2. **License Inclusion:** The Apache 2.0 license text is included in this repository
+3. **Changes:** No modifications have been made to the original model weights
+4. **Patent Grant:** Users receive an express patent grant from contributors
+
+Full Apache License 2.0 text: http://www.apache.org/licenses/LICENSE-2.0
+
+#### Implementation in Aurora
+
+**Current Implementation (Docker Layer Bundling):**
+```dockerfile
+# digester/Dockerfile and curator/Dockerfile
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+    SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
+```
+
+**Recommended Implementation (Runtime Download):**
+
+To reduce Docker image size by ~1.5GB and improve deployment flexibility, we recommend downloading the model at runtime on first use:
+
+```python
+# Example: digester/utils/embedding_service.py
+from sentence_transformers import SentenceTransformer
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+_model = None
+
+def get_embedding_model():
+    """
+    Lazy-load sentence transformer model.
+    Downloads on first use (~420MB download, ~1.5GB cache).
+    """
+    global _model
+    if _model is None:
+        logger.info("Loading sentence-transformers model (first run may download ~420MB)...")
+        cache_dir = os.getenv("SENTENCE_TRANSFORMERS_HOME", "/app/.cache/sentence_transformers")
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        _model = SentenceTransformer(
+            'sentence-transformers/all-mpnet-base-v2',
+            cache_folder=cache_dir
+        )
+        logger.info("Sentence-transformers model loaded successfully")
+    return _model
+```
+
+**Benefits of Runtime Download:**
+- Reduces Docker image size from ~3.5GB → ~2GB
+- Faster image builds and registry pushes
+- Allows model updates without rebuilding images
+- Models cached in persistent volume (download once per deployment)
+
+**Docker Compose Volume Configuration:**
+```yaml
+services:
+  digester:
+    volumes:
+      - sentence-transformers-cache:/app/.cache/sentence_transformers
+  curator:
+    volumes:
+      - sentence-transformers-cache:/app/.cache/sentence_transformers
+
+volumes:
+  sentence-transformers-cache:
+    driver: local
+```
+
+**Environment Variable:**
+```bash
+# .env
+SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers
+```
+
+#### Model Performance
+- **Inference Speed:** ~50ms per sentence (CPU), ~5ms (GPU)
+- **Memory Usage:** ~1.5GB RAM per model instance
+- **Throughput:** ~20-200 sentences/second (batch size dependent)
+
+#### Alternative Models
+If different embedding characteristics are needed, Sentence-Transformers supports many Apache 2.0 licensed models:
+
+- `all-MiniLM-L6-v2` - Faster, smaller (80MB), slightly lower quality
+- `all-distilroberta-v1` - RoBERTa-based alternative
+- `paraphrase-multilingual-mpnet-base-v2` - Multilingual support (50+ languages)
+
+All models: https://www.sbert.net/docs/pretrained_models.html
+
+---
+
+## Apache License 2.0 Components
+
+The following major components are licensed under Apache License 2.0:
+
+### Python Packages
+- **OpenAI Python SDK** - Azure OpenAI integration
+- **sentence-transformers** - Embedding model library (see above)
+- **opentelemetry-api, opentelemetry-sdk** - Observability instrumentation
+- **aiohttp** - Async HTTP client
+- **python-dateutil** (dual licensed: Apache 2.0 / BSD)
+
+### Infrastructure
+- **Prometheus** - Metrics collection
+- **OpenTelemetry Collector** - Telemetry aggregation
+
+Apache License 2.0 full text: http://www.apache.org/licenses/LICENSE-2.0
+
+---
+
+## MIT License Components
+
+The following major components are licensed under MIT License:
+
+### Python Packages
+- **FastAPI** - Web framework
+- **Pydantic** - Data validation
+- **pytest** - Testing framework
+- **python-jose** - JWT authentication
+- **redis-py** - Redis client
+- **BeautifulSoup4** - HTML parsing
+- **python-docx, python-pptx** - Document processing
+- **openpyxl** - Excel processing
+- **APScheduler** - Task scheduling
+- **croniter** - Cron expression parsing
+- **slowapi** - Rate limiting
+
+### JavaScript Packages
+- **React, React-DOM** - UI framework
+- **React Router** - Navigation
+- **Axios** - HTTP client
+- **react-markdown** - Markdown rendering
+- **remark-gfm** - GitHub Flavored Markdown
+- **@testing-library/react** - Testing utilities
+
+MIT License permits commercial use with minimal restrictions. Full text: https://opensource.org/licenses/MIT
+
+---
+
+## BSD License Components
+
+The following major components are licensed under BSD licenses:
+
+### Python Packages
+- **Uvicorn** - ASGI server (BSD 3-Clause)
+- **NumPy** - Numerical computing (BSD 3-Clause)
+- **scikit-learn** - Machine learning (BSD 3-Clause)
+- **PyPDF** - PDF processing (BSD 3-Clause)
+- **Pika** - RabbitMQ client (BSD 3-Clause)
+- **httpx** - HTTP client (BSD 3-Clause)
+- **python-dotenv** - Environment variable management (BSD 3-Clause)
+- **jellyfish** - String similarity (BSD 2-Clause)
+
+### Infrastructure
+- **PostgreSQL** - Database (PostgreSQL License, BSD-like)
+- **Redis** - Cache (BSD 3-Clause)
+- **Nginx** - Web server (BSD 2-Clause)
+
+BSD licenses are permissive and allow commercial use. Full text: https://opensource.org/licenses/BSD-3-Clause
+
+---
+
+## Mozilla Public License 2.0 (MPL)
+
+### RabbitMQ
+- **License:** Mozilla Public License 2.0 (MPL 2.0)
+- **Version:** 4.2.0-management-alpine
+- **Usage:** Message queue for asynchronous processing pipeline
+
+MPL 2.0 is a weak copyleft license. Modifications to RabbitMQ source files must be disclosed, but using RabbitMQ as-is in a larger work is permitted without disclosure obligations.
+
+Full text: https://www.mozilla.org/en-US/MPL/2.0/
+
+---
+
+## GNU Lesser General Public License (LGPL)
+
+### psycopg2-binary
+- **License:** LGPL v3 with exceptions for dynamic linking
+- **Version:** >=2.9.0
+- **Usage:** PostgreSQL database adapter for Python
+
+Psycopg2 is LGPL with exceptions that permit dynamic linking without copyleft obligations. Using psycopg2 as a library (without modification) does not trigger LGPL disclosure requirements.
+
+Full text: https://www.gnu.org/licenses/lgpl-3.0.html
+
+---
+
+## Copyleft Licenses (Deployment Considerations)
+
+### Neo4j Community Edition ⚠️ REQUIRES COMMERCIAL LICENSE
+- **License:** GNU General Public License v3.0 (GPLv3)
+- **Version:** neo4j:2025-community
+- **Usage:** Knowledge graph database
+
+**IMPORTANT:** Neo4j Community Edition is licensed under GPLv3, a strong copyleft license. Distributing Aurora to clients/customers requires either:
+1. **Open-sourcing the entire Aurora codebase under GPLv3**, OR
+2. **Purchasing Neo4j Enterprise licenses** (recommended)
+
+**Mitigation:** Extreme Networks will purchase Neo4j Enterprise licenses before production deployment.
+
+Neo4j Enterprise License: https://neo4j.com/licensing/
+
+### Grafana Observability Stack ⚠️ OPTIONAL COMPONENTS
+- **Components:** Grafana, Loki, Tempo
+- **License:** GNU Affero General Public License v3.0 (AGPL-3.0)
+- **Versions:** grafana:10.2.3, loki:2.9.3, tempo:2.3.1
+
+**IMPORTANT:** AGPL-3.0 is a "network copyleft" license that requires source disclosure even for SaaS/network use. If Grafana dashboards are exposed to external users, AGPL obligations may be triggered.
+
+**Mitigation:** These are optional observability tools for development/internal use only. They can be removed for production or replaced with Apache 2.0 alternatives (VictoriaMetrics, Jaeger).
+
+---
+
+## Commercial/Proprietary Services
+
+### Microsoft Azure OpenAI Service
+- **License:** Microsoft Azure Terms of Service
+- **Usage:** Large language model API (GPT-4, embeddings)
+- **Data Processing:** Subject to Azure data processing agreements
+- **Compliance:** SOC 2, ISO 27001, GDPR-compliant
+- **Terms:** https://azure.microsoft.com/en-us/support/legal/
+
+### Amazon Web Services (AWS) Cognito
+- **License:** AWS Customer Agreement
+- **Usage:** User authentication and identity management
+- **Data Processing:** Subject to AWS data processing agreements
+- **Compliance:** SOC 1/2/3, ISO 27001, GDPR-compliant
+- **Terms:** https://aws.amazon.com/agreement/
+
+Both services are commercial, pay-per-use, and require valid subscriptions.
+
+---
+
+## No Warranty Disclaimer
+
+This software is provided "AS IS", WITHOUT WARRANTY OF ANY KIND, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. In no event shall the authors, copyright holders, or Extreme Networks, Inc. be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software or the use or other dealings in the software.
+
+---
+
+## Updates to This Notice
+
+This NOTICE file will be updated as new third-party dependencies are added or licenses change. Last updated: January 5, 2026.
+
+For questions about third-party licenses or compliance, contact:
+- **Legal/Compliance:** [Add contact]
+- **Engineering Lead:** [Add contact]
+
+---
+
+**Additional Resources:**
+- Full dependency list: See `THIRD_PARTY_LICENSES.md`
+- Deployment compliance: See `DEPLOYMENT_COMPLIANCE.md`
+- License texts: See `LICENSE` and `licenses/` directory (if applicable)
