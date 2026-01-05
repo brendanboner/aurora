@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     azure_openai_api_key: Optional[str] = None
     azure_openai_api_version: str = "2024-10-21"
     azure_openai_deployment: Optional[str] = None
-    llm_temperature: float = 0.1
+    llm_temperature: float = 0.8  # Changed from 0.1 to 0.8 for creative variation
     llm_max_tokens: int = 1200
 
     # Feed defaults

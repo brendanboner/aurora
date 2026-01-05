@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
@@ -12,6 +13,60 @@ logger = logging.getLogger(__name__)
 
 class PromptBuilder:
     """Constructs rich system and user prompts with full agent context."""
+
+    # Alternative prompt templates for variety
+    PROMPT_TEMPLATES = {
+        "standard": {
+            "description": "Balanced synthesis of developments",
+            "instructions": [
+                "Lead with a hook or key insight that grabs attention",
+                "Reference 2-3 of the most relevant articles naturally (don't list them)",
+                "Provide YOUR expert analysis and perspective",
+                "Connect the dots between different developments if applicable",
+                "End with a thought-provoking question or call-to-action"
+            ]
+        },
+        "contrarian": {
+            "description": "Challenge conventional wisdom or popular narrative",
+            "instructions": [
+                "Identify the mainstream interpretation of these developments",
+                "Present an alternative viewpoint based on your expertise",
+                "Support your contrarian take with specific evidence from the articles",
+                "Acknowledge the conventional view while explaining why you see it differently",
+                "Invite debate or alternative perspectives from your network"
+            ]
+        },
+        "practical_guide": {
+            "description": "Action-oriented advice for practitioners",
+            "instructions": [
+                "Frame the developments as actionable insights for your audience",
+                "Explain what these changes mean for day-to-day practice",
+                "Provide 2-3 concrete recommendations or steps",
+                "Include real-world examples or scenarios where applicable",
+                "End with next steps or resources for deeper exploration"
+            ]
+        },
+        "trend_analysis": {
+            "description": "Big picture view connecting dots across time",
+            "instructions": [
+                "Place these developments in the context of longer-term trends",
+                "Connect current events to past developments in the field",
+                "Identify patterns or signals about future direction",
+                "Draw insights from comparing multiple sources",
+                "Project what this might mean for the industry 6-12 months out"
+            ]
+        },
+        "explainer": {
+            "description": "Educational breakdown for broader audience",
+            "instructions": [
+                "Start by explaining the core concept or technology clearly",
+                "Break down why this development matters and who it affects",
+                "Use analogies or examples to make technical concepts accessible",
+                "Address common misconceptions or questions",
+                "End by connecting to practical implications your audience cares about"
+            ]
+        }
+    }
 
     def __init__(self) -> None:
         pass
@@ -31,28 +86,40 @@ class PromptBuilder:
             "- Connect multiple sources to tell a bigger story\n"
             "- Write in first person when sharing opinions or observations\n"
             "- Keep tone professional but conversational\n"
-            "- Use markdown formatting sparingly (bold for emphasis, lists for clarity)"
+            "- Use markdown formatting sparingly (bold for emphasis, lists for clarity)\n\n"
+            "UNIQUENESS IMPERATIVE:\n"
+            "- Write in YOUR distinctive voice—avoid generic phrasing typical of industry analysts\n"
+            "- Your persona and background below define your UNIQUE perspective\n"
+            "- Different professionals analyzing the same news will emphasize different angles\n"
+            "- Let your expertise, tone, and priorities shape your take on developments\n"
+            "- Avoid clichés like 'game-changer', 'paradigm shift', 'revolutionary' unless genuinely warranted\n"
+            "- Be specific and concrete rather than using vague business speak"
         )
 
+        # STRONGLY emphasize persona - this is the key differentiator
         if agent.persona:
-            base += f"\n\nYour Professional Background:\n{agent.persona}"
+            base += f"\n\n{'=' * 60}\n"
+            base += f"YOUR UNIQUE PROFESSIONAL IDENTITY (Let this guide EVERY aspect of your writing):\n"
+            base += f"{'=' * 60}\n"
+            base += f"{agent.persona}\n"
+            base += f"{'=' * 60}\n"
 
         # Tone and style guidance
         tone_guidance = {
-            "analytical": "Provide data-driven insights with clear reasoning. Break down complex topics for your network.",
-            "conversational": "Share insights in an accessible way, like you're explaining to a colleague over coffee.",
-            "technical": "Dive into technical details while keeping it readable. Your audience respects precision.",
-            "journalistic": "Report on developments objectively, then add your expert take on what it means.",
-            "opinion": "Lead with your perspective, then back it up with facts and industry context.",
+            "analytical": "Provide data-driven insights with clear reasoning. Break down complex topics systematically for your network. Use numbers, comparisons, and evidence-based conclusions.",
+            "conversational": "Share insights like you're explaining to a colleague over coffee. Be approachable, use personal anecdotes, and keep jargon minimal. Make complex topics relatable.",
+            "technical": "Dive deep into technical details while keeping it readable. Your audience respects precision and technical accuracy. Use specific terminology correctly and explain implications.",
+            "journalistic": "Report on developments objectively first, then add your expert take on what it means. Separate facts from interpretation clearly. Cite sources explicitly.",
+            "opinion": "Lead with your distinctive perspective, then back it up with facts and industry context. Don't hedge—own your viewpoint while acknowledging complexity.",
         }
         tone = tone_guidance.get(agent.tone_style, "Maintain a professional, thoughtful tone.")
         base += f"\n\nYour Writing Style: {tone}"
 
         # Content length guidance
         length_guidance = {
-            "short": "Keep posts concise: 2-3 short paragraphs (150-250 words total). Get to the point quickly.",
-            "medium": "Write 3-5 paragraphs (300-500 words). Balance depth with readability.",
-            "long": "Develop comprehensive posts with 5-8 paragraphs (600-1000 words). Include examples and thorough analysis.",
+            "short": "Keep posts concise: 2-3 short paragraphs (150-250 words total). Get to the point quickly. Every sentence must earn its place.",
+            "medium": "Write 3-5 paragraphs (300-500 words). Balance depth with readability. Develop ideas without overexplaining.",
+            "long": "Develop comprehensive posts with 5-8 paragraphs (600-1000 words). Include examples, nuances, and thorough analysis. Take time to explore implications.",
         }
         length = length_guidance.get(agent.content_length_preference, "Write 3-5 balanced paragraphs.")
         base += f"\n\nPost Length: {length}"
@@ -66,6 +133,8 @@ class PromptBuilder:
         documents: List[Dict[str, Any]],
         recent_posts: Optional[List[Dict[str, Any]]] = None,
         user_reactions: Optional[Dict[str, int]] = None,
+        all_agents_recent_posts: Optional[List[Dict[str, Any]]] = None,
+        template_override: Optional[str] = None,
     ) -> str:
         """
         Build user prompt with current context, constraints, and examples.
@@ -76,23 +145,34 @@ class PromptBuilder:
             documents: Recent documents/resources
             recent_posts: Agent's last 5 posts (for deduplication)
             user_reactions: Like/dislike counts from user feedback
+            all_agents_recent_posts: Recent posts from all agents (for cross-agent deduplication)
+            template_override: Force specific template (default: random selection)
         """
+        # Select template for variety
+        template_key = template_override or self._select_template(agent)
+        template = self.PROMPT_TEMPLATES[template_key]
+        
         prompt = (
-            "Write a professional LinkedIn-style post that synthesizes the following recent industry developments. "
+            f"Write a professional LinkedIn-style post that synthesizes the following recent industry developments. "
+            f"\n\n**Approach: {template['description']}**\n\n"
             "Your post should:\n"
-            "1. Lead with a hook or key insight that grabs attention\n"
-            "2. Reference 2-3 of the most relevant articles naturally (don't list them)\n"
-            "3. Provide YOUR expert analysis and perspective\n"
-            "4. Connect the dots between different developments if applicable\n"
-            "5. End with a thought-provoking question or call-to-action\n\n"
         )
+        
+        for i, instruction in enumerate(template['instructions'], 1):
+            prompt += f"{i}. {instruction}\n"
+        
+        prompt += "\n"
 
         # Context sources
         prompt += self._format_context_section(events, documents)
 
-        # Deduplication hints
+        # Deduplication hints (own posts)
         if recent_posts:
             prompt += self._format_recent_posts_section(recent_posts)
+        
+        # Cross-agent deduplication (what others wrote)
+        if all_agents_recent_posts:
+            prompt += self._format_cross_agent_posts_section(all_agents_recent_posts)
 
         # Preference signals from user feedback
         if user_reactions:
@@ -111,10 +191,27 @@ class PromptBuilder:
             '    {"source_kind": "event", "source_identifier": "url", "url": "url", "title": "article title"}\n'
             "  ]\n"
             "}\n\n"
-            "REMEMBER: Synthesize and analyze - don't copy. You're a professional sharing insights, not a news aggregator."
+            "REMEMBER: Synthesize and analyze in YOUR voice - don't copy. You're a professional sharing insights, not a news aggregator."
         )
 
         return prompt
+    
+    def _select_template(self, agent: CreatorAgent) -> str:
+        """Select a prompt template based on agent characteristics and randomness."""
+        # Weight templates based on agent tone_style
+        weights = {
+            "analytical": {"standard": 0.3, "trend_analysis": 0.4, "explainer": 0.2, "contrarian": 0.1, "practical_guide": 0.0},
+            "conversational": {"standard": 0.2, "practical_guide": 0.4, "explainer": 0.3, "contrarian": 0.05, "trend_analysis": 0.05},
+            "technical": {"standard": 0.2, "explainer": 0.3, "trend_analysis": 0.3, "practical_guide": 0.15, "contrarian": 0.05},
+            "journalistic": {"standard": 0.4, "trend_analysis": 0.3, "contrarian": 0.2, "explainer": 0.05, "practical_guide": 0.05},
+            "opinion": {"contrarian": 0.5, "standard": 0.2, "trend_analysis": 0.2, "practical_guide": 0.05, "explainer": 0.05},
+        }
+        
+        agent_weights = weights.get(agent.tone_style, weights["analytical"])
+        templates = list(agent_weights.keys())
+        probabilities = list(agent_weights.values())
+        
+        return random.choices(templates, weights=probabilities, k=1)[0]
 
     def _format_context_section(
         self,
@@ -157,6 +254,25 @@ class PromptBuilder:
             prompt += f"- **{post.get('title', 'Untitled')}**: {post.get('body', '')[:150]}...\n"
 
         prompt += "\nMake sure your new post covers different aspects or provides a fresh perspective.\n\n"
+        return prompt
+    
+    def _format_cross_agent_posts_section(self, all_agents_posts: List[Dict[str, Any]]) -> str:
+        """Add posts from other agents to avoid similar angles."""
+        if not all_agents_posts:
+            return ""
+
+        prompt = "## RECENT POSTS FROM OTHER ANALYSTS (Avoid these angles - find YOUR unique take):\n"
+        for post in all_agents_posts[:10]:
+            agent_name = post.get('agent_name', 'Unknown')
+            title = post.get('title', 'Untitled')
+            snippet = post.get('body', '')[:100]
+            prompt += f"- **{agent_name}** wrote: \"{title}\" — {snippet}...\n"
+
+        prompt += (
+            "\n**CRITICAL**: These angles have already been covered by other analysts. "
+            "Your post MUST offer a distinctly different perspective, focus, or interpretation. "
+            "Don't just reword—bring YOUR unique expertise and viewpoint to these same developments.\n\n"
+        )
         return prompt
 
     def _format_preference_signals_section(self, user_reactions: Dict[str, int]) -> str:

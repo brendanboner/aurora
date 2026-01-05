@@ -30,6 +30,12 @@ class CreatorAgentBase(BaseModel):
         ge=1,
         le=365,
     )
+    llm_temperature_override: Optional[float] = Field(
+        default=None,
+        description="Override LLM temperature for this agent (0.0-1.0). If None, uses system default",
+        ge=0.0,
+        le=1.0,
+    )
     enabled: bool = True
 
 
@@ -50,6 +56,7 @@ class CreatorAgentUpdate(BaseModel):
     importance_threshold: Optional[str] = None
     discovery_tolerance: Optional[float] = None
     cadence_window_days: Optional[int] = None
+    llm_temperature_override: Optional[float] = None
     enabled: Optional[bool] = None
 
 
@@ -60,6 +67,8 @@ class CreatorAgent(CreatorAgentBase):
     last_run_at: Optional[datetime] = None
     last_generated_at: Optional[datetime] = None
     last_event_cursor: Optional[str] = None
+    persona_version: int = Field(default=1, description="Version number for persona, increments on updates")
+    persona_updated_at: Optional[datetime] = Field(default=None, description="Timestamp of last persona modification")
 
     class Config:
         from_attributes = True

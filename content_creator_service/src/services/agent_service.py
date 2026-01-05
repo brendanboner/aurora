@@ -50,11 +50,11 @@ class AgentService:
             INSERT INTO creator_agent (
                 name, description, persona, expertise_topics, expertise_organisations,
                 expertise_standards, tone_style, posting_cadence, content_length_preference,
-                importance_threshold, discovery_tolerance, cadence_window_days, enabled
+                importance_threshold, discovery_tolerance, cadence_window_days, llm_temperature_override, enabled
             ) VALUES (
                 %(name)s, %(description)s, %(persona)s, %(expertise_topics)s, %(expertise_organisations)s,
                 %(expertise_standards)s, %(tone_style)s, %(posting_cadence)s, %(content_length_preference)s,
-                %(importance_threshold)s, %(discovery_tolerance)s, %(cadence_window_days)s, %(enabled)s
+                %(importance_threshold)s, %(discovery_tolerance)s, %(cadence_window_days)s, %(llm_temperature_override)s, %(enabled)s
             ) RETURNING *
             """,
             payload.model_dump(),
@@ -66,7 +66,13 @@ class AgentService:
         if not data:
             return self.get_agent(agent_id)
 
-        assignments = ", ".join(f"{key} = %({key})s" for key in data.keys())
+        # If persona is being updated, increment version and update timestamp
+        if 'persona' in data:
+            assignments = ", ".join(f"{key} = %({key})s" for key in data.keys())
+            assignments += ", persona_version = persona_version + 1, persona_updated_at = NOW()"
+        else:
+            assignments = ", ".join(f"{key} = %({key})s" for key in data.keys())
+        
         data["id"] = agent_id
         row = db.fetch_one(
             f"""
@@ -216,3 +222,59 @@ class AgentService:
                 status_code=500,
                 detail=f"Failed to parse LinkedIn profile: {str(exc)}"
             ) from exc
+    
+    def enhance_from_linkedin(self, agent_id: int, linkedin_text: str) -> CreatorAgent:
+        """
+        Enhance existing agent with additional LinkedIn profile content.
+        Merges new style markers, topics, and organizations additively.
+        
+        Args:
+            agent_id: ID of existing agent to enhance
+            linkedin_text: Additional LinkedIn profile content
+            
+        Returns:
+            Updated CreatorAgent with enhanced persona
+        """
+        # Get existing agent
+        existing_agent = self.get_agent(agent_id)
+        
+        # Parse new LinkedIn content
+        parsed = self.parse_linkedin_profile(linkedin_text)
+        
+        # Merge persona additively (append new insights)
+        existing_persona = existing_agent.persona or ""
+        new_persona_addition = parsed.get('persona', '')
+        
+        # Extract just the style insights from new persona (skip the disclaimer)
+        if "This is a fictional internal creator agent" in new_persona_addition:
+            # Skip the disclaimer paragraph, keep only style instructions
+            parts = new_persona_addition.split('\n\n', 1)
+            new_persona_addition = parts[1] if len(parts) > 1 else new_persona_addition
+        
+        enhanced_persona = existing_persona
+        if new_persona_addition and new_persona_addition not in existing_persona:
+            enhanced_persona += f"\n\n**Enhanced from additional profile analysis:**\n{new_persona_addition}"
+        
+        # Merge topics, organizations, and standards (add unique items)
+        existing_topics = set(existing_agent.expertise_topics)
+        new_topics = set(parsed.get('expertise_topics', []))
+        merged_topics = list(existing_topics | new_topics)
+        
+        existing_orgs = set(existing_agent.expertise_organisations)
+        new_orgs = set(parsed.get('expertise_organisations', []))
+        merged_orgs = list(existing_orgs | new_orgs)
+        
+        existing_standards = set(existing_agent.expertise_standards)
+        new_standards = set(parsed.get('expertise_standards', []))
+        merged_standards = list(existing_standards | new_standards)
+        
+        # Update agent with merged content
+        update_payload = CreatorAgentUpdate(
+            persona=enhanced_persona,
+            expertise_topics=merged_topics,
+            expertise_organisations=merged_orgs,
+            expertise_standards=merged_standards,
+        )
+        
+        return self.update_agent(agent_id, update_payload)
+

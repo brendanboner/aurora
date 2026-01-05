@@ -1,0 +1,43 @@
+{
+  "agent": {
+    "id": 2,
+    "name": "Brian Innovator",
+    "tone_style": "analytical",
+    "original_temperature": null
+  },
+  "test_config": {
+    "temperatures": [
+      0.7,
+      0.8,
+      0.9
+    ],
+    "runs_per_temp": 2,
+    "timestamp": "20260105_132215"
+  },
+  "results": [
+    {
+      "status": "failed",
+      "error": "{neo4j_code: Neo.ClientError.Security.Unauthorized} {message: The client is unauthorized due to authentication failure.} {gql_status: 42NFF} {gql_status_description: error: syntax error or access rule violation - permission/access denied. Access denied, see the security logs for details.}"
+    },
+    {
+      "status": "failed",
+      "error": "{neo4j_code: Neo.ClientError.Security.Unauthorized} {message: The client is unauthorized due to authentication failure.} {gql_status: 42NFF} {gql_status_description: error: syntax error or access rule violation - permission/access denied. Access denied, see the security logs for details.}"
+    },
+    {
+      "status": "failed",
+      "error": "{neo4j_code: Neo.ClientError.Security.Unauthorized} {message: The client is unauthorized due to authentication failure.} {gql_status: 42NFF} {gql_status_description: error: syntax error or access rule violation - permission/access denied. Access denied, see the security logs for details.}"
+    },
+    {
+      "status": "failed",
+      "error": "{neo4j_code: Neo.ClientError.Security.AuthenticationRateLimit} {message: The client has provided incorrect authentication details too many times in a row.} {gql_status: 42NFF} {gql_status_description: error: syntax error or access rule violation - permission/access denied. Access denied, see the security logs for details.}"
+    },
+    {
+      "status": "failed",
+      "error": "{neo4j_code: Neo.ClientError.Security.AuthenticationRateLimit} {message: The client has provided incorrect authentication details too many times in a row.} {gql_status: 42NFF} {gql_status_description: error: syntax error or access rule violation - permission/access denied. Access denied, see the security logs for details.}"
+    },
+    {
+      "status": "failed",
+      "error": "{neo4j_code: Neo.ClientError.Security.AuthenticationRateLimit} {message: The client has provided incorrect authentication details too many times in a row.} {gql_status: 42NFF} {gql_status_description: error: syntax error or access rule violation - permission/access denied. Access denied, see the security logs for details.}"
+    }
+  ]
+}

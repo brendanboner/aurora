@@ -54,6 +54,9 @@ class GenerationService:
 
         # Fetch agent's recent posts for deduplication
         recent_posts = self._fetch_agent_recent_posts(agent.id, limit=5)
+        
+        # Fetch recent posts from ALL agents for cross-agent deduplication
+        all_agents_posts = self._fetch_all_recent_posts(exclude_agent_id=agent.id, limit=10)
 
         # Fetch user reactions to recent posts for preference signals
         user_reactions = self._aggregate_user_reactions(recent_posts)
@@ -66,11 +69,15 @@ class GenerationService:
             documents=documents,
             recent_posts=recent_posts,
             user_reactions=user_reactions,
+            all_agents_recent_posts=all_agents_posts,
         )
 
-        # Call LLM with enriched prompt
+        # Determine temperature (agent override or system default)
+        temperature = agent.llm_temperature_override if agent.llm_temperature_override is not None else None
+
+        # Call LLM with enriched prompt and temperature
         llm_client = get_llm_client()
-        llm_response = llm_client.generate(system_prompt, user_prompt)
+        llm_response = llm_client.generate(system_prompt, user_prompt, temperature_override=temperature)
 
         if not llm_response:
             logger.warning("LLM generation failed for agent %s", agent.name)
@@ -93,49 +100,86 @@ class GenerationService:
     def _fetch_agent_recent_posts(self, agent_id: int, limit: int = 5) -> List[Dict[str, Any]]:
         """Fetch agent's recent posts for deduplication context."""
         try:
-            from sqlalchemy import desc, select
-
-            from ..database import get_db_session
-            from ..models.database import Post
-
-            session = get_db_session()
-            query = select(Post).where(Post.agent_id == agent_id).order_by(desc(Post.created_at)).limit(limit)
-            posts = session.scalars(query).all()
-            session.close()
+            from .. import db
+            
+            rows = db.fetch_all(
+                """
+                SELECT id, title, body, created_at
+                FROM post
+                WHERE agent_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (agent_id, limit),
+            )
 
             return [
                 {
-                    "id": p.id,
-                    "title": p.title,
-                    "body": p.body[:200],  # Truncate for prompt context
-                    "created_at": p.created_at,
+                    "id": row["id"],
+                    "title": row["title"],
+                    "body": row["body"][:200] if row["body"] else "",  # Truncate for prompt context
+                    "created_at": row["created_at"],
                 }
-                for p in posts
+                for row in rows
             ]
         except Exception as e:
             logger.warning("Failed to fetch recent posts for agent %d: %s", agent_id, e)
+            return []
+    
+    def _fetch_all_recent_posts(self, exclude_agent_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """Fetch recent posts from all agents (excluding current) for cross-agent deduplication."""
+        try:
+            from .. import db
+            
+            rows = db.fetch_all(
+                """
+                SELECT p.id, p.title, p.body, p.created_at, ca.name as agent_name
+                FROM post p
+                JOIN creator_agent ca ON p.agent_id = ca.id
+                WHERE p.agent_id != %s
+                ORDER BY p.created_at DESC
+                LIMIT %s
+                """,
+                (exclude_agent_id, limit),
+            )
+
+            return [
+                {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "body": row["body"][:200] if row["body"] else "",  # Truncate for prompt context
+                    "created_at": row["created_at"],
+                    "agent_name": row["agent_name"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning("Failed to fetch all recent posts: %s", e)
             return []
 
     def _aggregate_user_reactions(self, recent_posts: List[Dict[str, Any]]) -> Optional[Dict[str, int]]:
         """Aggregate like/dislike counts from recent posts."""
         try:
-            from sqlalchemy import select
+            from .. import db
 
-            from ..database import get_db_session
-            from ..models.database import UserPostReaction
-
-            session = get_db_session()
             post_ids = [p.get("id") for p in recent_posts]
 
             if not post_ids:
                 return None
 
-            query = select(UserPostReaction.reaction_type).where(UserPostReaction.post_id.in_(post_ids))
-            reactions = session.scalars(query).all()
-            session.close()
+            # Create placeholders for IN clause
+            placeholders = ",".join(["%s"] * len(post_ids))
+            query = f"""
+                SELECT reaction_type
+                FROM user_post_reaction
+                WHERE post_id IN ({placeholders})
+            """
+            
+            rows = db.fetch_all(query, tuple(post_ids))
 
             reaction_counts = {"like": 0, "dislike": 0}
-            for reaction in reactions:
+            for row in rows:
+                reaction = row.get("reaction_type")
                 if reaction in reaction_counts:
                     reaction_counts[reaction] += 1
 

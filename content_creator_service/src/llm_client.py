@@ -28,15 +28,27 @@ class LLMClient:
         self._temperature = settings.llm_temperature
         self._max_tokens = settings.llm_max_tokens
 
-    def generate(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-        """Invoke the chat completion API and return the parsed JSON payload."""
+    def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature_override: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Invoke the chat completion API and return the parsed JSON payload.
+        
+        Args:
+            system_prompt: System instruction prompt
+            user_prompt: User content prompt
+            temperature_override: Optional temperature override (0.0-1.0). If provided, uses this instead of default.
+        """
         if not self._deployment:
             raise RuntimeError("Azure OpenAI deployment is not configured")
 
-        logger.debug("Invoking LLM deployment %s", self._deployment)
+        temperature = temperature_override if temperature_override is not None else self._temperature
+        logger.debug("Invoking LLM deployment %s with temperature %.2f", self._deployment, temperature)
         response = self._client.chat.completions.create(
             model=self._deployment,
-            temperature=self._temperature,
+            temperature=temperature,
             max_tokens=self._max_tokens,
             response_format={"type": "json_object"},
             messages=[
@@ -49,11 +61,19 @@ class LLMClient:
             raise RuntimeError("LLM returned empty content")
 
         import json
+        import re
+
+        # Strip markdown code blocks if present
+        content = content.strip()
+        if content.startswith("```"):
+            # Remove ```json or ``` prefix and trailing ```
+            content = re.sub(r'^```(?:json)?\s*\n', '', content)
+            content = re.sub(r'\n```\s*$', '', content)
 
         try:
             return json.loads(content)
         except json.JSONDecodeError as exc:
-            logger.error("LLM response failed JSON parsing: %s", content)
+            logger.error("LLM response failed JSON parsing: %s", content[:500])
             raise RuntimeError("LLM returned invalid JSON") from exc
 
 

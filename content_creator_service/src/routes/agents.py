@@ -66,6 +66,29 @@ async def parse_linkedin_profile(request: LinkedInParseRequest) -> dict:
         ) from exc
 
 
+@router.post("/{agent_id}/enhance-from-linkedin", response_model=CreatorAgent)
+async def enhance_agent_from_linkedin(agent_id: int, request: LinkedInParseRequest) -> CreatorAgent:
+    """
+    Enhance existing agent with additional LinkedIn profile content.
+    Merges new style markers, topics, and organizations additively.
+    Increments persona_version.
+    """
+    try:
+        enhanced_agent = await asyncio.to_thread(
+            _agent_service.enhance_from_linkedin,
+            agent_id,
+            request.profile_text
+        )
+        return enhanced_agent
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to enhance agent from LinkedIn profile: {str(exc)}"
+        ) from exc
+
+
 @router.get("/user/{user_id}/followed")
 async def get_user_followed_agents(user_id: str) -> dict:
     """Get all agents followed by a user with their preference settings."""
@@ -155,3 +178,54 @@ async def trigger_agent_run(agent_id: int, request: TriggerRequest = Body(...)) 
         "status": "no_content",
         "message": "Agent processed but did not generate a post. Check logs for details.",
     }
+
+
+@router.post("/{agent_id}/test-generation")
+async def test_agent_generation(
+    agent_id: int,
+    temperature: float = Query(0.8, ge=0.0, le=1.0, description="Temperature override for testing"),
+) -> dict:
+    """
+    Test post generation with a specific temperature for A/B testing.
+    Returns generated post payload without saving to database.
+    """
+    from ..services.agent_service import AgentService
+    from ..services.generation_service import GenerationService
+    
+    try:
+        agent_service = AgentService()
+        generation_service = GenerationService()
+        
+        # Get agent
+        agent = agent_service.get_agent(agent_id)
+        
+        # Temporarily override temperature
+        original_temp = agent.llm_temperature_override
+        agent.llm_temperature_override = temperature
+        
+        # Generate post (without saving)
+        payload = await asyncio.to_thread(
+            generation_service.generate_post_payload,
+            agent
+        )
+        
+        # Restore original temperature
+        agent.llm_temperature_override = original_temp
+        
+        if not payload:
+            return {
+                "status": "no_content",
+                "message": "No content generated. Agent may need more context.",
+                "temperature_used": temperature,
+            }
+        
+        return {
+            "status": "success",
+            "temperature_used": temperature,
+            "payload": payload,
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Test generation failed: {str(exc)}"
+        ) from exc
