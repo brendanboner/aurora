@@ -59,6 +59,39 @@ class Settings(BaseSettings):
     scheduler_digest_hour_utc: int = 12
     per_event_cooldown_seconds: int = 900
 
+    # Content Quality & Diversity Settings
+    diversity_similarity_threshold: float = Field(
+        default=0.7,
+        description="Jaccard similarity threshold for filtering similar articles (0.0-1.0). "
+                    "Higher values = stricter filtering (more duplicates removed)",
+        ge=0.0,
+        le=1.0,
+    )
+    min_relevance_score_default: float = Field(
+        default=0.3,
+        description="Default minimum relevance score for article selection (0.0-1.0). "
+                    "Can be overridden by agent discovery_tolerance",
+        ge=0.0,
+        le=1.0,
+    )
+    max_topics_per_article: int = Field(
+        default=20,
+        description="Maximum number of topics per article. Articles with more are filtered as generic aggregations",
+        ge=1,
+    )
+    max_articles_per_domain: int = Field(
+        default=2,
+        description="Maximum number of articles from the same domain to include in a single post",
+        ge=1,
+    )
+    temporal_window_days_default: int = Field(
+        default=90,
+        description="Default temporal window in days for article selection. "
+                    "Can be overridden by agent cadence_window_days",
+        ge=1,
+        le=365,
+    )
+
     def pg_connect_kwargs(self) -> Dict[str, str | int]:
         """Return keyword arguments for psycopg2 pool creation."""
         if self.pg_dsn:

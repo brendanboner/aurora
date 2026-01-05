@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import db
 from .migrations_runner import apply_all_migrations
-from .routes import agents, feed, posts, preferences
+from .routes import agents, feed, posts, preferences, admin
 from .services.scheduler import AgentScheduler
 from .settings import get_settings
 
@@ -50,6 +50,7 @@ app.include_router(feed.router)
 app.include_router(agents.router)
 app.include_router(posts.router)
 app.include_router(preferences.router)
+app.include_router(admin.router)
 
 
 @app.on_event("startup")

@@ -161,6 +161,13 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                   <span>System Config</span>
                 </Link>
                 <Link 
+                  to="/admin/content-quality" 
+                  className={`sidebar-subitem ${isActive('/admin/content-quality') ? 'active' : ''}`}
+                >
+                  <span className="sidebar-icon">🎯</span>
+                  <span>Content Quality</span>
+                </Link>
+                <Link 
                   to="/admin/chat-sessions" 
                   className={`sidebar-subitem ${isActive('/admin/chat-sessions') ? 'active' : ''}`}
                 >

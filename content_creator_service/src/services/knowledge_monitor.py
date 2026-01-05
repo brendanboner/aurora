@@ -20,11 +20,18 @@ class KnowledgeMonitor:
         topics: Iterable[str],
         organisations: Iterable[str],
         limit: int = 10,
+        window_days: int = 90,
     ) -> List[KnowledgeEvent]:
+        """Poll recent events with optional temporal filtering."""
         topic_list = [topic for topic in topics if topic]
         org_list = [org for org in organisations if org]
-        logger.info("Polling Neo4j: topics=%s orgs=%s limit=%d", topic_list, org_list, limit)
-        records = self._context_gateway.fetch_recent_events(topic_list, org_list, limit=limit)
+        logger.info("Polling Neo4j: topics=%s orgs=%s limit=%d window=%dd", topic_list, org_list, limit, window_days)
+        records = self._context_gateway.fetch_recent_events(
+            topic_list, 
+            org_list, 
+            limit=limit,
+            window_days=window_days,
+        )
         logger.info("Neo4j returned %d records", len(records))
         events: List[KnowledgeEvent] = []
         for record in records:

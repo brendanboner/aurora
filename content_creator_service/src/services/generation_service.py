@@ -40,16 +40,53 @@ class GenerationService:
     ) -> Optional[Dict[str, Any]]:
         """
         Generate a post with full context including agent history and user feedback.
+        
+        Uses quality-based selection instead of hard limits:
+        - Requests more candidates (limit=30) to ensure quality pool
+        - Filters by relevance score and diversity
+        - Returns 3-8 high-quality articles for focused posts
         """
         topic_scope = topics or agent.expertise_topics
         organisation_scope = organisations or agent.expertise_organisations
 
-        # Fetch current events and documents
-        events = self._context.fetch_recent_events(topic_scope, organisation_scope, limit=8)
-        documents = self._context.fetch_recent_documents(organisation_scope, limit=12)
+        # Determine time window from agent's cadence or use system default
+        window_days = agent.cadence_window_days if agent.cadence_window_days else self._settings.temporal_window_days_default
+        
+        # Minimum relevance score: stricter for focused agents, looser for exploratory
+        # discovery_tolerance: 0.0 (strict) -> 0.5 min_score, 1.0 (exploratory) -> 0.2 min_score
+        min_relevance = 0.5 - (agent.discovery_tolerance * 0.3)
+        
+        # Fetch events with quality thresholds (request more to ensure quality pool)
+        events = self._context.fetch_recent_events(
+            topic_scope, 
+            organisation_scope, 
+            limit=30,  # Request more candidates
+            window_days=window_days,
+            min_relevance_score=min_relevance,
+        )
+        
+        # Fetch documents with quality thresholds
+        documents = self._context.fetch_recent_documents(
+            organisation_scope, 
+            limit=30,  # Request more candidates
+            window_days=window_days,
+            min_relevance_score=min_relevance,
+        )
 
         if not events and not documents:
             logger.info("No context available for agent %s", agent.name)
+            return None
+
+        # Apply diversity filtering to prevent duplicate coverage
+        events = self._apply_diversity_filter(events, max_items=8)
+        documents = self._apply_diversity_filter(documents, max_items=8)
+        
+        # Final quality check: ensure we have focused, high-quality content
+        events = [e for e in events if e.get("relevance_score", 0) >= min_relevance][:8]
+        documents = [d for d in documents if d.get("relevance_score", 0) >= min_relevance][:8]
+        
+        if not events and not documents:
+            logger.info("No high-quality context available for agent %s after filtering", agent.name)
             return None
 
         # Fetch agent's recent posts for deduplication
@@ -125,6 +162,122 @@ class GenerationService:
         except Exception as e:
             logger.warning("Failed to fetch recent posts for agent %d: %s", agent_id, e)
             return []
+    
+    def _apply_diversity_filter(
+        self, 
+        articles: List[Dict[str, Any]], 
+        max_items: int = 8,
+        similarity_threshold: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter articles to prevent duplicates and ensure diversity.
+        
+        Removes articles that are too similar based on:
+        - Exact URL match (same source)
+        - Title similarity (Jaccard similarity > threshold)
+        - Same domain within short time window
+        
+        Returns up to max_items diverse articles, preserving relevance score order.
+        """
+        if not articles:
+            return []
+        
+        # Use configured threshold if not provided
+        if similarity_threshold is None:
+            similarity_threshold = self._settings.diversity_similarity_threshold
+        
+        # Get max articles per domain from settings
+        max_per_domain = self._settings.max_articles_per_domain
+        
+        def get_domain(url: str) -> str:
+            """Extract domain from URL."""
+            if not url:
+                return ""
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                return parsed.netloc.lower()
+            except:
+                return ""
+        
+        def title_similarity(title1: str, title2: str) -> float:
+            """Calculate Jaccard similarity between two titles."""
+            if not title1 or not title2:
+                return 0.0
+            
+            # Normalize and tokenize
+            tokens1 = set(title1.lower().split())
+            tokens2 = set(title2.lower().split())
+            
+            if not tokens1 or not tokens2:
+                return 0.0
+            
+            # Jaccard similarity: intersection / union
+            intersection = len(tokens1 & tokens2)
+            union = len(tokens1 | tokens2)
+            
+            return intersection / union if union > 0 else 0.0
+        
+        diverse_articles = []
+        seen_urls = set()
+        seen_domains_recent = {}  # domain -> most recent timestamp
+        
+        for article in articles:
+            url = article.get("url", "")
+            title = article.get("title", "")
+            domain = get_domain(url)
+            
+            # Skip exact URL duplicates
+            if url and url in seen_urls:
+                logger.debug("Skipping duplicate URL: %s", title)
+                continue
+            
+            # Check title similarity with already selected articles
+            too_similar = False
+            for selected in diverse_articles:
+                selected_title = selected.get("title", "")
+                similarity = title_similarity(title, selected_title)
+                if similarity >= similarity_threshold:
+                    logger.debug(
+                        "Skipping similar article (%.2f): '%s' vs '%s'",
+                        similarity,
+                        title[:50],
+                        selected_title[:50],
+                    )
+                    too_similar = True
+                    break
+            
+            if too_similar:
+                continue
+            
+            # Limit articles from same domain in short time window
+            if domain and domain in seen_domains_recent:
+                # Allow multiple from same domain if spaced apart or very different
+                # Use configurable max_per_domain setting
+                domain_count = sum(1 for a in diverse_articles if get_domain(a.get("url", "")) == domain)
+                if domain_count >= max_per_domain:
+                    logger.debug("Skipping article from over-represented domain: %s", domain)
+                    continue
+            
+            # Add to diverse set
+            diverse_articles.append(article)
+            if url:
+                seen_urls.add(url)
+            if domain:
+                seen_domains_recent[domain] = article.get("publish_date")
+            
+            # Stop when we have enough
+            if len(diverse_articles) >= max_items:
+                break
+        
+        logger.debug(
+            "Diversity filter: %d -> %d articles (removed %d duplicates/similar)",
+            len(articles),
+            len(diverse_articles),
+            len(articles) - len(diverse_articles),
+        )
+        
+        return diverse_articles
     
     def _fetch_all_recent_posts(self, exclude_agent_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Fetch recent posts from all agents (excluding current) for cross-agent deduplication."""

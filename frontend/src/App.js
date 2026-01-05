@@ -11,6 +11,7 @@ import AdminUsers from './pages/AdminUsers';
 import AdminKnowledgeGraph from './pages/AdminKnowledgeGraph';
 import AdminMonitoring from './pages/AdminMonitoring';
 import AdminSystemConfig from './pages/AdminSystemConfig';
+import AdminContentQuality from './pages/AdminContentQuality';
 import AdminChatSessions from './pages/AdminChatSessions';
 import News from './pages/News';
 import Events from './pages/Events';
@@ -154,6 +155,14 @@ function App() {
                                 element={
                                   <ProtectedRoute requiredRole={['admin', 'superadmin']}>
                                     <AdminSystemConfig />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              <Route 
+                                path="/admin/content-quality" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminContentQuality />
                                   </ProtectedRoute>
                                 } 
                               />
