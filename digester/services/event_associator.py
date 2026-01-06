@@ -52,13 +52,13 @@ class EventAssociator:
         
         logger.info("Initialized EventAssociator")
     
-    def _call_llm(self, prompt: str) -> str:
+    async def _call_llm(self, prompt: str) -> str:
         """Call Azure OpenAI with retry logic for rate limits."""
         messages = [
             {"role": "system", "content": "You are an expert at matching documents to events. Always respond with valid JSON only."},
             {"role": "user", "content": prompt}
         ]
-        return call_llm_with_retry(
+        return await call_llm_with_retry(
             messages=messages,
             temperature=0.1,
             max_tokens=200
@@ -82,7 +82,7 @@ class EventAssociator:
         
         return "\n".join(lines)
     
-    def _disambiguate_events(
+    async def _disambiguate_events(
         self,
         title: str,
         summary: str,
@@ -100,7 +100,7 @@ class EventAssociator:
         )
         
         try:
-            response = self._call_llm(prompt)
+            response = await self._call_llm(prompt)
             
             # Parse JSON response
             json_str = parse_json_from_llm_response(response)
@@ -127,7 +127,7 @@ class EventAssociator:
             logger.error(f"Error during event disambiguation: {e}", exc_info=True)
             return None, 0.0, f"Error: {str(e)[:MAX_ERROR_MESSAGE_LENGTH]}"
     
-    def get_event_relationship(
+    async def get_event_relationship(
         self,
         resource_url_hash: str,
         resource_title: str,
@@ -185,7 +185,7 @@ class EventAssociator:
         else:
             # Multiple events - LLM disambiguation
             logger.info(f"Multiple events ({len(events)}) on {extracted_date} - using LLM disambiguation")
-            selected_event, confidence, reasoning = self._disambiguate_events(
+            selected_event, confidence, reasoning = await self._disambiguate_events(
                 title=resource_title,
                 summary=resource_summary,
                 extracted_date=extracted_date,

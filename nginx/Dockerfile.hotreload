@@ -1,0 +1,26 @@
+# =============================================================================
+# Nginx Dockerfile for Hot Reload Development
+# =============================================================================
+# This Dockerfile creates an nginx container that proxies to React dev server.
+# Use with docker-compose.yml (default development setup).
+# 
+# For production static builds, use Dockerfile.cloudfront or Dockerfile.letsencrypt instead.
+# =============================================================================
+
+FROM nginx:alpine
+
+# Install basic tools for healthchecks
+RUN apk add --no-cache wget
+
+# Copy nginx configuration
+COPY nginx/nginx.hotreload.conf /etc/nginx/conf.d/default.conf
+
+# Expose HTTP port only
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost/health || exit 1
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

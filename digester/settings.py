@@ -22,14 +22,15 @@ class Settings(BaseSettings):
     redis_host: str = "redis"
     redis_port: int = 6379
     
-    # RabbitMQ Threading Configuration
-    rabbitmq_max_workers: int = 4  # Number of worker threads (0 = single-threaded)
-    rabbitmq_heartbeat: int = 180  # Heartbeat interval in seconds (3 minutes)
+    # RabbitMQ Async Configuration
+    rabbitmq_max_concurrent: int = 10  # Max concurrent message processing (async semaphore)
+    rabbitmq_message_timeout: float = 1200.0  # Message timeout in seconds (20 minutes)
+    rabbitmq_heartbeat: int = 60  # Heartbeat interval in seconds (60s recommended for async)
     
     @property
     def rabbitmq_prefetch_count(self) -> int:
-        """Calculate prefetch count based on max_workers."""
-        return max(1, self.rabbitmq_max_workers * 2)
+        """Calculate prefetch count based on max_concurrent."""
+        return max(1, self.rabbitmq_max_concurrent * 2)
     
     # Neo4j Configuration
     neo4j_uri: str = "bolt://localhost:7687"

@@ -1,12 +1,12 @@
-# Multi-stage build for production-ready React app
-FROM node:20-alpine AS builder
+# Build React app and output to shared volume
+FROM node:20-alpine
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (including devDependencies needed for build)
+# Install dependencies
 RUN npm install
 
 # Copy source code
@@ -15,21 +15,11 @@ COPY . .
 # Build the React app
 RUN npm run build
 
-# Production stage with nginx
-FROM nginx:alpine
+# Script to copy fresh build to volume (which is mounted at /app/build)
+# We build to /tmp/build during image creation, then copy to /app/build at runtime
+RUN mv /app/build /tmp/build
 
-# Copy custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy fresh build files to volume on container start, then exit
+CMD ["sh", "-c", "cp -r /tmp/build/* /app/build/ && echo 'Frontend build copied successfully'"]
 
-# Copy built app from builder stage
-COPY --from=builder /app/build /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
-
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# No exposed ports needed - this is just a build container

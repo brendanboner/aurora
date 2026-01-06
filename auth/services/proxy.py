@@ -13,6 +13,7 @@ SERVICE_ROUTES = {
     "/api/curator": settings.curator_service_url,
     "/api/retriever": settings.retriever_service_url,
     "/api/content_creator_service": settings.content_creator_service_url,
+    "/api/content-creator": settings.content_creator_service_url,  # Alias for content creator
 }
 
 # Safe headers to forward (allowlist approach)

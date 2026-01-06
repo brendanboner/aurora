@@ -92,6 +92,7 @@ class RetrieverService:
     def __init__(self):
         self.scheduler_task: Optional[asyncio.Task] = None
         self.active_scrapes: Dict[str, asyncio.Task] = {}
+        self.scraping_datasources: set = set()  # Track which datasources are currently being scraped
         self.scrapes_today: int = 0
         self.last_scrape_date: Optional[str] = None
         self.config_manager: Optional[ConfigManager] = None
@@ -287,12 +288,34 @@ class RetrieverService:
         Run a single scraper instance for multiple datasources.
         
         This allows session reuse (e.g., single authentication for Causeway).
+        Includes concurrency protection to prevent duplicate scraping of the same datasource.
         
         Args:
             scraper_type: The scraper type identifier
             scraper_class: Scraper class to instantiate
             datasources: List of datasource configurations to process
         """
+        # Filter out datasources that are already being scraped
+        available_datasources = []
+        skipped_datasources = []
+        
+        for ds_config in datasources:
+            datasource_id = ds_config.get('datasource_id', 'unknown')
+            if datasource_id in self.scraping_datasources:
+                skipped_datasources.append(ds_config.get('name', datasource_id))
+            else:
+                available_datasources.append(ds_config)
+        
+        if skipped_datasources:
+            logger.info(
+                f"Skipping {len(skipped_datasources)} datasource(s) already being scraped: "
+                f"{', '.join(skipped_datasources)}"
+            )
+        
+        if not available_datasources:
+            logger.info(f"No available datasources for {scraper_type} - all currently being scraped")
+            return
+        
         task_id = f"{scraper_type}_{datetime.now().timestamp()}"
         
         try:
@@ -302,10 +325,13 @@ class RetrieverService:
             async with scraper_class() as scraper:
                 logger.info(f"Started {scraper_type} scraper session")
                 
-                for ds_config in datasources:
+                for ds_config in available_datasources:
                     datasource_id = ds_config.get('datasource_id', 'unknown')
                     datasource_name = ds_config.get('name', datasource_id)
                     is_full_refresh = ds_config.get('is_full_refresh', False)
+                    
+                    # Mark datasource as being scraped
+                    self.scraping_datasources.add(datasource_id)
                     
                     try:
                         refresh_mode = " (FULL REFRESH)" if is_full_refresh else ""
@@ -316,7 +342,9 @@ class RetrieverService:
                     except Exception as e:
                         logger.error(f"Error processing {datasource_name}: {e}", exc_info=True)
                         # Continue with next datasource
-                        continue
+                    finally:
+                        # Always remove from scraping set
+                        self.scraping_datasources.discard(datasource_id)
             
             logger.info(f"Completed {scraper_type} scraper session")
             

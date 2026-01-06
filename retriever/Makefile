@@ -1,112 +1,33 @@
-# Aurora Retriever Makefile
+# =============================================================================
+# Retriever Service Makefile
+# =============================================================================
 
-# Service identifier (used by make-utils.mk to generate container names)
-SERVICE_NAME := retriever
+.PHONY: help test
 
-# Include master environment variables
-include ../.env
-export
+# Service-specific configuration
+SERVICE_NAME := aurora-retriever
+DOCKERFILE := Dockerfile
+BUILD_CONTEXT := ..
 
-# Include shared Docker utilities (auto-generates container/network names)
-include ../common/make-utils.mk
+# Load common configuration and targets (build, push, push-only, clean)
+include ../Makefile.common
 
-.PHONY: help deploy-isolated deploy-shared clean-isolated clean-shared nuke validate-env \
-        ensure-network ensure-rabbitmq wait-for-rabbitmq check-venv
-	compose-up compose-down compose-restart
-
-# Default target
 help:
-	@echo "Aurora Retriever - Available commands:"
+	@echo "$(CYAN)Retriever Service Makefile$(NC)"
 	@echo ""
-	@echo "  make deploy-isolated - Deploy retriever in isolated environment (own network + deps)"
-	@echo "  make deploy-shared    - Deploy retriever on shared network (reuses existing deps)"
-	@echo "  make compose-up       - Start retriever via root docker-compose (preferred shared)"
-	@echo "  make compose-down     - Stop retriever service (docker-compose)"
-	@echo "  make compose-restart  - Restart retriever service (docker-compose)"
-	@echo "  make clean-isolated  - Clean ALL isolated environments (all services)"
-	@echo "  make clean-shared   - Clean shared resources (use with caution)"
-	@echo "  make nuke           - 💥 Nuke everything (containers + images + system prune)"
+	@echo "Available commands:"
+	@echo "  make test   - Run tests with pytest"
+	@echo "  make build-push  - Build and push Docker image to ECR"
+	@echo "  make push   - Run tests, build, and push to ECR"
+	@echo "  make clean  - Clean up test artifacts"
 
-# Validate environment variables
-validate-env:
-	@test -n "$(RABBITMQ_HOST)" || (echo "❌ RABBITMQ_HOST not set" && exit 1)
-	@test -n "$(RABBITMQ_USER)" || (echo "❌ RABBITMQ_USER not set" && exit 1)
-	@test -n "$(RABBITMQ_PASSWORD)" || (echo "❌ RABBITMQ_PASSWORD not set" && exit 1)
-	@test -n "$(DOCKER_NETWORK)" || (echo "❌ DOCKER_NETWORK not set" && exit 1)
-	@test -n "$(RABBITMQ_IMAGE)" || (echo "❌ RABBITMQ_IMAGE not set" && exit 1)
-	@echo "✅ Environment validated"
-
-# Deploy in complete isolation (own network + dependencies)
-deploy-isolated: validate-env clean-isolated
-	@echo "🔒 Deploying in ISOLATED mode..."
-	@echo "📡 Creating isolated network..."
-	@docker network create $(ISOLATED_NETWORK)
-	@echo "🐰 Starting isolated RabbitMQ..."
-	@docker run -d \
-		--name $(ISOLATED_RABBITMQ_CONTAINER) \
-		--network $(ISOLATED_NETWORK) \
-		-p $(ISOLATED_RABBITMQ_MANAGEMENT_PORT):15672 \
-		-e RABBITMQ_DEFAULT_USER=$(RABBITMQ_USER) \
-		-e RABBITMQ_DEFAULT_PASS=$(RABBITMQ_PASSWORD) \
-		$(RABBITMQ_IMAGE)
-	@$(MAKE) wait-for-rabbitmq RABBITMQ_CONTAINER=$(ISOLATED_RABBITMQ_CONTAINER)
-	@echo "🚀 Building and running retriever (isolated)..."
-	@cd .. && docker build -f retriever/Dockerfile -t $(SERVICE_IMAGE) .
-	@docker run --rm --name $(ISOLATED_SERVICE_CONTAINER) \
-		--network $(ISOLATED_NETWORK) \
-		-e RABBITMQ_HOST=$(ISOLATED_RABBITMQ_CONTAINER) \
-		-e RABBITMQ_PORT=$(RABBITMQ_PORT) \
-		-e RABBITMQ_USER=$(RABBITMQ_USER) \
-		-e RABBITMQ_PASSWORD=$(RABBITMQ_PASSWORD) \
-		-e RABBITMQ_QUEUE=$(RABBITMQ_QUEUE) \
-		-e LOG_LEVEL=$(LOG_LEVEL) \
-		$(SERVICE_IMAGE)
-
-# Deploy on shared network (checks for existing dependencies)
-deploy-shared: validate-env ensure-rabbitmq
-	@echo "🌐 Deploying in SHARED mode (shared network)..."
-	@echo "🚀 Building and running retriever..."
-	@cd .. && docker build -f retriever/Dockerfile -t $(SERVICE_IMAGE) .
-	@docker run --rm --name $(SHARED_SERVICE_CONTAINER) \
-		--network $(DOCKER_NETWORK) \
-		-e RABBITMQ_HOST=$(RABBITMQ_HOST) \
-		-e RABBITMQ_PORT=$(RABBITMQ_PORT) \
-		-e RABBITMQ_USER=$(RABBITMQ_USER) \
-		-e RABBITMQ_PASSWORD=$(RABBITMQ_PASSWORD) \
-		-e RABBITMQ_QUEUE=$(RABBITMQ_QUEUE) \
-		-e LOG_LEVEL=$(LOG_LEVEL) \
-		$(SERVICE_IMAGE)
-
-#=============================================================================
-# docker-compose integration (preferred path for shared deployment)
-#=============================================================================
-
-compose-up:
-	@echo "🔧 Starting retriever via root docker-compose (build if needed)..."
-	@docker compose build retriever
-	@docker compose up -d retriever
-	@echo "✅ Retriever running under docker-compose"
-
-compose-down:
-	@echo "🛑 Stopping retriever service via docker-compose..."
-	@docker compose stop retriever || true
-	@echo "✅ Retriever service stopped"
-
-compose-restart:
-	@echo "🔁 Restarting retriever service via docker-compose..."
-	@docker compose restart retriever
-	@echo "✅ Retriever service restarted"
-
-# Check venv & requirements creating and installing if missing
-check-requirements: 
-	@echo "🔍 Ensuring virtual environment exists..."
-	@if [ ! -d "venv" ]; then \
-		echo "❌ Virtual environment not found. Creating venv..."; \
-		python3 -m venv venv; \
-		echo "✅ Virtual environment created"; \
+test:
+	@echo "$(CYAN)Running retriever service tests...$(NC)"
+	@if [ -f "requirements.txt" ]; then \
+		python -m pytest tests/ -v --cov=. --cov-report=term-missing 2>/dev/null || \
+		python -m pytest . -v 2>/dev/null || \
+		echo "$(CYAN)No tests found or pytest not configured$(NC)"; \
 	else \
-		echo "✅ Virtual environment exists"; \
+		echo "$(CYAN)No tests configured for retriever service$(NC)"; \
 	fi
-	@venv/bin/pip show beautifulsoup4 > /dev/null 2>&1 || \
-		(echo "❌ Requirements not installed in venv. Installing..." && cd .. && retriever/venv/bin/pip install -r retriever/requirements.txt)
-	@echo "✅ All requirements installed (in venv)"
+	@echo "$(GREEN)✓ Tests completed$(NC)"

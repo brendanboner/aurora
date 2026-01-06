@@ -1,7 +1,8 @@
-"""Extract metadata from document content using Azure OpenAI."""
+"""Extract metadata from document content using Azure OpenAI (ASYNC VERSION)."""
 
 import json
 import hashlib
+import asyncio
 from typing import Dict, Any, List
 from settings import settings
 from utils.logger import setup_logger
@@ -13,7 +14,7 @@ logger = setup_logger(__name__, settings.log_level)
 
 
 class MetadataExtractor:
-    """Extract metadata from document content using Azure OpenAI."""
+    """Extract metadata from document content using Azure OpenAI (ASYNC VERSION)."""
     
     def __init__(self):
         self.max_tokens = settings.llm_max_tokens
@@ -21,7 +22,7 @@ class MetadataExtractor:
         self.max_chunk_size = settings.max_chunk_size
         self.chunk_overlap = settings.chunk_overlap
         
-        logger.info(f"Initialized MetadataExtractor with Azure OpenAI deployment: {settings.azure_openai_deployment}")
+        logger.info(f"Initialized MetadataExtractor (async) with Azure OpenAI deployment: {settings.azure_openai_deployment}")
     
     def chunk_content(self, content: str) -> List[str]:
         """
@@ -74,9 +75,9 @@ class MetadataExtractor:
         logger.info(f"Split content into {len(chunks)} chunks with smart boundaries")
         return chunks
     
-    def call_llm(self, prompt: str, system_message: str = "You are a metadata extraction expert. Always respond with valid JSON.") -> str:
+    async def call_llm(self, prompt: str, system_message: str = "You are a metadata extraction expert. Always respond with valid JSON.") -> str:
         """
-        Call Azure OpenAI with the given prompt.
+        Call Azure OpenAI with the given prompt (ASYNC VERSION).
         
         Implements retry logic for rate limit (429) errors, waiting the 
         suggested time before retrying.
@@ -96,7 +97,7 @@ class MetadataExtractor:
             {"role": "system", "content": system_message},
             {"role": "user", "content": prompt}
         ]
-        return call_llm_with_retry(
+        return await call_llm_with_retry(
             messages=messages,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
@@ -104,8 +105,8 @@ class MetadataExtractor:
             check_truncation=True
         )
     
-    def extract_from_chunk(self, resource_data: Dict[str, Any], content_chunk: str) -> Dict[str, Any]:
-        """Extract metadata from a single content chunk."""
+    async def extract_from_chunk(self, resource_data: Dict[str, Any], content_chunk: str) -> Dict[str, Any]:
+        """Extract metadata from a single content chunk (ASYNC VERSION)."""
         prompt = METADATA_EXTRACTION_PROMPT.format(
             title=resource_data.get("title", "Unknown"),
             url=resource_data.get("url", ""),
@@ -115,7 +116,7 @@ class MetadataExtractor:
             max_tokens=self.max_tokens
         )
         
-        response = self.call_llm(prompt)
+        response = await self.call_llm(prompt)
         
         # Parse JSON response
         try:
@@ -134,8 +135,8 @@ class MetadataExtractor:
             
             raise
     
-    def merge_metadata(self, title: str, chunks_metadata: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Merge metadata from multiple chunks."""
+    async def merge_metadata(self, title: str, chunks_metadata: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Merge metadata from multiple chunks (ASYNC VERSION)."""
         if len(chunks_metadata) == 1:
             return chunks_metadata[0]
         
@@ -148,7 +149,7 @@ class MetadataExtractor:
             max_tokens=self.max_tokens
         )
         
-        response = self.call_llm(prompt)
+        response = await self.call_llm(prompt)
         
         # Parse JSON response
         try:
@@ -167,9 +168,9 @@ class MetadataExtractor:
             
             raise
     
-    def extract_metadata(self, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def extract_metadata(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract metadata from a message.
+        Extract metadata from a message (ASYNC VERSION).
         
         Args:
             message: The document message from RabbitMQ with resource_data nested 
@@ -192,16 +193,16 @@ class MetadataExtractor:
         chunks = self.chunk_content(content)
         logger.info(f"Processing {len(chunks)} chunks for: {resource_data.get('title', 'Unknown')}")
         
-        # Extract metadata from each chunk
-        chunks_metadata = []
-        for i, chunk in enumerate(chunks):
-            logger.info(f"Extracting metadata from chunk {i+1}/{len(chunks)}")
-            chunk_metadata = self.extract_from_chunk(resource_data, chunk)
-            chunks_metadata.append(chunk_metadata)
+        # Extract metadata from each chunk in parallel (async gather)
+        logger.info(f"Extracting metadata from {len(chunks)} chunk(s) in parallel...")
+        chunks_metadata = await asyncio.gather(*[
+            self.extract_from_chunk(resource_data, chunk)
+            for chunk in chunks
+        ])
         
         # Merge metadata from all chunks
         logger.info("Merging metadata from all chunks")
-        final_metadata = self.merge_metadata(resource_data.get("title", "Unknown"), chunks_metadata)
+        final_metadata = await self.merge_metadata(resource_data.get("title", "Unknown"), chunks_metadata)
 
         logger.info(f"Validating LLM metadata structure...")
         validate_metadata(final_metadata)

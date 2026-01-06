@@ -62,6 +62,13 @@ ENV/
 env.bak/
 venv.bak/
 
+*.pem
+
+# Production deployment - ignore actual .env (template .env.prod is tracked)
+prod-deployment/.env
+prod-deployment/*.local
+prod-deployment/test-*.yml
+
 # IDEs
 .vscode/
 .idea/

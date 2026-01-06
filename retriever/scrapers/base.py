@@ -258,6 +258,17 @@ class BaseScraper:
         Returns:
             The batch_id (UUID) for this batch
         """
+        # CRITICAL: If there's already an active batch, log a warning
+        # This should not happen in normal operation - batches should be ended before starting new ones
+        if self._current_batch_id:
+            logger.warning(
+                f"start_batch() called while batch {self._current_batch_id} is still active. "
+                f"Previous datasource: {self._current_datasource_id}, New datasource: {datasource_id}. "
+                f"This indicates end_batch() was not called properly."
+            )
+            # Force end the previous batch to prevent state pollution
+            self.end_batch(self._batch_items_count)
+        
         self._current_batch_id = str(uuid.uuid4())
         self._current_datasource_id = datasource_id
         self._batch_scrape_started_at = datetime.now()
@@ -372,6 +383,7 @@ class BaseScraper:
                 logger.error(f"Failed to update batch status: {e}")
         
         # Clear batch state
+        logger.debug(f"Clearing batch state for batch_id={batch_id}, datasource_id={self._current_datasource_id}")
         self._current_batch_id = None
         self._current_datasource_id = None
         self._batch_scrape_started_at = None

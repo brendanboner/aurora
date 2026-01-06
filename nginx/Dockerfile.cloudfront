@@ -1,0 +1,23 @@
+# =============================================================================
+# Nginx Dockerfile for Static React Files (HTTP Only)
+# =============================================================================
+# This Dockerfile creates an nginx container that serves static React files.
+# 
+# Use Cases:
+#   1. Local testing of production builds (docker-compose.yml)
+#   2. Production behind AWS CloudFront (CloudFront terminates SSL)
+# 
+# For hot reload development, use Dockerfile.hotreload instead.
+# For custom domain with Let's Encrypt SSL, use Dockerfile.letsencrypt instead.
+# =============================================================================
+
+FROM nginx:alpine
+
+# Install basic tools for healthchecks
+RUN apk add --no-cache wget
+
+# Copy nginx configuration
+COPY nginx/nginx.cloudfront.conf /etc/nginx/conf.d/default.conf
+
+# Expose HTTP port only
+EXPOSE 80

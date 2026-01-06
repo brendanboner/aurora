@@ -2,10 +2,15 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
 import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon } from '../components/icons';
+import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
   const location = useLocation();
+  const { user } = useAuth();
   const [expandedMenus, setExpandedMenus] = useState({ admin: false, profile: false });
+  
+  // Check if user has admin or superadmin role
+  const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
 
   const toggleMenu = (menu) => {
     setExpandedMenus(prev => ({ ...prev, [menu]: !prev[menu] }));
@@ -109,74 +114,76 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
           </div>
 
           {/* Admin with submenu including Monitoring */}
-          <div className="sidebar-menu">
-            <button 
-              className={`sidebar-item ${location.pathname.startsWith('/admin') ? 'active' : ''}`}
-              onClick={() => toggleMenu('admin')}
-              title="Admin"
-            >
-              <span className="sidebar-icon"><AdminIcon /></span>
-              {isOpen && (
-                <>
-                  <span className="sidebar-label">Admin</span>
-                  <span className={`expand-icon ${expandedMenus.admin ? 'expanded' : ''}`}>›</span>
-                </>
+          {isAdmin && (
+            <div className="sidebar-menu">
+              <button 
+                className={`sidebar-item ${location.pathname.startsWith('/admin') ? 'active' : ''}`}
+                onClick={() => toggleMenu('admin')}
+                title="Admin"
+              >
+                <span className="sidebar-icon"><AdminIcon /></span>
+                {isOpen && (
+                  <>
+                    <span className="sidebar-label">Admin</span>
+                    <span className={`expand-icon ${expandedMenus.admin ? 'expanded' : ''}`}>›</span>
+                  </>
+                )}
+              </button>
+              {isOpen && expandedMenus.admin && (
+                <div className="sidebar-submenu">
+                  <Link 
+                    to="/admin/users" 
+                    className={`sidebar-subitem ${isActive('/admin/users') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><UsersIcon size={16} /></span>
+                    <span>Users</span>
+                  </Link>
+                  <Link 
+                    to="/admin/knowledge-graph" 
+                    className={`sidebar-subitem ${isActive('/admin/knowledge-graph') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><KnowledgeGraphIcon size={16} /></span>
+                    <span>Knowledge Graph</span>
+                  </Link>
+                  <Link 
+                    to="/admin/monitoring" 
+                    className={`sidebar-subitem ${isActive('/admin/monitoring') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><MonitoringIcon size={16} /></span>
+                    <span>Monitoring</span>
+                  </Link>
+                  <Link 
+                    to="/admin/agents" 
+                    className={`sidebar-subitem ${isActive('/admin/agents') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><StarIcon size={16} /></span>
+                    <span>Creator Agents</span>
+                  </Link>
+                  <Link 
+                    to="/admin/system-config" 
+                    className={`sidebar-subitem ${isActive('/admin/system-config') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon">⚙️</span>
+                    <span>System Config</span>
+                  </Link>
+                  <Link 
+                    to="/admin/content-quality" 
+                    className={`sidebar-subitem ${isActive('/admin/content-quality') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon">🎯</span>
+                    <span>Content Quality</span>
+                  </Link>
+                  <Link 
+                    to="/admin/chat-sessions" 
+                    className={`sidebar-subitem ${isActive('/admin/chat-sessions') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><ChatIcon size={16} /></span>
+                    <span>Chat Sessions</span>
+                  </Link>
+                </div>
               )}
-            </button>
-            {isOpen && expandedMenus.admin && (
-              <div className="sidebar-submenu">
-                <Link 
-                  to="/admin/users" 
-                  className={`sidebar-subitem ${isActive('/admin/users') ? 'active' : ''}`}
-                >
-                  <span className="sidebar-icon"><UsersIcon size={16} /></span>
-                  <span>Users</span>
-                </Link>
-                <Link 
-                  to="/admin/knowledge-graph" 
-                  className={`sidebar-subitem ${isActive('/admin/knowledge-graph') ? 'active' : ''}`}
-                >
-                  <span className="sidebar-icon"><KnowledgeGraphIcon size={16} /></span>
-                  <span>Knowledge Graph</span>
-                </Link>
-                <Link 
-                  to="/admin/monitoring" 
-                  className={`sidebar-subitem ${isActive('/admin/monitoring') ? 'active' : ''}`}
-                >
-                  <span className="sidebar-icon"><MonitoringIcon size={16} /></span>
-                  <span>Monitoring</span>
-                </Link>
-                <Link 
-                  to="/admin/agents" 
-                  className={`sidebar-subitem ${isActive('/admin/agents') ? 'active' : ''}`}
-                >
-                  <span className="sidebar-icon"><StarIcon size={16} /></span>
-                  <span>Creator Agents</span>
-                </Link>
-                <Link 
-                  to="/admin/system-config" 
-                  className={`sidebar-subitem ${isActive('/admin/system-config') ? 'active' : ''}`}
-                >
-                  <span className="sidebar-icon">⚙️</span>
-                  <span>System Config</span>
-                </Link>
-                <Link 
-                  to="/admin/content-quality" 
-                  className={`sidebar-subitem ${isActive('/admin/content-quality') ? 'active' : ''}`}
-                >
-                  <span className="sidebar-icon">🎯</span>
-                  <span>Content Quality</span>
-                </Link>
-                <Link 
-                  to="/admin/chat-sessions" 
-                  className={`sidebar-subitem ${isActive('/admin/chat-sessions') ? 'active' : ''}`}
-                >
-                  <span className="sidebar-icon"><ChatIcon size={16} /></span>
-                  <span>Chat Sessions</span>
-                </Link>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </nav>
 
         {/* Status indicator at bottom */}

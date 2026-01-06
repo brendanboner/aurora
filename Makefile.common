@@ -1,0 +1,78 @@
+# =============================================================================
+# Common Makefile Configuration
+# =============================================================================
+# Include this file in all Makefiles to share common configuration and targets
+#
+# Service Makefiles must define:
+#   SERVICE_NAME - e.g., aurora-auth
+#   BUILD_CONTEXT - e.g., .. (parent dir) or . (current dir)
+#   DOCKERFILE - e.g., Dockerfile
+#
+# Service Makefiles must implement:
+#   test - Service-specific test target
+#
+# Usage in service Makefiles:
+#   include ../Makefile.common
+#
+# Usage in root Makefile:
+#   include Makefile.common
+# =============================================================================
+
+# Load environment variables from .env if it exists
+# When included from root, loads .env from current directory
+# When included from service dirs, loads ../.env from parent (root) directory
+-include .env
+ifneq ($(wildcard ../.env),)
+    -include ../.env
+endif
+
+# Colors for output
+CYAN := \033[0;36m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+RED := \033[0;31m
+NC := \033[0m
+
+# Configuration (loaded from .env file or environment variables)
+# Set these in your .env file - see .env.example
+ECR_REGISTRY ?= 
+AWS_REGION ?= us-east-1
+
+# Version - use git SHA for automatic versioning
+# This will be overridden by root Makefile if called from there
+VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
+
+# Common variables (set by service Makefiles before including this file)
+IMAGE_NAME = $(ECR_REGISTRY)/$(SERVICE_NAME)
+
+# =============================================================================
+# Common Targets (used by all service Makefiles)
+# =============================================================================
+
+.PHONY: build-push ship clean
+
+# Build and push to ECR (for deployment)
+build-push:
+	@echo "$(CYAN)Building and pushing $(SERVICE_NAME) image...$(NC)"
+	@echo "Version: $(VERSION)"
+	@echo "Platform: linux/arm64"
+	@docker buildx build \
+		--platform linux/arm64 \
+		--provenance=false \
+		--sbom=false \
+		-f $(DOCKERFILE) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
+		--push \
+		$(BUILD_CONTEXT)
+	@echo "$(GREEN)✓ Image built and pushed: $(IMAGE_NAME):$(VERSION)$(NC)"
+
+ship: test build-push
+	@echo "$(GREEN)✓ $(SERVICE_NAME) tested, built, and shipped to ECR$(NC)"
+
+clean:
+	@echo "$(CYAN)Cleaning $(SERVICE_NAME) artifacts...$(NC)"
+	@rm -rf __pycache__ .pytest_cache .coverage htmlcov node_modules build .cache
+	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	@echo "$(GREEN)✓ Cleanup completed$(NC)"

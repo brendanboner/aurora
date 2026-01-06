@@ -58,7 +58,7 @@ if OTEL_AVAILABLE:
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.application_url],
+    allow_origins=[settings.effective_application_url],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -198,14 +198,14 @@ async def auth_callback(code: str, state: str, request: Request):
         await _sync_user_on_login(user_id, user_email, display_name, given_name, family_name)
         
         # Create response redirecting to frontend home page
-        response = RedirectResponse(url=f"{settings.application_url}/")
+        response = RedirectResponse(url=f"{settings.effective_application_url}/")
         
         # Set httpOnly cookies with tokens
         response.set_cookie(
             key="access_token",
             value=tokens["access_token"],
             httponly=True,
-            secure=settings.cookie_secure,
+            secure=settings.effective_cookie_secure,
             samesite="strict",
             max_age=3600,  # 1 hour
             domain=settings.validated_cookie_domain
@@ -215,7 +215,7 @@ async def auth_callback(code: str, state: str, request: Request):
             key="id_token",
             value=tokens["id_token"],
             httponly=True,
-            secure=settings.cookie_secure,
+            secure=settings.effective_cookie_secure,
             samesite="strict",
             max_age=3600,  # 1 hour (same as access token)
             domain=settings.validated_cookie_domain
@@ -225,7 +225,7 @@ async def auth_callback(code: str, state: str, request: Request):
             key="refresh_token",
             value=tokens["refresh_token"],
             httponly=True,
-            secure=settings.cookie_secure,
+            secure=settings.effective_cookie_secure,
             samesite="strict",
             max_age=604800,  # 7 days
             domain=settings.validated_cookie_domain
@@ -241,7 +241,7 @@ async def auth_callback(code: str, state: str, request: Request):
             f"user_agent={request.headers.get('user-agent')}"
         )
         # Redirect to frontend with generic error
-        error_url = f"{settings.application_url}/?error=auth_failed"
+        error_url = f"{settings.effective_application_url}/?error=auth_failed"
         return RedirectResponse(url=error_url)
 
 
@@ -264,7 +264,7 @@ async def logout(request: Request):
     response = RedirectResponse(
         url=f"https://{settings.cognito_domain}/logout?"
             f"client_id={settings.cognito_app_client_id}&"
-            f"logout_uri={settings.application_url}"
+            f"logout_uri={settings.effective_application_url}"
     )
     
     # Clear cookies
@@ -305,18 +305,31 @@ async def proxy_to_services(request: Request, path: str):
     # Log the response status
     logger.debug(f"Response status: {response.status_code}, user={user_info['email']}")
     
-    # If token was refreshed, update cookie
+    # If token was refreshed, update cookies
     if hasattr(request.state, "new_access_token"):
         response.set_cookie(
             key="access_token",
             value=request.state.new_access_token,
             httponly=True,
-            secure=settings.cookie_secure,
+            secure=settings.effective_cookie_secure,
             samesite="strict",
             max_age=3600,
             domain=settings.validated_cookie_domain
         )
-        logger.info(f"Token refreshed for user: {user_info['email']}")
+        logger.info(f"Access token refreshed for user: {user_info['email']}")
+    
+    # Update ID token if it was also refreshed
+    if hasattr(request.state, "new_id_token"):
+        response.set_cookie(
+            key="id_token",
+            value=request.state.new_id_token,
+            httponly=True,
+            secure=settings.effective_cookie_secure,
+            samesite="strict",
+            max_age=3600,
+            domain=settings.validated_cookie_domain
+        )
+        logger.info(f"ID token refreshed for user: {user_info['email']}")
     
     return response
 

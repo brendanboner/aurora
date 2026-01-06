@@ -1,0 +1,43 @@
+# =============================================================================
+# Nginx Dockerfile with Let's Encrypt SSL (Custom Domain)
+# =============================================================================
+# This Dockerfile creates an nginx container with:
+# - Certbot for automatic SSL certificate management via Let's Encrypt
+# - Automatic certificate renewal via cron
+# - Template-based configuration for environment variables
+# 
+# Use Case: Custom domain with automatic SSL certificates
+# For CloudFront setup (no SSL needed), use Dockerfile.cloudfront instead.
+# =============================================================================
+
+FROM nginx:alpine
+
+# Install certbot and dependencies
+RUN apk add --no-cache \
+    certbot \
+    certbot-nginx \
+    bash \
+    openssl
+
+# Create directories for certbot
+RUN mkdir -p /var/www/certbot /etc/letsencrypt
+
+# Copy nginx configuration template
+COPY nginx/nginx.prod.conf /etc/nginx/templates/default.conf.template
+
+# Copy certificate initialization script
+COPY nginx/init-ssl.sh /docker-entrypoint.d/40-init-ssl.sh
+RUN chmod +x /docker-entrypoint.d/40-init-ssl.sh
+
+# Copy certificate renewal script
+COPY nginx/renew-certs.sh /etc/periodic/daily/renew-certs
+RUN chmod +x /etc/periodic/daily/renew-certs
+
+# Enable cron for certificate renewal
+RUN echo "0 3 * * * /etc/periodic/daily/renew-certs" >> /etc/crontabs/root
+
+# Start cron in background
+CMD crond && nginx -g 'daemon off;'
+
+# Expose ports
+EXPOSE 80 443

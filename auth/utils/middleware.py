@@ -43,16 +43,24 @@ async def validate_request_token(request: Request) -> dict:
         # If access token expired, try to refresh
         if "expired" in str(e.detail).lower() and refresh_token:
             try:
-                # Get new access token using refresh token
+                # Get new tokens using refresh token (includes both access_token and id_token)
                 new_tokens = await refresh_access_token(refresh_token)
                 new_access_token = new_tokens["access_token"]
+                new_id_token = new_tokens.get("id_token")  # Cognito returns id_token on refresh
                 
-                # Validate new token and extract user info
-                token_claims = await validate_jwt_token(new_access_token)
-                user_info = extract_user_info(token_claims)
+                # Validate new ID token and extract user info (prefer ID token as it has more claims)
+                if new_id_token:
+                    id_token_claims = await validate_jwt_token(new_id_token, access_token=new_access_token)
+                    user_info = extract_user_info(id_token_claims)
+                    # Store both tokens for response (will be set by proxy)
+                    request.state.new_access_token = new_access_token
+                    request.state.new_id_token = new_id_token
+                else:
+                    # Fallback: extract from access token if no ID token
+                    token_claims = await validate_jwt_token(new_access_token)
+                    user_info = extract_user_info(token_claims)
+                    request.state.new_access_token = new_access_token
                 
-                # Store new token for response (will be set by proxy)
-                request.state.new_access_token = new_access_token
                 return user_info
             
             except Exception:

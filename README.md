@@ -2,25 +2,66 @@
 
 Aurora is a comprehensive knowledge management platform that combines web scraping, LLM-powered processing, and graph-based knowledge representation to create an intelligent, queryable knowledge base.
 
-## 🚀 Quick Start with Docker Compose
+## 🚀 Quick Start
 
-The easiest way to run the entire Aurora stack:
+Aurora supports two deployment environments: **Development** (local) and **Production** (AWS EC2).
+
+### Development (Local)
+
+For local development with hot reload:
 
 ```bash
 # 1. Configure environment
-cp .env.docker .env
+cp .env.dev .env
 # Edit .env with your Azure OpenAI credentials and passwords
 
-# 2. Start all services
-docker-compose up -d
+# 2. Start all services with hot reload
+docker compose up -d
 
-# 3. Access the application
-# Frontend:  http://localhost:3000
+# 3. Run database migrations (if needed)
+make migrate
+
+# 4. Access the application
+# Frontend:  http://localhost:3000 (React dev server with HMR)
+# Via nginx: http://localhost (proxies to React dev server)
 # Backend:   http://localhost:8000
 # API Docs:  http://localhost:8000/docs
 ```
 
-📖 **[Full Docker Compose Guide](./DOCKER_COMPOSE.md)**
+**Development Commands:**
+```bash
+make dev              # Start development environment
+make migrate          # Run database migrations
+make migrate-status   # Show migration history
+```
+
+### Production (AWS EC2)
+
+For production deployment:
+
+```bash
+# 1. Navigate to production deployment folder
+cd prod-deployment
+
+# 2. Configure environment
+cp .env.prod .env
+# Edit .env with your settings (see deployment options in the file)
+
+# 3. Deploy
+make deploy
+
+# Or use specific docker-compose file:
+# docker compose -f docker-compose.prod.yml up -d  # ECR with Let's Encrypt
+# docker compose -f docker-compose.build.yml up -d # Local build
+
+# 4. Access the application
+# https://your-domain.com or https://your-cloudfront-url.cloudfront.net
+```
+
+📖 **Detailed Guides:**
+- **[Development Workflows](./DEVELOPMENT_WORKFLOWS.md)** - Hot reload and testing guide
+- **[Production Deployment](./DEPLOYMENT.md)** - AWS EC2 deployment guide with SSL
+- **[CloudFront Setup](./CLOUDFRONT_SETUP.md)** - Free HTTPS via AWS CloudFront
 
 ## 🏗️ Architecture Overview
 

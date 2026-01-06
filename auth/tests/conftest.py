@@ -17,10 +17,8 @@ os.environ.update({
     "BACKEND_SERVICE_URL": "http://backend:8000",
     "CURATOR_SERVICE_URL": "http://curator:8000",
     "RETRIEVER_SERVICE_URL": "http://retriever:8000",
-    "APPLICATION_URL": "http://localhost:3000",
-    "FRONTEND_URL": "http://localhost:3000",
-    "COOKIE_DOMAIN": "localhost",
-    "COOKIE_SECURE": "false",
+    "DEPLOYMENT_DOMAIN": "localhost",
+    "USE_HTTPS": "false",
 })
 
 from auth import app

@@ -27,63 +27,45 @@ if not logging.getLogger().handlers:
     logging.getLogger('neo4j').setLevel(logging.WARNING)
 
 # Embedding model configuration
-EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'openai')  # Options: 'openai' (default), 'sentence-transformers'
-EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')  # Default Azure OpenAI embedding model
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')  # Azure OpenAI embedding model
 
-# Lazy initialization for embedding models
-_embedding_model = None
+# Lazy initialization for OpenAI client
 _openai_client = None
 
 def get_embedding_model():
     """
-    Get the embedding model based on EMBEDDING_PROVIDER environment variable.
-    
-    Supported providers:
-    - 'openai': Use Azure OpenAI embeddings (default)
-    - 'sentence-transformers': Use local SentenceTransformer (requires [local-embeddings] extra)
+    Get the Azure OpenAI client for embeddings.
     
     Environment variables:
-    - EMBEDDING_PROVIDER: 'openai' (default) or 'sentence-transformers'
-    - EMBEDDING_MODEL: Model name (default: 'text-embedding-3-small' for openai)
-    - AZURE_OPENAI_API_KEY: Required for OpenAI provider
-    - AZURE_OPENAI_ENDPOINT: Required for OpenAI provider
+    - EMBEDDING_MODEL: Model name (default: 'text-embedding-3-small')
+    - AZURE_OPENAI_API_KEY: Required
+    - AZURE_OPENAI_ENDPOINT: Required
     - AZURE_OPENAI_API_VERSION: Optional (default: '2024-08-01-preview')
     """
-    global _embedding_model, _openai_client
+    global _openai_client
     
-    if EMBEDDING_PROVIDER == 'openai':
-        if _openai_client is None:
-            try:
-                from openai import AzureOpenAI
-                
-                api_key = os.getenv('AZURE_OPENAI_API_KEY')
-                endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
-                api_version = os.getenv('AZURE_OPENAI_API_VERSION', '2024-08-01-preview')
-                
-                if not api_key:
-                    raise ValueError("AZURE_OPENAI_API_KEY environment variable is required for Azure OpenAI embeddings")
-                if not endpoint:
-                    raise ValueError("AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI embeddings")
-                
-                _openai_client = AzureOpenAI(
-                    api_key=api_key,
-                    api_version=api_version,
-                    azure_endpoint=endpoint
-                )
-                logger.info(f"Initialized Azure OpenAI client for embeddings with model: {EMBEDDING_MODEL}")
-            except ImportError:
-                raise ImportError("openai package is required for Azure OpenAI embeddings. Install with: pip install openai")
-        return _openai_client
-    else:
-        # Default to SentenceTransformer
-        if _embedding_model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-                logger.info(f"Initialized SentenceTransformer model: {EMBEDDING_MODEL}")
-            except ImportError:
-                raise ImportError("sentence-transformers package is required. Install with: pip install sentence-transformers")
-        return _embedding_model
+    if _openai_client is None:
+        try:
+            from openai import AzureOpenAI
+            
+            api_key = os.getenv('AZURE_OPENAI_API_KEY')
+            endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+            api_version = os.getenv('AZURE_OPENAI_API_VERSION', '2024-08-01-preview')
+            
+            if not api_key:
+                raise ValueError("AZURE_OPENAI_API_KEY environment variable is required for Azure OpenAI embeddings")
+            if not endpoint:
+                raise ValueError("AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI embeddings")
+            
+            _openai_client = AzureOpenAI(
+                api_key=api_key,
+                api_version=api_version,
+                azure_endpoint=endpoint
+            )
+            logger.info(f"Initialized Azure OpenAI client for embeddings with model: {EMBEDDING_MODEL}")
+        except ImportError:
+            raise ImportError("openai package is required for Azure OpenAI embeddings. Install with: pip install openai")
+    return _openai_client
 
 
 class Node(BaseModel):
@@ -218,39 +200,24 @@ class Node(BaseModel):
 
     def build_embedding(self) -> List[float]:
         """
-        Generate embedding vector for the node using configured embedding provider.
-        
-        Supports:
-        - SentenceTransformer models (local, fast, 768 dimensions)
-        - OpenAI embeddings (API-based, high quality, 1536 dimensions for text-embedding-3-small)
+        Generate embedding vector for the node using Azure OpenAI.
         """
         embedding_text = self.get_embedding_text()
         logger.debug(f"Generating embedding for text: {embedding_text}")
         
-        if EMBEDDING_PROVIDER == 'openai':
-            # Use OpenAI embeddings
-            client = get_embedding_model()
-            try:
-                response = client.embeddings.create(
-                    input=embedding_text,
-                    model=EMBEDDING_MODEL,
-                )
-                embedding_vector = response.data[0].embedding
-                logger.debug(f"Generated OpenAI embedding with {len(embedding_vector)} dimensions")
-                return embedding_vector
-            except Exception as e:
-                logger.error(f"Failed to generate OpenAI embedding: {e}")
-                raise
-        else:
-            # Use SentenceTransformer
-            embedding_model = get_embedding_model()
-            embedding_vector = embedding_model.encode(
-                embedding_text,
-                convert_to_numpy=True,
-                normalize_embeddings=True  
-            ).tolist()
-            logger.debug(f"Generated SentenceTransformer embedding with {len(embedding_vector)} dimensions")
+        # Use OpenAI embeddings
+        client = get_embedding_model()
+        try:
+            response = client.embeddings.create(
+                input=embedding_text,
+                model=EMBEDDING_MODEL,
+            )
+            embedding_vector = response.data[0].embedding
+            logger.debug(f"Generated OpenAI embedding with {len(embedding_vector)} dimensions")
             return embedding_vector
+        except Exception as e:
+            logger.error(f"Failed to generate OpenAI embedding: {e}")
+            raise
 
 
 class Relationship(BaseModel):

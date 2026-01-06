@@ -31,6 +31,9 @@ class TestAuthCallbackEndpoint:
         """Test successful authentication callback."""
         # Store state in Redis mock
         from utils.state_storage import store_oauth_state
+        from settings import get_settings
+        settings = get_settings()
+        
         store_oauth_state("test-state", {"ip": "127.0.0.1", "user_agent": "test"})
         
         with patch('auth.exchange_code_for_tokens', return_value=mock_cognito_tokens), \
@@ -42,7 +45,7 @@ class TestAuthCallbackEndpoint:
             )
             
             assert response.status_code == 307
-            assert response.headers["location"] == "http://localhost:3000/"
+            assert response.headers["location"] == f"{settings.effective_application_url}/"
             # Note: TestClient may not preserve Set-Cookie headers, but the response was successful
     
     def test_callback_failure(self, client):

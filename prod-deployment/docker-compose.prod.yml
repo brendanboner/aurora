@@ -1,0 +1,752 @@
+#version: "3.9"
+
+# =============================================================================
+# Aurora Docker Compose Configuration - PRODUCTION
+# =============================================================================
+# This is the PRODUCTION configuration for AWS EC2 deployment.
+# - Nginx reverse proxy handles SSL termination (Let's Encrypt)
+# - Infrastructure ports bound to localhost only (not exposed to internet)
+# - Neo4j, RabbitMQ, Redis accessible via SSH tunnel for management
+# - Only HTTPS (443) and HTTP (80) exposed through nginx
+# - All application services are internal only
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up --build -d
+#
+# Prerequisites:
+#   - Domain pointed to EC2 instance
+#   - .env.prod file configured
+#   - SSL certificates (auto-managed by certbot)
+#
+# SSH Tunnel Access:
+#   ssh -L 7474:localhost:7474 -L 15672:localhost:15672 ec2-user@YOUR_EC2_IP
+#   Then access Neo4j Browser at http://localhost:7474
+#   And RabbitMQ Management at http://localhost:15672
+# =============================================================================
+
+# Shared network for all services
+networks:
+  aurora-network:
+    driver: bridge
+
+# Persistent volumes
+# Most data volumes use direct bind mounts to /data on the EC2 host (200GB data volume)
+# See: Deployment Guides/01-EC2-Base-Setup.md for volume setup
+# Only certbot and frontend-build use named volumes
+volumes:
+  frontend-build:
+    driver: local
+  certbot-certs:
+    driver: local
+  certbot-www:
+    driver: local
+
+services:
+  # =============================================================================
+  # Infrastructure Services - NO EXPOSED PORTS IN PRODUCTION
+  # =============================================================================
+  
+  postgres:
+    image: postgres:16-alpine
+    container_name: aurora-postgres
+    hostname: aurora-postgres  # Consistent hostname for replication and logging
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    # NO EXPOSED PORTS - internal only
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aurora}
+      POSTGRES_USER: ${POSTGRES_USER:-aurora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+      - ./migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+      - ./migrations/002_seed_data.sql:/docker-entrypoint-initdb.d/002_seed_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aurora} -d ${POSTGRES_DB:-aurora}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  neo4j:
+    image: neo4j:2025-community
+    container_name: aurora-neo4j
+    hostname: aurora-neo4j  # Consistent hostname for cluster configuration
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling - NOT exposed to internet
+      - "127.0.0.1:7474:7474"  # Neo4j Browser (use SSH tunnel to access)
+      - "127.0.0.1:7687:7687"  # Bolt protocol
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_pagecache_size: 1G
+      NEO4J_dbms_memory_heap_initial__size: 1G
+      NEO4J_dbms_memory_heap_max__size: 2G
+    volumes:
+      - /data/neo4j:/data
+      - /data/neo4j/logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD} 'RETURN 1;' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  rabbitmq:
+    image: rabbitmq:4.2.0-management-alpine
+    container_name: aurora-rabbitmq
+    hostname: aurora-rabbitmq  # Fixed hostname for persistent node identity
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling - NOT exposed to internet
+      - "127.0.0.1:15672:15672"  # Management UI (use SSH tunnel to access)
+      - "127.0.0.1:5672:5672"    # AMQP protocol
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_NODENAME: rabbit@aurora-rabbitmq  # Consistent node name across restarts
+    volumes:
+      - /data/rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: aurora-redis
+    hostname: aurora-redis  # Consistent hostname for logging and monitoring
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling - NOT exposed to internet
+      - "127.0.0.1:6379:6379"  # Redis protocol (use SSH tunnel to access)
+    volumes:
+      - /data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =============================================================================
+  # Initialization Services
+  # =============================================================================
+
+  neo4j-init:
+    image: ${ECR_REGISTRY}/aurora-neo4j-init:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: neo4j-init/Dockerfile
+    container_name: aurora-neo4j-init
+    networks:
+      - aurora-network
+    restart: "no"
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      
+      # Embeddings (use OpenAI)
+      EMBEDDING_PROVIDER: openai
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      neo4j:
+        condition: service_healthy
+
+  # =============================================================================
+  # Application Services - ALL INTERNAL (accessed via nginx reverse proxy)
+  # =============================================================================
+  
+  auth:
+    image: ${ECR_REGISTRY}/aurora-auth:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: auth/Dockerfile
+    container_name: aurora-auth
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    # NO EXPOSED PORTS - accessed via nginx reverse proxy
+    environment:
+      # AWS Cognito Configuration
+      AWS_REGION: ${AWS_REGION}
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID}
+      COGNITO_APP_CLIENT_ID: ${COGNITO_APP_CLIENT_ID}
+      COGNITO_APP_CLIENT_SECRET: ${COGNITO_APP_CLIENT_SECRET}
+      COGNITO_DOMAIN: ${COGNITO_DOMAIN}
+      COGNITO_JWKS_URL: https://cognito-idp.${AWS_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}/.well-known/jwks.json
+      COGNITO_TOKEN_ENDPOINT: https://${COGNITO_DOMAIN}/oauth2/token
+      
+      # Service URLs (internal Docker network)
+      BACKEND_SERVICE_URL: http://backend:8000
+      CURATOR_SERVICE_URL: http://curator:8000
+      RETRIEVER_SERVICE_URL: http://retriever:8000
+      CONTENT_CREATOR_SERVICE_URL: http://content_creator_service:8003
+      
+      # Application Configuration
+      DEPLOYMENT_DOMAIN: ${DEPLOYMENT_DOMAIN}
+      USE_HTTPS: ${USE_HTTPS:-true}
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  backend:
+    image: ${ECR_REGISTRY}/aurora-backend:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: backend/Dockerfile
+    container_name: aurora-backend
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    environment:
+      # Database
+      PG_DSN: postgresql://${POSTGRES_USER:-aurora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aurora}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aurora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-aurora}
+      
+      # Neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      
+      # Azure OpenAI
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  retriever:
+    image: ${ECR_REGISTRY}/aurora-retriever:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: retriever/Dockerfile
+    container_name: aurora-retriever
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    environment:
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aurora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-aurora}
+      
+      # RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # WFA Causeway Portal
+      WFA_CAUSEWAY_BASE_URL: ${WFA_CAUSEWAY_BASE_URL:-https://groups.wi-fi.org/}
+      WFA_CAUSEWAY_USERNAME: ${WFA_CAUSEWAY_USERNAME}
+      WFA_CAUSEWAY_PASSWORD: ${WFA_CAUSEWAY_PASSWORD}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+      
+      # API
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  digester:
+    image: ${ECR_REGISTRY}/aurora-digester:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: digester/Dockerfile
+    container_name: aurora-digester
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    environment:
+      # RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
+      RABBITMQ_MAX_WORKERS: ${RABBITMQ_MAX_WORKERS:-4}
+      RABBITMQ_HEARTBEAT: ${RABBITMQ_HEARTBEAT:-180}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # Neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      
+      # Azure OpenAI
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      LLM_RATE_LIMIT_RETRIES: ${LLM_RATE_LIMIT_RETRIES:-3}
+      
+      # Embeddings
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      
+      # Content Processing
+      MAX_CHUNK_SIZE: ${MAX_CHUNK_SIZE:-8000}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-500}
+      MAX_MESSAGE_RETRIES: ${MAX_MESSAGE_RETRIES:-3}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  curator:
+    image: ${ECR_REGISTRY}/aurora-curator:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: curator/Dockerfile
+    container_name: aurora-curator
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    environment:
+      # Neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      
+      # Azure OpenAI
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      
+      # Embeddings
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      
+      # RabbitMQ (for queue monitoring)
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
+      
+      # Redis (for monitoring digester state and event reconciliation)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # Curator Clustering Configuration
+      CLUSTER_MIN_SIZE: ${CLUSTER_MIN_SIZE:-3}
+      CLUSTER_MAX_SIZE: ${CLUSTER_MAX_SIZE:-10}
+      CLUSTER_DISTANCE_THRESHOLD: ${CLUSTER_DISTANCE_THRESHOLD:-0.5}
+      CLUSTER_OVERLAP_NEIGHBORS: ${CLUSTER_OVERLAP_NEIGHBORS:-3}
+      MAX_TOPICS_PER_LLM_CALL: ${MAX_TOPICS_PER_LLM_CALL:-20}
+      HIERARCHY_CONFIDENCE_THRESHOLD: ${HIERARCHY_CONFIDENCE_THRESHOLD:-0.7}
+      ENABLE_CROSS_CLUSTER_ANALYSIS: ${ENABLE_CROSS_CLUSTER_ANALYSIS:-true}
+      
+      # Scheduler Configuration
+      TOPIC_ORGANIZATION_CRON: ${TOPIC_ORGANIZATION_CRON:-0 6 * * *}
+      TOPIC_THRESHOLD_ENABLED: ${TOPIC_THRESHOLD_ENABLED:-true}
+      TOPIC_THRESHOLD_COUNT: ${TOPIC_THRESHOLD_COUNT:-50}
+      TOPIC_THRESHOLD_CHECK_INTERVAL_SECONDS: ${TOPIC_THRESHOLD_CHECK_INTERVAL_SECONDS:-60}
+      EVENT_RECONCILIATION_CHECK_INTERVAL_SECONDS: ${EVENT_RECONCILIATION_CHECK_INTERVAL_SECONDS:-60}
+      EVENT_RECONCILIATION_ENABLED: ${EVENT_RECONCILIATION_ENABLED:-true}
+      
+      # API Configuration
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+    depends_on:
+      neo4j-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  content_creator_service:
+    image: ${ECR_REGISTRY}/aurora-content-creator:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: content_creator_service/Dockerfile
+    container_name: aurora-content-creator
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    # NO EXPOSED PORTS - internal only
+    environment:
+      PG_DSN: postgresql://${POSTGRES_USER:-aurora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aurora}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aurora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-aurora}
+
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
+
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    image: ${ECR_REGISTRY}/aurora-frontend:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ../frontend
+    #   dockerfile: Dockerfile
+    container_name: aurora-frontend
+    restart: "no"  # Build once and exit
+    networks:
+      - aurora-network
+    volumes:
+      - frontend-build:/app/build
+    # NO EXPOSED PORTS - files served by nginx
+    # NO HEALTHCHECK - container exits after build
+    # Container builds React app then exits - nginx serves from shared volume
+
+  # =============================================================================
+  # Nginx Reverse Proxy - ONLY EXTERNALLY EXPOSED SERVICE
+  # =============================================================================
+
+  nginx:
+    image: ${ECR_REGISTRY}/aurora-nginx:latest
+    # Uncomment to build locally instead of using ECR:
+    # build:
+    #   context: ..
+    #   dockerfile: nginx/Dockerfile.letsencrypt
+    container_name: aurora-nginx
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      - "80:80"      # HTTP (redirects to HTTPS)
+      - "443:443"    # HTTPS
+    environment:
+      DOMAIN: ${DEPLOYMENT_DOMAIN}
+      EMAIL: ${SSL_EMAIL}
+    volumes:
+      - frontend-build:/usr/share/nginx/html:ro
+      - certbot-certs:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    depends_on:
+      frontend:
+        condition: service_completed_successfully  # Wait for build to complete
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # =============================================================================
+  # Observability Stack
+  # =============================================================================
+  # Production observability services with localhost-only access
+  # Access via SSH tunnel: ssh -L 3001:localhost:3001 -L 9090:localhost:9090 ec2-user@YOUR_EC2_IP
+  # Then open http://localhost:3001 for Grafana and http://localhost:9090 for Prometheus
+  
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    container_name: aurora-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling - NOT exposed to internet
+      - "127.0.0.1:4317:4317"   # OTLP gRPC receiver
+      - "127.0.0.1:4318:4318"   # OTLP HTTP receiver
+      - "127.0.0.1:8889:8889"   # Prometheus metrics exporter
+    volumes:
+      - ../observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      OTEL_LOG_LEVEL: ${OTEL_LOG_LEVEL:-info}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Tempo - Distributed Tracing Backend
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: aurora-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yaml"]
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling
+      - "127.0.0.1:3200:3200"   # Tempo HTTP
+    volumes:
+      - ../observability/tempo.yaml:/etc/tempo.yaml:ro
+      - /data/tempo:/tmp/tempo
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: aurora-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - /data/loki:/loki
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Prometheus - Metrics Storage
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: aurora-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /data/prometheus:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Grafana - Observability UI
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: aurora-grafana
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for SSH tunneling
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - /data/grafana:/var/lib/grafana
+      - ../observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ../observability/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

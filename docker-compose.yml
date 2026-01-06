@@ -1,7 +1,23 @@
 #version: "3.9"
 
 # =============================================================================
-# Aurora Docker Compose Configuration
+# Aurora Docker Compose Configuration - DEVELOPMENT
+# =============================================================================
+# This is the main development configuration with hot reload enabled.
+#
+# Usage:
+#   docker compose up -d
+#
+# Features:
+#   - React dev server with hot module replacement (HMR)
+#   - Edit code → see changes instantly
+#   - Source maps for debugging
+#   - All backend services for local development
+#
+# Access:
+#   - Frontend: http://localhost:3000 (React dev server)
+#   - Through nginx: http://localhost (proxies to React dev server)
+#   - API: http://localhost/api/*
 # =============================================================================
 
 # Shared network for all services
@@ -52,8 +68,8 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./backend/db_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./backend/db_seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - ./prod-deployment/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+      - ./prod-deployment/migrations/002_seed_data.sql:/docker-entrypoint-initdb.d/002_seed_data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aurora} -d ${POSTGRES_DB:-aurora}"]
       interval: 10s
@@ -188,10 +204,9 @@ services:
       RETRIEVER_SERVICE_URL: ${RETRIEVER_SERVICE_URL:-http://retriever:8000}
       CONTENT_CREATOR_SERVICE_URL: ${CONTENT_CREATOR_SERVICE_URL:-http://content_creator_service:8003}
       
-      # Application Configuration
-      APPLICATION_URL: ${APPLICATION_URL:-http://localhost:3000}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Application Configuration (simplified - single domain derives URL and cookie)
+      DEPLOYMENT_DOMAIN: ${DEPLOYMENT_DOMAIN:-localhost}
+      USE_HTTPS: ${USE_HTTPS:-false}
       
       # Redis Configuration
       REDIS_HOST: redis
@@ -379,8 +394,7 @@ services:
       LLM_RATE_LIMIT_RETRIES: ${LLM_RATE_LIMIT_RETRIES:-3}
       
       # Embeddings
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sentence-transformers}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-mpnet-base-v2}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       
       # Content Processing
       MAX_CHUNK_SIZE: ${MAX_CHUNK_SIZE:-8000}
@@ -434,8 +448,7 @@ services:
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
       
       # Embeddings
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sentence-transformers}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-mpnet-base-v2}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       
       # RabbitMQ (for queue monitoring)
       RABBITMQ_HOST: rabbitmq
@@ -549,18 +562,52 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: aurora-frontend
     restart: unless-stopped
     networks:
       - aurora-network
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      # Use named volumes for node_modules (don't overwrite)
+      - /app/node_modules
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-3000}:3000"  # Expose React dev server
+    environment:
+      - HOST=0.0.0.0  # Bind to all interfaces, not just localhost
+      - CHOKIDAR_USEPOLLING=true  # Enable hot reload in Docker
+      - WATCHPACK_POLLING=true
+      - WDS_SOCKET_PORT=0  # Fix WebSocket connection issues
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s      # Check every 15 seconds
+      timeout: 5s
+      retries: 10        # Allow 10 failures (10 * 15s = 150s total)
+      start_period: 60s  # Wait 60s before starting checks (gives webpack initial compile time)
+
+  # =============================================================================
+  # Nginx Reverse Proxy
+  # =============================================================================
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile.hotreload
+    container_name: aurora-nginx
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      - "${NGINX_PORT:-80}:80"
     depends_on:
+      frontend:
+        condition: service_healthy
       auth:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

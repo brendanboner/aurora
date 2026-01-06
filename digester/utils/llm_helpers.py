@@ -3,13 +3,15 @@ Shared LLM utility functions for Azure OpenAI calls.
 
 This module provides common functionality for making Azure OpenAI API calls
 with retry logic, rate limit handling, and response parsing.
+
+ASYNC VERSION: Uses AsyncAzureOpenAI for non-blocking I/O operations.
 """
 
 import re
-import time
+import asyncio
 from typing import List, Dict, Optional
 
-from openai import AzureOpenAI
+from openai import AsyncAzureOpenAI
 
 from settings import settings
 from utils.logger import setup_logger
@@ -28,19 +30,19 @@ logger = setup_logger(__name__, settings.log_level)
 
 
 # Singleton client instance
-_llm_client: Optional[AzureOpenAI] = None
+_llm_client: Optional[AsyncAzureOpenAI] = None
 
 
-def get_llm_client() -> AzureOpenAI:
+def get_llm_client() -> AsyncAzureOpenAI:
     """
-    Get or create the Azure OpenAI client singleton.
+    Get or create the async Azure OpenAI client singleton.
     
     Returns:
-        AzureOpenAI client instance
+        AsyncAzureOpenAI client instance
     """
     global _llm_client
     if _llm_client is None:
-        _llm_client = AzureOpenAI(
+        _llm_client = AsyncAzureOpenAI(
             api_key=settings.azure_openai_api_key,
             api_version=settings.azure_openai_api_version,
             azure_endpoint=settings.azure_openai_endpoint
@@ -71,7 +73,7 @@ def parse_rate_limit_wait_time(error_message: str) -> float:
     return 5.0
 
 
-def call_llm_with_retry(
+async def call_llm_with_retry(
     messages: List[Dict[str, str]],
     deployment: Optional[str] = None,
     temperature: float = 0.1,
@@ -80,7 +82,7 @@ def call_llm_with_retry(
     check_truncation: bool = False
 ) -> str:
     """
-    Call Azure OpenAI with retry logic for rate limits.
+    Call Azure OpenAI with retry logic for rate limits (ASYNC VERSION).
     
     Args:
         messages: List of message dicts with 'role' and 'content' keys
@@ -147,7 +149,7 @@ def call_llm_with_retry(
                     f"Rate limit hit (attempt {attempt + 1}/{max_retries + 1}). "
                     f"Waiting {wait_time:.1f}s before retry..."
                 )
-                time.sleep(wait_time)
+                await asyncio.sleep(wait_time)
                 continue
             
             # Either not a rate limit error, or we've exhausted retries

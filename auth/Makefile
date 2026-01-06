@@ -1,49 +1,64 @@
-.PHONY: test test-unit test-integration coverage clean
+# =============================================================================
+# Auth Service Makefile
+# =============================================================================
 
+.PHONY: help test install clean-venv
+
+# Service-specific configuration
+SERVICE_NAME := aurora-auth
+DOCKERFILE := Dockerfile
+BUILD_CONTEXT := ..
+
+# Virtual environment configuration
 VENV = .venv
 PYTHON = $(VENV)/bin/python
 PIP = $(VENV)/bin/pip
 PYTEST = $(VENV)/bin/pytest
 
-# Create virtual environment (use Python 3.12 for pydantic compatibility)
+# Load common configuration and targets (build-push, ship, clean)
+include ../Makefile.common
+
+help:
+	@echo "$(CYAN)Auth Service Makefile$(NC)"
+	@echo ""
+	@echo "Available commands:"
+	@echo "  make test        - Run tests with pytest (creates venv automatically)"
+	@echo "  make build-push  - Build and push Docker image to ECR"
+	@echo "  make ship        - Run tests, build, and ship to ECR"
+	@echo "  make clean       - Clean up test artifacts"
+	@echo "  make clean-venv  - Remove virtual environment"
+
+# Create virtual environment (use Python 3.12 for better compatibility with dependencies)
 $(VENV)/bin/activate:
-	python3.12 -m venv $(VENV)
+	@echo "$(CYAN)Creating virtual environment with Python 3.12...$(NC)"
+	@python3.12 -m venv $(VENV) || python3 -m venv $(VENV)
 
 # Install dependencies in venv
 install: $(VENV)/bin/activate
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	@echo "$(CYAN)Installing dependencies...$(NC)"
+	@$(PIP) install --upgrade pip
+	@$(PIP) install -r requirements.txt
 
-# Run all tests in a fresh venv
+# Run tests in a fresh venv
 test: install
-	$(PYTEST)
-	$(MAKE) clean-venv
+	@echo "$(CYAN)Running auth service tests...$(NC)"
+	@$(PYTEST) tests/ -v --cov=. --cov-report=term-missing
+	@echo "$(GREEN)✓ Tests completed$(NC)"
+	@$(MAKE) clean-venv
 
-# Run unit tests only
-test-unit: install
-	$(PYTEST) tests/test_oauth.py tests/test_middleware.py
-	$(MAKE) clean-venv
-
-# Run integration tests only
-test-integration: install
-	$(PYTEST) tests/test_endpoints.py tests/test_proxy.py
-	$(MAKE) clean-venv
-
-# Generate coverage report
-coverage: install
-	$(PYTEST) --cov=. --cov-report=html --cov-report=term --cov-config=tests/.coveragerc
-	$(MAKE) clean-venv
-
-# Clean Python artifacts
+# Override clean to also clean venv artifacts
 clean:
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf tests/.pytest_cache tests/.coverage tests/htmlcov
-	rm -rf .pytest_cache .coverage htmlcov  # Clean old locations too
+	@echo "$(CYAN)Cleaning $(SERVICE_NAME) artifacts...$(NC)"
+	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	@rm -rf tests/.pytest_cache tests/.coverage tests/htmlcov
+	@rm -rf .pytest_cache .coverage htmlcov
+	@rm -rf build .cache node_modules
+	@echo "$(GREEN)✓ Cleanup completed$(NC)"
 
 # Clean virtual environment
 clean-venv:
-	rm -rf $(VENV)
-
-# Clean everything
-clean-all: clean clean-venv
+	@echo "$(CYAN)Removing virtual environment...$(NC)"
+	@rm -rf $(VENV)
+	@echo "$(GREEN)✓ Virtual environment removed$(NC)"

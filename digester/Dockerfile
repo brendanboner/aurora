@@ -1,31 +1,39 @@
-# Use Python 3.13 slim image
-FROM python:3.13-slim
+# ============================================
+# BUILD STAGE - Compile dependencies with gcc
+# ============================================
+FROM python:3.13-slim AS builder
 
-# Set working directory
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies
+# Install build-time dependencies (gcc needed for some packages)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY digester/requirements.txt . 
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies to a temporary location
+COPY digester/requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# Pre-download the sentence transformer model to cache it in the docker layer
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
-
-# Install local shared libraries outside of requirements.txt so docker can cache the other requirements
+# Install local shared libraries
 COPY common ./common
 COPY rabbitmq-client ./rabbitmq-client
 COPY neo4j-client ./neo4j-client
+RUN pip install --no-cache-dir --prefix=/install ./rabbitmq-client
+RUN pip install --no-cache-dir --prefix=/install ./neo4j-client
 
-RUN pip install --no-cache-dir ./rabbitmq-client
-RUN pip install --no-cache-dir ./neo4j-client
 
-# Copy digester application code
+# ============================================
+# RUNTIME STAGE - Clean image without gcc
+# ============================================
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Copy only the installed packages from builder stage (no gcc!)
+COPY --from=builder /install /usr/local
+
+# Copy digester application code (excludes testing/ via .dockerignore)
 COPY digester/ .
 
 # Run the application

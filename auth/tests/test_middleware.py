@@ -47,20 +47,23 @@ class TestValidateRequestToken:
         }.get(key)
         mock_request.state = MagicMock()
         
-        # First call raises expired error, second call succeeds after refresh
+        # First call raises expired error, second and third calls succeed after refresh
         with patch('utils.middleware.validate_jwt_token') as mock_validate:
             mock_validate.side_effect = [
                 HTTPException(401, "Token has expired"),
-                valid_token_claims
+                valid_token_claims,  # Validates new ID token
+                valid_token_claims   # In case fallback is needed
             ]
             
             with patch('utils.middleware.refresh_access_token', 
-                      return_value={"access_token": "new-token"}):
+                      return_value={"access_token": "new-token", "id_token": "new-id-token"}):
                 result = await validate_request_token(mock_request)
                 
                 assert result["user_id"] == "test-user-123"
                 assert hasattr(mock_request.state, 'new_access_token')
                 assert mock_request.state.new_access_token == "new-token"
+                assert hasattr(mock_request.state, 'new_id_token')
+                assert mock_request.state.new_id_token == "new-id-token"
     
     @pytest.mark.asyncio
     async def test_validate_expired_token_refresh_fails(self):
