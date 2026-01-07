@@ -6,6 +6,10 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 processors:
   batch:
     timeout: 10s
@@ -46,6 +50,7 @@ exporters:
     loglevel: info
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
