@@ -9,8 +9,8 @@ from typing import Optional
 
 try:
     from common.telemetry import get_tracer, get_meter
-    tracer = get_tracer(__name__)
-    meter = get_meter(__name__)
+    tracer = get_tracer()
+    meter = get_meter()
     OTEL_AVAILABLE = True
 except ImportError:
     tracer = None
