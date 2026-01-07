@@ -5,6 +5,7 @@ WORKDIR /app
 # Install shared local libraries first for caching
 COPY neo4j-client ./neo4j-client
 COPY rabbitmq-client ./rabbitmq-client
+COPY common ./common
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir ./neo4j-client \
     && pip install --no-cache-dir ./rabbitmq-client
