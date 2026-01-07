@@ -12,8 +12,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Install service in editable mode for dev convenience
 COPY content_creator_service ./content_creator_service
-WORKDIR /app/content_creator_service
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e ./content_creator_service
 
 EXPOSE 8003
-CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "content_creator_service.src.api:app", "--host", "0.0.0.0", "--port", "8003"]
