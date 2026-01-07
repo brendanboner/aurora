@@ -1,10 +1,11 @@
 """CreatorAgent management endpoints."""
 
 import asyncio
-from typing import List
-from fastapi import APIRouter, Body, HTTPException, Query
+from typing import List, Optional
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from common.auth_middleware import get_user_context
 from ..models.agent import CreatorAgent, CreatorAgentCreate, CreatorAgentUpdate
 from ..services.agent_service import AgentService
 from ..services.preference_service import PreferenceService
@@ -46,11 +47,21 @@ async def create_agent(payload: CreatorAgentCreate) -> CreatorAgent:
 
 
 @router.post("/from-linkedin")
-async def parse_linkedin_profile(request: LinkedInParseRequest) -> dict:
+async def parse_linkedin_profile(
+    request: LinkedInParseRequest,
+    user: Optional[dict] = Depends(get_user_context)
+) -> dict:
     """
     Parse a LinkedIn profile paste to generate agent configuration.
     Returns a draft agent config for review before creation.
+    Requires authentication.
     """
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
     try:
         agent_config = await asyncio.to_thread(
             _agent_service.parse_linkedin_profile,
@@ -67,12 +78,23 @@ async def parse_linkedin_profile(request: LinkedInParseRequest) -> dict:
 
 
 @router.post("/{agent_id}/enhance-from-linkedin", response_model=CreatorAgent)
-async def enhance_agent_from_linkedin(agent_id: int, request: LinkedInParseRequest) -> CreatorAgent:
+async def enhance_agent_from_linkedin(
+    agent_id: int,
+    request: LinkedInParseRequest,
+    user: Optional[dict] = Depends(get_user_context)
+) -> CreatorAgent:
     """
     Enhance existing agent with additional LinkedIn profile content.
     Merges new style markers, topics, and organizations additively.
     Increments persona_version.
+    Requires authentication.
     """
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
     try:
         enhanced_agent = await asyncio.to_thread(
             _agent_service.enhance_from_linkedin,
