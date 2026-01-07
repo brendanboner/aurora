@@ -36,5 +36,8 @@ COPY --from=builder /install /usr/local
 # Copy digester application code (excludes testing/ via .dockerignore)
 COPY digester/ .
 
+# Copy shared common module
+COPY common ./common
+
 # Run the application
 CMD ["python", "digester.py"]
