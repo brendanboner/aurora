@@ -114,7 +114,7 @@ async def call_llm_with_retry(
                 prompt_type="extract",
                 model_provider="azure_openai"
             ) as ctx:
-                response = client.chat.completions.create(
+                response = await client.chat.completions.create(
                     model=deployment,
                     messages=messages,
                     temperature=temperature,
