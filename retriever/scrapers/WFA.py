@@ -478,7 +478,23 @@ class WFAScraper(BaseScraper):
             soup.find(class_='date-meta-data')
         )
         if date_element:
-            resource.publish_date = date_element.get_text(strip=True)
+            raw_date = date_element.get_text(strip=True)
+            # Parse and normalize the date to ISO 8601 format
+            try:
+                from dateutil.parser import parse as date_parse
+                parsed_date = date_parse(raw_date)
+                resource.publish_date = parsed_date.isoformat()
+            except Exception as e:
+                logger.warning(f"Failed to parse publish date '{raw_date}': {e}")
+                resource.publish_date = None
+            # Parse and normalize date to ISO 8601 format
+            try:
+                from dateutil.parser import parse as date_parse
+                parsed_date = date_parse(date_text)
+                resource.publish_date = parsed_date.isoformat()
+            except Exception as e:
+                logger.warning(f"Failed to parse date '{date_text}': {e}")
+                resource.publish_date = None
         
         content_area = soup.find('div', id='block-wfb-content')
         if content_area:

@@ -81,9 +81,8 @@ class GenerationService:
         events = self._apply_diversity_filter(events, max_items=8)
         documents = self._apply_diversity_filter(documents, max_items=8)
         
-        # Final quality check: ensure we have focused, high-quality content
-        events = [e for e in events if e.get("relevance_score", 0) >= min_relevance][:8]
-        documents = [d for d in documents if d.get("relevance_score", 0) >= min_relevance][:8]
+        # Note: Relevance filtering already done in Neo4j query, no need to re-filter
+        # This ensures we don't over-filter and lose valid content
         
         if not events and not documents:
             logger.info("No high-quality context available for agent %s after filtering", agent.name)

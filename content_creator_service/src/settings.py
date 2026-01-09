@@ -68,7 +68,7 @@ class Settings(BaseSettings):
         le=1.0,
     )
     min_relevance_score_default: float = Field(
-        default=0.3,
+        default=0.2,
         description="Default minimum relevance score for article selection (0.0-1.0). "
                     "Can be overridden by agent discovery_tolerance",
         ge=0.0,
