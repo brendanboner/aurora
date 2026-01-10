@@ -40,6 +40,48 @@ from settings import settings
 logger = logging.getLogger(__name__)
 
 
+def _parse_last_scraped_at(last_scraped_at_raw) -> Optional[datetime]:
+    """
+    Convert last_scraped_at from string to datetime if needed.
+    
+    Neo4j stores timestamps as ISO strings (e.g., "2026-01-09T03:02:37.160014"),
+    but we need a datetime object for date comparisons in the scraper.
+    
+    Without this conversion, comparing datetime < string raises TypeError,
+    which gets caught by error handling and silently results in 0 resources
+    being discovered on incremental scrapes.
+    
+    Args:
+        last_scraped_at_raw: Value from datasource config (string, datetime, or None)
+        
+    Returns:
+        Timezone-aware datetime object, or None if parsing fails
+    """
+    if last_scraped_at_raw is None:
+        return None
+    
+    if isinstance(last_scraped_at_raw, datetime):
+        # Already a datetime, just ensure timezone-aware
+        if last_scraped_at_raw.tzinfo is None:
+            return last_scraped_at_raw.replace(tzinfo=timezone.utc)
+        return last_scraped_at_raw
+    
+    if isinstance(last_scraped_at_raw, str):
+        try:
+            from dateutil import parser as date_parser
+            parsed = date_parser.parse(last_scraped_at_raw)
+            # Ensure timezone-aware for consistent comparison with parsed mod dates
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except Exception as e:
+            logger.warning(f"Could not parse last_scraped_at '{last_scraped_at_raw}': {e}")
+            return None
+    
+    logger.warning(f"Unexpected type for last_scraped_at: {type(last_scraped_at_raw)}")
+    return None
+
+
 class WFACausewayScraper(BaseScraper):
     """
     Scraper for Wi-Fi Alliance Causeway internal portal.
@@ -1243,8 +1285,16 @@ class WFACausewayScraper(BaseScraper):
             
             # Get discovery mode and last_scraped_at for efficient scraping
             discovery_mode = datasource_config.get('discovery_mode', 'incremental')
-            last_scraped_at = datasource_config.get('last_scraped_at')
+            last_scraped_at_raw = datasource_config.get('last_scraped_at')
             is_full_refresh = datasource_config.get('is_full_refresh', False)
+            
+            # FIX: Convert last_scraped_at from string to datetime if needed
+            # Neo4j returns this as a timezone-naive datetime, but _parse_mod_date() returns
+            # timezone-aware datetimes. Comparing naive vs aware raises:
+            #   "can't compare offset-naive and offset-aware datetimes"
+            # This error gets caught by the try/except in get_resource_links() and silently
+            # results in 0 resources being discovered on incremental scrapes.
+            last_scraped_at = _parse_last_scraped_at(last_scraped_at_raw)
             
             # If full refresh is requested, ignore last_scraped_at
             if is_full_refresh:
