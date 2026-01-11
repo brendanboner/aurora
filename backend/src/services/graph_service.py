@@ -154,7 +154,7 @@ def get_all_topics(limit: int = 1000) -> List[Dict[str, Any]]:
     repo = get_repo()
     query = """
         MATCH (t:Topic)
-        RETURN t.topic_id as id, t.name as name, t.aliases as aliases, 
+        RETURN t.topic_id as topic_id, t.name as name, t.aliases as aliases, 
                t.classification as classification
         ORDER BY t.name
         LIMIT $limit
@@ -168,7 +168,7 @@ def get_all_organisations(limit: int = 1000) -> List[Dict[str, Any]]:
     repo = get_repo()
     query = """
         MATCH (o:Organization)
-        RETURN o.org_id as id, o.name as name, o.aliases as aliases, 
+        RETURN o.org_id as org_id, o.name as name, o.aliases as aliases, 
                o.org_type as org_type
         ORDER BY o.name
         LIMIT $limit

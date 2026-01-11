@@ -97,7 +97,7 @@ export const getGraphStatistics = async () => {
   return response.data;
 };
 
-// Query
+// Query (Legacy backend endpoint)
 export const sendQuery = async (userId, question, conversationId = null) => {
   const payload = {
     user_id: userId,
@@ -110,6 +110,132 @@ export const sendQuery = async (userId, question, conversationId = null) => {
   }
   
   const response = await apiClient.post('/backend/query', payload);
+  return response.data;
+};
+
+// Oracle Query Analysis - Pre-query quality check
+export const analyzeQuery = async (question) => {
+  const payload = { question };
+  const response = await apiClient.post('/oracle/analyze', payload);
+  return response.data;
+};
+
+// Get available datasources for @mention autocomplete
+export const getDatasources = async () => {
+  const response = await apiClient.get('/oracle/datasources');
+  return response.data;
+};
+
+// Get available document categories
+export const getCategories = async () => {
+  const response = await apiClient.get('/oracle/documents/categories');
+  return response.data;
+};
+
+// Get filter options (categories, topics, orgs) optionally filtered by datasources
+export const getFilterOptions = async (datasourceIds = null) => {
+  const payload = {
+    datasource_ids: datasourceIds,
+  };
+  const response = await apiClient.post('/oracle/documents/filter-options', payload);
+  return response.data;
+};
+
+// Search documents with filters
+export const searchDocuments = async (filters = {}) => {
+  const payload = {
+    keywords: filters.keywords || null,
+    keyword_match_mode: filters.keywordMatchMode || 'any',
+    datasource_ids: filters.datasourceIds || null,
+    categories: filters.categories || null,
+    topic_ids: filters.topicIds || null,
+    organization_ids: filters.organizationIds || null,
+    date_from: filters.dateFrom || null,
+    date_to: filters.dateTo || null,
+    limit: filters.limit || 50,
+    offset: filters.offset || 0,
+    sort_by: filters.sortBy || 'publish_date',
+    sort_order: filters.sortOrder || 'desc',
+  };
+  
+  const response = await apiClient.post('/oracle/documents/search', payload);
+  return response.data;
+};
+
+// Oracle Query - Enhanced question-answering with graph-aware RAG
+export const sendOracleQuery = async (userId, question, options = {}) => {
+  const payload = {
+    user_id: userId,
+    question,
+    mode: options.mode || 'answer', // 'retrieval', 'answer', or 'auto'
+    options: {
+      max_documents: options.maxDocuments || 20,
+      include_graph_context: options.includeGraphContext !== false,
+      date_start: options.dateStart || null,
+      date_end: options.dateEnd || null,
+      topics: options.topics || null,
+      organizations: options.organizations || null,
+      datasource_ids: options.datasourceIds || null,
+      recency_boost: options.recencyBoost !== false,
+    },
+  };
+  
+  const response = await apiClient.post('/oracle/query', payload);
+  return response.data;
+};
+
+// Oracle Enhance - Get detailed answer by analyzing full document content (Phase 5)
+export const sendEnhanceQuery = async (question, documents) => {
+  // documents should be array of { url, datasource_id, title }
+  const payload = {
+    question,
+    documents: documents.map(doc => ({
+      url: doc.url,
+      datasource_id: doc.datasource_id || 'wfa', // Default to 'wfa' if not specified
+      title: doc.title || null,
+    })),
+  };
+  
+  const response = await apiClient.post('/oracle/enhance', payload);
+  return response.data;
+};
+
+// Oracle Query History - Phase 6 Analytics
+export const getOracleQueryHistory = async (options = {}) => {
+  const params = new URLSearchParams();
+  if (options.days) params.append('days', options.days);
+  if (options.limit) params.append('limit', options.limit);
+  if (options.offset) params.append('offset', options.offset);
+  if (options.intent) params.append('intent', options.intent);
+  if (options.minConfidence) params.append('min_confidence', options.minConfidence);
+  if (options.maxConfidence) params.append('max_confidence', options.maxConfidence);
+  if (options.hasFeedback !== undefined) params.append('has_feedback', options.hasFeedback);
+  
+  const response = await apiClient.get(`/oracle/history?${params.toString()}`);
+  return response.data;
+};
+
+export const getOracleQueryDetail = async (queryId) => {
+  const response = await apiClient.get(`/oracle/history/${queryId}`);
+  return response.data;
+};
+
+export const getOracleQueryStats = async (days = 7) => {
+  const response = await apiClient.get(`/oracle/history/stats?days=${days}`);
+  return response.data;
+};
+
+// Oracle Feedback - Submit user feedback on query responses
+export const submitOracleFeedback = async (queryId, feedback, options = {}) => {
+  const payload = {
+    query_id: queryId,
+    feedback, // 'helpful' or 'not_helpful'
+    comment: options.comment || null,
+    intent: options.intent || null,
+    mode: options.mode || null,
+  };
+  
+  const response = await apiClient.post('/oracle/feedback', payload);
   return response.data;
 };
 

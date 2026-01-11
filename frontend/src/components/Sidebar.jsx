@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon, SearchIcon } from '../components/icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
@@ -42,14 +42,24 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
             {isOpen && <span className="sidebar-label">Chat</span>}
           </Link>
 
-          {/* News */}
+          {/* Document Search */}
           <Link 
-            to="/news" 
-            className={`sidebar-item ${isActive('/news') ? 'active' : ''}`}
-            title="News & Events"
+            to="/documents" 
+            className={`sidebar-item ${isActive('/documents') ? 'active' : ''}`}
+            title="Document Search"
           >
-            <span className="sidebar-icon"><NewsIcon /></span>
-            {isOpen && <span className="sidebar-label">News & Events</span>}
+            <span className="sidebar-icon"><SearchIcon /></span>
+            {isOpen && <span className="sidebar-label">Document Search</span>}
+          </Link>
+
+          {/* Creator Feed */}
+          <Link 
+            to="/feed" 
+            className={`sidebar-item ${isActive('/feed') ? 'active' : ''}`}
+            title="Creator Feed"
+          >
+            <span className="sidebar-icon"><StarIcon /></span>
+            {isOpen && <span className="sidebar-label">Creator Feed</span>}
           </Link>
 
           {/* Events */}
@@ -62,14 +72,14 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
             {isOpen && <span className="sidebar-label">Events</span>}
           </Link>
 
-          {/* Social Feed */}
+          {/* News & Events */}
           <Link 
-            to="/feed" 
-            className={`sidebar-item ${isActive('/feed') ? 'active' : ''}`}
-            title="Creator Feed"
+            to="/news" 
+            className={`sidebar-item ${isActive('/news') ? 'active' : ''}`}
+            title="News & Events"
           >
-            <span className="sidebar-icon"><StarIcon /></span>
-            {isOpen && <span className="sidebar-label">Creator Feed</span>}
+            <span className="sidebar-icon"><NewsIcon /></span>
+            {isOpen && <span className="sidebar-label">News & Events</span>}
           </Link>
 
           {/* Profile Menu with expandable submenu */}

@@ -14,6 +14,7 @@ SERVICE_ROUTES = {
     "/api/retriever": settings.retriever_service_url,
     "/api/content_creator_service": settings.content_creator_service_url,
     "/api/content-creator": settings.content_creator_service_url,  # Alias for content creator
+    "/api/oracle": settings.oracle_service_url,  # Oracle question-answering service
 }
 
 # Safe headers to forward (allowlist approach)

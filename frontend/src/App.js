@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './App.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -19,7 +19,11 @@ import EventDetail from './pages/EventDetail';
 import SocialFeed from './pages/SocialFeed';
 import AgentManagement from './pages/AgentManagement';
 import AgentPreferences from './pages/AgentPreferences';
+import DocumentSearch from './pages/DocumentSearch';
 import { testBackendConnection } from './services/api';
+
+// Pages that should have no padding in the page-container
+const NO_PADDING_ROUTES = ['/documents'];
 
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
@@ -57,33 +61,49 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="App">
-          <Routes>
-            {/* All routes are protected - unauthenticated users redirect to Cognito */}
-            <Route
-              path="/*"
-              element={
-                <ProtectedRoute>
-                  <div className="app-shell">
-                    <Header onMenuToggle={toggleSidebar} />
-                    <div className="sidebar-container">
-                      <Sidebar 
-                        isOpen={sidebarOpen}
-                        onToggle={toggleSidebar}
-                        backendStatus={backendStatus}
-                      />
-                    </div>
-                    <div className="page-container">
-                      <Routes>
-                        <Route 
-                          path="/" 
-                          element={<Chatbot backendStatus={backendStatus} />} 
-                        />
-                        <Route 
-                          path="/news" 
-                          element={<News backendStatus={backendStatus} />} 
-                        />
-                        
+        <AppContent 
+          backendStatus={backendStatus}
+          sidebarOpen={sidebarOpen}
+          toggleSidebar={toggleSidebar}
+        />
+      </Router>
+    </AuthProvider>
+  );
+}
+
+// Separate component to use useLocation inside Router
+function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
+  const location = useLocation();
+  const noPadding = NO_PADDING_ROUTES.includes(location.pathname);
+
+  return (
+    <div className="App">
+      <Routes>
+        {/* All routes are protected - unauthenticated users redirect to Cognito */}
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <div className="app-shell">
+                <Header onMenuToggle={toggleSidebar} />
+                <div className="sidebar-container">
+                  <Sidebar 
+                    isOpen={sidebarOpen}
+                    onToggle={toggleSidebar}
+                    backendStatus={backendStatus}
+                  />
+                </div>
+                <div className={`page-container ${noPadding ? 'no-padding' : ''}`}>
+                  <Routes>
+                    <Route 
+                      path="/" 
+                      element={<Chatbot backendStatus={backendStatus} />} 
+                    />
+                    <Route 
+                      path="/news" 
+                      element={<News backendStatus={backendStatus} />} 
+                    />
+                    
                         {/* Events routes */}
                         <Route 
                           path="/events" 
@@ -92,6 +112,12 @@ function App() {
                         <Route 
                           path="/events/:urlHash" 
                           element={<EventDetail />} 
+                        />
+                        
+                        {/* Document Search */}
+                        <Route 
+                          path="/documents" 
+                          element={<DocumentSearch />} 
                         />
                         
                         {/* Social Network routes */}
@@ -195,8 +221,6 @@ function App() {
             />
           </Routes>
         </div>
-      </Router>
-    </AuthProvider>
   );
 }
 

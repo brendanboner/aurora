@@ -69,6 +69,11 @@ prod-deployment/.env
 prod-deployment/*.local
 prod-deployment/test-*.yml
 
+# Oracle production testing env files
+oracle/.env.prod-test
+oracle/oracle-prod-test.env
+oracle/*-prod-test.env
+
 # IDEs
 .vscode/
 .idea/

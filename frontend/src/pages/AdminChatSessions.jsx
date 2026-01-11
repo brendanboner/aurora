@@ -1,237 +1,458 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getAllConversations, getConversationDetailAdmin } from '../services/api';
+import { 
+  getOracleQueryHistory,
+  getOracleQueryDetail,
+  getOracleQueryStats 
+} from '../services/api';
 import './Admin.css';
-import { ChatIcon, ProfileIcon, CalendarIcon, RefreshIcon } from '../components/icons';
+import { ChatIcon, CalendarIcon, RefreshIcon } from '../components/icons';
+
+// Intent badge colors
+const INTENT_COLORS = {
+  'factual_qa': { bg: '#e3f2fd', color: '#1565c0' },
+  'topic_discovery': { bg: '#f3e5f5', color: '#7b1fa2' },
+  'comparison': { bg: '#fff3e0', color: '#e65100' },
+  'troubleshooting': { bg: '#ffebee', color: '#c62828' },
+  'how_to': { bg: '#e8f5e9', color: '#2e7d32' },
+  'definition': { bg: '#e0f7fa', color: '#00838f' },
+  'unknown': { bg: '#f5f5f5', color: '#616161' },
+};
+
+// Confidence level colors
+const CONFIDENCE_COLORS = {
+  'high': { bg: '#e8f5e9', color: '#2e7d32' },
+  'medium': { bg: '#fff3e0', color: '#f57c00' },
+  'low': { bg: '#ffebee', color: '#c62828' },
+};
 
 const AdminChatSessions = () => {
-  const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [conversationDetail, setConversationDetail] = useState(null);
+  // Oracle queries state
+  const [oracleQueries, setOracleQueries] = useState([]);
+  const [selectedQuery, setSelectedQuery] = useState(null);
+  const [queryDetail, setQueryDetail] = useState(null);
+  const [oracleStats, setOracleStats] = useState(null);
+  const [queryFilters, setQueryFilters] = useState({
+    days: 7,
+    intent: '',
+    hasFeedback: '',
+  });
+  
+  // Common state
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statistics, setStatistics] = useState(null);
 
   useEffect(() => {
-    loadConversations();
+    loadOracleQueries();
+    loadOracleStats();
   }, []);
 
-  const loadConversations = async () => {
+  // === Oracle Queries Functions ===
+  const loadOracleQueries = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getAllConversations(100);
-      setConversations(data);
+      const options = {
+        days: queryFilters.days,
+        limit: 100,
+      };
+      if (queryFilters.intent) options.intent = queryFilters.intent;
+      if (queryFilters.hasFeedback !== '') options.hasFeedback = queryFilters.hasFeedback === 'true';
       
-      // Calculate simple statistics
-      const totalMessages = data.reduce((sum, conv) => sum + conv.message_count, 0);
-      const uniqueUsers = new Set(data.map(conv => conv.user_id)).size;
-      setStatistics({
-        totalConversations: data.length,
-        uniqueUsers: uniqueUsers,
-        totalMessages: totalMessages,
-        avgMessagesPerConversation: data.length > 0 ? (totalMessages / data.length).toFixed(1) : 0
-      });
+      const data = await getOracleQueryHistory(options);
+      setOracleQueries(data.items || []);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      // If query history is not available, show empty state
+      if (err.response?.status === 400) {
+        setOracleQueries([]);
+        setError('Query history storage is not enabled');
+      } else {
+        setError(err.response?.data?.detail || err.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const loadConversationDetail = async (conversationId) => {
-    setDetailLoading(true);
+  const loadOracleStats = async () => {
     try {
-      const data = await getConversationDetailAdmin(conversationId);
-      setConversationDetail(data);
-      setSelectedConversation(conversationId);
+      const stats = await getOracleQueryStats(queryFilters.days);
+      setOracleStats(stats);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load conversation');
+      // Stats not available - not critical
+      setOracleStats(null);
+    }
+  };
+
+  const loadQueryDetail = async (queryId) => {
+    setDetailLoading(true);
+    setQueryDetail(null);
+    try {
+      const data = await getOracleQueryDetail(queryId);
+      setQueryDetail(data);
+      setSelectedQuery(queryId);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to load query details');
     } finally {
       setDetailLoading(false);
     }
   };
 
-  const filteredConversations = conversations.filter(conv => {
+  const handleFilterChange = (key, value) => {
+    setQueryFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  useEffect(() => {
+    loadOracleQueries();
+    loadOracleStats();
+  }, [queryFilters]);
+
+  const filteredQueries = oracleQueries.filter(query => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
-    return (
-      conv.title?.toLowerCase().includes(term) ||
-      conv.email?.toLowerCase().includes(term) ||
-      conv.display_name?.toLowerCase().includes(term)
-    );
+    return query.question?.toLowerCase().includes(term);
   });
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     const date = new Date(dateString);
     return date.toLocaleString();
+  };
+
+  const formatLatency = (ms) => {
+    if (!ms) return 'N/A';
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  };
+
+  const getIntentStyle = (intent) => {
+    return INTENT_COLORS[intent] || INTENT_COLORS['unknown'];
+  };
+
+  const getConfidenceStyle = (level) => {
+    return CONFIDENCE_COLORS[level] || CONFIDENCE_COLORS['low'];
   };
 
   return (
     <div className="admin-container">
       <div className="admin-header">
-        <h1>Chat Sessions</h1>
-        <p>View and analyze user conversations with Aurora</p>
-        <button className="btn btn-primary" onClick={loadConversations}>
-          <RefreshIcon size={16} /> Refresh
-        </button>
+        <h1>Oracle Query Analytics</h1>
+        <p>View and analyze Oracle query performance and history</p>
       </div>
 
       {error && <div className="admin-error">{error}</div>}
 
-      {/* Statistics Cards */}
-      {statistics && (
+      {/* Oracle Stats */}
+      {oracleStats && (
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-label">Total Conversations</div>
-            <div className="stat-value">{statistics.totalConversations}</div>
+            <div className="stat-label">Total Queries</div>
+            <div className="stat-value">{oracleStats.total_queries || 0}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Unique Users</div>
-            <div className="stat-value">{statistics.uniqueUsers}</div>
+            <div className="stat-label">Avg Latency</div>
+            <div className="stat-value">{formatLatency(oracleStats.performance?.avg_latency_ms)}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Total Messages</div>
-            <div className="stat-value">{statistics.totalMessages}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Avg Messages/Conv</div>
-            <div className="stat-value">{statistics.avgMessagesPerConversation}</div>
-          </div>
-        </div>
-      )}
-
-      {loading && <div className="spinner" />}
-
-      {!loading && (
-        <div className="chat-sessions-layout">
-          {/* Left Panel - Conversations List */}
-          <div className="conversations-panel">
-            <div className="panel-header">
-              <h2>Conversations ({filteredConversations.length})</h2>
-              <input
-                type="text"
-                placeholder="Search by title, user..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-input"
-              />
-            </div>
-
-            <div className="conversations-list">
-              {filteredConversations.length === 0 ? (
-                <div className="empty-state">
-                  <ChatIcon size={48} />
-                  <p>No conversations found</p>
+            <div className="stat-label">Avg Confidence</div>
+                <div className="stat-value">
+                  {oracleStats.performance?.avg_confidence 
+                    ? `${(oracleStats.performance.avg_confidence * 100).toFixed(0)}%` 
+                    : 'N/A'}
                 </div>
-              ) : (
-                filteredConversations.map(conv => (
-                  <div
-                    key={conv.id}
-                    className={`conversation-item ${selectedConversation === conv.id ? 'selected' : ''}`}
-                    onClick={() => loadConversationDetail(conv.id)}
-                  >
-                    <div className="conversation-header">
-                      <div className="conversation-title">
-                        <ChatIcon size={16} />
-                        {conv.title || 'Untitled Conversation'}
-                      </div>
-                      <div className="message-count">{conv.message_count} msgs</div>
-                    </div>
-                    <div className="conversation-user">
-                      <ProfileIcon size={14} />
-                      {conv.display_name || conv.email}
-                    </div>
-                    <div className="conversation-date">
-                      <CalendarIcon size={12} />
-                      {formatDate(conv.updated_at)}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Right Panel - Conversation Detail */}
-          <div className="conversation-detail-panel">
-            {!selectedConversation && (
-              <div className="empty-state">
-                <ChatIcon size={64} />
-                <p>Select a conversation to view messages</p>
               </div>
-            )}
+              <div className="stat-card">
+                <div className="stat-label">Positive Feedback</div>
+                <div className="stat-value feedback-positive">
+                  {oracleStats.feedback?.positive || 0}
+                  {oracleStats.feedback?.total > 0 && (
+                    <span className="stat-subvalue">
+                      / {oracleStats.feedback.total} total
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
-            {detailLoading && (
-              <div className="spinner" />
-            )}
+          {/* Filters */}
+          <div className="section-actions oracle-filters">
+            <div className="filter-group">
+              <label>Time Range:</label>
+              <select 
+                value={queryFilters.days} 
+                onChange={(e) => handleFilterChange('days', parseInt(e.target.value))}
+              >
+                <option value={1}>Last 24 hours</option>
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <label>Intent:</label>
+              <select 
+                value={queryFilters.intent} 
+                onChange={(e) => handleFilterChange('intent', e.target.value)}
+              >
+                <option value="">All Intents</option>
+                <option value="factual_qa">Factual Q&A</option>
+                <option value="topic_discovery">Topic Discovery</option>
+                <option value="comparison">Comparison</option>
+                <option value="troubleshooting">Troubleshooting</option>
+                <option value="how_to">How To</option>
+                <option value="definition">Definition</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <label>Feedback:</label>
+              <select 
+                value={queryFilters.hasFeedback} 
+                onChange={(e) => handleFilterChange('hasFeedback', e.target.value)}
+              >
+                <option value="">All</option>
+                <option value="true">Has Feedback</option>
+                <option value="false">No Feedback</option>
+              </select>
+            </div>
+            <button className="btn btn-primary" onClick={() => { loadOracleQueries(); loadOracleStats(); }}>
+              <RefreshIcon size={16} /> Refresh
+            </button>
+          </div>
 
-            {selectedConversation && conversationDetail && !detailLoading && (
-              <div className="conversation-detail">
-                <div className="detail-header">
-                  <div>
-                    <h2>{conversationDetail.conversation.title || 'Untitled Conversation'}</h2>
-                    <div className="detail-meta">
-                      <span className="meta-item">
-                        <ProfileIcon size={14} />
-                        {conversationDetail.conversation.display_name || conversationDetail.conversation.email}
-                      </span>
-                      <span className="meta-item">
-                        <CalendarIcon size={14} />
-                        {formatDate(conversationDetail.conversation.created_at)}
-                      </span>
-                      <span className="meta-item">
-                        {conversationDetail.messages.length} messages
-                      </span>
-                    </div>
-                  </div>
+          {loading && <div className="spinner" />}
+
+          {!loading && (
+            <div className="chat-sessions-layout">
+              {/* Left Panel - Query List */}
+              <div className="conversations-panel">
+                <div className="panel-header">
+                  <h2>Queries ({filteredQueries.length})</h2>
+                  <input
+                    type="text"
+                    placeholder="Search queries..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="search-input"
+                  />
                 </div>
 
-                <div className="messages-container">
-                  {conversationDetail.messages.map((message, index) => (
-                    <div key={message.id} className={`message message-${message.role}`}>
-                      <div className="message-header">
-                        <span className="message-role">
-                          {message.role === 'user' ? <ProfileIcon size={16} /> : <ChatIcon size={16} />}
-                          {message.role === 'user' ? 'User' : 'Assistant'}
+                <div className="conversations-list">
+                  {filteredQueries.length === 0 ? (
+                    <div className="empty-state">
+                      <ChatIcon size={48} />
+                      <p>No queries found</p>
+                      <p className="empty-hint">Try adjusting the filters or time range</p>
+                    </div>
+                  ) : (
+                    filteredQueries.map(query => (
+                      <div
+                        key={query.query_id}
+                        className={`conversation-item query-item ${selectedQuery === query.query_id ? 'selected' : ''}`}
+                        onClick={() => loadQueryDetail(query.query_id)}
+                      >
+                        <div className="query-question">
+                          {query.question?.substring(0, 100)}{query.question?.length > 100 ? '...' : ''}
+                        </div>
+                        <div className="query-badges">
+                          {query.intent && (
+                            <span 
+                              className="badge intent-badge"
+                              style={{ backgroundColor: getIntentStyle(query.intent).bg, color: getIntentStyle(query.intent).color }}
+                            >
+                              {query.intent.replace('_', ' ')}
+                            </span>
+                          )}
+                          {query.confidence_level && (
+                            <span 
+                              className="badge confidence-badge"
+                              style={{ backgroundColor: getConfidenceStyle(query.confidence_level).bg, color: getConfidenceStyle(query.confidence_level).color }}
+                            >
+                              {query.confidence_level}
+                            </span>
+                          )}
+                          {query.feedback_type && (
+                            <span className={`badge feedback-badge ${query.feedback_type}`}>
+                              {query.feedback_type === 'helpful' ? '👍' : '👎'}
+                            </span>
+                          )}
+                          {query.cache_hit && (
+                            <span className="badge cache-badge">cached</span>
+                          )}
+                        </div>
+                        <div className="query-meta">
+                          <span>{formatLatency(query.processing_time_ms)}</span>
+                          <span>•</span>
+                          <span>{query.documents_count || 0} docs</span>
+                          <span>•</span>
+                          <span>{formatDate(query.created_at)}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Right Panel - Query Detail */}
+              <div className="conversation-detail-panel">
+                {!selectedQuery && (
+                  <div className="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    <p>Select a query to view details</p>
+                  </div>
+                )}
+
+                {detailLoading && <div className="spinner" />}
+
+                {selectedQuery && queryDetail && !detailLoading && (
+                  <div className="conversation-detail query-detail">
+                    <div className="detail-header">
+                      <h2>Query Details</h2>
+                      <div className="detail-meta">
+                        <span className="meta-item">
+                          <CalendarIcon size={14} />
+                          {formatDate(queryDetail.created_at)}
                         </span>
-                        <span className="message-time">
-                          {new Date(message.created_at).toLocaleTimeString()}
+                        <span className="meta-item">
+                          ID: {queryDetail.query_id?.substring(0, 12)}...
                         </span>
                       </div>
-                      <div className="message-content">
-                        {message.role === 'assistant' ? (
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
-                          </ReactMarkdown>
-                        ) : (
-                          <p>{message.content}</p>
-                        )}
+                    </div>
+
+                    <div className="query-detail-content">
+                      {/* Question */}
+                      <div className="detail-section">
+                        <h3>Question</h3>
+                        <div className="question-text">{queryDetail.question}</div>
                       </div>
-                      {message.metadata && message.metadata.documents && message.metadata.documents.length > 0 && (
-                        <div className="message-metadata">
-                          <div className="metadata-label">Referenced Documents:</div>
-                          <ul className="document-list">
-                            {message.metadata.documents.slice(0, 3).map((doc, idx) => (
-                              <li key={idx}>
-                                <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                                  {doc.title || doc.url}
-                                </a>
-                              </li>
+
+                      {/* Metrics Grid */}
+                      <div className="detail-section">
+                        <h3>Performance Metrics</h3>
+                        <div className="metrics-grid">
+                          <div className="metric">
+                            <span className="metric-label">Intent</span>
+                            <span 
+                              className="metric-value badge"
+                              style={{ backgroundColor: getIntentStyle(queryDetail.intent).bg, color: getIntentStyle(queryDetail.intent).color }}
+                            >
+                              {queryDetail.intent?.replace('_', ' ') || 'N/A'}
+                            </span>
+                          </div>
+                          <div className="metric">
+                            <span className="metric-label">Confidence</span>
+                            <span 
+                              className="metric-value badge"
+                              style={{ backgroundColor: getConfidenceStyle(queryDetail.confidence_level).bg, color: getConfidenceStyle(queryDetail.confidence_level).color }}
+                            >
+                              {queryDetail.confidence_score 
+                                ? `${(queryDetail.confidence_score * 100).toFixed(0)}%` 
+                                : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="metric">
+                            <span className="metric-label">Latency</span>
+                            <span className="metric-value">{formatLatency(queryDetail.processing_time_ms)}</span>
+                          </div>
+                          <div className="metric">
+                            <span className="metric-label">Documents</span>
+                            <span className="metric-value">{queryDetail.documents_count || 0}</span>
+                          </div>
+                          <div className="metric">
+                            <span className="metric-label">Mode</span>
+                            <span className="metric-value">{queryDetail.effective_mode || queryDetail.mode}</span>
+                          </div>
+                          <div className="metric">
+                            <span className="metric-label">Cache Hit</span>
+                            <span className="metric-value">{queryDetail.cache_hit ? 'Yes' : 'No'}</span>
+                          </div>
+                          {queryDetail.llm_tokens_used && (
+                            <div className="metric">
+                              <span className="metric-label">Tokens Used</span>
+                              <span className="metric-value">{queryDetail.llm_tokens_used}</span>
+                            </div>
+                          )}
+                          {queryDetail.strategies_used && (
+                            <div className="metric">
+                              <span className="metric-label">Strategies</span>
+                              <span className="metric-value">
+                                {queryDetail.strategies_used.join(', ')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Answer */}
+                      {queryDetail.answer && (
+                        <div className="detail-section">
+                          <h3>Generated Answer</h3>
+                          <div className="answer-text">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {queryDetail.answer}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Documents */}
+                      {queryDetail.documents && queryDetail.documents.length > 0 && (
+                        <div className="detail-section">
+                          <h3>Retrieved Documents ({queryDetail.documents.length})</h3>
+                          <div className="documents-list">
+                            {queryDetail.documents.map((doc, idx) => (
+                              <div key={idx} className="document-item">
+                                <div className="doc-title">{doc.title || 'Untitled'}</div>
+                                <div className="doc-meta">
+                                  <span>Relevance: {doc.relevance_score?.toFixed(2) || 'N/A'}</span>
+                                  {doc.datasource_id && <span>Source: {doc.datasource_id}</span>}
+                                </div>
+                              </div>
                             ))}
-                          </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Feedback */}
+                      {queryDetail.feedback_type && (
+                        <div className="detail-section">
+                          <h3>User Feedback</h3>
+                          <div className={`feedback-display ${queryDetail.feedback_type}`}>
+                            <span className="feedback-icon">
+                              {queryDetail.feedback_type === 'helpful' ? '👍' : '👎'}
+                            </span>
+                            <span className="feedback-type">{queryDetail.feedback_type}</span>
+                            {queryDetail.feedback_comment && (
+                              <p className="feedback-comment">"{queryDetail.feedback_comment}"</p>
+                            )}
+                            {queryDetail.feedback_at && (
+                              <span className="feedback-time">
+                                Submitted: {formatDate(queryDetail.feedback_at)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error */}
+                      {queryDetail.error && (
+                        <div className="detail-section error-section">
+                          <h3>Error</h3>
+                          <div className="error-message">{queryDetail.error_message}</div>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      )}
+            </div>
+          )}
     </div>
   );
 };

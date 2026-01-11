@@ -25,3 +25,4 @@ export { default as RefreshIcon } from './RefreshIcon.jsx';
 export { default as ChevronLeftIcon } from './ChevronLeftIcon.jsx';
 export { default as ChevronRightIcon } from './ChevronRightIcon.jsx';
 export { default as PlayIcon } from './PlayIcon.jsx';
+export { default as SearchIcon } from './SearchIcon.jsx';

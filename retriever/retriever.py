@@ -75,6 +75,39 @@ class DocumentSubmitResponse(BaseModel):
     resource_id: Optional[str] = None
 
 
+class ContentRetrieveDocument(BaseModel):
+    """A single document to retrieve content for"""
+    url: str = Field(..., description="Document URL")
+    datasource_id: str = Field(..., description="Datasource ID (e.g., 'wfa', 'wfa_causeway')")
+
+
+class ContentRetrieveRequest(BaseModel):
+    """Request model for retrieving document content"""
+    documents: List[ContentRetrieveDocument] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+        description="Documents to retrieve content for"
+    )
+
+
+class ContentRetrieveResult(BaseModel):
+    """Result for a single document content retrieval"""
+    url: str
+    datasource_id: str
+    content: Optional[str] = None
+    success: bool
+    error: Optional[str] = None
+
+
+class ContentRetrieveResponse(BaseModel):
+    """Response model for content retrieval"""
+    results: List[ContentRetrieveResult]
+    total_requested: int
+    total_success: int
+    total_failed: int
+
+
 class SchedulerStatus(BaseModel):
     """Status of the scheduler and scrapers"""
     scheduler_running: bool
@@ -541,6 +574,140 @@ async def submit_file(
         resource_id=None
     )
 
+
+# Map datasource_id prefixes to scraper types for content retrieval
+DATASOURCE_TO_SCRAPER: Dict[str, str] = {
+    "wfa_causeway": "wfa_causeway",  # All wfa_causeway_* datasources use WFACausewayScraper
+    "wfa": "wfa",                     # Standard WFA datasources use WFAScraper
+}
+
+
+def _get_scraper_type_for_datasource(datasource_id: str) -> Optional[str]:
+    """
+    Determine which scraper type to use for a given datasource_id.
+    
+    Matches by prefix, e.g., 'wfa_causeway_wifi7mtg' -> 'wfa_causeway'
+    """
+    for prefix, scraper_type in DATASOURCE_TO_SCRAPER.items():
+        if datasource_id.startswith(prefix):
+            return scraper_type
+    return None
+
+
+@app.post("/retrieve/content", response_model=ContentRetrieveResponse)
+async def retrieve_content(request: ContentRetrieveRequest):
+    """
+    Retrieve full content from document URLs.
+    
+    This endpoint fetches document content from provided URLs and extracts text.
+    Supports multiple document formats:
+    - PDF (.pdf)
+    - Word (.docx) - Note: Legacy .doc files are not supported
+    - PowerPoint (.pptx) - Note: Legacy .ppt files are not supported
+    - Excel (.xlsx) - Note: Legacy .xls files are not supported
+    - HTML web pages
+    
+    For authenticated datasources (e.g., WFA Causeway), this endpoint initializes
+    the appropriate scraper to handle authentication and uses its session.
+    
+    Documents are grouped by datasource to share authenticated sessions efficiently.
+    
+    Note: Only datasources with configured scrapers are supported. Unknown datasources
+    will return an error.
+    """
+    results = []
+    
+    # Group documents by datasource for efficient session sharing
+    docs_by_datasource: Dict[str, List[ContentRetrieveDocument]] = {}
+    for doc in request.documents:
+        if doc.datasource_id not in docs_by_datasource:
+            docs_by_datasource[doc.datasource_id] = []
+        docs_by_datasource[doc.datasource_id].append(doc)
+    
+    # Process each datasource group
+    for datasource_id, docs in docs_by_datasource.items():
+        scraper_type = _get_scraper_type_for_datasource(datasource_id)
+        
+        if scraper_type and scraper_type in SCRAPER_CLASSES:
+            # Use the scraper's authenticated session
+            scraper_class = SCRAPER_CLASSES[scraper_type]
+            logger.info(f"Using {scraper_type} scraper for {len(docs)} documents from {datasource_id}")
+            
+            try:
+                async with scraper_class() as scraper:
+                    # Use the scraper's scrape_resource method which handles:
+                    # - Document detail page navigation
+                    # - Finding download links
+                    # - Content extraction based on document type
+                    # - Metadata extraction (publish date, etc.)
+                    for doc in docs:
+                        try:
+                            # Create a Resource object for the scraper
+                            resource = Resource(
+                                title="",  # Will be extracted if needed
+                                url=doc.url,
+                                category="content_fetch",
+                                datasource_id=doc.datasource_id
+                            )
+                            
+                            # Use scraper's resource extraction
+                            scraped = await scraper.scrape_resource(resource)
+                            
+                            results.append(ContentRetrieveResult(
+                                url=doc.url,
+                                datasource_id=doc.datasource_id,
+                                content=scraped.content if scraped.content else None,
+                                success=bool(scraped.content and len(scraped.content.strip()) > 50),
+                                error=None if scraped.content else "No content extracted"
+                            ))
+                        except asyncio.TimeoutError:
+                            results.append(ContentRetrieveResult(
+                                url=doc.url,
+                                datasource_id=doc.datasource_id,
+                                content=None,
+                                success=False,
+                                error="Request timeout"
+                            ))
+                        except Exception as e:
+                            logger.error(f"Error fetching content from {doc.url}: {e}")
+                            results.append(ContentRetrieveResult(
+                                url=doc.url,
+                                datasource_id=doc.datasource_id,
+                                content=None,
+                                success=False,
+                                error=str(e)
+                            ))
+            except Exception as e:
+                # Scraper initialization failed (e.g., auth failure)
+                logger.error(f"Failed to initialize {scraper_type} scraper: {e}")
+                for doc in docs:
+                    results.append(ContentRetrieveResult(
+                        url=doc.url,
+                        datasource_id=doc.datasource_id,
+                        content=None,
+                        success=False,
+                        error=f"Scraper initialization failed: {str(e)}"
+                    ))
+        else:
+            # No scraper available for this datasource - cannot fetch content
+            logger.warning(f"No scraper available for datasource '{datasource_id}' - cannot fetch content")
+            for doc in docs:
+                results.append(ContentRetrieveResult(
+                    url=doc.url,
+                    datasource_id=doc.datasource_id,
+                    content=None,
+                    success=False,
+                    error=f"No scraper configured for datasource '{datasource_id}'"
+                ))
+    
+    success_count = sum(1 for r in results if r.success)
+    
+    return ContentRetrieveResponse(
+        results=results,
+        total_requested=len(request.documents),
+        total_success=success_count,
+        total_failed=len(request.documents) - success_count
+    )
 
 
 @app.post("/scrape/datasource/{datasource_id}")

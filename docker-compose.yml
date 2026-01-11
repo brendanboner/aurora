@@ -202,7 +202,8 @@ services:
       BACKEND_SERVICE_URL: ${BACKEND_SERVICE_URL:-http://backend:8000}
       CURATOR_SERVICE_URL: ${CURATOR_SERVICE_URL:-http://curator:8000}
       RETRIEVER_SERVICE_URL: ${RETRIEVER_SERVICE_URL:-http://retriever:8000}
-      CONTENT_CREATOR_SERVICE_URL: ${CONTENT_CREATOR_SERVICE_URL:-http://content_creator_service:8003}
+      CONTENT_CREATOR_SERVICE_URL: ${CONTENT_CREATOR_SERVICE_URL:-http://content_creator_service:8000}
+      ORACLE_SERVICE_URL: ${ORACLE_SERVICE_URL:-http://oracle:8000}
       
       # Application Configuration (simplified - single domain derives URL and cookie)
       DEPLOYMENT_DOMAIN: ${DEPLOYMENT_DOMAIN:-localhost}
@@ -289,6 +290,68 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  oracle:
+    build:
+      context: .
+      dockerfile: oracle/Dockerfile
+    container_name: aurora-oracle
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    # Allow container to reach host machine (for SSH tunnel to prod Neo4j)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Neo4j (default/dev)
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-your_neo4j_password_here}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      
+      # Production Neo4j (read-only, via SSH tunnel)
+      # Set USE_PROD_DATA=true to use prod Neo4j instead of dev
+      USE_PROD_DATA: ${ORACLE_USE_PROD_DATA:-false}
+      ORACLE_PROD_NEO4J_URI: ${ORACLE_PROD_NEO4J_URI:-bolt://localhost:7688}
+      ORACLE_PROD_NEO4J_USER: ${ORACLE_PROD_NEO4J_USER:-neo4j}
+      ORACLE_PROD_NEO4J_PASSWORD: ${ORACLE_PROD_NEO4J_PASSWORD:-}
+      ORACLE_PROD_NEO4J_DATABASE: ${ORACLE_PROD_NEO4J_DATABASE:-neo4j}
+      
+      # PostgreSQL (for user preferences)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aurora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aurora_password}
+      POSTGRES_DB: ${POSTGRES_DB:-aurora}
+      
+      # Azure OpenAI
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # OpenTelemetry Configuration
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+      OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
@@ -512,8 +575,6 @@ services:
     restart: unless-stopped
     networks:
       - aurora-network
-    ports:
-      - "${CONTENT_CREATOR_PORT:-8003}:8003"
     environment:
       PG_DSN: postgresql://${POSTGRES_USER:-aurora}:${POSTGRES_PASSWORD:-aurora_password}@postgres:5432/${POSTGRES_DB:-aurora}
       POSTGRES_HOST: postgres
@@ -553,7 +614,7 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3

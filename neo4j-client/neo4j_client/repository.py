@@ -1057,7 +1057,7 @@ class GraphRepository:
         MATCH (r:Resource)
 
         WITH r,
-             (CASE WHEN r.publish_date =~ '\\d{4}-\\d{2}-\\d{2}' THEN r.publish_date ELSE NULL END) AS publish_date_iso,
+             (CASE WHEN r.publish_date =~ '\\d{4}-\\d{2}-\\d{2}.*' THEN substring(r.publish_date, 0, 10) ELSE NULL END) AS publish_date_iso,
              topics_param, orgs_param, people_param, category_param, doc_type_param, start_param, end_param, limit_param
 
         // Collect related entities
@@ -1248,9 +1248,10 @@ class GraphRepository:
                     date(datetime(r.scraped_at))
                  ) DESC
 
-        // Limit to top 3 documents for focused results (only show highly relevant matches)
-        // Unless user explicitly requests more with a higher limit
-        LIMIT CASE WHEN $limit < 3 THEN $limit ELSE 3 END        RETURN
+        // Limit to requested number of documents
+        LIMIT $limit
+        
+        RETURN
             r           AS resource,
             topics      AS topics,
             people      AS people,

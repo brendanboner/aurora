@@ -29,7 +29,7 @@ validate-env:
 	@echo "✅ Environment OK"
 
 run-local:
-	uvicorn src.api:app --reload --port 8003
+	uvicorn src.api:app --reload --port 8000
 
 deploy-shared: validate-env
 	@echo "🛑 Stopping old content creator container (if running)..."
@@ -42,7 +42,7 @@ deploy-shared: validate-env
 	docker run -d \
 		--name $(SHARED_SERVICE_CONTAINER) \
 		--network $(DOCKER_NETWORK) \
-		-p 8003:8003 \
+		-p 8000:8000 \
 		-e PG_DSN="$(PG_DSN)" \
 		-e POSTGRES_HOST="$(POSTGRES_HOST)" \
 		-e POSTGRES_PORT="$(POSTGRES_PORT)" \
@@ -79,12 +79,12 @@ trigger-agent:
 		AGENT="$(AGENT_ID)"; \
 	else \
 		echo "Resolving agent '$(AGENT_NAME)'..."; \
-		AGENT=$$(curl -s http://localhost:8003/agents?include_disabled=true | jq -r '.[] | select(.name | ascii_downcase == "$(shell echo $(AGENT_NAME) | tr A-Z a-z)") | .id'); \
+		AGENT=$$(curl -s http://localhost:8000/agents?include_disabled=true | jq -r '.[] | select(.name | ascii_downcase == "$(shell echo $(AGENT_NAME) | tr A-Z a-z)") | .id'); \
 		if [ -z "$$AGENT" ]; then echo "❌ Agent '$(AGENT_NAME)' not found"; exit 1; fi; \
 	fi; \
 	FORCE_FLAG=$$([ -n "$(FORCE)" ] && echo "true" || echo "false"); \
 	LIMIT_VAL=$${LIMIT:-5}; \
 	echo "🚀 Triggering agent $$AGENT (force=$$FORCE_FLAG, limit=$$LIMIT_VAL)"; \
-	curl -s -X POST "http://localhost:8003/agents/$$AGENT/trigger" \
+	curl -s -X POST "http://localhost:8000/agents/$$AGENT/trigger" \
 		-H "Content-Type: application/json" \
 		-d "{\"force\": $$FORCE_FLAG, \"limit\": $$LIMIT_VAL}" | jq .

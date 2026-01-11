@@ -12,7 +12,7 @@ Autonomous CreatorAgents generate personalised social content for Aurora. This F
 ```bash
 cd content_creator_service
 pip install -e .
-uvicorn src.api:app --reload --port 8003
+uvicorn src.api:app --reload --port 8000
 ```
 
 Environment variables follow the existing Aurora conventions (Postgres, Neo4j, RabbitMQ, Azure OpenAI). See `src/settings.py` for the complete list.
