@@ -9,7 +9,8 @@
 #   make deploy        - Deploy production services from ECR
 #   make start         - Start all services
 #   make stop          - Stop all services
-#   make restart       - Restart all services
+#   make restart       - Restart all services (in place)
+#   make restart-nginx - Restart nginx only
 #   make logs          - View logs (all services)
 #   make status        - Check service status
 #   make backup        - Run backup now
@@ -43,7 +44,8 @@ help:
 	@echo "  make deploy        - Deploy production (setup backups + start services)"
 	@echo "  make start         - Start all services"
 	@echo "  make stop          - Stop all services"
-	@echo "  make restart       - Restart all services"
+	@echo "  make restart       - Restart all services (in place)"
+	@echo "  make restart-nginx - Restart nginx only"
 	@echo "  make update        - Pull latest images and restart"
 	@echo ""
 	@echo "$(GREEN)Monitoring:$(NC)"
@@ -100,6 +102,11 @@ restart:
 	@echo "$(CYAN)Restarting all services...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) restart
 	@echo "$(GREEN)✓ Services restarted$(NC)"
+
+restart-nginx:
+	@echo "$(CYAN)Restarting nginx...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) restart nginx
+	@echo "$(GREEN)✓ Nginx restarted$(NC)"
 
 update:
 	@echo "$(CYAN)Updating services...$(NC)"

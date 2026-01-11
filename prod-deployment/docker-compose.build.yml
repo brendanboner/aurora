@@ -599,6 +599,9 @@ services:
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
       
+      # Retrieval timeout (prod has more data, needs longer timeout)
+      RETRIEVAL_TIMEOUT: 30.0
+      
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
