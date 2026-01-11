@@ -650,8 +650,9 @@ async def retrieve_content(request: ContentRetrieveRequest):
                                 datasource_id=doc.datasource_id
                             )
                             
-                            # Use scraper's resource extraction
-                            scraped = await scraper.scrape_resource(resource)
+                            # Use scraper's resource extraction with force_fetch=True
+                            # to always retrieve content even if document hasn't changed
+                            scraped = await scraper.scrape_resource(resource, force_fetch=True)
                             
                             results.append(ContentRetrieveResult(
                                 url=doc.url,

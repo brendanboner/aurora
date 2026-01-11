@@ -700,7 +700,7 @@ class WFACausewayScraper(BaseScraper):
             logger.warning(f"Error extracting revision date: {e}")
             return None
     
-    async def scrape_resource(self, resource: Resource) -> Resource:
+    async def scrape_resource(self, resource: Resource, force_fetch: bool = False) -> Resource:
         """
         Scrape content from an individual Causeway portal document.
         
@@ -714,10 +714,11 @@ class WFACausewayScraper(BaseScraper):
         
         Args:
             resource: Resource object with URL to scrape
+            force_fetch: If True, always fetch content even if document hasn't changed
             
         Returns:
             Resource object with content populated, or resource with content=None
-            if the document hasn't changed since last scrape
+            if the document hasn't changed since last scrape (and force_fetch=False)
         """
         logger.info(f"Scraping resource: {resource.title} -> {resource.url}")
         
@@ -745,8 +746,9 @@ class WFACausewayScraper(BaseScraper):
                         logger.debug(f"Extracted publish date: {publish_date}")
                         
                         # Check if document has been updated since we last scraped it
-                        # This avoids re-processing unchanged documents
-                        if not self.is_resource_updated(resource.url, publish_date):
+                        # This avoids re-processing unchanged documents during bulk scrapes
+                        # Skip this check if force_fetch=True (e.g., for content retrieval)
+                        if not force_fetch and not self.is_resource_updated(resource.url, publish_date):
                             logger.info(f"Skipping unchanged document: {resource.title} (revision: {publish_date})")
                             resource.content = None  # Signal to caller not to publish
                             self.clear_current_processing()
