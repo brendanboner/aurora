@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon } from '../components/icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
@@ -194,6 +194,16 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
               )}
             </div>
           )}
+
+          {/* User Guide - Always visible at the bottom */}
+          <Link 
+            to="/guide" 
+            className={`sidebar-item ${isActive('/guide') ? 'active' : ''}`}
+            title="User Guide"
+          >
+            <span className="sidebar-icon"><BookIcon /></span>
+            {isOpen && <span className="sidebar-label">User Guide</span>}
+          </Link>
         </nav>
 
         {/* Status indicator at bottom */}

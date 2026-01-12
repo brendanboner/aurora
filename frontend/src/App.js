@@ -20,6 +20,7 @@ import SocialFeed from './pages/SocialFeed';
 import AgentManagement from './pages/AgentManagement';
 import AgentPreferences from './pages/AgentPreferences';
 import DocumentSearch from './pages/DocumentSearch';
+import UserGuide from './pages/UserGuide';
 import { testBackendConnection } from './services/api';
 
 // Pages that should have no padding in the page-container
@@ -209,6 +210,12 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                                     <AgentManagement />
                                   </ProtectedRoute>
                                 } 
+                              />
+                              
+                              {/* User Guide route */}
+                              <Route 
+                                path="/guide" 
+                                element={<UserGuide />} 
                               />
                               
                               {/* Redirect unknown routes to home */}
