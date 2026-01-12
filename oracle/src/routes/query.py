@@ -534,7 +534,7 @@ async def enhance_answer(
     user: Optional[dict] = Depends(get_user_context)
 ) -> EnhanceResponse:
     """
-    Enhance an answer by analyzing full document content.
+    Enhance an answer by analyzing document content.
     
     This endpoint provides more detailed answers by:
     1. Fetching full content for the specified documents

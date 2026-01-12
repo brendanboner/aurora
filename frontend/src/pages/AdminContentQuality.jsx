@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { WarningIcon } from '../components/icons';
 import './AdminContentQuality.css';
 
 const AdminContentQuality = () => {
@@ -394,7 +395,7 @@ const AdminContentQuality = () => {
 
       {/* Warning Box */}
       <div className="warning-box">
-        <h4>⚠️ Important Notes</h4>
+        <h4><WarningIcon size={16} style={{marginRight: '8px'}} />Important Notes</h4>
         <ul>
           <li>These settings apply to new posts only. Existing posts are not affected.</li>
           <li>Changes are runtime only and will reset on service restart unless persisted via environment variables.</li>

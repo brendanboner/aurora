@@ -7,7 +7,7 @@ import {
   getOracleQueryStats 
 } from '../services/api';
 import './Admin.css';
-import { ChatIcon, CalendarIcon, RefreshIcon } from '../components/icons';
+import { ChatIcon, CalendarIcon, RefreshIcon, ThumbsUpIcon, ThumbsDownIcon } from '../components/icons';
 
 // Intent badge colors
 const INTENT_COLORS = {
@@ -276,7 +276,7 @@ const AdminChatSessions = () => {
                           )}
                           {query.feedback_type && (
                             <span className={`badge feedback-badge ${query.feedback_type}`}>
-                              {query.feedback_type === 'helpful' ? '👍' : '👎'}
+                              {query.feedback_type === 'helpful' ? <ThumbsUpIcon size={14} /> : <ThumbsDownIcon size={14} />}
                             </span>
                           )}
                           {query.cache_hit && (
@@ -425,7 +425,7 @@ const AdminChatSessions = () => {
                           <h3>User Feedback</h3>
                           <div className={`feedback-display ${queryDetail.feedback_type}`}>
                             <span className="feedback-icon">
-                              {queryDetail.feedback_type === 'helpful' ? '👍' : '👎'}
+                              {queryDetail.feedback_type === 'helpful' ? <ThumbsUpIcon size={16} /> : <ThumbsDownIcon size={16} />}
                             </span>
                             <span className="feedback-type">{queryDetail.feedback_type}</span>
                             {queryDetail.feedback_comment && (

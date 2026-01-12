@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon, SearchIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon } from '../components/icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
@@ -173,14 +173,14 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                     to="/admin/system-config" 
                     className={`sidebar-subitem ${isActive('/admin/system-config') ? 'active' : ''}`}
                   >
-                    <span className="sidebar-icon">⚙️</span>
+                    <span className="sidebar-icon"><SettingsIcon size={16} /></span>
                     <span>System Config</span>
                   </Link>
                   <Link 
                     to="/admin/content-quality" 
                     className={`sidebar-subitem ${isActive('/admin/content-quality') ? 'active' : ''}`}
                   >
-                    <span className="sidebar-icon">🎯</span>
+                    <span className="sidebar-icon"><TargetIcon size={16} /></span>
                     <span>Content Quality</span>
                   </Link>
                   <Link 

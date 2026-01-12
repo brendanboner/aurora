@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Events.css';
-import { CalendarIcon, RefreshIcon, CheckIcon, LinkIcon } from '../components/icons';
+import { CalendarIcon, RefreshIcon, CheckIcon, LinkIcon, EyeIcon, EyeOffIcon } from '../components/icons';
 
 const Events = () => {
   const navigate = useNavigate();
@@ -19,6 +19,7 @@ const Events = () => {
   const [datasourceId, setDatasourceId] = useState('');
   const [sortBy, setSortBy] = useState('start_date');
   const [sortOrder, setSortOrder] = useState('asc');
+  const [showCancelled, setShowCancelled] = useState(true); // Toggle for cancelled events
 
   // Fetch available filter options on mount
   useEffect(() => {
@@ -126,6 +127,16 @@ const Events = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // Filter events based on cancelled toggle
+  const getFilteredEvents = () => {
+    if (showCancelled) {
+      return events; // Show all events including cancelled
+    }
+    return events.filter(event => event.status !== 'cancelled');
+  };
+
+  const filteredEvents = getFilteredEvents();
+
   if (loading && events.length === 0) {
     return (
       <div className="events-container">
@@ -202,16 +213,26 @@ const Events = () => {
             <option value="desc">Descending</option>
           </select>
         </div>
+        
+        <div className="filter-group">
+          <label>Cancelled Events:</label>
+          <button
+            className={`toggle-button ${showCancelled ? 'active' : ''}`}
+            onClick={() => setShowCancelled(!showCancelled)}
+          >
+            {showCancelled ? <EyeIcon size={16} /> : <EyeOffIcon size={16} />}
+          </button>
+        </div>
       </div>
 
       <div className="events-grid">
-        {events.length === 0 ? (
+        {filteredEvents.length === 0 ? (
           <div className="no-events">
             <CalendarIcon size={48} color="#999" />
             <p>No events found</p>
           </div>
         ) : (
-          events.map((event) => (
+          filteredEvents.map((event) => (
             <div
               key={event.url_hash}
               className={`event-card ${!isUpcoming(event.start_date) ? 'past-event' : ''}`}

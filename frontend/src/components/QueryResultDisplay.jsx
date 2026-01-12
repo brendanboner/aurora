@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { BookIcon, CalendarIcon, BuildingIcon, SearchIcon, HourglassIcon } from './icons';
+import { BookIcon, CalendarIcon, BuildingIcon, SearchIcon, HourglassIcon, SparkleIcon, BarChartIcon, ThumbsUpIcon, ThumbsDownIcon, LightbulbIcon, ToolIcon } from './icons';
 import ChevronLeftIcon from './icons/ChevronLeftIcon';
 import ChevronRightIcon from './icons/ChevronRightIcon';
 import Icon from './Icon';
@@ -24,9 +24,32 @@ const DISPLAY_MODES = {
  */
 const formatMatchReason = (reason) => {
   // Replace "Keyword match" with "Entity match"
-  return reason
+  let formattedReason = reason
     .replace(/Keyword match/gi, 'Entity match')
     .replace(/keyword/gi, 'entity');
+  
+  // Remove common emojis and replace with descriptive text
+  formattedReason = formattedReason
+    .replace(/🔍/g, 'Search match: ')
+    .replace(/📄/g, 'Document type: ')
+    .replace(/🏢/g, 'Organization: ')
+    .replace(/📅/g, 'Date relevance: ')
+    .replace(/📊/g, 'Data match: ')
+    .replace(/📈/g, 'Trending topic: ')
+    .replace(/💡/g, 'Key insight: ')
+    .replace(/⚠️/g, 'Note: ')
+    .replace(/✨/g, 'Enhanced: ')
+    .replace(/⭐/g, 'Important: ')
+    .replace(/★/g, 'Featured: ')
+    .replace(/🌟/g, 'Highlighted: ')
+    .replace(/🔧/g, 'Technical: ')
+    // Remove any remaining emojis (Unicode emoji range)
+    .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+    // Clean up any double spaces or leading/trailing spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  return formattedReason;
 };
 
 /**
@@ -74,7 +97,7 @@ const shouldShowSuggestions = (message) => {
  * Props:
  * - message: The message object containing query results
  * - isAdmin: Whether to show admin-only features
- * - onEnhance: Callback to trigger enhance with full document content
+ * - onEnhance: Callback to trigger enhance with document content
  * - onToggleEnhanced: Callback to toggle between original and enhanced answer
  * - isEnhancing: Whether enhance is currently in progress
  * - onFeedback: Callback for user feedback (queryId, feedbackType) => void
@@ -228,7 +251,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
               className={`mode-tab ${displayMode === DISPLAY_MODES.DEBUG ? 'active' : ''}`}
               onClick={() => setDisplayMode(DISPLAY_MODES.DEBUG)}
             >
-              🔧 Debug
+              <Icon Component={ToolIcon} size={14} /> Debug
             </button>
           )}
         </div>
@@ -240,14 +263,14 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                 className="enhance-button"
                 onClick={onEnhance}
                 disabled={isEnhancing}
-                title={hasAnswer ? "Get a more detailed answer using full document content" : "Generate an answer from these documents"}
+                title={hasAnswer ? "Get a more detailed answer using document content" : "Generate an answer from these documents"}
               >
                 {isEnhancing ? (
                   <>
                     <Icon Component={HourglassIcon} size={14} /> Enhancing...
                   </>
                 ) : (
-                  <>{hasAnswer ? '✨ Enhance' : '✨ Generate Answer'}</>
+                  <><Icon Component={SparkleIcon} size={14} /> {hasAnswer ? 'Enhance' : 'Generate Answer'}</>
                 )}
               </button>
             )}
@@ -258,9 +281,9 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                 title={message.showingEnhanced ? 'Switch to graph summary answer' : 'Switch to enhanced answer'}
               >
                 {message.showingEnhanced ? (
-                  <>📊 Show Graph Summary</>
+                  <><Icon Component={BarChartIcon} size={14} /> Show Graph Summary</>
                 ) : (
-                  <>✨ Show Enhanced</>
+                  <><Icon Component={SparkleIcon} size={14} /> Show Enhanced</>
                 )}
               </button>
             )}
@@ -374,7 +397,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
         {shouldShowSuggestions(message) && (
           <div className="query-suggestions-section">
             <div className="suggestions-header">
-              <span className="suggestions-icon">💡</span>
+              <Icon Component={LightbulbIcon} size={16} className="suggestions-icon" />
               <strong>Try a different query?</strong>
             </div>
             <div className="suggestions-list-inline">
@@ -475,7 +498,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
             {/* Stats on the right */}
             {statsDisplay && (
               <div className="answer-stats">
-                {isShowingEnhanced ? '✨' : '📊'} {statsDisplay}
+                <Icon Component={isShowingEnhanced ? SparkleIcon : BarChartIcon} size={14} /> {statsDisplay}
               </div>
             )}
           </div>
@@ -537,7 +560,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                 disabled={feedbackSubmitting || feedbackGiven !== null}
                 title="Yes, this was helpful"
               >
-                👍
+                <Icon Component={ThumbsUpIcon} size={16} />
               </button>
               <button
                 className={`feedback-btn ${feedbackGiven === 'not_helpful' ? 'active negative' : ''}`}
@@ -545,7 +568,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                 disabled={feedbackSubmitting || feedbackGiven !== null}
                 title="No, this wasn't helpful"
               >
-                👎
+                <Icon Component={ThumbsDownIcon} size={16} />
               </button>
             </div>
           </div>
@@ -555,7 +578,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
         {shouldShowSuggestions(message) && (
           <div className="query-suggestions-section">
             <div className="suggestions-header">
-              <span className="suggestions-icon">💡</span>
+              <Icon Component={LightbulbIcon} size={16} className="suggestions-icon" />
               <strong>Try a different query?</strong>
             </div>
             <div className="suggestions-list-inline">

@@ -146,7 +146,7 @@ class EnhanceMetadata(BaseModel):
 
 class EnhanceResponse(BaseModel):
     """Response model for /oracle/enhance endpoint."""
-    enhanced_answer: str = Field(..., description="The enhanced answer based on full document content")
+    enhanced_answer: str = Field(..., description="The enhanced answer based on document content")
     direct_quotes: list[DirectQuote] = Field(default_factory=list, description="Direct quotes supporting the answer")
     citations: list[Citation] = Field(default_factory=list, description="Citations to source documents")
     metadata: EnhanceMetadata = Field(..., description="Enhancement process metadata")

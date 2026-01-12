@@ -57,7 +57,7 @@ const Header = ({ onMenuToggle }) => {
         </button>
         <ExtremeNetworksLogo height={36} />
         <div className="header-title">
-          <span className="brand-name"><b>Extreme</b> Platform ONE | Aurora</span>
+          <span className="brand-name"><b>AURORA</b></span>
         </div>
       </div>
 

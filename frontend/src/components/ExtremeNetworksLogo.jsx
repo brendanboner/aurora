@@ -1,11 +1,11 @@
 import React from 'react';
 
 const ExtremeNetworksLogo = ({ height = 36, width = 36 }) => {
-  const src = 'https://avatars.githubusercontent.com/u/8524391';
+  const src = '/octo_logo.png';
   return (
     <img
       src={src}
-      alt="Extreme Networks"
+      alt="Octo Aurora"
       height={height}
       width={width}
       style={{

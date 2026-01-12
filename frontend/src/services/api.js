@@ -13,12 +13,37 @@ const creatorApi = axios.create({
 // Mirror global 401 handling to keep sessions consistent
 creatorApi.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
+  async (error) => {
+    const originalRequest = error.config;
+    
+    if (error.response?.status === 401 && !originalRequest._retry) {
       const currentPath = window.location.pathname;
-      if (currentPath !== '/login' && !currentPath.includes('/api/auth/')) {
-        console.log('Authentication required (creatorApi) - redirecting to login');
+      if (currentPath === '/login' || currentPath.includes('/api/auth/')) {
+        return Promise.reject(error);
+      }
+      
+      originalRequest._retry = true;
+      
+      try {
+        console.log('creatorApi: Testing session refresh');
+        
+        // Create separate client to avoid interceptor loops
+        const authCheckClient = axios.create({
+          withCredentials: true,
+          timeout: 10000,
+        });
+        
+        const authResponse = await authCheckClient.get('/api/auth/me');
+        
+        if (authResponse.status === 200) {
+          console.log('creatorApi: Session refreshed, retrying request');
+          await new Promise(resolve => setTimeout(resolve, 100));
+          return creatorApi.request(originalRequest);
+        }
+      } catch (authError) {
+        console.log('creatorApi: Session cannot be restored - redirecting to login');
         window.location.href = '/login';
+        return Promise.reject(error);
       }
     }
     return Promise.reject(error);
@@ -184,7 +209,7 @@ export const sendOracleQuery = async (userId, question, options = {}) => {
   return response.data;
 };
 
-// Oracle Enhance - Get detailed answer by analyzing full document content (Phase 5)
+// Oracle Enhance - Get detailed answer by analyzing document content (Phase 5)
 export const sendEnhanceQuery = async (question, documents) => {
   // documents should be array of { url, datasource_id, title }
   const payload = {

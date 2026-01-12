@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext(undefined);
@@ -9,23 +9,32 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkAuthStatus();
+    
+    // Set up periodic session check (every 5 minutes)
+    const sessionCheckInterval = setInterval(checkAuthStatus, 5 * 60 * 1000);
+    
+    return () => clearInterval(sessionCheckInterval);
   }, []);
 
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
     try {
       // Check if user is authenticated by calling /api/auth/me
-      // This will use httpOnly cookies automatically
+      // This will use httpOnly cookies automatically and trigger refresh if needed
       const response = await axios.get('/api/auth/me', {
         withCredentials: true, // Include httpOnly cookies
       });
       setUser(response.data);
     } catch (error) {
       // Not authenticated or token expired
+      // Only log if we had a user before (to avoid spam on startup)
+      if (user && error.response?.status === 401) {
+        console.log('Session expired, user needs to re-authenticate');
+      }
       setUser(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const login = () => {
     // Redirect to auth service login endpoint

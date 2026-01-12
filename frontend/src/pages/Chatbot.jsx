@@ -3,7 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon } from '../components/icons';
+import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, SparkleIcon } from '../components/icons';
+import Icon from '../components/Icon';
 import QueryResultDisplay from '../components/QueryResultDisplay';
 import DatasourceMention from '../components/DatasourceMention';
 import './Chatbot.css';
@@ -68,13 +69,13 @@ const Chatbot = ({ backendStatus }) => {
 
 **Tips for effective queries:**
 
-🔍 **Include specific topics** — Wi-Fi 6/6E/7/8, 802.11ax/be/bn, 6 GHz, MLO, Matter, Thread, Bluetooth, 5G/6G
+**Include specific topics** — Wi-Fi 6/6E/7/8, 802.11ax/be/bn, 6 GHz, MLO, Matter, Thread, Bluetooth, 5G/6G
 
-🏢 **Mention organizations** — Wi-Fi Alliance, IEEE, 3GPP, Qualcomm, Broadcom, Intel, MediaTek
+**Mention organizations** — Wi-Fi Alliance, IEEE, 3GPP, Qualcomm, Broadcom, Intel, MediaTek
 
-📅 **Add time context** — "last week", "last month", "in 2025", or specific dates
+**Add time context** — "last week", "last month", "in 2025", or specific dates
 
-📄 **Specify document types** — press release, whitepaper, blog, meeting minutes
+**Specify document types** — press release, whitepaper, blog, meeting minutes
 
 **Example queries:**
 - "What's new with Wi-Fi 8 in the last month?"
@@ -83,6 +84,53 @@ const Chatbot = ({ backendStatus }) => {
 - "Compare Wi-Fi 6E and Wi-Fi 7 features"
 
 What would you like to know?`;
+
+  // Welcome message JSX with icons
+  const getWelcomeMessageJSX = (email) => (
+    <div className="welcome-message">
+      <p>{`Hello ${email}! I'm Aurora, your knowledge assistant for wireless standards and industry news.`}</p>
+      
+      <p><strong>Tips for effective queries:</strong></p>
+      
+      <div className="welcome-tip">
+        <SearchIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
+        <strong>Include specific topics</strong> — Wi-Fi 6/6E/7/8, 802.11ax/be/bn, 6 GHz, MLO, Matter, Thread, Bluetooth, 5G/6G
+      </div>
+      
+      <div className="welcome-tip">
+        <BuildingIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
+        <strong>Mention organizations</strong> — Wi-Fi Alliance, IEEE, 3GPP, Qualcomm, Broadcom, Intel, MediaTek
+      </div>
+      
+      <div className="welcome-tip">
+        <CalendarIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
+        <strong>Add time context</strong> — "last week", "last month", "in 2025", or specific dates
+      </div>
+      
+      <div className="welcome-tip">
+        <DocumentIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
+        <strong>Specify document types</strong> — press release, whitepaper, blog, meeting minutes
+      </div>
+      
+      <div className="welcome-enhance-info">
+        <p>
+          If you need more detailed information or find the answer quality lacking, click the <strong>Enhance</strong> button to get a comprehensive response using document content.
+        </p>
+      </div>
+      
+      <div className="welcome-examples">
+        <p><strong>Example queries:</strong></p>
+        <ul>
+          <li>"What's new with Wi-Fi 8 in the last month?"</li>
+          <li>"Show me Wi-Fi Alliance press releases about Matter"</li>
+          <li>"Which companies are working on 802.11bn?"</li>
+          <li>"Compare Wi-Fi 6E and Wi-Fi 7 features"</li>
+        </ul>
+      </div>
+      
+      <p>What would you like to know?</p>
+    </div>
+  );
 
   const getSimpleWelcomeMessage = () => 'Hello! I\'m Aurora, your knowledge management assistant. Please log in to start chatting.';
 
@@ -120,6 +168,8 @@ What would you like to know?`;
           {
             role: 'assistant',
             content: getWelcomeMessage(user.email),
+            isWelcomeMessage: true,
+            userEmail: user.email,
             timestamp: new Date(),
           },
         ]);
@@ -130,6 +180,8 @@ What would you like to know?`;
         {
           role: 'assistant',
           content: getWelcomeMessage(user.email),
+          isWelcomeMessage: true,
+          userEmail: user.email,
           timestamp: new Date(),
         },
       ]);
@@ -480,6 +532,8 @@ What would you like to know?`;
     const welcomeMessage = {
       role: 'assistant',
       content: getWelcomeMessage(user.email),
+      isWelcomeMessage: true,
+      userEmail: user.email,
       timestamp: new Date(),
     };
     
@@ -572,9 +626,13 @@ What would you like to know?`;
                   {/* For welcome messages or simple responses without documents */}
                   {!message.documents?.length && !message.citations?.length && (
                     <div className="message-text">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {message.content}
-                      </ReactMarkdown>
+                      {message.isWelcomeMessage ? (
+                        getWelcomeMessageJSX(message.userEmail)
+                      ) : (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {message.content}
+                        </ReactMarkdown>
+                      )}
                     </div>
                   )}
                   
@@ -623,7 +681,9 @@ What would you like to know?`;
         <div className="query-suggestion-overlay">
           <div className="query-suggestion-dialog">
             <div className="suggestion-header">
-              <span className="suggestion-icon">💡</span>
+              <span className="suggestion-icon">
+                <Icon Component={LightbulbIcon} size={16} />
+              </span>
               <h3>{querySuggestion.suggested_query ? 'Improve Your Query?' : 'Query Could Be Better'}</h3>
               <button 
                 className="suggestion-close-btn"
@@ -661,7 +721,7 @@ What would you like to know?`;
                   <span className="suggestion-reason">{querySuggestion.suggestion_reason}</span>
                 ) : (
                   <span className="suggestion-reason">
-                    💡 Tip: Include topics (Wi-Fi 7, HaLow, Matter), organizations (Wi-Fi Alliance), or time context (last month)
+                    <Icon Component={LightbulbIcon} size={16} style={{marginRight: '4px'}} /> Tip: Include topics (Wi-Fi 7, HaLow, Matter), organizations (Wi-Fi Alliance), or time context (last month)
                   </span>
                 )}
               </div>
@@ -736,7 +796,7 @@ What would you like to know?`;
             onChange={handleInputChange}
             onKeyPress={handleKeyPress}
             placeholder={user ? "Ask me anything... (use @datasource to filter)" : "Please log in first..."}
-            rows="3"
+            rows="2"
             disabled={!user || isLoading || querySuggestion || backendStatus !== 'connected'}
           />
           <button

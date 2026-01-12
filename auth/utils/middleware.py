@@ -43,6 +43,7 @@ async def validate_request_token(request: Request) -> dict:
         # If access token expired, try to refresh
         if "expired" in str(e.detail).lower() and refresh_token:
             try:
+                logger.info(f"Access token expired, attempting refresh for user session")
                 # Get new tokens using refresh token (includes both access_token and id_token)
                 new_tokens = await refresh_access_token(refresh_token)
                 new_access_token = new_tokens["access_token"]
@@ -55,19 +56,23 @@ async def validate_request_token(request: Request) -> dict:
                     # Store both tokens for response (will be set by proxy)
                     request.state.new_access_token = new_access_token
                     request.state.new_id_token = new_id_token
+                    logger.info(f"Successfully refreshed tokens for user: {user_info.get('email')}")
                 else:
                     # Fallback: extract from access token if no ID token
                     token_claims = await validate_jwt_token(new_access_token)
                     user_info = extract_user_info(token_claims)
                     request.state.new_access_token = new_access_token
+                    logger.info(f"Successfully refreshed access token for user: {user_info.get('email')}")
                 
                 return user_info
             
-            except Exception:
+            except Exception as refresh_error:
+                logger.warning(f"Token refresh failed: {refresh_error}. Session expired - login required.")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token refresh failed. Please login again."
+                    detail="Session expired. Please login again."
                 )
         
         # Re-raise original exception if not expired or no refresh token
+        logger.info(f"Token validation failed: {e.detail}. Refresh not attempted.")
         raise e

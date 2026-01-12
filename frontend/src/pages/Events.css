@@ -278,3 +278,34 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Toggle button styling */
+.toggle-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  line-height: 0%;
+}
+
+.toggle-button:hover {
+  border-color: var(--primary);
+  background: var(--muted);
+}
+
+.toggle-button.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.toggle-button.active:hover {
+  background: var(--primary);
+  opacity: 0.9;
+}

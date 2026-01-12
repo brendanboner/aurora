@@ -1,7 +1,7 @@
 """Enhanced Answer Generation Prompts for Oracle Service.
 
 These prompts are specifically designed for Phase 5 "Enhanced Answers" which uses
-full document content (chunked and re-ranked) instead of just summaries.
+document content (chunked and re-ranked) instead of just summaries.
 
 The enhanced prompts focus on:
 1. Direct quote extraction from source passages
