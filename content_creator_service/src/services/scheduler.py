@@ -140,29 +140,46 @@ class AgentScheduler:
             execution_start = None
         
         try:
+            logger.info("Starting agent execution for %s (force=%s, limit=%s)", agent.name, force, limit)
+            logger.info("Agent %s config: topics=%s, orgs=%s, threshold=%s, cadence=%s, enabled=%s", 
+                       agent.name, agent.expertise_topics, agent.expertise_organisations, 
+                       agent.importance_threshold, agent.posting_cadence, agent.enabled)
+            
             events = self._monitor.collect_for_agent(agent, limit=limit or self._event_sample_limit)
+            logger.info("Collected %d events for agent %s", len(events), agent.name)
+            
             event = self._select_event(agent, events, allow_repeat=allow_repeat)
             if event is None:
-                logger.debug("Agent %s has no new events", agent.name)
+                logger.info("Agent %s has no new events (total events: %d, last_cursor: %s)", 
+                           agent.name, len(events), agent.last_event_cursor)
                 return None, None
+            logger.info("Selected event for agent %s: %s (importance: %s)", 
+                       agent.name, event.title[:50] if event.title else "No title", 
+                       getattr(event, 'importance', 'unknown'))
+            
             if not force and not self._event_meets_importance(agent, event):
-                logger.debug("Agent %s event below importance threshold", agent.name)
+                logger.info("Agent %s event below importance threshold (event: %s, threshold: %s)", 
+                           agent.name, getattr(event, 'importance', 'unknown'), agent.importance_threshold)
                 return None, event
             if not force and not self._should_run_agent(agent, now):
-                logger.debug("Agent %s skipped due to cadence window", agent.name)
+                logger.info("Agent %s skipped due to cadence window (cadence: %s, last_run: %s)", 
+                           agent.name, agent.posting_cadence, agent.last_run_at)
                 return None, event
+            logger.info("Attempting to generate post for agent %s with topics: %s, orgs: %s", 
+                       agent.name, event.topics or agent.expertise_topics, 
+                       event.organisations or agent.expertise_organisations)
             payload = self._generation_service.generate_post_payload(
                 agent,
                 topics=event.topics or agent.expertise_topics,
                 organisations=event.organisations or agent.expertise_organisations,
             )
             if not payload:
-                logger.info("Agent %s generation returned no content", agent.name)
+                logger.info("Agent %s generation returned no content - check Neo4j data and LLM connectivity", agent.name)
                 self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
                 return None, event
             body = payload.get("body") or payload.get("summary")
             if not body:
-                logger.info("Agent %s produced empty body", agent.name)
+                logger.info("Agent %s produced empty body (payload keys: %s)", agent.name, list(payload.keys()))
                 self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=False)
                 return None, event
             tags = payload.get("tags") or event.topics or agent.expertise_topics
@@ -217,19 +234,41 @@ class AgentScheduler:
         events: list[KnowledgeEvent],
         allow_repeat: bool = False,
     ) -> Optional[KnowledgeEvent]:
+        logger.info("Selecting event for agent %s: %d events available, last_cursor=%s, allow_repeat=%s", 
+                   agent.name, len(events), agent.last_event_cursor, allow_repeat)
+        
         if not events:
+            logger.info("No events available for agent %s", agent.name)
             return None
+        
         cursor = agent.last_event_cursor
-        for event in events:
+        selected_event = None
+        
+        for i, event in enumerate(events):
             fingerprint = event.fingerprint()
+            logger.debug("Event %d for agent %s: fingerprint=%s, title='%s'", 
+                        i, agent.name, fingerprint, event.title[:50] if event.title else "No title")
             if not fingerprint:
+                logger.debug("Skipping event %d - no fingerprint", i)
                 continue
             if cursor != fingerprint or allow_repeat:
-                return event
-        # All events already processed; allow digest cadences with first item
-        if self._normalise_cadence(agent.posting_cadence) in {"daily", "daily-digest", "weekly", "weekly-digest"}:
-            return events[0]
-        return None
+                selected_event = event
+                logger.info("Selected event %d for agent %s: fingerprint=%s, title='%s'", 
+                           i, agent.name, fingerprint, event.title[:50] if event.title else "No title")
+                break
+        
+        if not selected_event:
+            # All events already processed; allow digest cadences with first item
+            cadence = self._normalise_cadence(agent.posting_cadence)
+            if cadence in {"daily", "daily-digest", "weekly", "weekly-digest"}:
+                logger.info("All events processed, using first event for digest cadence (%s) for agent %s", 
+                           cadence, agent.name)
+                selected_event = events[0]
+            else:
+                logger.info("All events already processed and not digest cadence (%s) for agent %s", 
+                           cadence, agent.name)
+        
+        return selected_event
 
     def _should_run_agent(self, agent: CreatorAgent, now: datetime) -> bool:
         cadence = self._normalise_cadence(agent.posting_cadence)
@@ -255,7 +294,13 @@ class AgentScheduler:
                 return "normal"
         threshold = hierarchy.get(norm(agent.importance_threshold), 1)
         event_rank = hierarchy.get(norm(getattr(event, "importance", None)), 1)
-        return event_rank >= threshold
+        meets_threshold = event_rank >= threshold
+        
+        logger.info("Importance check for agent %s: event_importance='%s' (%d) >= threshold='%s' (%d) = %s", 
+                   agent.name, getattr(event, "importance", None), event_rank, 
+                   agent.importance_threshold, threshold, meets_threshold)
+        
+        return meets_threshold
 
     def _normalise_cadence(self, cadence: Optional[str]) -> str:
         if not cadence:

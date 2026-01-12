@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     app_name: str = "content_creator_service"
     environment: str = Field(default="local", description="Deployment environment label")
+    
+    # Logging
+    log_level: str = Field(default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
 
     # Postgres
     pg_dsn: Optional[str] = Field(default=None, description="Optional full DSN for Postgres")

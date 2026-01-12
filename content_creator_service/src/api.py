@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI
 
@@ -10,6 +11,33 @@ from .migrations_runner import apply_all_migrations
 from .routes import agents, feed, posts, preferences, admin
 from .services.scheduler import AgentScheduler
 from .settings import get_settings
+
+# Configure logging early
+def configure_logging():
+    """Configure logging based on LOG_LEVEL environment variable."""
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    
+    # Validate log level
+    valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+    if log_level not in valid_levels:
+        log_level = "INFO"
+    
+    logging.basicConfig(
+        level=getattr(logging, log_level),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        force=True  # Override any existing configuration
+    )
+    
+    # Set specific loggers to appropriate levels
+    if log_level == "DEBUG":
+        # Enable debug logging for our services
+        logging.getLogger("content_creator_service").setLevel(logging.DEBUG)
+        logging.getLogger("__main__").setLevel(logging.DEBUG)
+    
+    logging.info(f"Logging configured at level: {log_level}")
+
+# Configure logging before importing anything else
+configure_logging()
 
 # Import OpenTelemetry instrumentation
 try:
@@ -47,6 +75,7 @@ app.include_router(admin.router)
 @app.on_event("startup")
 async def startup() -> None:
     logger.info("Starting Content Creator Service")
+    logger.info(f"Current logging level: {logging.getLevelName(logger.getEffectiveLevel())}")
     db.init_pool()
     apply_all_migrations()
     await scheduler.start()

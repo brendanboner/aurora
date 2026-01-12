@@ -57,6 +57,8 @@ class GenerationService:
         min_relevance = 0.5 - (agent.discovery_tolerance * 0.3)
         
         # Fetch events with quality thresholds (request more to ensure quality pool)
+        logger.info("Fetching events for agent %s: topics=%s, orgs=%s, window_days=%d", 
+                   agent.name, topic_scope, organisation_scope, window_days)
         events = self._context.fetch_recent_events(
             topic_scope, 
             organisation_scope, 
@@ -64,6 +66,7 @@ class GenerationService:
             window_days=window_days,
             min_relevance_score=min_relevance,
         )
+        logger.info("Found %d events for agent %s", len(events), agent.name)
         
         # Fetch documents with quality thresholds
         documents = self._context.fetch_recent_documents(
@@ -72,14 +75,18 @@ class GenerationService:
             window_days=window_days,
             min_relevance_score=min_relevance,
         )
+        logger.info("Found %d documents for agent %s", len(documents), agent.name)
 
         if not events and not documents:
-            logger.info("No context available for agent %s", agent.name)
+            logger.info("No context available for agent %s (topics: %s, orgs: %s, window: %d days)", 
+                       agent.name, topic_scope, organisation_scope, window_days)
             return None
 
         # Apply diversity filtering to prevent duplicate coverage
         events = self._apply_diversity_filter(events, max_items=8)
         documents = self._apply_diversity_filter(documents, max_items=8)
+        logger.info("After diversity filtering: %d events, %d documents for agent %s", 
+                   len(events), len(documents), agent.name)
         
         # Note: Relevance filtering already done in Neo4j query, no need to re-filter
         # This ensures we don't over-filter and lose valid content
@@ -112,12 +119,15 @@ class GenerationService:
         temperature = agent.llm_temperature_override if agent.llm_temperature_override is not None else None
 
         # Call LLM with enriched prompt and temperature
+        logger.info("Calling LLM for agent %s with temperature=%s", agent.name, temperature)
         llm_client = get_llm_client()
         llm_response = llm_client.generate(system_prompt, user_prompt, temperature_override=temperature)
 
         if not llm_response:
-            logger.warning("LLM generation failed for agent %s", agent.name)
+            logger.warning("LLM generation failed for agent %s - check LLM service connectivity", agent.name)
             return None
+            
+        logger.info("LLM response for agent %s: keys=%s", agent.name, list(llm_response.keys()) if llm_response else "None")
 
         # Coerce sources from LLM response or fallback to context
         sources = self._coerce_sources(llm_response.get("sources"), events, documents)

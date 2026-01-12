@@ -61,6 +61,8 @@ class KnowledgeMonitor:
 
         # Determine time window based on posting cadence
         window_days = self._get_time_window_for_cadence(agent.posting_cadence)
+        logger.info("Using %d-day window for agent %s (cadence: %s)", 
+                   window_days, agent.name, agent.posting_cadence)
 
         # Try primary topics first
         events = self._fetch_with_temporal_filtering(
@@ -81,6 +83,13 @@ class KnowledgeMonitor:
             )
             logger.info("Found %d adjacent topic events for agent %s", len(adjacent_events), agent.name)
             events.extend(adjacent_events)
+
+        # Log event details for debugging
+        for i, event in enumerate(events[:5]):  # Log first 5 events
+            logger.debug("Event %d: title='%s', topics=%s, orgs=%s, importance=%s", 
+                        i, event.title[:50] if event.title else "No title", 
+                        event.topics, event.organisations, 
+                        getattr(event, 'importance', 'unknown'))
 
         return events
 
@@ -117,13 +126,16 @@ class KnowledgeMonitor:
             org_list,
         )
 
+        logger.info("Making Neo4j query for agent with topics=%s, orgs=%s, window_days=%d, limit=%d", 
+                   topic_list, org_list, window_days, limit)
+        
         records = self._context_gateway.fetch_recent_and_upcoming(
             topics=topic_list,
             organisations=org_list,
             window_days=window_days,
             limit=limit,
         )
-        logger.info("Temporal fetch returned %d records", len(records))
+        logger.info("Neo4j query returned %d records", len(records))
 
         events: List[KnowledgeEvent] = []
         for record in records:
