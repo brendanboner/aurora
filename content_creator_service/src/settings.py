@@ -51,9 +51,6 @@ class Settings(BaseSettings):
     default_feed_page_size: int = 20
     max_feed_page_size: int = 100
 
-    # CORS / API
-    allowed_origins: List[str] = Field(default_factory=lambda: ["http://localhost:3000"])
-
     # Scheduler
     scheduler_poll_interval_seconds: int = 60
     scheduler_digest_hour_utc: int = 12

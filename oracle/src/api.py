@@ -1,7 +1,6 @@
 """Oracle Service - FastAPI Application Entry Point."""
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 # Import OpenTelemetry instrumentation
@@ -48,15 +47,6 @@ app = FastAPI(
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Include routers
 app.include_router(health_router)
