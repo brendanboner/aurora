@@ -82,7 +82,7 @@ class Neo4jContextGateway:
             })
         )
         // Temporal filter: only recent content within window
-        AND r.publish_date >= datetime() - duration({days: $window_days})
+        AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
         
         // Collect all topics and orgs for scoring
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -117,7 +117,7 @@ class Neo4jContextGateway:
              // Recency score: exponential decay (30 days half-life)
              CASE
                 WHEN r.publish_date IS NULL THEN 0.5
-                ELSE exp(-duration.between(r.publish_date, datetime()).days / 30.0)
+                ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 30.0)
              END AS recency_score,
              
              // Title match bonus: query topics in title indicate primary focus
@@ -237,7 +237,7 @@ class Neo4jContextGateway:
         MATCH (r:Resource)-[:MENTIONS]->(o:Organization)
         WHERE toLower(o.name) IN [x IN $orgs | toLower(x)]
         // Temporal filter
-        AND r.publish_date >= datetime() - duration({days: $window_days})
+        AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
         
         WITH r, collect(DISTINCT o.name) AS all_organisations
         
@@ -258,7 +258,7 @@ class Neo4jContextGateway:
              // Recency score
              CASE
                 WHEN r.publish_date IS NULL THEN 0.5
-                ELSE exp(-duration.between(r.publish_date, datetime()).days / 30.0)
+                ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 30.0)
              END AS recency_score,
              
              // Title match bonus
@@ -352,7 +352,7 @@ class Neo4jContextGateway:
                 WHERE toLower(org.name) IN [x IN $organisations | toLower(x)]
             })
         )
-        AND r.publish_date >= datetime() - duration({days: $window_days})
+        AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
         WITH r, collect(DISTINCT t.name) AS topics, collect(DISTINCT o.name) AS organisations

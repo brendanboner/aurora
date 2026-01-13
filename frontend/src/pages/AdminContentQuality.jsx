@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { WarningIcon } from '../components/icons';
-import './AdminContentQuality.css';
+import './Admin.css';
 
 const AdminContentQuality = () => {
   const [config, setConfig] = useState(null);
@@ -105,55 +105,59 @@ const AdminContentQuality = () => {
 
   if (loading) {
     return (
-      <div className="admin-content-quality">
-        <div className="loading-state">Loading configuration...</div>
+      <div className="admin-container">
+        <div className="spinner" />
       </div>
     );
   }
 
   if (error && !config) {
     return (
-      <div className="admin-content-quality">
-        <div className="error-state">
+      <div className="admin-container">
+        <div className="admin-error">
           <h3>Error Loading Configuration</h3>
           <p>{error}</p>
-          <button onClick={fetchConfig}>Retry</button>
+          <button className="btn btn-primary" onClick={fetchConfig}>Retry</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="admin-content-quality">
-      <div className="config-header">
-        <h2>Content Quality & Diversity Settings</h2>
-        <p className="config-description">
-          Configure how articles are selected and filtered for AI-generated posts. 
-          These settings control content quality, diversity, and relevance thresholds.
-        </p>
+    <div className="admin-container">
+      <div className="admin-header">
+        <h1>Content Quality Settings</h1>
+        <p>Configure content quality, diversity, and relevance thresholds</p>
       </div>
 
       {error && (
-        <div className="alert alert-error">
+        <div className="admin-error">
           <strong>Error:</strong> {error}
         </div>
       )}
 
       {successMessage && (
-        <div className="alert alert-success">
+        <div className="admin-success">
           <strong>Success!</strong> {successMessage}
         </div>
       )}
 
+      <div className="admin-content">
+        <div className="admin-section">
+          <h2>Content Quality & Diversity Settings</h2>
+          <p className="section-note">
+            These settings control how articles are selected and filtered for AI-generated posts.
+          </p>
+
       <div className="config-sections">
         {/* Similarity Threshold */}
-        <div className="config-section">
-          <div className="section-header">
+        <div className="config-setting">
+          <div className="setting-header">
             <h3>Article Similarity Threshold</h3>
-            <span className="current-value">{editedConfig.diversity_similarity_threshold.toFixed(2)}</span>
+            <span className="setting-value">{editedConfig.diversity_similarity_threshold.toFixed(2)}</span>
           </div>
           
-          <p className="section-description">
+          <p className="setting-description">
             Controls how aggressively similar articles are filtered using Jaccard similarity. 
             Higher values remove more similar articles, creating more diverse posts.
           </p>
@@ -188,13 +192,13 @@ const AdminContentQuality = () => {
         </div>
 
         {/* Min Relevance Score */}
-        <div className="config-section">
-          <div className="section-header">
+        <div className="config-setting">
+          <div className="setting-header">
             <h3>Minimum Relevance Score</h3>
-            <span className="current-value">{editedConfig.min_relevance_score_default.toFixed(2)}</span>
+            <span className="setting-value">{editedConfig.min_relevance_score_default.toFixed(2)}</span>
           </div>
           
-          <p className="section-description">
+          <p className="setting-description">
             Minimum quality threshold for articles. Only articles scoring above this threshold 
             are included in posts. Higher values ensure more focused, relevant content.
           </p>
@@ -228,13 +232,13 @@ const AdminContentQuality = () => {
         </div>
 
         {/* Max Topics per Article */}
-        <div className="config-section">
-          <div className="section-header">
+        <div className="config-setting">
+          <div className="setting-header">
             <h3>Maximum Topics per Article</h3>
-            <span className="current-value">{editedConfig.max_topics_per_article}</span>
+            <span className="setting-value">{editedConfig.max_topics_per_article}</span>
           </div>
           
-          <p className="section-description">
+          <p className="setting-description">
             Filter out generic aggregation articles with too many topics. Articles exceeding 
             this limit are considered unfocused and excluded from posts.
           </p>
@@ -275,13 +279,13 @@ const AdminContentQuality = () => {
         </div>
 
         {/* Max Articles per Domain */}
-        <div className="config-section">
-          <div className="section-header">
+        <div className="config-setting">
+          <div className="setting-header">
             <h3>Maximum Articles per Domain</h3>
-            <span className="current-value">{editedConfig.max_articles_per_domain}</span>
+            <span className="setting-value">{editedConfig.max_articles_per_domain}</span>
           </div>
           
-          <p className="section-description">
+          <p className="setting-description">
             Limit how many articles from the same domain (source) can appear in a single post. 
             This ensures source diversity and prevents single-source dominance.
           </p>
@@ -316,13 +320,13 @@ const AdminContentQuality = () => {
         </div>
 
         {/* Temporal Window */}
-        <div className="config-section">
-          <div className="section-header">
+        <div className="config-setting">
+          <div className="setting-header">
             <h3>Default Temporal Window (Days)</h3>
-            <span className="current-value">{editedConfig.temporal_window_days_default}</span>
+            <span className="setting-value">{editedConfig.temporal_window_days_default}</span>
           </div>
           
-          <p className="section-description">
+          <p className="setting-description">
             How far back in time to search for articles (in days). Older articles beyond this 
             window are excluded unless agent-specific cadence overrides this setting.
           </p>
@@ -362,46 +366,48 @@ const AdminContentQuality = () => {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="config-actions">
-        <button 
-          onClick={handleSave} 
-          disabled={!hasChanges() || saving}
-          className="btn btn-primary"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-        
-        <button 
-          onClick={handleReset} 
-          disabled={saving}
-          className="btn btn-secondary"
-        >
-          Reset to Defaults
-        </button>
-        
-        <button 
-          onClick={() => {
-            setEditedConfig(config);
-            setError(null);
-            setSuccessMessage(null);
-          }}
-          disabled={!hasChanges() || saving}
-          className="btn btn-tertiary"
-        >
-          Cancel Changes
-        </button>
-      </div>
+          {/* Action Buttons */}
+          <div className="config-actions">
+            <button 
+              onClick={handleSave} 
+              disabled={!hasChanges() || saving}
+              className="btn btn-primary"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            
+            <button 
+              onClick={handleReset} 
+              disabled={saving}
+              className="btn btn-secondary"
+            >
+              Reset to Defaults
+            </button>
+            
+            <button 
+              onClick={() => {
+                setEditedConfig(config);
+                setError(null);
+                setSuccessMessage(null);
+              }}
+              disabled={!hasChanges() || saving}
+              className="btn btn-tertiary"
+            >
+              Cancel Changes
+            </button>
+          </div>
 
-      {/* Warning Box */}
-      <div className="warning-box">
-        <h4><WarningIcon size={16} style={{marginRight: '8px'}} />Important Notes</h4>
-        <ul>
-          <li>These settings apply to new posts only. Existing posts are not affected.</li>
-          <li>Changes are runtime only and will reset on service restart unless persisted via environment variables.</li>
-          <li>To persist changes across restarts, update environment variables or configuration files.</li>
-          <li>Test changes with a small subset of agents before applying system-wide.</li>
-        </ul>
+          {/* Warning Box */}
+          <div className="warning-box">
+            <h4><WarningIcon size={16} style={{marginRight: '8px'}} />Important Notes</h4>
+            <ul>
+              <li>These settings apply to new posts only. Existing posts are not affected.</li>
+              <li>Changes are runtime only and will reset on service restart unless persisted via environment variables.</li>
+              <li>To persist changes across restarts, update environment variables or configuration files.</li>
+              <li>Test changes with a small subset of agents before applying system-wide.</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );
