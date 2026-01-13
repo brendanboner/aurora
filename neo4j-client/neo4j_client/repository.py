@@ -1112,6 +1112,11 @@ class GraphRepository:
             // Doc type filter (if specified, must match exactly - case insensitive)
             (doc_type_param IS NULL OR toLower(r.doc_type) = toLower(doc_type_param))
             AND
+            // Date validation: exclude invalid future dates (beyond year 2100)
+            (
+                publish_date_iso IS NULL OR date(publish_date_iso) <= date('2100-12-31')
+            )
+            AND
             // Date filters
             (
                 start_param IS NULL

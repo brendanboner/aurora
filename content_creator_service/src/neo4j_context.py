@@ -83,6 +83,8 @@ class Neo4jContextGateway:
         )
         // Temporal filter: only recent content within window
         AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
+        // Date validation: exclude invalid future dates (beyond year 2100)
+        AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
         
         // Collect all topics and orgs for scoring
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -238,6 +240,8 @@ class Neo4jContextGateway:
         WHERE toLower(o.name) IN [x IN $orgs | toLower(x)]
         // Temporal filter
         AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
+        // Date validation: exclude invalid future dates (beyond year 2100)
+        AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
         
         WITH r, collect(DISTINCT o.name) AS all_organisations
         
@@ -353,6 +357,8 @@ class Neo4jContextGateway:
             })
         )
         AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
+        // Date validation: exclude invalid future dates (beyond year 2100)
+        AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
         WITH r, collect(DISTINCT t.name) AS topics, collect(DISTINCT o.name) AS organisations
