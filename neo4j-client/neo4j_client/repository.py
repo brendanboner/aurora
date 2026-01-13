@@ -207,12 +207,32 @@ class GraphRepository:
                     # Set content_changed_at to current time
                     node_data['content_changed_at'] = datetime.now().isoformat()
 
+        # Convert publish_date string to Neo4j datetime for Resource nodes
+        if label == "Resource" and node_data.get('publish_date'):
+            pd = node_data['publish_date']
+            # If it's a string with valid ISO date format (YYYY-MM-DD), convert to datetime
+            if isinstance(pd, str) and pd.strip():
+                try:
+                    # Parse the date string and convert to datetime object
+                    from dateutil import parser as date_parse
+                    parsed_date = date_parse.parse(pd)
+                    # Store as ISO format string - Neo4j will convert via datetime() in query
+                    node_data['publish_date'] = parsed_date.isoformat()
+                except Exception as e:
+                    self.logger.warning(f"Could not parse publish_date '{pd}': {e}, setting to null")
+                    node_data['publish_date'] = None
+
         # Prepare query and parameters
         # Set both created_at and last_updated on create, only last_updated on match
+        # For publish_date, convert string to datetime object in Neo4j
+        date_conversion = ""
+        if label == "Resource" and node_data.get('publish_date'):
+            date_conversion = ", n.publish_date = datetime($properties.publish_date)"
+        
         query = f"""
         MERGE (n:{label} {{{id_field}: $id_value}})
-        ON CREATE SET n += $properties, n.created_at = datetime(), n.last_updated = datetime()
-        ON MATCH SET n += $properties, n.last_updated = datetime()
+        ON CREATE SET n += $properties, n.created_at = datetime(), n.last_updated = datetime(){date_conversion}
+        ON MATCH SET n += $properties, n.last_updated = datetime(){date_conversion}
         RETURN n
         """
         

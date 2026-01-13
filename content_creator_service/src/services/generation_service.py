@@ -83,10 +83,12 @@ class GenerationService:
             return None
 
         # Apply diversity filtering to prevent duplicate coverage
+        events_before_diversity = len(events)
+        documents_before_diversity = len(documents)
         events = self._apply_diversity_filter(events, max_items=8)
         documents = self._apply_diversity_filter(documents, max_items=8)
-        logger.info("After diversity filtering: %d events, %d documents for agent %s", 
-                   len(events), len(documents), agent.name)
+        logger.info("After diversity filtering: %d events (was %d), %d documents (was %d) for agent %s", 
+                   len(events), events_before_diversity, len(documents), documents_before_diversity, agent.name)
         
         # Note: Relevance filtering already done in Neo4j query, no need to re-filter
         # This ensures we don't over-filter and lose valid content

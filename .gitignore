@@ -106,3 +106,4 @@ node_modules/
 /cli/standards/
 /cli/standards.zip
 
+.env.old

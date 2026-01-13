@@ -24,8 +24,8 @@ const initialForm = {
   tone_style: 'analytical',
   content_length_preference: 'medium',
   importance_threshold: 'normal',
-  discovery_tolerance: 0.5,
-  cadence_window_days: 7,
+  discovery_tolerance: 0.7,  // Increased from 0.5 for more exploratory content
+  cadence_window_days: 30,   // Increased from 7 to look back further
   enabled: true,
 };
 

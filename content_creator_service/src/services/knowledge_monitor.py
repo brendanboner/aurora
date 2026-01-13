@@ -59,10 +59,13 @@ class KnowledgeMonitor:
             limit,
         )
 
-        # Determine time window based on posting cadence
-        window_days = self._get_time_window_for_cadence(agent.posting_cadence)
-        logger.info("Using %d-day window for agent %s (cadence: %s)", 
-                   window_days, agent.name, agent.posting_cadence)
+        # Determine time window based on posting cadence and agent's explicit window setting
+        window_days = self._get_time_window_for_cadence(
+            agent.posting_cadence, 
+            agent.cadence_window_days
+        )
+        logger.info("Using %d-day window for agent %s (cadence: %s, agent_window: %s)", 
+                   window_days, agent.name, agent.posting_cadence, agent.cadence_window_days)
 
         # Try primary topics first
         events = self._fetch_with_temporal_filtering(
@@ -93,17 +96,31 @@ class KnowledgeMonitor:
 
         return events
 
-    def _get_time_window_for_cadence(self, posting_cadence: str) -> int:
-        """Map agent cadence to Neo4j time window in days."""
+    def _get_time_window_for_cadence(self, posting_cadence: str, agent_window_days: int = None) -> int:
+        """Map agent cadence to Neo4j time window in days.
+        
+        Args:
+            posting_cadence: Agent's posting cadence setting
+            agent_window_days: Agent's explicit cadence_window_days override
+        
+        Returns:
+            Number of days to look back for content
+        """
+        # If agent has explicit window_days set, use that
+        if agent_window_days and agent_window_days > 0:
+            return agent_window_days
+        
+        # Otherwise use system defaults based on cadence
+        # These are conservative defaults - agents can override via cadence_window_days
         cadence_windows = {
-            "per-event": 7,          # React to events within past week
-            "daily": 1,              # Fresh daily content
-            "weekly": 7,             # Weekly review
-            "biweekly": 14,          # Two-week lookback
-            "monthly": 30,           # Monthly digest
-            "quarterly": 90,         # Quarterly review
+            "per-event": 30,         # Look back 30 days for events (was 7)
+            "daily": 7,              # Fresh weekly content for daily posts (was 1)
+            "weekly": 14,            # Two-week lookback for weekly digests (was 7)
+            "biweekly": 21,          # Three-week lookback (was 14)
+            "monthly": 60,           # Two-month lookback (was 30)
+            "quarterly": 120,        # Four-month lookback (was 90)
         }
-        return cadence_windows.get(posting_cadence, 7)
+        return cadence_windows.get(posting_cadence, 30)  # Default 30 days (was 7)
 
     def _fetch_with_temporal_filtering(
         self,

@@ -60,7 +60,7 @@ class Neo4jContextGateway:
         
         max_topics = self._settings.max_topics_per_article
         
-        logger.debug(
+        logger.info(
             "Fetching events for topics=%s organisations=%s (limit=%s, window=%dd, min_score=%.2f, max_topics=%d)",
             topics,
             organisations,
@@ -166,6 +166,23 @@ class Neo4jContextGateway:
         }
         results = self._client.execute_query(query, params)
         
+        # Log results for debugging
+        logger.info("Neo4j events query returned %d records", len(results))
+        if results:
+            relevance_scores = [r.get('relevance_score', 0) for r in results if r.get('relevance_score')]
+            if relevance_scores:
+                logger.info("Relevance scores: min=%.3f, max=%.3f, avg=%.3f", 
+                           min(relevance_scores), max(relevance_scores), 
+                           sum(relevance_scores) / len(relevance_scores))
+            # Log first few results
+            for i, r in enumerate(results[:3]):
+                logger.debug("  Result %d: title='%s', score=%.3f, topics=%d", 
+                            i+1, (r.get('title') or 'No title')[:50],
+                            r.get('relevance_score', 0), len(r.get('topics', [])))
+        else:
+            logger.warning("No events found matching filters: topics=%s, orgs=%s, window=%dd",
+                          topics, organisations, window_days)
+        
         # Log relevance scores for monitoring
         if results:
             scores = [r.get("relevance_score", 0) for r in results]
@@ -203,16 +220,17 @@ class Neo4jContextGateway:
         if min_relevance_score is None:
             min_relevance_score = self._settings.min_relevance_score_default
         
-        # For documents, use half the max_topics threshold (they're typically more focused)
-        max_orgs = self._settings.max_topics_per_article // 2
+        # For documents, use the max topics setting (for logging purposes)
+        max_topics = self._settings.max_topics_per_article
+        max_orgs = max_topics // 2
         
-        logger.debug(
-            "Fetching documents for organisations=%s (limit=%s, window=%dd, min_score=%.2f, max_orgs=%d)",
+        logger.info(
+            "Fetching documents for organisations=%s (limit=%s, window=%dd, min_score=%.2f, max_topics=%d)",
             organisations,
             limit,
             window_days,
             min_relevance_score,
-            max_orgs,
+            max_topics,
         )
         
         query = """
@@ -274,6 +292,18 @@ class Neo4jContextGateway:
         }
         
         results = self._client.execute_query(query, params)
+        
+        # Log results for debugging
+        logger.info("Neo4j documents query returned %d records", len(results))
+        if results:
+            relevance_scores = [r.get('relevance_score', 0) for r in results if r.get('relevance_score')]
+            if relevance_scores:
+                logger.info("Document relevance scores: min=%.3f, max=%.3f, avg=%.3f", 
+                           min(relevance_scores), max(relevance_scores), 
+                           sum(relevance_scores) / len(relevance_scores))
+        else:
+            logger.warning("No documents found matching filters: orgs=%s, window=%dd",
+                          organisations, window_days)
         
         # Log relevance scores
         if results:

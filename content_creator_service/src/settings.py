@@ -61,31 +61,31 @@ class Settings(BaseSettings):
 
     # Content Quality & Diversity Settings
     diversity_similarity_threshold: float = Field(
-        default=0.7,
+        default=0.65,  # Relaxed from 0.7 to allow more variety
         description="Jaccard similarity threshold for filtering similar articles (0.0-1.0). "
                     "Higher values = stricter filtering (more duplicates removed)",
         ge=0.0,
         le=1.0,
     )
     min_relevance_score_default: float = Field(
-        default=0.2,
+        default=0.15,  # Lowered from 0.2 to allow more content through
         description="Default minimum relevance score for article selection (0.0-1.0). "
                     "Can be overridden by agent discovery_tolerance",
         ge=0.0,
         le=1.0,
     )
     max_topics_per_article: int = Field(
-        default=20,
+        default=30,  # Increased from 20 to allow broader content
         description="Maximum number of topics per article. Articles with more are filtered as generic aggregations",
         ge=1,
     )
     max_articles_per_domain: int = Field(
-        default=2,
+        default=3,  # Increased from 2 to allow more sources per domain
         description="Maximum number of articles from the same domain to include in a single post",
         ge=1,
     )
     temporal_window_days_default: int = Field(
-        default=90,
+        default=180,  # Increased from 90 to look back further
         description="Default temporal window in days for article selection. "
                     "Can be overridden by agent cadence_window_days",
         ge=1,
