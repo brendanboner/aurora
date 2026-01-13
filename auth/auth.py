@@ -1,7 +1,7 @@
 """Auth service main entry point."""
 
 from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import urlencode
 import os
@@ -281,7 +281,35 @@ async def get_current_user(request: Request):
     Get current user info from token.
     """
     user_info = await validate_request_token(request)
-    return user_info
+    
+    # Create response with user info
+    response = JSONResponse(content=user_info)
+    
+    # If token was refreshed during validation, update cookies
+    if hasattr(request.state, "new_access_token"):
+        response.set_cookie(
+            key="access_token",
+            value=request.state.new_access_token,
+            httponly=True,
+            secure=settings.effective_cookie_secure,
+            samesite="strict",
+            max_age=3600,
+            domain=settings.validated_cookie_domain
+        )
+        logger.info(f"Access token refreshed for user: {user_info.get('email')}")
+    
+    if hasattr(request.state, "new_id_token"):
+        response.set_cookie(
+            key="id_token",
+            value=request.state.new_id_token,
+            httponly=True,
+            secure=settings.effective_cookie_secure,
+            samesite="strict",
+            max_age=3600,
+            domain=settings.validated_cookie_domain
+        )
+    
+    return response
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])

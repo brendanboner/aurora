@@ -1,10 +1,12 @@
 """JWT validation middleware utilities."""
 
+import logging
 from fastapi import Request, HTTPException, status
 from .oauth import validate_jwt_token, refresh_access_token, extract_user_info
 from settings import get_settings
 
 settings = get_settings()
+logger = logging.getLogger("auth")
 
 
 async def validate_request_token(request: Request) -> dict:
