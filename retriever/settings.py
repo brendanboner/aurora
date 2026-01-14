@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # WFA Causeway Authentication
     wfa_causeway_username: str = ""
     wfa_causeway_password: str = ""
+    
+    # Event Sanitization Configuration
+    sanitize_events: bool = True  # Enable/disable sensitive info sanitization
+    sanitization_replacement_text: str = "[Meeting access details removed for privacy. Please view the source link for access details.]"
 
 
 settings = Settings()

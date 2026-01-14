@@ -75,7 +75,28 @@ class Event:
             self.scraped_at = datetime.now().isoformat()
     
     def to_message(self) -> Dict[str, Any]:
-        """Convert to RabbitMQ message format"""
+        """
+        Convert to RabbitMQ message format.
+        
+        Sanitizes location and description fields if sanitization is enabled
+        to remove sensitive meeting information (URLs, passcodes, etc.)
+        """
+        from settings import settings
+        
+        location = self.location
+        description = self.description
+        
+        # Sanitize if enabled
+        if settings.sanitize_events:
+            try:
+                from utils.sensitive_info_scrubber import sanitize_event_data
+                location, description = sanitize_event_data(self.location, self.description)
+            except Exception as e:
+                # Log error but don't fail - better to send unsanitized than lose data
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to sanitize event data: {e}. Sending original data.")
+        
         return {
             "message_type": "event",
             "event_data": {
@@ -83,9 +104,9 @@ class Event:
                 "event_type": self.event_type,
                 "start_date": self.start_date,
                 "end_date": self.end_date,
-                "location": self.location,
+                "location": location,
                 "timezone": self.timezone,
-                "description": self.description,
+                "description": description,
                 "url": self.url,
                 "status": self.status
             },
