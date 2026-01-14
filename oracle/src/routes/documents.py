@@ -344,6 +344,9 @@ async def search_documents(
             match_clauses.append("MATCH (r)-[:MENTIONS]->(o:Organization)")
             where_clauses.append("o.org_id IN $org_ids")
         
+        # Date validation: exclude invalid future dates (beyond year 2100)
+        where_clauses.append("r.publish_date <= datetime('2100-12-31T23:59:59Z')")
+        
         # Build WHERE clause
         where_clause = ""
         if where_clauses:

@@ -65,9 +65,35 @@ const UserProfile = () => {
       ]);
       setPreferences(prefs);
       setSavedPreferences(prefs);
-      setAvailableTopics(topicsData.topics || []);
-      setAvailableOrgs(orgsData.organisations || []);
-      setAvailablePeople(peopleData.people || []);
+      
+      // Normalize data - ensure we have arrays and map field names to 'id'
+      const normalizeTopics = (data) => {
+        const topics = data?.topics || [];
+        return topics.filter(t => t && typeof t === 'object').map(t => ({
+          ...t,
+          id: t.topic_id || t.id
+        }));
+      };
+      
+      const normalizeOrgs = (data) => {
+        const orgs = data?.organisations || [];
+        return orgs.filter(o => o && typeof o === 'object').map(o => ({
+          ...o,
+          id: o.org_id || o.id
+        }));
+      };
+      
+      const normalizePeople = (data) => {
+        const people = data?.people || [];
+        return people.filter(p => p && typeof p === 'object').map(p => ({
+          ...p,
+          id: p.person_id || p.id
+        }));
+      };
+      
+      setAvailableTopics(normalizeTopics(topicsData));
+      setAvailableOrgs(normalizeOrgs(orgsData));
+      setAvailablePeople(normalizePeople(peopleData));
       setInitialLoaded(true);
     } catch (err) {
       setError(err.response?.data?.detail || err.message);
@@ -105,7 +131,10 @@ const UserProfile = () => {
   };
 
   const bulkSet = (type, values, isSelectAll = false) => {
-    setPreferences(prev => ({ ...prev, [type]: values }));
+    // Filter out any undefined, null, or invalid values
+    const validValues = values.filter(v => v !== undefined && v !== null && v !== '');
+    
+    setPreferences(prev => ({ ...prev, [type]: validValues }));
     setDirty(true);
     
     // Show feedback message
@@ -113,7 +142,7 @@ const UserProfile = () => {
       const totalCount = type === 'topics' ? availableTopics.length 
         : type === 'organisations' ? availableOrgs.length 
         : availablePeople.length;
-      setSuccessMessage(values.length > 0 
+      setSuccessMessage(validValues.length > 0 
         ? `Selected all ${totalCount} ${type}` 
         : `Deselected all ${type}`);
       setTimeout(() => setSuccessMessage(''), 3000);
@@ -215,7 +244,7 @@ const UserProfile = () => {
                 )}
               </div>
               <div className="preferences-grid">
-                {filteredTopics.slice(0,100).map(topic => (
+                {filteredTopics.slice(0,100).filter(topic => topic && topic.id && topic.name).map(topic => (
                   <div key={topic.id} className={`preference-item ${preferences.topics.includes(topic.id) ? 'selected':''}`} onClick={() => togglePreference('topics', topic.id)}>
                     <div className="preference-name">{topic.name}</div>
                     {topic.classification && <div className="preference-meta">{topic.classification}</div>}
@@ -276,7 +305,7 @@ const UserProfile = () => {
                 )}
               </div>
               <div className="preferences-grid">
-                {filteredOrgs.slice(0,100).map(org => (
+                {filteredOrgs.slice(0,100).filter(org => org && org.id && org.name).map(org => (
                   <div key={org.id} className={`preference-item ${preferences.organisations.includes(org.id) ? 'selected':''}`} onClick={() => togglePreference('organisations', org.id)}>
                     <div className="preference-name">{org.name}</div>
                     {org.org_type && <div className="preference-meta">{org.org_type}</div>}
@@ -301,7 +330,7 @@ const UserProfile = () => {
                 )}
               </div>
               <div className="preferences-grid">
-                {filteredPeople.slice(0,100).map(person => (
+                {filteredPeople.slice(0,100).filter(person => person && person.id && person.name).map(person => (
                   <div key={person.id} className={`preference-item ${preferences.people.includes(person.id) ? 'selected':''}`} onClick={() => togglePreference('people', person.id)}>
                     <div className="preference-name">{person.name}</div>
                     {person.email && <div className="preference-meta">{person.email}</div>}
