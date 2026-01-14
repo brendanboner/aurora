@@ -11,6 +11,7 @@ from opentelemetry import trace
 
 from common.auth_middleware import get_user_context, require_user_context
 
+from src.exceptions import LLMTimeoutError
 from src.models.request import (
     QueryRequest, 
     QueryMode, 
@@ -581,6 +582,16 @@ async def enhance_answer(
             citations=result.citations,
             metadata=result.metadata,
             confidence_score=result.confidence_score,
+        )
+    
+    except LLMTimeoutError as e:
+        logger.warning(f"Enhance timed out: {e}")
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "error": "LLM_TIMEOUT",
+                "message": "The enhanced answer generation timed out. Please try again.",
+            }
         )
         
     except Exception as e:

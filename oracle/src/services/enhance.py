@@ -14,6 +14,7 @@ from typing import Optional
 
 import aiohttp
 
+from src.exceptions import LLMTimeoutError
 from src.models.request import EnhanceDocumentReference
 from src.models.response import Citation, DirectQuote, EnhanceMetadata
 from src.services.chunking import chunk_document, ChunkedDocument, get_all_chunks
@@ -324,11 +325,15 @@ async def generate_enhanced_answer(
             messages=messages,
             max_tokens=settings.max_answer_tokens * 2,  # Allow longer enhanced answers
             temperature=0.3,
+            timeout=settings.llm_enhance_timeout,  # Use longer timeout for enhanced answers
         )
         answer = response.content
     except Exception as e:
         logger.error(f"Enhanced answer generation failed: {e}")
-        answer = "Error generating enhanced answer. Please try again."
+        error_msg = str(e).lower()
+        if "timeout" in error_msg or "timed out" in error_msg:
+            raise LLMTimeoutError("The enhanced answer generation timed out. Please try again.") from e
+        raise
     
     # Step 5: Extract best quotes
     raw_quotes = extract_best_quotes(

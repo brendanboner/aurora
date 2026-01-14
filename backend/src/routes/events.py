@@ -116,7 +116,9 @@ async def get_event_attendees(
 async def mark_event_attendance(
     url_hash: str,
     request: AttendanceRequest,
-    x_user_id: str = Header(...)
+    x_user_id: str = Header(...),
+    x_user_email: Optional[str] = Header(None),
+    x_user_name: Optional[str] = Header(None)
 ):
     """
     Mark or update attendance for an event.
@@ -134,7 +136,9 @@ async def mark_event_attendance(
             user_uuid=x_user_id,
             url_hash=url_hash,
             is_presenting=request.is_presenting,
-            attending=request.attending
+            attending=request.attending,
+            user_email=x_user_email,
+            user_name=x_user_name
         )
         
         if not result.get("success"):

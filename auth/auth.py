@@ -158,10 +158,10 @@ async def auth_callback(code: str, state: str, request: Request):
         stored_state = get_oauth_state(state)
         if not stored_state:
             logger.warning(f"Invalid or expired state parameter: state={state}, ip={request.client.host}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired authentication request"
-            )
+            # Instead of showing an error, redirect to login to start fresh OAuth flow
+            # This handles the case where user left login page open and came back later
+            logger.info(f"Redirecting to login to start fresh OAuth flow")
+            return RedirectResponse(url="/api/auth/login")
         
         # Clean up used state (one-time use)
         delete_oauth_state(state)

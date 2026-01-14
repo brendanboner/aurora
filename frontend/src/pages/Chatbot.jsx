@@ -371,7 +371,14 @@ What would you like to know?`;
       });
     } catch (err) {
       console.error('Enhance error:', err);
-      setError(err.response?.data?.detail?.message || err.response?.data?.detail || 'Failed to enhance answer');
+      const errorCode = err.response?.data?.detail?.error;
+      const errorMessage = err.response?.data?.detail?.message;
+      
+      if (errorCode === 'LLM_TIMEOUT' || err.response?.status === 504) {
+        setError('The enhanced answer is taking too long to generate. Please try again in a moment.');
+      } else {
+        setError(errorMessage || err.response?.data?.detail || 'Failed to enhance answer');
+      }
     } finally {
       setEnhancingMessageIndex(null);
     }

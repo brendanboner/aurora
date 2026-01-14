@@ -35,6 +35,42 @@ def _get_neo4j_client() -> Neo4jClient:
         raise Exception("Database connection failed") from e
 
 
+def _create_person_node(client: Neo4jClient, user_uuid: str, email: str, name: Optional[str] = None) -> Optional[str]:
+    """
+    Create a Person node for a user who doesn't have one yet.
+    
+    This is a fallback for users who weren't properly synced during login.
+    
+    Args:
+        client: Neo4j client instance
+        user_uuid: User's UUID from Postgres
+        email: User's email
+        name: User's display name (defaults to email prefix if not provided)
+        
+    Returns:
+        person_id if created successfully, None otherwise
+    """
+    try:
+        from neo4j_client.models import Person
+        from neo4j_client.repository import GraphRepository
+        
+        # Use email prefix as name if not provided
+        display_name = name or email.split('@')[0]
+        
+        # Create the Person node
+        person = Person(name=display_name, email=email, user_uuid=user_uuid)
+        
+        repo = GraphRepository(client, logger)
+        repo.create_node(person)
+        
+        logger.info(f"Created Person node {person.person_id} for user {user_uuid} ({email})")
+        return person.person_id
+        
+    except Exception as e:
+        logger.error(f"Failed to create Person node for user {user_uuid}: {e}", exc_info=True)
+        return None
+
+
 def get_events(
     upcoming: Optional[bool] = None,
     datasource_id: Optional[str] = None,
@@ -225,7 +261,9 @@ def mark_attendance(
     user_uuid: str,
     url_hash: str,
     is_presenting: bool = False,
-    attending: bool = True
+    attending: bool = True,
+    user_email: Optional[str] = None,
+    user_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Mark or update user's attendance for an event.
@@ -235,6 +273,8 @@ def mark_attendance(
         url_hash: Event URL hash (ID)
         is_presenting: Whether user is presenting
         attending: True to mark attendance, False to remove attendance
+        user_email: User's email (for creating Person node if missing)
+        user_name: User's display name (for creating Person node if missing)
     
     Returns:
         Result dictionary with success status
@@ -259,15 +299,25 @@ def mark_attendance(
     person_result = client.execute_query(person_query, {"user_uuid": user_uuid})
     
     if not person_result:
-        # Person not found by user_uuid - this shouldn't happen if user sync is working
-        # Log the error and return a clear message
-        logger.error(f"Person node not found for user {user_uuid}. User may not be synced to Neo4j.")
-        return {
-            "success": False, 
-            "error": "User profile not found. Please try logging out and back in to sync your profile."
-        }
-    
-    person_id = person_result[0]["person_id"]
+        # Person not found - attempt to create if we have email
+        if user_email:
+            logger.info(f"Person node not found for user {user_uuid}, attempting to create...")
+            person_id = _create_person_node(client, user_uuid, user_email, user_name)
+            if not person_id:
+                logger.error(f"Failed to create Person node for user {user_uuid}")
+                return {
+                    "success": False, 
+                    "error": "Unable to create user profile. Please try logging out and back in."
+                }
+        else:
+            # No email available to create person - ask user to re-login
+            logger.error(f"Person node not found for user {user_uuid}. User may not be synced to Neo4j.")
+            return {
+                "success": False, 
+                "error": "User profile not found. Please try logging out and back in to sync your profile."
+            }
+    else:
+        person_id = person_result[0]["person_id"]
     
     # Check if event exists
     event_query = """

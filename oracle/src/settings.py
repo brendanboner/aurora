@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     
     # Timeouts (seconds)
     llm_timeout: float = 30.0
+    llm_enhance_timeout: float = 60.0  # Longer timeout for enhanced answers (more context)
     neo4j_timeout: float = 10.0
     
     # Logging
