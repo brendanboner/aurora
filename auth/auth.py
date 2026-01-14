@@ -201,13 +201,17 @@ async def auth_callback(code: str, state: str, request: Request):
         response = RedirectResponse(url=f"{settings.effective_application_url}/")
         
         # Set httpOnly cookies with tokens
+        # Access/ID tokens: 1 hour cookie lifetime (matches actual token expiration)
+        # Refresh token: 5 days (matches Cognito refresh token lifetime)
+        # When access/ID token cookies expire, the middleware will use the refresh
+        # token to obtain new ones seamlessly.
         response.set_cookie(
             key="access_token",
             value=tokens["access_token"],
             httponly=True,
             secure=settings.effective_cookie_secure,
             samesite="strict",
-            max_age=3600,  # 1 hour
+            max_age=3600,  # 1 hour (matches actual token expiration)
             domain=settings.validated_cookie_domain
         )
         
@@ -217,7 +221,7 @@ async def auth_callback(code: str, state: str, request: Request):
             httponly=True,
             secure=settings.effective_cookie_secure,
             samesite="strict",
-            max_age=3600,  # 1 hour (same as access token)
+            max_age=3600,  # 1 hour (matches actual token expiration)
             domain=settings.validated_cookie_domain
         )
         
@@ -227,7 +231,7 @@ async def auth_callback(code: str, state: str, request: Request):
             httponly=True,
             secure=settings.effective_cookie_secure,
             samesite="strict",
-            max_age=604800,  # 7 days
+            max_age=432000,  # 5 days (matches Cognito refresh token lifetime)
             domain=settings.validated_cookie_domain
         )
         
@@ -293,7 +297,7 @@ async def get_current_user(request: Request):
             httponly=True,
             secure=settings.effective_cookie_secure,
             samesite="strict",
-            max_age=3600,
+            max_age=3600,  # 1 hour
             domain=settings.validated_cookie_domain
         )
         logger.info(f"Access token refreshed for user: {user_info.get('email')}")
@@ -305,7 +309,7 @@ async def get_current_user(request: Request):
             httponly=True,
             secure=settings.effective_cookie_secure,
             samesite="strict",
-            max_age=3600,
+            max_age=3600,  # 1 hour
             domain=settings.validated_cookie_domain
         )
     
@@ -341,7 +345,7 @@ async def proxy_to_services(request: Request, path: str):
             httponly=True,
             secure=settings.effective_cookie_secure,
             samesite="strict",
-            max_age=3600,
+            max_age=3600,  # 1 hour
             domain=settings.validated_cookie_domain
         )
         logger.info(f"Access token refreshed for user: {user_info['email']}")
@@ -354,7 +358,7 @@ async def proxy_to_services(request: Request, path: str):
             httponly=True,
             secure=settings.effective_cookie_secure,
             samesite="strict",
-            max_age=3600,
+            max_age=3600,  # 1 hour
             domain=settings.validated_cookie_domain
         )
         logger.info(f"ID token refreshed for user: {user_info['email']}")
