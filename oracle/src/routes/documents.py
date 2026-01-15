@@ -345,7 +345,8 @@ async def search_documents(
             where_clauses.append("o.org_id IN $org_ids")
         
         # Date validation: exclude invalid future dates (beyond year 2100)
-        where_clauses.append("r.publish_date <= datetime('2100-12-31T23:59:59Z')")
+        # Only filter by date if the date exists (handles NULL or missing publish_date)
+        where_clauses.append("(r.publish_date IS NULL OR r.publish_date <= datetime('2100-12-31T23:59:59Z'))")
         
         # Build WHERE clause
         where_clause = ""
@@ -368,6 +369,9 @@ async def search_documents(
             {where_clause}
             RETURN count(DISTINCT r) AS total
         """
+        
+        logger.debug(f"Document search count query: {count_query}")
+        logger.debug(f"Query parameters: {params}")
         
         count_result = repo.client.execute_query(count_query, params)
         total_count = count_result[0].get("total", 0) if count_result else 0
