@@ -24,9 +24,16 @@ from src.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Date validation constant to filter out invalid future dates (e.g., year 9806)
-# Applied to all Neo4j queries that filter by publish_date
-DATE_VALIDATION_FILTER = " AND r.publish_date <= date('2100-12-31')"
+# Date validation: Filter out future documents beyond current date + 1 year buffer
+# NULL dates are allowed and treated as valid (not filtered out)
+# Future dates beyond the threshold are treated same as NULL (coalesced to epoch for sorting)
+def get_date_validation_filter() -> str:
+    """
+    Get date validation filter for Cypher queries.
+    Returns a filter that allows NULL dates but filters out unrealistic future dates.
+    """
+    # Allow NULL dates OR dates that are not too far in the future
+    return " AND (r.publish_date IS NULL OR r.publish_date <= date('2100-12-31'))"
 
 
 @dataclass
@@ -169,8 +176,8 @@ class GraphRetriever:
                 date_filter += " AND r.publish_date <= date($end_date)"
                 params["end_date"] = end_date
             
-            # Add date validation to exclude invalid future dates
-            date_filter += DATE_VALIDATION_FILTER
+            # Add date validation to filter out unrealistic future dates (allows NULL)
+            date_filter += get_date_validation_filter()
             
             # Build datasource filter for Cypher query
             datasource_filter = ""
@@ -440,8 +447,8 @@ class GraphRetriever:
                 date_filter += " AND r.publish_date <= date($end_date)"
                 params["end_date"] = end_date
             
-            # Add date validation to exclude invalid future dates
-            date_filter += DATE_VALIDATION_FILTER
+            # Add date validation to filter out unrealistic future dates (allows NULL)
+            date_filter += get_date_validation_filter()
             
             # Build datasource filter for Cypher query
             datasource_filter = ""
@@ -599,7 +606,7 @@ class GraphRetriever:
             MATCH (r:Resource)-[:RELATES_TO]->(t:Topic)
             WHERE r.publish_date >= date($start_date)
               AND r.publish_date <= date($end_date)
-              AND r.publish_date <= date('2100-12-31')
+              AND (r.publish_date IS NULL OR r.publish_date <= date('2100-12-31'))
             
             {datasource_filter}
             
@@ -609,7 +616,7 @@ class GraphRetriever:
             OPTIONAL MATCH (r_prev:Resource)-[:RELATES_TO]->(t)
             WHERE r_prev.publish_date >= date($prev_start)
               AND r_prev.publish_date < date($start_date)
-              AND r_prev.publish_date <= date('2100-12-31')
+              AND (r_prev.publish_date IS NULL OR r_prev.publish_date <= date('2100-12-31'))
             
             WITH t, current_count, count(r_prev) AS previous_count
             
@@ -664,7 +671,7 @@ class GraphRetriever:
                 MATCH (r:Resource)-[:RELATES_TO]->(t:Topic)
                 WHERE t.name IN $topics
                   AND r.publish_date >= date($start_date)
-                  AND r.publish_date <= date('2100-12-31')
+                  AND (r.publish_date IS NULL OR r.publish_date <= date('2100-12-31'))
                   AND r.url IS NOT NULL
                 
                 // Join with datasource for filtering
