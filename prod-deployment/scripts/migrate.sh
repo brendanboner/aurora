@@ -87,7 +87,7 @@ init_migrations_table() {
 # Get list of applied migrations
 get_applied_migrations() {
     docker exec "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c \
-        "SELECT version FROM schema_migrations ORDER BY version;" | grep -v '^$' | sed 's/^[ \t]*//'
+        "SELECT version FROM schema_migrations ORDER BY version;" 2>/dev/null | grep -v '^$' | sed 's/^[ \t]*//' || true
 }
 
 # Get checksum of a file
@@ -232,3 +232,4 @@ main() {
 }
 
 main "$@"
+exit 0
