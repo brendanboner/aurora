@@ -76,6 +76,40 @@ const UserProfile = () => {
     }
   }, [user]);
 
+  // Load data when navigating between sections
+  useEffect(() => {
+    if (!user || !initialLoaded) return;
+    
+    // Load data for the currently selected section if it hasn't been loaded
+    if (selectedSection === 'organisations' && availableOrgs.length === 0) {
+      loadOrgsPage(1);
+    } else if (selectedSection === 'people' && availablePeople.length === 0) {
+      loadPeoplePage(1);
+    } else if (selectedSection === 'topics' && availableTopics.length === 0 && topicViewMode === 'flat') {
+      loadTopicsPage(1);
+    } else if (selectedSection === 'topics' && !hierarchyData && topicViewMode === 'hierarchical') {
+      loadHierarchyData();
+    } else if (selectedSection === null) {
+      // When viewing all sections, load any missing data
+      const loadPromises = [];
+      if (availableOrgs.length === 0) {
+        loadPromises.push(loadOrgsPage(1));
+      }
+      if (availablePeople.length === 0) {
+        loadPromises.push(loadPeoplePage(1));
+      }
+      if (availableTopics.length === 0 && topicViewMode === 'flat') {
+        loadPromises.push(loadTopicsPage(1));
+      }
+      if (!hierarchyData && topicViewMode === 'hierarchical') {
+        loadPromises.push(loadHierarchyData());
+      }
+      if (loadPromises.length > 0) {
+        Promise.all(loadPromises);
+      }
+    }
+  }, [selectedSection, user, initialLoaded]);
+
   // Reload topics when sort order changes
   useEffect(() => {
     if (initialLoaded && user && topicViewMode === 'flat') {
