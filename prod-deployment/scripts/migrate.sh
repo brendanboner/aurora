@@ -39,7 +39,7 @@ else
 fi
 
 POSTGRES_DB="${POSTGRES_DB:-aurora}"
-POSTGRES_USER="${POSTGRES_USER:-aurora}"
+POSTGRES_USER="${POSTGRES_USER:-user}"
 
 # Function to print colored messages
 info() {
@@ -176,6 +176,7 @@ run_all_migrations() {
         fi
     done
     
+    info "Migration loop completed. Pending: $pending_count, Applied: $applied_count"
     echo ""
     success "Migration complete!"
     info "Already applied: $applied_count"
