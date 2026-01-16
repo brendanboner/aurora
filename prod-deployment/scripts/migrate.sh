@@ -31,7 +31,9 @@ NC='\033[0m' # No Color
 
 # Load environment variables
 if [ -f "$SCRIPT_DIR/../.env" ]; then
-    source "$SCRIPT_DIR/../.env"
+    set -a  # automatically export all variables
+    source <(grep -v '^#' "$SCRIPT_DIR/../.env" | grep -v '^$' | sed 's/=/="/' | sed 's/$/"/')
+    set +a  # stop auto-export
 else
     echo -e "${YELLOW}Warning: .env file not found. Using defaults.${NC}"
 fi
