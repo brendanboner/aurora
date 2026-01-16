@@ -574,3 +574,231 @@ def get_chat_statistics() -> Dict[str, Any]:
         "recent_conversations": recent["recent_conversations"] or 0
     }
 
+
+# ========== User Feedback Management ==========
+
+def create_feedback(
+    user_id: str,
+    feedback_text: str,
+    category: str
+) -> Dict[str, Any]:
+    """
+    Create a new feedback submission.
+    
+    Args:
+        user_id: User's Cognito UUID
+        feedback_text: The feedback content
+        category: Type of feedback ('feedback', 'bug', 'accessibility', 'styling')
+    
+    Returns:
+        Feedback record with all fields
+    """
+    query = """
+        INSERT INTO user_feedback (user_id, feedback_text, category)
+        VALUES (%s, %s, %s)
+        RETURNING id, user_id, feedback_text, category, status, priority, 
+                  submitted_at, updated_at
+    """
+    return fetchone(query, (user_id, feedback_text, category))
+
+
+def get_all_feedback(
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    priority: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """
+    Get all feedback submissions with optional filters.
+    Includes user information.
+    
+    Args:
+        status: Filter by status
+        category: Filter by category
+        priority: Filter by priority
+        limit: Maximum number of results
+        offset: Pagination offset
+    
+    Returns:
+        List of feedback records with user email and display name
+    """
+    conditions = []
+    params = []
+    
+    if status:
+        conditions.append("f.status = %s")
+        params.append(status)
+    
+    if category:
+        conditions.append("f.category = %s")
+        params.append(category)
+    
+    if priority:
+        conditions.append("f.priority = %s")
+        params.append(priority)
+    
+    where_clause = " AND " + " AND ".join(conditions) if conditions else ""
+    
+    query = f"""
+        SELECT 
+            f.id, f.user_id, f.feedback_text, f.category, f.status, f.priority,
+            f.submitted_at, f.updated_at,
+            u.email as user_email,
+            u.display_name as user_display_name
+        FROM user_feedback f
+        JOIN app_users u ON f.user_id = u.id
+        WHERE 1=1{where_clause}
+        ORDER BY f.submitted_at DESC
+        LIMIT %s OFFSET %s
+    """
+    
+    params.extend([limit, offset])
+    return fetchall(query, tuple(params))
+
+
+def get_feedback_by_id(feedback_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Get a specific feedback submission by ID.
+    
+    Args:
+        feedback_id: Feedback record ID
+    
+    Returns:
+        Feedback record with user information, or None if not found
+    """
+    query = """
+        SELECT 
+            f.id, f.user_id, f.feedback_text, f.category, f.status, f.priority,
+            f.submitted_at, f.updated_at,
+            u.email as user_email,
+            u.display_name as user_display_name
+        FROM user_feedback f
+        JOIN app_users u ON f.user_id = u.id
+        WHERE f.id = %s
+    """
+    return fetchone(query, (feedback_id,))
+
+
+def get_user_feedback(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Get all feedback submissions by a specific user.
+    
+    Args:
+        user_id: User's Cognito UUID
+        limit: Maximum number of results
+    
+    Returns:
+        List of user's feedback records
+    """
+    query = """
+        SELECT 
+            id, user_id, feedback_text, category, status, priority,
+            submitted_at, updated_at
+        FROM user_feedback
+        WHERE user_id = %s
+        ORDER BY submitted_at DESC
+        LIMIT %s
+    """
+    return fetchall(query, (user_id, limit))
+
+
+def update_feedback_status(
+    feedback_id: int,
+    status: str,
+    priority: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Update feedback status and optionally priority (admin function).
+    
+    Args:
+        feedback_id: Feedback record ID
+        status: New status ('open', 'closed', 'in_progress', 'paused')
+        priority: Optional new priority ('low', 'medium', 'high', 'urgent')
+    
+    Returns:
+        Updated feedback record, or None if not found
+    """
+    if priority:
+        query = """
+            UPDATE user_feedback
+            SET status = %s, priority = %s
+            WHERE id = %s
+            RETURNING id, user_id, feedback_text, category, status, priority,
+                      submitted_at, updated_at
+        """
+        return fetchone(query, (status, priority, feedback_id))
+    else:
+        query = """
+            UPDATE user_feedback
+            SET status = %s
+            WHERE id = %s
+            RETURNING id, user_id, feedback_text, category, status, priority,
+                      submitted_at, updated_at
+        """
+        return fetchone(query, (status, feedback_id))
+
+
+def delete_feedback(feedback_id: int) -> int:
+    """
+    Delete a feedback submission.
+    
+    Args:
+        feedback_id: Feedback record ID
+    
+    Returns:
+        Number of rows deleted (0 or 1)
+    """
+    query = "DELETE FROM user_feedback WHERE id = %s"
+    return execute(query, (feedback_id,))
+
+
+def get_feedback_statistics() -> Dict[str, Any]:
+    """
+    Get overall feedback statistics for admin dashboard.
+    
+    Returns:
+        Dict with various statistics
+    """
+    query = """
+        SELECT 
+            COUNT(*) as total_feedback,
+            COUNT(DISTINCT user_id) as unique_users,
+            COUNT(CASE WHEN status = 'open' THEN 1 END) as open_count,
+            COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress_count,
+            COUNT(CASE WHEN status = 'paused' THEN 1 END) as paused_count,
+            COUNT(CASE WHEN status = 'closed' THEN 1 END) as closed_count,
+            COUNT(CASE WHEN category = 'bug' THEN 1 END) as bug_count,
+            COUNT(CASE WHEN category = 'accessibility' THEN 1 END) as accessibility_count,
+            COUNT(CASE WHEN category = 'styling' THEN 1 END) as styling_count,
+            COUNT(CASE WHEN category = 'feedback' THEN 1 END) as general_feedback_count,
+            COUNT(CASE WHEN priority = 'urgent' THEN 1 END) as urgent_count,
+            COUNT(CASE WHEN priority = 'high' THEN 1 END) as high_count
+        FROM user_feedback
+    """
+    result = fetchone(query)
+    
+    # Get recent submissions (last 7 days)
+    recent_query = """
+        SELECT COUNT(*) as recent_submissions
+        FROM user_feedback
+        WHERE submitted_at >= NOW() - INTERVAL '7 days'
+    """
+    recent = fetchone(recent_query)
+    
+    return {
+        "total_feedback": result["total_feedback"] or 0,
+        "unique_users": result["unique_users"] or 0,
+        "open_count": result["open_count"] or 0,
+        "in_progress_count": result["in_progress_count"] or 0,
+        "paused_count": result["paused_count"] or 0,
+        "closed_count": result["closed_count"] or 0,
+        "bug_count": result["bug_count"] or 0,
+        "accessibility_count": result["accessibility_count"] or 0,
+        "styling_count": result["styling_count"] or 0,
+        "general_feedback_count": result["general_feedback_count"] or 0,
+        "urgent_count": result["urgent_count"] or 0,
+        "high_count": result["high_count"] or 0,
+        "recent_submissions": recent["recent_submissions"] or 0
+    }
+

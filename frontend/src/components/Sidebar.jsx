@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, NewsIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon, FeedbackIcon } from '../components/icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
@@ -190,10 +190,27 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                     <span className="sidebar-icon"><ChatIcon size={16} /></span>
                     <span>Chat Sessions</span>
                   </Link>
+                  <Link 
+                    to="/admin/feedback" 
+                    className={`sidebar-subitem ${isActive('/admin/feedback') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><FeedbackIcon size={16} /></span>
+                    <span>Feedback</span>
+                  </Link>
                 </div>
               )}
             </div>
           )}
+
+          {/* Submit Feedback - Above User Guide */}
+          <Link 
+            to="/feedback" 
+            className={`sidebar-item ${isActive('/feedback') ? 'active' : ''}`}
+            title="Submit Feedback"
+          >
+            <span className="sidebar-icon"><FeedbackIcon /></span>
+            {isOpen && <span className="sidebar-label">Submit Feedback</span>}
+          </Link>
 
           {/* User Guide - Always visible at the bottom */}
           <Link 

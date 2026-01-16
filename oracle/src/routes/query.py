@@ -14,7 +14,8 @@ from common.auth_middleware import get_user_context, require_user_context
 from src.exceptions import LLMTimeoutError
 from src.models.request import (
     QueryRequest, 
-    QueryMode, 
+    QueryMode,
+    PersonalizeMode,
     AnalyzeRequest, 
     AnalyzeResponse, 
     EnhanceRequest,
@@ -46,7 +47,9 @@ from src.services.ranking_explainer import add_explanations_to_documents
 from src.services.query_analyzer import analyze_query as analyze_query_impl
 from src.services.cache import OracleCache, hash_options
 from src.services.query_history import get_query_history_service
+from src.services.personalization import decide_personalization, get_user_preferences
 from src.metrics import record_query_metrics, record_enhance_metrics, record_feedback_metrics
+from src.routes.metrics import record_query, record_personalization, record_feedback, ACTIVE_QUERIES
 from src.settings import settings
 
 router = APIRouter(tags=["query"])
@@ -204,11 +207,28 @@ async def query(
             max_documents = getattr(options, 'max_documents', settings.default_max_documents) if options else settings.default_max_documents
             include_graph_context = getattr(options, 'include_graph_context', True) if options else True
             
-            # Phase 4: Check cache for identical queries
+            # Get personalization mode early to determine cache eligibility
+            personalize_mode = getattr(options, 'personalize', PersonalizeMode.AUTO) if options else PersonalizeMode.AUTO
+            
+            # Check if user might have personalization applied
+            # We skip cache if personalization could affect the response
+            may_personalize = False
+            if personalize_mode == PersonalizeMode.ON:
+                may_personalize = True
+            elif personalize_mode == PersonalizeMode.AUTO and request.user_id:
+                # For AUTO mode, check if user has preferences that could trigger personalization
+                try:
+                    user_prefs = await get_user_preferences(str(request.user_id))
+                    may_personalize = not user_prefs.is_empty()
+                except Exception as e:
+                    logger.warning(f"Failed to check user preferences for cache decision: {e}")
+                    may_personalize = False  # Default to allowing cache on error
+            
+            # Phase 4: Check cache for identical queries (skip for personalized queries)
             cache = await OracleCache.get_cache()
             options_hash = hash_options(options.__dict__ if options else {})
             
-            if settings.cache_enabled and cache.is_available():
+            if settings.cache_enabled and cache.is_available() and not may_personalize:
                 cached_response = await cache.get_query_response(
                     query=request.question,
                     mode=request.mode.value,
@@ -314,6 +334,43 @@ async def query(
             
             span.set_attribute("oracle.mode_effective", effective_mode.value)
             
+            # Step 5.5: Handle personalization
+            personalize_mode = getattr(options, 'personalize', PersonalizeMode.AUTO) if options else PersonalizeMode.AUTO
+            user_context_for_prompt = None
+            personalization_applied = False
+            
+            if request.user_id:
+                try:
+                    personalization_decision = await decide_personalization(
+                        mode=personalize_mode,
+                        user_id=str(request.user_id),
+                        question=request.question,
+                        intent=intent,
+                        parsed_topics=parsed.topics or [],
+                        parsed_orgs=parsed.organizations or [],
+                        parsed_people=parsed.people or []
+                    )
+                    
+                    # Record personalization decision in Prometheus
+                    record_personalization(
+                        applied=personalization_decision.should_personalize,
+                        reason=personalization_decision.reason
+                    )
+                    
+                    if personalization_decision.should_personalize:
+                        user_context_for_prompt = personalization_decision.user_context.to_prompt_section() if personalization_decision.user_context else None
+                        personalization_applied = True
+                        span.set_attribute("oracle.personalization_applied", True)
+                        span.set_attribute("oracle.personalization_reason", personalization_decision.reason)
+                        logger.info(f"Personalization enabled for user {request.user_id} (reason: {personalization_decision.reason})")
+                    else:
+                        span.set_attribute("oracle.personalization_applied", False)
+                        span.set_attribute("oracle.personalization_reason", personalization_decision.reason)
+                        logger.info(f"Personalization skipped for user {request.user_id} (reason: {personalization_decision.reason})")
+                except Exception as e:
+                    logger.warning(f"Failed to decide personalization: {e}")
+                    span.set_attribute("oracle.personalization_error", str(e))
+            
             # Step 6: Generate response based on mode
             confidence_score = None
             if effective_mode == QueryMode.ANSWER:
@@ -321,7 +378,8 @@ async def query(
                     question=request.question,
                     documents=documents,
                     graph_context=graph_context,
-                    intent=intent
+                    intent=intent,
+                    user_context=user_context_for_prompt
                 )
                 answer = response_result.answer
                 citations = response_result.citations
@@ -389,10 +447,11 @@ async def query(
                 graph_context=graph_context,
                 metadata=metadata,
                 suggestions=suggestions,
-                confidence_score=confidence_score
+                confidence_score=confidence_score,
+                personalization_applied=personalization_applied
             )
             
-            # Phase 6: Record analytics metrics
+            # Phase 6: Record analytics metrics (OpenTelemetry)
             record_query_metrics(
                 intent=intent.value,
                 mode=response.mode,
@@ -402,6 +461,17 @@ async def query(
                 cache_hit=cache_hit,
                 has_suggestions=has_suggestions,
                 strategies_used=strategies_used,
+            )
+            
+            # Record Prometheus metrics
+            record_query(
+                intent=intent.value,
+                mode=response.mode,
+                latency_seconds=processing_time_ms / 1000.0,
+                confidence=confidence_score,
+                documents_count=len(documents),
+                cache_hit=cache_hit,
+                personalized=personalization_applied
             )
             
             # Phase 6: Structured logging for Loki
@@ -425,14 +495,15 @@ async def query(
                     }
                 )
             
-            logger.info(f"Query completed in {processing_time_ms}ms, mode={response.mode}, docs={len(documents)}")
+            logger.info(f"Query completed in {processing_time_ms}ms, mode={response.mode}, docs={len(documents)}, personalized={personalization_applied}")
             
             # Phase 4: Cache the response (only cache successful responses with results)
-            # Don't cache: empty results, low confidence answers, or error-like responses
+            # Don't cache: empty results, low confidence answers, personalized responses, or error-like responses
             should_cache = (
                 settings.cache_enabled 
                 and cache.is_available() 
                 and not cache_hit
+                and not personalization_applied  # Don't cache personalized responses
                 and len(documents) > 0  # Must have found some documents
                 and (confidence_score is None or confidence_score >= 0.3)  # Don't cache very low confidence
             )
@@ -446,7 +517,10 @@ async def query(
                     ttl=settings.cache_query_ttl,
                 )
             elif not cache_hit and settings.cache_enabled:
-                logger.info(f"Skipping cache for poor results (docs={len(documents)}, confidence={confidence_score})")
+                if personalization_applied:
+                    logger.debug(f"Skipping cache for personalized response")
+                else:
+                    logger.info(f"Skipping cache for poor results (docs={len(documents)}, confidence={confidence_score})")
             
             # Phase 6: Save to query history for analytics
             if settings.query_history_enabled:

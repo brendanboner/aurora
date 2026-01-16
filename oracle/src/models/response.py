@@ -81,6 +81,7 @@ class QueryResponse(BaseModel):
     metadata: RetrievalMetadata = Field(..., description="Retrieval metadata")
     suggestions: list[QuerySuggestion] = Field(default_factory=list, description="Query refinement suggestions")
     confidence_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Answer confidence (answer mode)")
+    personalization_applied: bool = Field(default=False, description="Whether personalization was applied to the answer")
     
     class Config:
         json_schema_extra = {

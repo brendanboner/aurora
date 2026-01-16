@@ -149,45 +149,257 @@ def query_documents_from_filters(filters: Dict[str, Any]) -> List[Dict[str, Any]
     return docs
 
 
-def get_all_topics(limit: int = 1000) -> List[Dict[str, Any]]:
-    """Get all topics from the knowledge graph."""
+def get_all_topics(limit: int = 1000, offset: int = 0, search: str = "", sort_by: str = "alphabetical") -> Dict[str, Any]:
+    """Get all topics from the knowledge graph with pagination, search, and sorting.
+    
+    Args:
+        limit: Maximum number of results to return
+        offset: Number of results to skip
+        search: Optional search term to filter by topic name
+        sort_by: Sort order - 'alphabetical' (default) or 'popularity' (by relationship count)
+    """
     repo = get_repo()
-    query = """
+    
+    # Build search filter
+    search_filter = ""
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    if search:
+        search_filter = " WHERE toLower(t.name) CONTAINS toLower($search)"
+        params["search"] = search
+    
+    # Get total count with search filter
+    count_query = f"MATCH (t:Topic){search_filter} RETURN count(t) as total"
+    count_result = repo.client.execute_query(count_query, params)
+    total_count = count_result[0].get("total", 0) if count_result else 0
+    
+    # Build query based on sort_by parameter
+    if sort_by == "popularity":
+        query = f"""
+            MATCH (t:Topic)
+            {search_filter}
+            OPTIONAL MATCH (t)-[r]-()
+            WITH t, count(DISTINCT r) as relationship_count
+            RETURN t.topic_id as topic_id, t.name as name, t.aliases as aliases, 
+                   t.classification as classification, relationship_count
+            ORDER BY relationship_count DESC, t.name
+            SKIP $offset
+            LIMIT $limit
+        """
+    else:  # alphabetical (default)
+        query = f"""
+            MATCH (t:Topic)
+            {search_filter}
+            OPTIONAL MATCH (t)-[r]-()
+            WITH t, count(DISTINCT r) as relationship_count
+            RETURN t.topic_id as topic_id, t.name as name, t.aliases as aliases, 
+                   t.classification as classification, relationship_count
+            ORDER BY t.name
+            SKIP $offset
+            LIMIT $limit
+        """
+    
+    results = repo.client.execute_query(query, params)
+    return {
+        "topics": [dict(r) for r in results],
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "search": search,
+        "sort_by": sort_by
+    }
+
+
+def get_topics_hierarchy(search: str = "") -> Dict[str, Any]:
+    """Get all topics in hierarchical structure using ENCOMPASSES relationships.
+    
+    Returns a tree structure with:
+    - roots: List of root topic IDs (topics with no parents)
+    - nodes: Dict mapping topic_id to topic data including children/parents
+    - total_topics: Total count of topics in the hierarchy
+    
+    Args:
+        search: Optional search term to filter by topic name
+    """
+    repo = get_repo()
+    
+    # Build search filter
+    params: dict[str, Any] = {}
+    search_filter = ""
+    if search:
+        search_filter = "WHERE toLower(t.name) CONTAINS toLower($search)"
+        params["search"] = search
+    
+    # Get all topics with their hierarchy relationships
+    # ENCOMPASSES means parent ENCOMPASSES child
+    query = f"""
         MATCH (t:Topic)
-        RETURN t.topic_id as topic_id, t.name as name, t.aliases as aliases, 
-               t.classification as classification
+        OPTIONAL MATCH (t)-[:ENCOMPASSES]->(child:Topic)
+        OPTIONAL MATCH (parent:Topic)-[:ENCOMPASSES]->(t)
+        OPTIONAL MATCH (t)-[r]-()
+        {search_filter}
+        WITH t, 
+             collect(DISTINCT child.topic_id) as children,
+             collect(DISTINCT parent.topic_id) as parents,
+             count(DISTINCT r) as relationship_count
+        RETURN t.topic_id as topic_id,
+               t.name as name,
+               t.aliases as aliases,
+               t.classification as classification,
+               children,
+               parents,
+               relationship_count
         ORDER BY t.name
-        LIMIT $limit
     """
-    results = repo.client.execute_query(query, {"limit": limit})
-    return [dict(r) for r in results]
+    
+    results = repo.client.execute_query(query, params)
+    
+    # Build nodes dictionary and identify root topics
+    nodes = {}
+    roots = []
+    
+    for record in results:
+        topic_id = record["topic_id"]
+        # Filter out None values from children and parents lists
+        children = [c for c in record["children"] if c is not None]
+        parents = [p for p in record["parents"] if p is not None]
+        
+        nodes[topic_id] = {
+            "topic_id": topic_id,
+            "name": record["name"],
+            "aliases": record["aliases"],
+            "classification": record["classification"],
+            "children": children,
+            "parents": parents,
+            "relationship_count": record["relationship_count"]
+        }
+        
+        # Root topics have no parents
+        if len(parents) == 0:
+            roots.append(topic_id)
+    
+    return {
+        "roots": roots,
+        "nodes": nodes,
+        "total_topics": len(nodes)
+    }
 
 
-def get_all_organisations(limit: int = 1000) -> List[Dict[str, Any]]:
-    """Get all organisations from the knowledge graph."""
+def get_all_organisations(limit: int = 1000, offset: int = 0, sort_by: str = "alphabetical", search: str = "") -> Dict[str, Any]:
+    """Get all organisations from the knowledge graph with pagination, sorting, and search.
+    
+    Args:
+        limit: Maximum number of results to return
+        offset: Number of results to skip
+        sort_by: Sort order - 'alphabetical' (default) or 'popularity' (by relationship count)
+        search: Optional search term to filter by organization name
+    """
     repo = get_repo()
-    query = """
-        MATCH (o:Organization)
-        RETURN o.org_id as org_id, o.name as name, o.aliases as aliases, 
-               o.org_type as org_type
-        ORDER BY o.name
-        LIMIT $limit
+    
+    # Build search filter
+    search_filter = ""
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    if search:
+        search_filter = " WHERE toLower(o.name) CONTAINS toLower($search)"
+        params["search"] = search
+    
+    # Get total count with search filter
+    count_query = f"MATCH (o:Organization){search_filter} RETURN count(o) as total"
+    count_result = repo.client.execute_query(count_query, params)
+    total_count = count_result[0].get("total", 0) if count_result else 0
+    
+    # Build query based on sort_by parameter
+    if sort_by == "popularity":
+        query = f"""
+            MATCH (o:Organization)
+            {search_filter}
+            OPTIONAL MATCH (o)-[r]-()
+            WITH o, count(DISTINCT r) as relationship_count
+            RETURN o.org_id as org_id, o.name as name, o.aliases as aliases, 
+                   o.org_type as org_type, relationship_count
+            ORDER BY relationship_count DESC, o.name
+            SKIP $offset
+            LIMIT $limit
+        """
+    else:  # alphabetical (default)
+        query = f"""
+            MATCH (o:Organization)
+            {search_filter}
+            OPTIONAL MATCH (o)-[r]-()
+            WITH o, count(DISTINCT r) as relationship_count
+            RETURN o.org_id as org_id, o.name as name, o.aliases as aliases, 
+                   o.org_type as org_type, relationship_count
+            ORDER BY o.name
+            SKIP $offset
+            LIMIT $limit
+        """
+    
+    results = repo.client.execute_query(query, params)
+    return {
+        "organisations": [dict(r) for r in results],
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "sort_by": sort_by,
+        "search": search
+    }
+
+
+def get_all_people(limit: int = 1000, offset: int = 0, sort_by: str = "alphabetical", search: str = "") -> Dict[str, Any]:
+    """Get all people from the knowledge graph with pagination, sorting, and search.
+    
+    Args:
+        limit: Maximum number of results to return
+        offset: Number of results to skip
+        sort_by: Sort order - 'alphabetical' (default) or 'popularity' (by relationship count)
+        search: Optional search term to filter by person name
     """
-    results = repo.client.execute_query(query, {"limit": limit})
-    return [dict(r) for r in results]
-
-
-def get_all_people(limit: int = 1000) -> List[Dict[str, Any]]:
-    """Get all people from the knowledge graph."""
     repo = get_repo()
-    query = """
-        MATCH (p:Person)
-        RETURN p.person_id as id, p.name as name, p.email as email
-        ORDER BY p.name
-        LIMIT $limit
-    """
-    results = repo.client.execute_query(query, {"limit": limit})
-    return [dict(r) for r in results]
+    
+    # Build search filter
+    search_filter = ""
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    if search:
+        search_filter = " WHERE toLower(p.name) CONTAINS toLower($search)"
+        params["search"] = search
+    
+    # Get total count with search filter
+    count_query = f"MATCH (p:Person){search_filter} RETURN count(p) as total"
+    count_result = repo.client.execute_query(count_query, params)
+    total_count = count_result[0].get("total", 0) if count_result else 0
+    
+    # Build query based on sort_by parameter
+    if sort_by == "popularity":
+        query = f"""
+            MATCH (p:Person)
+            {search_filter}
+            OPTIONAL MATCH (p)-[r]-()
+            WITH p, count(DISTINCT r) as relationship_count
+            RETURN p.person_id as id, p.name as name, p.email as email, relationship_count
+            ORDER BY relationship_count DESC, p.name
+            SKIP $offset
+            LIMIT $limit
+        """
+    else:  # alphabetical (default)
+        query = f"""
+            MATCH (p:Person)
+            {search_filter}
+            OPTIONAL MATCH (p)-[r]-()
+            WITH p, count(DISTINCT r) as relationship_count
+            RETURN p.person_id as id, p.name as name, p.email as email, relationship_count
+            ORDER BY p.name
+            SKIP $offset
+            LIMIT $limit
+        """
+    
+    results = repo.client.execute_query(query, params)
+    return {
+        "people": [dict(r) for r in results],
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "sort_by": sort_by,
+        "search": search
+    }
 
 
 def query_upcoming_events(filters: Dict[str, Any]) -> List[Dict[str, Any]]:

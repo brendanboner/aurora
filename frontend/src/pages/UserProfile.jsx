@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, ResetIcon, WarningIcon } from '../components/icons';
-import { getUserPreferences, updateUserPreferences, getTopics, getOrganisations, getPeople } from '../services/api';
+import { getUserPreferences, updateUserPreferences, getTopics, getOrganisations, getPeople, getTopicsHierarchy } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import TopicTree from '../components/TopicTree';
 import './UserProfile.css';
 
 const UserProfile = () => {
   const { user } = useAuth();
+  const hierarchyLoadingRef = useRef(false);
+  const loadDataRef = useRef(false);
   const [preferences, setPreferences] = useState({
     topics: [], organisations: [], people: [], sources: [], notify_email: true, notify_digest: true,
   });
@@ -21,6 +24,15 @@ const UserProfile = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [initialLoaded, setInitialLoaded] = useState(false);
 
+  // Pagination state
+  const [topicsPage, setTopicsPage] = useState(1);
+  const [orgsPage, setOrgsPage] = useState(1);
+  const [peoplePage, setPeoplePage] = useState(1);
+  const [topicsTotalCount, setTopicsTotalCount] = useState(0);
+  const [orgsTotalCount, setOrgsTotalCount] = useState(0);
+  const [peopleTotalCount, setPeopleTotalCount] = useState(0);
+  const pageSize = 100;
+
   // Search inputs
   const [topicSearch, setTopicSearch] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
@@ -30,9 +42,24 @@ const UserProfile = () => {
   const [topicClassificationFilter, setTopicClassificationFilter] = useState([]);
   const [orgTypeFilter, setOrgTypeFilter] = useState([]);
 
+  // Sort options
+  const [topicSortBy, setTopicSortBy] = useState('popularity');
+  const [orgSortBy, setOrgSortBy] = useState('popularity');
+  const [peopleSortBy, setPeopleSortBy] = useState('popularity');
+
   // Filter dropdown visibility
   const [showTopicFilterDropdown, setShowTopicFilterDropdown] = useState(false);
   const [showOrgFilterDropdown, setShowOrgFilterDropdown] = useState(false);
+  
+  // Sort dropdown visibility
+  const [showTopicSortDropdown, setShowTopicSortDropdown] = useState(false);
+  const [showOrgSortDropdown, setShowOrgSortDropdown] = useState(false);
+  const [showPeopleSortDropdown, setShowPeopleSortDropdown] = useState(false);
+
+  // Topic view mode (hierarchical vs flat)
+  const [topicViewMode, setTopicViewMode] = useState('flat');
+  const [hierarchyData, setHierarchyData] = useState(null);
+  const [hierarchyLoading, setHierarchyLoading] = useState(false);
 
   const location = useLocation();
   const path = location.pathname;
@@ -42,7 +69,60 @@ const UserProfile = () => {
     : path.includes('/profile/notifications') ? 'notifications'
     : null;
 
-  useEffect(() => { loadData(); }, [user]);
+  // Initial load when user is available
+  useEffect(() => { 
+    if (user && !initialLoaded) {
+      loadData(); 
+    }
+  }, [user]);
+
+  // Reload topics when sort order changes
+  useEffect(() => {
+    if (initialLoaded && user && topicViewMode === 'flat') {
+      loadTopicsPage(1);
+    }
+  }, [topicSortBy]);
+
+  // Reload organizations when sort order changes
+  useEffect(() => {
+    if (initialLoaded && user && (selectedSection === 'organisations' || !selectedSection)) {
+      loadOrgsPage(1);
+    }
+  }, [orgSortBy]);
+
+  // Reload people when sort order changes
+  useEffect(() => {
+    if (initialLoaded && user && (selectedSection === 'people' || !selectedSection)) {
+      loadPeoplePage(1);
+    }
+  }, [peopleSortBy]);
+
+  // Reload topics when search changes (debounced) - only for flat view
+  useEffect(() => {
+    if (!initialLoaded || !user || topicViewMode !== 'flat') return;
+    const timeout = setTimeout(() => {
+      loadTopicsPage(1);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [topicSearch]);
+
+  // Reload organizations when search changes (debounced)
+  useEffect(() => {
+    if (!initialLoaded || !user || (selectedSection !== 'organisations' && selectedSection !== null)) return;
+    const timeout = setTimeout(() => {
+      loadOrgsPage(1);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [orgSearch]);
+
+  // Reload people when search changes (debounced)
+  useEffect(() => {
+    if (!initialLoaded || !user || (selectedSection !== 'people' && selectedSection !== null)) return;
+    const timeout = setTimeout(() => {
+      loadPeoplePage(1);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [peopleSearch]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -50,6 +130,9 @@ const UserProfile = () => {
       if (!event.target.closest('.filter-dropdown-wrapper')) {
         setShowTopicFilterDropdown(false);
         setShowOrgFilterDropdown(false);
+        setShowTopicSortDropdown(false);
+        setShowOrgSortDropdown(false);
+        setShowPeopleSortDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -57,47 +140,116 @@ const UserProfile = () => {
   }, []);
 
   const loadData = async () => {
-    if (!user) return;
+    // Prevent duplicate calls during initial load (React StrictMode)
+    if (!user || (loadDataRef.current && !initialLoaded)) return;
+    
+    loadDataRef.current = true;
     setLoading(true); setError(null);
     try {
-      const [prefs, topicsData, orgsData, peopleData] = await Promise.all([
-        getUserPreferences(user.id), getTopics(), getOrganisations(), getPeople()
-      ]);
+      const prefs = await getUserPreferences(user.id);
       setPreferences(prefs);
       setSavedPreferences(prefs);
       
-      // Normalize data - ensure we have arrays and map field names to 'id'
-      const normalizeTopics = (data) => {
-        const topics = data?.topics || [];
-        return topics.filter(t => t && typeof t === 'object').map(t => ({
-          ...t,
-          id: t.topic_id || t.id
-        }));
-      };
+      // Load data based on active section (or all if viewing all sections)
+      const loadPromises = [];
       
-      const normalizeOrgs = (data) => {
-        const orgs = data?.organisations || [];
-        return orgs.filter(o => o && typeof o === 'object').map(o => ({
-          ...o,
-          id: o.org_id || o.id
-        }));
-      };
+      if (!selectedSection || selectedSection === 'topics') {
+        if (topicViewMode === 'hierarchical') {
+          loadPromises.push(loadHierarchyData());
+        } else {
+          loadPromises.push(loadTopicsPage(1));
+        }
+      }
       
-      const normalizePeople = (data) => {
-        const people = data?.people || [];
-        return people.filter(p => p && typeof p === 'object').map(p => ({
-          ...p,
-          id: p.person_id || p.id
-        }));
-      };
+      if (!selectedSection || selectedSection === 'organisations') {
+        loadPromises.push(loadOrgsPage(1));
+      }
       
-      setAvailableTopics(normalizeTopics(topicsData));
-      setAvailableOrgs(normalizeOrgs(orgsData));
-      setAvailablePeople(normalizePeople(peopleData));
+      if (!selectedSection || selectedSection === 'people') {
+        loadPromises.push(loadPeoplePage(1));
+      }
+      
+      await Promise.all(loadPromises);
+      
       setInitialLoaded(true);
     } catch (err) {
       setError(err.response?.data?.detail || err.message);
-    } finally { setLoading(false); }
+    } finally { 
+      setLoading(false);
+      loadDataRef.current = false;
+    }
+  };
+
+  const loadTopicsPage = async (page) => {
+    const offset = (page - 1) * pageSize;
+    const topicsData = await getTopics(pageSize, offset, topicSearch, topicSortBy);
+    
+    const normalizeTopics = (data) => {
+      const topics = data?.topics || [];
+      return topics.filter(t => t && typeof t === 'object').map(t => ({
+        ...t,
+        id: t.topic_id || t.id
+      }));
+    };
+    
+    setAvailableTopics(normalizeTopics(topicsData));
+    setTopicsTotalCount(topicsData.total_count || 0);
+    setTopicsPage(page);
+  };
+
+  const loadHierarchyData = async () => {
+    // Prevent duplicate calls
+    if (hierarchyLoadingRef.current || hierarchyData) {
+      return;
+    }
+    
+    hierarchyLoadingRef.current = true;
+    setHierarchyLoading(true);
+    try {
+      // Load all topics without search filter (we'll filter client-side)
+      const data = await getTopicsHierarchy('');
+      setHierarchyData(data);
+    } catch (err) {
+      console.error('Failed to load hierarchy:', err);
+      setError('Failed to load topic hierarchy');
+    } finally {
+      setHierarchyLoading(false);
+      hierarchyLoadingRef.current = false;
+    }
+  };
+
+  const loadOrgsPage = async (page) => {
+    const offset = (page - 1) * pageSize;
+    const orgsData = await getOrganisations(pageSize, offset, orgSortBy, orgSearch);
+    
+    const normalizeOrgs = (data) => {
+      const orgs = data?.organisations || [];
+      return orgs.filter(o => o && typeof o === 'object').map(o => ({
+        ...o,
+        id: o.org_id || o.id
+      }));
+    };
+    
+    setAvailableOrgs(normalizeOrgs(orgsData));
+    setOrgsTotalCount(orgsData.total_count || 0);
+    setOrgsPage(page);
+  };
+
+  const loadPeoplePage = async (page) => {
+    const offset = (page - 1) * pageSize;
+    const peopleData = await getPeople(pageSize, offset, peopleSortBy, peopleSearch);
+    
+    const normalizePeople = (data) => {
+      const people = data?.people || [];
+      return people.filter(p => p && typeof p === 'object').map(p => ({
+        ...p,
+        id: p.person_id || p.id
+      }));
+    };
+    
+    setAvailablePeople(normalizePeople(peopleData));
+    setPeopleTotalCount(peopleData.total_count || 0);
+    setPeoplePage(page);
   };
 
   // Debounced auto-save only when dirty & actually changed
@@ -153,20 +305,52 @@ const UserProfile = () => {
   const uniqueClassifications = [...new Set(availableTopics.map(t => t.classification).filter(Boolean))];
   const uniqueOrgTypes = [...new Set(availableOrgs.map(o => o.org_type).filter(Boolean))];
 
-  // Apply filters
+  // Apply client-side filters (classification and type filters only - search is server-side)
   const filteredTopics = availableTopics.filter(t => {
-    const matchesSearch = t.name?.toLowerCase().includes(topicSearch.toLowerCase());
     const matchesClassification = topicClassificationFilter.length === 0 || topicClassificationFilter.includes(t.classification);
-    return matchesSearch && matchesClassification;
+    return matchesClassification;
   });
 
   const filteredOrgs = availableOrgs.filter(o => {
-    const matchesSearch = o.name?.toLowerCase().includes(orgSearch.toLowerCase());
     const matchesType = orgTypeFilter.length === 0 || orgTypeFilter.includes(o.org_type);
-    return matchesSearch && matchesType;
+    return matchesType;
   });
 
-  const filteredPeople = availablePeople.filter(p => p.name?.toLowerCase().includes(peopleSearch.toLowerCase()));
+  const filteredPeople = availablePeople; // No client-side filtering for people, all done server-side
+
+  // Calculate total pages
+  const topicsTotalPages = Math.ceil(topicsTotalCount / pageSize);
+  const orgsTotalPages = Math.ceil(orgsTotalCount / pageSize);
+  const peopleTotalPages = Math.ceil(peopleTotalCount / pageSize);
+
+  // Render pagination controls
+  const renderPagination = (currentPage, totalPages, onPageChange, label) => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="pagination">
+        <button 
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1 || loading}
+          className="pagination-btn"
+        >
+          Previous
+        </button>
+        
+        <div className="pagination-info">
+          Page {currentPage} of {totalPages}
+        </div>
+        
+        <button 
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage >= totalPages || loading}
+          className="pagination-btn"
+        >
+          Next
+        </button>
+      </div>
+    );
+  };
 
   if (!user) {
     return (
@@ -199,59 +383,194 @@ const UserProfile = () => {
             <div className="profile-section">
               <h2><span className="icon-heading"><BookIcon size={20} /></span> Topics Preferences</h2>
               <p className="section-description">Select topics you're interested in.</p>
-              <div className="search-filter-container">
-                <input className="input search-input" placeholder="Search topics..." value={topicSearch} onChange={e => setTopicSearch(e.target.value)} />
-                <div className="filter-dropdown-wrapper">
-                  <button 
-                    className={`btn btn-secondary btn-sm filter-btn ${topicClassificationFilter.length > 0 ? 'active' : ''}`}
-                    onClick={() => setShowTopicFilterDropdown(!showTopicFilterDropdown)}
-                  >
-                    Filter {topicClassificationFilter.length > 0 && `(${topicClassificationFilter.length})`}
-                  </button>
-                  {showTopicFilterDropdown && (
-                    <div className="filter-dropdown">
-                      <div className="filter-dropdown-header">
-                        <strong>Classification</strong>
-                        {topicClassificationFilter.length > 0 && (
-                          <button className="btn-link" onClick={() => setTopicClassificationFilter([])}>Clear</button>
-                        )}
-                      </div>
-                      {uniqueClassifications.map(classification => (
-                        <label key={classification} className="filter-option">
-                          <input
-                            type="checkbox"
-                            checked={topicClassificationFilter.includes(classification)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setTopicClassificationFilter([...topicClassificationFilter, classification]);
-                              } else {
-                                setTopicClassificationFilter(topicClassificationFilter.filter(c => c !== classification));
-                              }
-                            }}
-                          />
-                          <span>{classification}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="bulk-actions">
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', filteredTopics.map(t => t.id), true)} title={`Select all ${filteredTopics.length} visible topics`}>Select All ({filteredTopics.length})</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', preferences.topics.filter(id => !filteredTopics.map(t => t.id).includes(id)), true)} title="Deselect all visible topics">Select None</button>
-                {topicSearch && filteredTopics.length < availableTopics.length && (
-                  <span className="filter-info">{filteredTopics.length} of {availableTopics.length} shown</span>
-                )}
-              </div>
-              <div className="preferences-grid">
-                {filteredTopics.slice(0,100).filter(topic => topic && topic.id && topic.name).map(topic => (
-                  <div key={topic.id} className={`preference-item ${preferences.topics.includes(topic.id) ? 'selected':''}`} onClick={() => togglePreference('topics', topic.id)}>
-                    <div className="preference-name">{topic.name}</div>
-                    {topic.classification && <div className="preference-meta">{topic.classification}</div>}
-                    {preferences.topics.includes(topic.id) && <div className="preference-check"><CheckIcon size={14} /></div>}
+              
+              {/* Selected Topics Display */}
+              {preferences.topics.length > 0 && (
+                <div className="selected-items-display">
+                  <div className="selected-items-header">
+                    <strong>Selected Topics ({preferences.topics.length})</strong>
+                    <button 
+                      className="btn-link" 
+                      onClick={() => bulkSet('topics', [], false)}
+                      title="Clear all selected topics"
+                    >
+                      Clear All
+                    </button>
                   </div>
-                ))}
+                  <div className="selected-chips">
+                    {preferences.topics.map(topicId => {
+                      const topic = topicViewMode === 'hierarchical' && hierarchyData
+                        ? hierarchyData.nodes[topicId]
+                        : availableTopics.find(t => t.id === topicId);
+                      const topicName = topic?.name || topicId;
+                      return (
+                        <span key={topicId} className="chip topic-chip">
+                          {topicName}
+                          <button 
+                            onClick={() => togglePreference('topics', topicId)} 
+                            className="chip-remove"
+                            title={`Remove ${topicName}`}
+                          >×</button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* View Toggle */}
+              <div className="view-toggle">
+                <button 
+                  className={topicViewMode === 'flat' ? 'active' : ''}
+                  onClick={() => {
+                    setTopicViewMode('flat');
+                    if (availableTopics.length === 0 && initialLoaded) {
+                      loadTopicsPage(1);
+                    }
+                  }}
+                >
+                  List View
+                </button>
+                <button 
+                  className={topicViewMode === 'hierarchical' ? 'active' : ''}
+                  onClick={() => {
+                    setTopicViewMode('hierarchical');
+                    if (!hierarchyData) {
+                      loadHierarchyData();
+                    }
+                  }}
+                >
+                  Tree View
+                </button>
               </div>
+
+              {topicViewMode === 'flat' ? (
+                <>
+                  <div className="search-filter-container">
+                    <input className="input search-input" placeholder="Search topics..." value={topicSearch} onChange={e => setTopicSearch(e.target.value)} />
+                    <div className="filter-dropdown-wrapper">
+                      <button 
+                        className={`btn btn-secondary btn-sm filter-btn ${topicSortBy !== 'popularity' ? 'active' : ''}`}
+                        onClick={() => setShowTopicSortDropdown(!showTopicSortDropdown)}
+                      >
+                        Sort
+                      </button>
+                      {showTopicSortDropdown && (
+                        <div className="filter-dropdown">
+                          <div className="filter-dropdown-header">
+                            <strong>Sort By</strong>
+                          </div>
+                          <label className="filter-option">
+                            <input
+                              type="radio"
+                              name="topic-sort"
+                              checked={topicSortBy === 'alphabetical'}
+                              onChange={() => {
+                                setTopicSortBy('alphabetical');
+                                setShowTopicSortDropdown(false);
+                              }}
+                            />
+                            <span>Alphabetical</span>
+                          </label>
+                          <label className="filter-option">
+                            <input
+                              type="radio"
+                              name="topic-sort"
+                              checked={topicSortBy === 'popularity'}
+                              onChange={() => {
+                                setTopicSortBy('popularity');
+                                setShowTopicSortDropdown(false);
+                              }}
+                            />
+                            <span>Popularity</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                    <div className="filter-dropdown-wrapper">
+                      <button 
+                        className={`btn btn-secondary btn-sm filter-btn ${topicClassificationFilter.length > 0 ? 'active' : ''}`}
+                        onClick={() => setShowTopicFilterDropdown(!showTopicFilterDropdown)}
+                      >
+                        Filter {topicClassificationFilter.length > 0 && `(${topicClassificationFilter.length})`}
+                      </button>
+                      {showTopicFilterDropdown && (
+                        <div className="filter-dropdown">
+                          <div className="filter-dropdown-header">
+                            <strong>Classification</strong>
+                            {topicClassificationFilter.length > 0 && (
+                              <button className="btn-link" onClick={() => setTopicClassificationFilter([])}>Clear</button>
+                            )}
+                          </div>
+                          {uniqueClassifications.map(classification => (
+                            <label key={classification} className="filter-option">
+                              <input
+                                type="checkbox"
+                                checked={topicClassificationFilter.includes(classification)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setTopicClassificationFilter([...topicClassificationFilter, classification]);
+                                  } else {
+                                    setTopicClassificationFilter(topicClassificationFilter.filter(c => c !== classification));
+                                  }
+                                }}
+                              />
+                              <span>{classification}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="bulk-actions">
+                    <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', filteredTopics.map(t => t.id), true)} title={`Select all ${filteredTopics.length} visible topics`}>Select All ({filteredTopics.length})</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('topics', preferences.topics.filter(id => !filteredTopics.map(t => t.id).includes(id)), true)} title="Deselect all visible topics">Select None</button>
+                    {(topicSearch || topicClassificationFilter.length > 0) && (
+                      <span className="filter-info">
+                        Showing {filteredTopics.length} of {topicsTotalCount} total
+                        {topicSearch && ` matching "${topicSearch}"`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="preferences-grid">
+                    {filteredTopics.filter(topic => topic && topic.id && topic.name).map(topic => (
+                      <div key={topic.id} className={`preference-item ${preferences.topics.includes(topic.id) ? 'selected':''}`} onClick={() => togglePreference('topics', topic.id)}>
+                        <div className="preference-name">{topic.name}</div>
+                        <div className="preference-meta-row">
+                          {topic.classification && <span className="preference-meta">{topic.classification}</span>}
+                          {topic.relationship_count !== undefined && (
+                            <span className="preference-count" title="Number of relationships in knowledge graph">
+                              {topic.relationship_count} connections
+                            </span>
+                          )}
+                        </div>
+                        {preferences.topics.includes(topic.id) && <div className="preference-check"><CheckIcon size={14} /></div>}
+                      </div>
+                    ))}
+                  </div>
+                  {renderPagination(topicsPage, topicsTotalPages, loadTopicsPage, 'topics')}
+                </>
+              ) : (
+                <>
+                  <div className="search-filter-container">
+                    <input className="input search-input" placeholder="Search topics..." value={topicSearch} onChange={e => setTopicSearch(e.target.value)} />
+                  </div>
+                  <TopicTree
+                    hierarchyData={hierarchyData}
+                    selectedIds={new Set(preferences.topics)}
+                    searchTerm={topicSearch}
+                    onSelectionChange={(newSelectedSet) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        topics: Array.from(newSelectedSet)
+                      }));
+                      setDirty(true);
+                    }}
+                    isLoading={hierarchyLoading}
+                  />
+                </>
+              )}
+              
               {preferences.topics.length > 0 && <div className="selected-count">{preferences.topics.length} topic(s) selected</div>}
             </div>
           )}
@@ -260,8 +579,80 @@ const UserProfile = () => {
             <div className="profile-section">
               <h2><span className="icon-heading"><BuildingIcon size={20} /></span> Organisation Preferences</h2>
               <p className="section-description">Select organisations you want to follow.</p>
+              
+              {/* Selected Organizations Display */}
+              {preferences.organisations.length > 0 && (
+                <div className="selected-items-display">
+                  <div className="selected-items-header">
+                    <strong>Selected Organisations ({preferences.organisations.length})</strong>
+                    <button 
+                      className="btn-link" 
+                      onClick={() => bulkSet('organisations', [], false)}
+                      title="Clear all selected organisations"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="selected-chips">
+                    {preferences.organisations.map(orgId => {
+                      const org = availableOrgs.find(o => o.id === orgId);
+                      const orgName = org?.name || orgId;
+                      return (
+                        <span key={orgId} className="chip org-chip">
+                          {orgName}
+                          <button 
+                            onClick={() => togglePreference('organisations', orgId)} 
+                            className="chip-remove"
+                            title={`Remove ${orgName}`}
+                          >×</button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="search-filter-container">
                 <input className="input search-input" placeholder="Search organisations..." value={orgSearch} onChange={e => setOrgSearch(e.target.value)} />
+                <div className="filter-dropdown-wrapper">
+                  <button 
+                    className={`btn btn-secondary btn-sm filter-btn ${orgSortBy !== 'popularity' ? 'active' : ''}`}
+                    onClick={() => setShowOrgSortDropdown(!showOrgSortDropdown)}
+                  >
+                    Sort
+                  </button>
+                  {showOrgSortDropdown && (
+                    <div className="filter-dropdown">
+                      <div className="filter-dropdown-header">
+                        <strong>Sort By</strong>
+                      </div>
+                      <label className="filter-option">
+                        <input
+                          type="radio"
+                          name="org-sort"
+                          checked={orgSortBy === 'alphabetical'}
+                          onChange={() => {
+                            setOrgSortBy('alphabetical');
+                            setShowOrgSortDropdown(false);
+                          }}
+                        />
+                        <span>Alphabetical</span>
+                      </label>
+                      <label className="filter-option">
+                        <input
+                          type="radio"
+                          name="org-sort"
+                          checked={orgSortBy === 'popularity'}
+                          onChange={() => {
+                            setOrgSortBy('popularity');
+                            setShowOrgSortDropdown(false);
+                          }}
+                        />
+                        <span>Popularity</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
                 <div className="filter-dropdown-wrapper">
                   <button 
                     className={`btn btn-secondary btn-sm filter-btn ${orgTypeFilter.length > 0 ? 'active' : ''}`}
@@ -300,19 +691,30 @@ const UserProfile = () => {
               <div className="bulk-actions">
                 <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', filteredOrgs.map(o => o.id), true)} title={`Select all ${filteredOrgs.length} visible organisations`}>Select All ({filteredOrgs.length})</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('organisations', preferences.organisations.filter(id => !filteredOrgs.map(o => o.id).includes(id)), true)} title="Deselect all visible organisations">Select None</button>
-                {orgSearch && filteredOrgs.length < availableOrgs.length && (
-                  <span className="filter-info">{filteredOrgs.length} of {availableOrgs.length} shown</span>
+                {(orgSearch || orgTypeFilter.length > 0) && (
+                  <span className="filter-info">
+                    Showing {filteredOrgs.length} of {orgsTotalCount} total
+                    {orgSearch && ` matching "${orgSearch}"`}
+                  </span>
                 )}
               </div>
               <div className="preferences-grid">
-                {filteredOrgs.slice(0,100).filter(org => org && org.id && org.name).map(org => (
+                {filteredOrgs.filter(org => org && org.id && org.name).map(org => (
                   <div key={org.id} className={`preference-item ${preferences.organisations.includes(org.id) ? 'selected':''}`} onClick={() => togglePreference('organisations', org.id)}>
                     <div className="preference-name">{org.name}</div>
-                    {org.org_type && <div className="preference-meta">{org.org_type}</div>}
+                    <div className="preference-meta-row">
+                      {org.org_type && <span className="preference-meta">{org.org_type}</span>}
+                      {org.relationship_count !== undefined && (
+                        <span className="preference-count" title="Number of relationships in knowledge graph">
+                          {org.relationship_count} connections
+                        </span>
+                      )}
+                    </div>
                     {preferences.organisations.includes(org.id) && <div className="preference-check"><CheckIcon size={14} /></div>}
                   </div>
                 ))}
               </div>
+              {renderPagination(orgsPage, orgsTotalPages, loadOrgsPage, 'organizations')}
               {preferences.organisations.length > 0 && <div className="selected-count">{preferences.organisations.length} organisation(s) selected</div>}
             </div>
           )}
@@ -321,23 +723,107 @@ const UserProfile = () => {
             <div className="profile-section">
               <h2><span className="icon-heading"><ProfileIcon size={20} /></span> People Preferences</h2>
               <p className="section-description">Select people you want to track.</p>
-              <input className="input search-input" placeholder="Search people..." value={peopleSearch} onChange={e => setPeopleSearch(e.target.value)} />
+              
+              {/* Selected People Display */}
+              {preferences.people.length > 0 && (
+                <div className="selected-items-display">
+                  <div className="selected-items-header">
+                    <strong>Selected People ({preferences.people.length})</strong>
+                    <button 
+                      className="btn-link" 
+                      onClick={() => bulkSet('people', [], false)}
+                      title="Clear all selected people"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="selected-chips">
+                    {preferences.people.map(personId => {
+                      const person = availablePeople.find(p => p.id === personId);
+                      const personName = person?.name || personId;
+                      return (
+                        <span key={personId} className="chip person-chip">
+                          {personName}
+                          <button 
+                            onClick={() => togglePreference('people', personId)} 
+                            className="chip-remove"
+                            title={`Remove ${personName}`}
+                          >×</button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="search-filter-container">
+                <input className="input search-input" placeholder="Search people..." value={peopleSearch} onChange={e => setPeopleSearch(e.target.value)} />
+                <div className="filter-dropdown-wrapper">
+                  <button 
+                    className={`btn btn-secondary btn-sm filter-btn ${peopleSortBy !== 'popularity' ? 'active' : ''}`}
+                    onClick={() => setShowPeopleSortDropdown(!showPeopleSortDropdown)}
+                  >
+                    Sort
+                  </button>
+                  {showPeopleSortDropdown && (
+                    <div className="filter-dropdown">
+                      <div className="filter-dropdown-header">
+                        <strong>Sort By</strong>
+                      </div>
+                      <label className="filter-option">
+                        <input
+                          type="radio"
+                          name="people-sort"
+                          checked={peopleSortBy === 'alphabetical'}
+                          onChange={() => {
+                            setPeopleSortBy('alphabetical');
+                            setShowPeopleSortDropdown(false);
+                          }}
+                        />
+                        <span>Alphabetical</span>
+                      </label>
+                      <label className="filter-option">
+                        <input
+                          type="radio"
+                          name="people-sort"
+                          checked={peopleSortBy === 'popularity'}
+                          onChange={() => {
+                            setPeopleSortBy('popularity');
+                            setShowPeopleSortDropdown(false);
+                          }}
+                        />
+                        <span>Popularity</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="bulk-actions">
                 <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', filteredPeople.map(p => p.id), true)} title={`Select all ${filteredPeople.length} visible people`}>Select All ({filteredPeople.length})</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => bulkSet('people', preferences.people.filter(id => !filteredPeople.map(p => p.id).includes(id)), true)} title="Deselect all visible people">Select None</button>
-                {peopleSearch && filteredPeople.length < availablePeople.length && (
-                  <span className="filter-info">{filteredPeople.length} of {availablePeople.length} shown</span>
+                {peopleSearch && (
+                  <span className="filter-info">
+                    Showing {filteredPeople.length} of {peopleTotalCount} total matching "{peopleSearch}"
+                  </span>
                 )}
               </div>
               <div className="preferences-grid">
-                {filteredPeople.slice(0,100).filter(person => person && person.id && person.name).map(person => (
+                {filteredPeople.filter(person => person && person.id && person.name).map(person => (
                   <div key={person.id} className={`preference-item ${preferences.people.includes(person.id) ? 'selected':''}`} onClick={() => togglePreference('people', person.id)}>
                     <div className="preference-name">{person.name}</div>
-                    {person.email && <div className="preference-meta">{person.email}</div>}
+                    <div className="preference-meta-row">
+                      {person.email && <span className="preference-meta">{person.email}</span>}
+                      {person.relationship_count !== undefined && (
+                        <span className="preference-count" title="Number of relationships in knowledge graph">
+                          {person.relationship_count} connections
+                        </span>
+                      )}
+                    </div>
                     {preferences.people.includes(person.id) && <div className="preference-check"><CheckIcon size={14} /></div>}
                   </div>
                 ))}
               </div>
+              {renderPagination(peoplePage, peopleTotalPages, loadPeoplePage, 'people')}
               {preferences.people.length > 0 && <div className="selected-count">{preferences.people.length} people selected</div>}
             </div>
           )}

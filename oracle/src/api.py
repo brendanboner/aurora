@@ -10,6 +10,7 @@ from src.routes.health import router as health_router
 from src.routes.query import router as query_router
 from src.routes.history import router as history_router
 from src.routes.documents import router as documents_router
+from src.routes.metrics import router as metrics_router
 from src.services.query_history import get_query_history_service
 from src.settings import settings
 
@@ -53,18 +54,14 @@ app.include_router(health_router)
 app.include_router(query_router)
 app.include_router(history_router)
 app.include_router(documents_router)
+app.include_router(metrics_router)
 
 
 @app.on_event("startup")
 async def startup():
     """Initialize services on startup."""
     logger.info("Oracle Service starting up...")
-    if settings.use_prod_data:
-        logger.info(f"*** PRODUCTION DATA MODE ENABLED ***")
-        logger.info(f"Neo4j URI (PROD): {settings.effective_neo4j_uri}")
-        logger.info(f"All Neo4j operations will be READ-ONLY")
-    else:
-        logger.info(f"Neo4j URI: {settings.effective_neo4j_uri}")
+    logger.info(f"Neo4j URI: {settings.neo4j_uri}")
     logger.info(f"LLM configured: {bool(settings.azure_openai_api_key and settings.azure_openai_deployment)}")
     
     # Initialize query history storage

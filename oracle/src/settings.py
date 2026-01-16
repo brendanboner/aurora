@@ -19,14 +19,6 @@ class Settings(BaseSettings):
     neo4j_password: str = "your_neo4j_password_here"
     neo4j_database: str = "neo4j"
     
-    # Production Neo4j Configuration (read-only access via SSH tunnel)
-    # When use_prod_data=True, Oracle connects to prod Neo4j for queries
-    use_prod_data: bool = False
-    oracle_prod_neo4j_uri: str = "bolt://localhost:7688"
-    oracle_prod_neo4j_user: str = "neo4j"
-    oracle_prod_neo4j_password: str = ""
-    oracle_prod_neo4j_database: str = "neo4j"
-    
     # PostgreSQL Configuration (for user preferences)
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -149,34 +141,6 @@ class Settings(BaseSettings):
     def postgres_dsn(self) -> str:
         """Generate PostgreSQL connection string."""
         return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-    
-    @property
-    def effective_neo4j_uri(self) -> str:
-        """Get the Neo4j URI to use (prod or dev based on use_prod_data)."""
-        if self.use_prod_data:
-            return self.oracle_prod_neo4j_uri
-        return self.neo4j_uri
-    
-    @property
-    def effective_neo4j_user(self) -> str:
-        """Get the Neo4j user to use (prod or dev based on use_prod_data)."""
-        if self.use_prod_data:
-            return self.oracle_prod_neo4j_user
-        return self.neo4j_user
-    
-    @property
-    def effective_neo4j_password(self) -> str:
-        """Get the Neo4j password to use (prod or dev based on use_prod_data)."""
-        if self.use_prod_data:
-            return self.oracle_prod_neo4j_password
-        return self.neo4j_password
-    
-    @property
-    def effective_neo4j_database(self) -> str:
-        """Get the Neo4j database to use (prod or dev based on use_prod_data)."""
-        if self.use_prod_data:
-            return self.oracle_prod_neo4j_database
-        return self.neo4j_database
 
 
 settings = Settings()

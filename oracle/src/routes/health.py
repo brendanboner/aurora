@@ -18,8 +18,7 @@ def check_neo4j() -> str:
         repo = get_repo()
         # Use the existing cached connection to run a simple check
         result = repo.client.execute_query("RETURN 1 AS check")
-        mode = "prod" if settings.use_prod_data else "dev"
-        return f"ok ({mode})" if result else "error"
+        return "ok" if result else "error"
     except Exception as e:
         logger.warning(f"Neo4j health check failed: {e}")
         return f"error: {str(e)[:50]}"

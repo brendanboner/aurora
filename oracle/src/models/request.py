@@ -25,6 +25,13 @@ class QueryMode(str, Enum):
     AUTO = "auto"
 
 
+class PersonalizeMode(str, Enum):
+    """Personalization mode for query endpoint."""
+    OFF = "off"
+    ON = "on"
+    AUTO = "auto"
+
+
 class FeedbackType(str, Enum):
     """Type of user feedback."""
     HELPFUL = "helpful"
@@ -70,6 +77,10 @@ class QueryOptions(BaseModel):
     organizations: Optional[list[str]] = Field(default=None, description="Filter by specific organizations")
     datasource_ids: Optional[list[str]] = Field(default=None, description="Filter by specific datasource IDs (e.g., ['wifi8mtg', 'wfa'])")
     recency_boost: bool = Field(default=True, description="Boost more recent documents in ranking")
+    personalize: PersonalizeMode = Field(
+        default=PersonalizeMode.AUTO, 
+        description="Personalization mode: 'off' (generic), 'on' (always personalize), 'auto' (system decides)"
+    )
 
 
 class QueryRequest(BaseModel):

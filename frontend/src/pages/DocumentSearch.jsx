@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './DocumentSearch.css';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -14,11 +14,23 @@ import {
 import { 
   getDatasources, 
   getFilterOptions,
-  searchDocuments 
+  searchDocuments,
+  getDocumentCount
 } from '../services/api';
 
 const DocumentSearch = () => {
   const { user } = useAuth();
+  
+  // Ref to prevent infinite loop when updating filter options
+  const isUpdatingFilters = useRef(false);
+  
+  // Helper function to compare arrays
+  const arraysEqual = (a, b) => {
+    if (a.length !== b.length) return false;
+    const sortedA = [...a].sort();
+    const sortedB = [...b].sort();
+    return sortedA.every((val, index) => val === sortedB[index]);
+  };
   
   // Filter options (loaded from APIs)
   const [datasources, setDatasources] = useState([]);
@@ -45,6 +57,10 @@ const DocumentSearch = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(25);
   
+  // Document count for search button
+  const [documentCount, setDocumentCount] = useState(null);
+  const [isLoadingCount, setIsLoadingCount] = useState(false);
+  
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingFilters, setIsLoadingFilters] = useState(true);
@@ -52,16 +68,14 @@ const DocumentSearch = () => {
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Load datasources on mount
+  // Load initial filter options on mount
   useEffect(() => {
-    const loadDatasources = async () => {
+    const loadInitialOptions = async () => {
       setIsLoadingFilters(true);
       try {
-        const dsResponse = await getDatasources();
-        setDatasources(dsResponse.datasources || []);
-        
-        // Also load initial filter options (no datasource filter)
-        const optionsResponse = await getFilterOptions(null);
+        // Load all filter options with no filters applied
+        const optionsResponse = await getFilterOptions({});
+        setDatasources(optionsResponse.datasources || []);
         setCategories(optionsResponse.categories || []);
         setTopics(optionsResponse.topics || []);
         setOrganizations(optionsResponse.organizations || []);
@@ -73,41 +87,129 @@ const DocumentSearch = () => {
       }
     };
     
-    loadDatasources();
+    loadInitialOptions();
   }, []);
 
-  // Reload filter options when selected datasources change
+  // Reload filter options when ANY filter selection changes (bidirectional filtering)
   useEffect(() => {
     const loadFilteredOptions = async () => {
       // Skip if initial load hasn't completed
       if (isLoadingFilters) return;
       
+      // Skip if already updating to prevent infinite loop
+      if (isUpdatingFilters.current) return;
+      
+      // Skip if no filters are selected
+      const hasFilters = selectedDatasources.length > 0 || 
+                        selectedCategories.length > 0 || 
+                        selectedTopics.length > 0 || 
+                        selectedOrganizations.length > 0;
+      
+      if (!hasFilters) {
+        // If all filters are cleared, reload all options
+        setIsLoadingFilterOptions(true);
+        try {
+          const optionsResponse = await getFilterOptions({});
+          setDatasources(optionsResponse.datasources || []);
+          setCategories(optionsResponse.categories || []);
+          setTopics(optionsResponse.topics || []);
+          setOrganizations(optionsResponse.organizations || []);
+        } catch (err) {
+          console.error('Failed to load filter options:', err);
+        } finally {
+          setIsLoadingFilterOptions(false);
+        }
+        return;
+      }
+      
+      isUpdatingFilters.current = true;
       setIsLoadingFilterOptions(true);
       try {
-        const dsIds = selectedDatasources.length > 0 ? selectedDatasources : null;
-        const optionsResponse = await getFilterOptions(dsIds);
+        const filters = {
+          datasourceIds: selectedDatasources.length > 0 ? selectedDatasources : null,
+          categories: selectedCategories.length > 0 ? selectedCategories : null,
+          topicIds: selectedTopics.length > 0 ? selectedTopics : null,
+          organizationIds: selectedOrganizations.length > 0 ? selectedOrganizations : null,
+        };
         
+        const optionsResponse = await getFilterOptions(filters);
+        
+        // Update all filter options based on the current selection
+        setDatasources(optionsResponse.datasources || []);
         setCategories(optionsResponse.categories || []);
         setTopics(optionsResponse.topics || []);
         setOrganizations(optionsResponse.organizations || []);
         
         // Clear any selections that are no longer valid
+        const validDatasourceIds = new Set((optionsResponse.datasources || []).map(ds => ds.datasource_id));
         const validCategoryIds = new Set((optionsResponse.categories || []).map(c => c.category_id));
         const validTopicIds = new Set((optionsResponse.topics || []).map(t => t.topic_id));
         const validOrgIds = new Set((optionsResponse.organizations || []).map(o => o.org_id));
         
-        setSelectedCategories(prev => prev.filter(id => validCategoryIds.has(id)));
-        setSelectedTopics(prev => prev.filter(id => validTopicIds.has(id)));
-        setSelectedOrganizations(prev => prev.filter(id => validOrgIds.has(id)));
+        // Only update selections if they actually changed (to prevent infinite loop)
+        const newDatasources = selectedDatasources.filter(id => validDatasourceIds.has(id));
+        const newCategories = selectedCategories.filter(id => validCategoryIds.has(id));
+        const newTopics = selectedTopics.filter(id => validTopicIds.has(id));
+        const newOrgs = selectedOrganizations.filter(id => validOrgIds.has(id));
+        
+        if (!arraysEqual(newDatasources, selectedDatasources)) {
+          setSelectedDatasources(newDatasources);
+        }
+        if (!arraysEqual(newCategories, selectedCategories)) {
+          setSelectedCategories(newCategories);
+        }
+        if (!arraysEqual(newTopics, selectedTopics)) {
+          setSelectedTopics(newTopics);
+        }
+        if (!arraysEqual(newOrgs, selectedOrganizations)) {
+          setSelectedOrganizations(newOrgs);
+        }
       } catch (err) {
         console.error('Failed to load filtered options:', err);
       } finally {
         setIsLoadingFilterOptions(false);
+        // Reset the flag after a short delay to allow state updates to complete
+        setTimeout(() => {
+          isUpdatingFilters.current = false;
+        }, 100);
       }
     };
     
     loadFilteredOptions();
-  }, [selectedDatasources, isLoadingFilters]);
+  }, [selectedDatasources, selectedCategories, selectedTopics, selectedOrganizations, isLoadingFilters]);
+
+  // Fetch document count when filters change
+  useEffect(() => {
+    const fetchDocumentCount = async () => {
+      // Skip if initial load hasn't completed
+      if (isLoadingFilters) return;
+      
+      setIsLoadingCount(true);
+      try {
+        const filters = {
+          keywords: keywords.length > 0 ? keywords : null,
+          keywordMatchMode,
+          datasourceIds: selectedDatasources.length > 0 ? selectedDatasources : null,
+          categories: selectedCategories.length > 0 ? selectedCategories : null,
+          topicIds: selectedTopics.length > 0 ? selectedTopics : null,
+          organizationIds: selectedOrganizations.length > 0 ? selectedOrganizations : null,
+          dateFrom: dateFrom || null,
+          dateTo: dateTo || null,
+        };
+        
+        const response = await getDocumentCount(filters);
+        setDocumentCount(response.count);
+      } catch (err) {
+        console.error('Failed to fetch document count:', err);
+        setDocumentCount(null);
+      } finally {
+        setIsLoadingCount(false);
+      }
+    };
+    
+    fetchDocumentCount();
+  }, [keywords, keywordMatchMode, selectedDatasources, selectedCategories, 
+      selectedTopics, selectedOrganizations, dateFrom, dateTo, isLoadingFilters]);
 
   // Add keyword
   const addKeyword = () => {
@@ -492,7 +594,13 @@ const DocumentSearch = () => {
                 ) : (
                   <>
                     <SearchIcon size={18} />
-                    Search Documents
+                    {isLoadingCount ? (
+                      'Loading count...'
+                    ) : documentCount !== null ? (
+                      `Search (${documentCount.toLocaleString()}) Document${documentCount !== 1 ? 's' : ''}`
+                    ) : (
+                      'Search Documents'
+                    )}
                   </>
                 )}
               </button>

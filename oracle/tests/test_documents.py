@@ -157,6 +157,10 @@ class TestFilterOptionsEndpoint:
         """Test filter options returns all options when no datasource specified."""
         mock_repo.client.execute_query.side_effect = [
             [
+                {"datasource_id": "ds-wifi8", "name": "Wi-Fi 8", "doc_count": 100},
+                {"datasource_id": "ds-zigbee", "name": "Zigbee", "doc_count": 50},
+            ],
+            [
                 {"category": "press_release", "doc_count": 50},
                 {"category": "blog_post", "doc_count": 30},
             ],
@@ -180,6 +184,7 @@ class TestFilterOptionsEndpoint:
             )
             
             data = response.json()
+            assert len(data["datasources"]) == 2
             assert len(data["categories"]) == 2
             assert len(data["topics"]) == 2
             assert len(data["organizations"]) == 1
@@ -188,6 +193,7 @@ class TestFilterOptionsEndpoint:
         """Test filter options filters by datasource when specified."""
         # When datasource is specified, expect filtered results
         mock_repo.client.execute_query.side_effect = [
+            [{"datasource_id": "ds-wifi8", "name": "Wi-Fi 8", "doc_count": 50}],  # datasources
             [{"category": "press_release", "doc_count": 10}],  # filtered categories
             [{"topic_id": "wifi7", "name": "Wi-Fi 7", "doc_count": 8}],  # filtered topics
             [{"org_id": "wfa", "name": "Wi-Fi Alliance", "doc_count": 5}],  # filtered orgs
@@ -217,6 +223,7 @@ class TestFilterOptionsEndpoint:
     def test_filter_options_handles_empty_results(self, client, mock_repo):
         """Test filter options handles empty results gracefully."""
         mock_repo.client.execute_query.side_effect = [
+            [],  # no datasources
             [],  # no categories
             [],  # no topics
             [],  # no orgs
@@ -234,9 +241,70 @@ class TestFilterOptionsEndpoint:
             
             assert response.status_code == 200
             data = response.json()
+            assert data["datasources"] == []
             assert data["categories"] == []
             assert data["topics"] == []
             assert data["organizations"] == []
+
+    def test_filter_options_with_topic_filter(self, client, mock_repo):
+        """Test filter options filters datasources by selected topic (bidirectional filtering)."""
+        # When topic is specified, should return only datasources/categories/orgs with that topic
+        mock_repo.client.execute_query.side_effect = [
+            [{"datasource_id": "ds-wifi8", "name": "Wi-Fi 8", "doc_count": 20}],  # datasources with wifi7 topic
+            [{"category": "press_release", "doc_count": 10}],  # categories with wifi7 topic
+            [{"topic_id": "wifi7", "name": "Wi-Fi 7", "doc_count": 20}],  # topic itself
+            [{"org_id": "wfa", "name": "Wi-Fi Alliance", "doc_count": 15}],  # orgs with wifi7 topic
+        ]
+        
+        with patch('src.routes.documents.get_repo', return_value=mock_repo):
+            response = client.post(
+                "/documents/filter-options",
+                json={"topic_ids": ["wifi7"]},
+                headers={
+                    "X-User-ID": "test-user-123",
+                    "X-User-Email": "test@example.com"
+                }
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["datasources"]) == 1
+            assert data["datasources"][0]["datasource_id"] == "ds-wifi8"
+            assert len(data["categories"]) == 1
+            assert len(data["topics"]) == 1
+            assert len(data["organizations"]) == 1
+
+    def test_filter_options_with_multiple_filters(self, client, mock_repo):
+        """Test filter options with multiple filter types combined."""
+        # When multiple filters are specified, should return intersection
+        mock_repo.client.execute_query.side_effect = [
+            [{"datasource_id": "ds-wifi8", "name": "Wi-Fi 8", "doc_count": 5}],  # datasources
+            [{"category": "press_release", "doc_count": 5}],  # categories (matches selected)
+            [{"topic_id": "wifi7", "name": "Wi-Fi 7", "doc_count": 5}],  # topics (matches selected)
+            [{"org_id": "wfa", "name": "Wi-Fi Alliance", "doc_count": 5}],  # orgs
+        ]
+        
+        with patch('src.routes.documents.get_repo', return_value=mock_repo):
+            response = client.post(
+                "/documents/filter-options",
+                json={
+                    "datasource_ids": ["ds-wifi8"],
+                    "categories": ["press_release"],
+                    "topic_ids": ["wifi7"]
+                },
+                headers={
+                    "X-User-ID": "test-user-123",
+                    "X-User-Email": "test@example.com"
+                }
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            # All options should be filtered by the intersection of all selected filters
+            assert len(data["datasources"]) == 1
+            assert len(data["categories"]) == 1
+            assert len(data["topics"]) == 1
+            assert len(data["organizations"]) == 1
 
 
 class TestDocumentSearchEndpoint:

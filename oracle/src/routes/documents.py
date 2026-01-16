@@ -67,6 +67,12 @@ class DocumentSearchResponse(BaseModel):
     filters_applied: dict = Field(default_factory=dict, description="Summary of filters applied")
 
 
+class DocumentCountResponse(BaseModel):
+    """Response model for document count endpoint."""
+    count: int = Field(..., description="Number of documents matching the filters")
+    filters_applied: dict = Field(default_factory=dict, description="Summary of filters applied")
+
+
 class TopicInfo(BaseModel):
     """Information about a topic for filtering."""
     topic_id: str = Field(..., description="Topic unique identifier")
@@ -81,13 +87,24 @@ class OrganizationInfo(BaseModel):
     document_count: int = Field(default=0, description="Number of documents mentioning this org")
 
 
+class DataSourceInfo(BaseModel):
+    """Information about a datasource for filtering."""
+    datasource_id: str = Field(..., description="Unique datasource identifier")
+    name: str = Field(..., description="Human-readable name")
+    document_count: int = Field(default=0, description="Number of documents from this source")
+
+
 class FilterOptionsRequest(BaseModel):
     """Request model for getting filter options."""
     datasource_ids: Optional[List[str]] = Field(default=None, description="Filter options by these datasource IDs")
+    categories: Optional[List[str]] = Field(default=None, description="Filter options by these categories")
+    topic_ids: Optional[List[str]] = Field(default=None, description="Filter options by these topic IDs")
+    organization_ids: Optional[List[str]] = Field(default=None, description="Filter options by these organization IDs")
 
 
 class FilterOptionsResponse(BaseModel):
-    """Response model for filter options filtered by datasources."""
+    """Response model for filter options - supports bidirectional filtering."""
+    datasources: List[DataSourceInfo] = Field(default_factory=list, description="Available datasources")
     categories: List[CategoryInfo] = Field(default_factory=list, description="Available categories")
     topics: List[TopicInfo] = Field(default_factory=list, description="Available topics")
     organizations: List[OrganizationInfo] = Field(default_factory=list, description="Available organizations")
@@ -102,28 +119,103 @@ async def get_filter_options(
     user: Optional[dict] = Depends(get_user_context)
 ) -> FilterOptionsResponse:
     """
-    Get available filter options (categories, topics, organizations) optionally filtered by datasources.
+    Get available filter options with bidirectional filtering support.
     
-    When datasource_ids are provided, only returns categories/topics/organizations
-    that exist in documents from those datasources.
+    Supports filtering in any combination:
+    - When datasource_ids are provided, returns only categories/topics/orgs from those datasources
+    - When categories are provided, returns only datasources/topics/orgs that have those categories
+    - When topic_ids are provided, returns only datasources/categories/orgs with those topics
+    - When organization_ids are provided, returns only datasources/categories/topics mentioning those orgs
+    - Multiple filters can be combined (AND logic)
     """
     try:
         repo = get_repo()
-        
-        # Build datasource filter clause
-        ds_filter = ""
-        ds_filter_and = ""
         params = {}
+        
+        # Build filter clauses based on what's provided
+        # We'll use a base Resource match and add constraints for each filter type
+        filter_clauses = []
+        
+        # Datasource filter
         if request.datasource_ids and len(request.datasource_ids) > 0:
             params["datasource_ids"] = request.datasource_ids
-            ds_filter = "WHERE r.datasource_id IN $datasource_ids"
-            ds_filter_and = "AND r.datasource_id IN $datasource_ids"
+            filter_clauses.append("r.datasource_id IN $datasource_ids")
         
-        # Get categories
+        # Category filter
+        if request.categories and len(request.categories) > 0:
+            params["categories"] = request.categories
+            filter_clauses.append("r.category IN $categories")
+        
+        # Topic filter - needs relationship traversal
+        topic_match = ""
+        topic_where = ""
+        if request.topic_ids and len(request.topic_ids) > 0:
+            params["topic_ids"] = request.topic_ids
+            topic_match = "MATCH (r)-[:RELATES_TO]->(filter_t:Topic)"
+            topic_where = "filter_t.topic_id IN $topic_ids"
+        
+        # Organization filter - needs relationship traversal
+        org_match = ""
+        org_where = ""
+        if request.organization_ids and len(request.organization_ids) > 0:
+            params["org_ids"] = request.organization_ids
+            org_match = "MATCH (r)-[:MENTIONS]->(filter_o:Organization)"
+            org_where = "filter_o.org_id IN $org_ids"
+        
+        # Build combined WHERE clause with all conditions
+        all_where_conditions = []
+        if filter_clauses:
+            all_where_conditions.extend(filter_clauses)
+        if topic_where:
+            all_where_conditions.append(topic_where)
+        if org_where:
+            all_where_conditions.append(org_where)
+        
+        where_clause = ""
+        if all_where_conditions:
+            where_clause = "WHERE " + " AND ".join(all_where_conditions)
+        
+        # Get datasources - filtered by any selected categories/topics/orgs
+        ds_query = f"""
+            MATCH (r:Resource)
+            {topic_match}
+            {org_match}
+            {where_clause}
+            MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+            WITH ds, count(DISTINCT r) AS doc_count
+            RETURN ds.datasource_id AS datasource_id,
+                   ds.name AS name,
+                   doc_count
+            ORDER BY doc_count DESC
+        """
+        ds_results = repo.client.execute_query(ds_query, params)
+        
+        datasources = []
+        for record in ds_results:
+            datasource_id = record.get("datasource_id")
+            name = record.get("name")
+            if datasource_id and name:
+                datasources.append(DataSourceInfo(
+                    datasource_id=datasource_id,
+                    name=name,
+                    document_count=record.get("doc_count", 0),
+                ))
+        
+        # Get categories - filtered by selected datasources/topics/orgs
+        # Build WHERE clause with category requirement plus any other filters
+        cat_where_conditions = ["r.category IS NOT NULL", "r.category <> ''"]
+        if filter_clauses:
+            cat_where_conditions.extend(filter_clauses)
+        if topic_where:
+            cat_where_conditions.append(topic_where)
+        if org_where:
+            cat_where_conditions.append(org_where)
+        
         cat_query = f"""
             MATCH (r:Resource)
-            WHERE r.category IS NOT NULL AND r.category <> ''
-            {ds_filter_and}
+            {topic_match}
+            {org_match}
+            WHERE {" AND ".join(cat_where_conditions)}
             WITH r.category AS category, count(r) AS doc_count
             RETURN category, doc_count
             ORDER BY doc_count DESC
@@ -141,10 +233,23 @@ async def get_filter_options(
                     document_count=record.get("doc_count", 0),
                 ))
         
-        # Get topics - only those related to documents in selected datasources
+        # Get topics - filtered by selected datasources/categories/orgs
+        # For topics, we need datasource, category, and org filters (but not topic filter on itself)
+        topic_where_conditions = []
+        if filter_clauses:
+            topic_where_conditions.extend(filter_clauses)
+        if org_where:
+            topic_where_conditions.append(org_where)
+        
+        topic_where_clause = ""
+        if topic_where_conditions:
+            topic_where_clause = "WHERE " + " AND ".join(topic_where_conditions)
+        
         topic_query = f"""
-            MATCH (r:Resource)-[:RELATES_TO]->(t:Topic)
-            {ds_filter}
+            MATCH (r:Resource)
+            {org_match}
+            {topic_where_clause}
+            MATCH (r)-[:RELATES_TO]->(t:Topic)
             WITH t, count(DISTINCT r) AS doc_count
             RETURN t.topic_id AS topic_id, t.name AS name, doc_count
             ORDER BY doc_count DESC
@@ -163,10 +268,23 @@ async def get_filter_options(
                     document_count=record.get("doc_count", 0),
                 ))
         
-        # Get organizations - only those mentioned in documents from selected datasources
+        # Get organizations - filtered by selected datasources/categories/topics
+        # For orgs, we need datasource, category, and topic filters (but not org filter on itself)
+        org_where_conditions = []
+        if filter_clauses:
+            org_where_conditions.extend(filter_clauses)
+        if topic_where:
+            org_where_conditions.append(topic_where)
+        
+        org_where_clause = ""
+        if org_where_conditions:
+            org_where_clause = "WHERE " + " AND ".join(org_where_conditions)
+        
         org_query = f"""
-            MATCH (r:Resource)-[:MENTIONS]->(o:Organization)
-            {ds_filter}
+            MATCH (r:Resource)
+            {topic_match}
+            {org_where_clause}
+            MATCH (r)-[:MENTIONS]->(o:Organization)
             WITH o, count(DISTINCT r) AS doc_count
             RETURN o.org_id AS org_id, o.name AS name, doc_count
             ORDER BY doc_count DESC
@@ -185,9 +303,10 @@ async def get_filter_options(
                     document_count=record.get("doc_count", 0),
                 ))
         
-        logger.info(f"Retrieved filter options: {len(categories)} categories, {len(topics)} topics, {len(organizations)} orgs")
+        logger.info(f"Retrieved filter options: {len(datasources)} datasources, {len(categories)} categories, {len(topics)} topics, {len(organizations)} orgs")
         
         return FilterOptionsResponse(
+            datasources=datasources,
             categories=categories,
             topics=topics,
             organizations=organizations,
@@ -246,6 +365,133 @@ async def list_categories(
         
     except Exception as e:
         logger.exception(f"Failed to list categories: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "INTERNAL_ERROR",
+                "message": str(e),
+            }
+        )
+
+
+@router.post("/documents/count", response_model=DocumentCountResponse)
+@require_user_context
+async def count_documents(
+    request: DocumentSearchRequest,
+    user: Optional[dict] = Depends(get_user_context)
+) -> DocumentCountResponse:
+    """
+    Get the count of documents matching the given filters without returning the documents.
+    
+    This is useful for showing users how many documents will be returned before they search.
+    Uses the same filtering logic as the search endpoint.
+    """
+    try:
+        repo = get_repo()
+        
+        # Build dynamic Cypher query (same logic as search)
+        match_clauses = ["MATCH (r:Resource)"]
+        where_clauses = []
+        params = {}
+        
+        # Keyword search in title and summary
+        if request.keywords and len(request.keywords) > 0:
+            keyword_conditions = []
+            for i, keyword in enumerate(request.keywords):
+                param_name = f"keyword_{i}"
+                params[param_name] = f"(?i).*{keyword}.*"
+                keyword_conditions.append(
+                    f"(r.title =~ ${param_name} OR r.summary =~ ${param_name})"
+                )
+            
+            if request.keyword_match_mode == "all":
+                where_clauses.append(f"({' AND '.join(keyword_conditions)})")
+            else:
+                where_clauses.append(f"({' OR '.join(keyword_conditions)})")
+        
+        # Datasource filter
+        if request.datasource_ids and len(request.datasource_ids) > 0:
+            params["datasource_ids"] = request.datasource_ids
+            where_clauses.append("r.datasource_id IN $datasource_ids")
+        
+        # Category filter
+        if request.categories and len(request.categories) > 0:
+            params["categories"] = [c.lower() for c in request.categories]
+            where_clauses.append("toLower(r.category) IN $categories")
+        
+        # Date range filters
+        if request.date_from:
+            try:
+                datetime.fromisoformat(request.date_from.replace('Z', '+00:00'))
+                params["date_from"] = request.date_from
+                where_clauses.append("r.publish_date >= datetime($date_from)")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date_from format. Use ISO format (YYYY-MM-DD)")
+        
+        if request.date_to:
+            try:
+                datetime.fromisoformat(request.date_to.replace('Z', '+00:00'))
+                params["date_to"] = request.date_to
+                where_clauses.append("r.publish_date <= datetime($date_to)")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date_to format. Use ISO format (YYYY-MM-DD)")
+        
+        # Topic filter
+        topic_filter_active = request.topic_ids and len(request.topic_ids) > 0
+        if topic_filter_active:
+            params["topic_ids"] = request.topic_ids
+            match_clauses.append("MATCH (r)-[:RELATES_TO]->(t:Topic)")
+            where_clauses.append("t.topic_id IN $topic_ids")
+        
+        # Organization filter
+        org_filter_active = request.organization_ids and len(request.organization_ids) > 0
+        if org_filter_active:
+            params["org_ids"] = request.organization_ids
+            match_clauses.append("MATCH (r)-[:MENTIONS]->(o:Organization)")
+            where_clauses.append("o.org_id IN $org_ids")
+        
+        # Build complete query - just count, no need to return documents
+        where_part = ""
+        if where_clauses:
+            where_part = " WHERE " + " AND ".join(where_clauses)
+        
+        count_query = f"""
+            {' '.join(match_clauses)}
+            {where_part}
+            RETURN count(DISTINCT r) AS total_count
+        """
+        
+        results = repo.client.execute_query(count_query, params)
+        total_count = results[0].get("total_count", 0) if results else 0
+        
+        # Build filters summary
+        filters_applied = {}
+        if request.keywords:
+            filters_applied["keywords"] = request.keywords
+        if request.datasource_ids:
+            filters_applied["datasource_ids"] = request.datasource_ids
+        if request.categories:
+            filters_applied["categories"] = request.categories
+        if request.topic_ids:
+            filters_applied["topic_ids"] = request.topic_ids
+        if request.organization_ids:
+            filters_applied["organization_ids"] = request.organization_ids
+        if request.date_from:
+            filters_applied["date_from"] = request.date_from
+        if request.date_to:
+            filters_applied["date_to"] = request.date_to
+        
+        logger.info(f"Document count: {total_count} documents match the filters")
+        
+        return DocumentCountResponse(
+            count=total_count,
+            filters_applied=filters_applied,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to count documents: {e}")
         raise HTTPException(
             status_code=500,
             detail={

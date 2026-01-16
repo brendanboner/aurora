@@ -13,6 +13,25 @@ Your task is to answer questions based ONLY on the provided documents. You must:
 If the documents don't contain enough information to fully answer the question, say so clearly and explain what information is available.
 """
 
+ANSWER_GENERATOR_SYSTEM_PERSONALIZED = """You are an expert analyst with access to a knowledge graph about wireless standards and industry news.
+
+Your task is to answer questions based ONLY on the provided documents. You must:
+1. Ground all claims in the provided documents
+2. Use citation notation [1], [2], etc. to reference specific documents
+3. Acknowledge when information is incomplete or uncertain
+4. Be concise but thorough (aim for 150-300 words)
+5. Highlight emerging trends or patterns you observe
+6. NEVER make up information not in the documents
+
+**PERSONALIZATION:** The user has provided their interests below. Use this to:
+- Emphasize aspects most relevant to their interests when multiple topics are covered
+- Connect information to organizations they follow when relevant
+- Adjust technical depth based on the sophistication of their tracked topics
+- Do NOT omit any information - tailor the NARRATIVE, not the content
+
+If the documents don't contain enough information to fully answer the question, say so clearly and explain what information is available.
+"""
+
 ANSWER_GENERATOR_USER = """Answer the following question based on the retrieved documents.
 
 **Question:** {question}
@@ -30,6 +49,30 @@ ANSWER_GENERATOR_USER = """Answer the following question based on the retrieved 
 2. Cite documents using [1], [2], etc. notation
 3. If information is incomplete, acknowledge what's missing
 4. Be concise but thorough
+
+**Answer:**"""
+
+ANSWER_GENERATOR_USER_PERSONALIZED = """Answer the following question based on the retrieved documents.
+
+**Question:** {question}
+
+**Retrieved Documents:**
+{documents}
+
+**Graph Context:**
+- Central Topics: {central_topics}
+- Key Organizations: {key_organizations}
+- Temporal Patterns: {temporal_patterns}
+
+**User Context (tailor your response to their interests):**
+{user_context}
+
+**Instructions:**
+1. Answer the question using ONLY information from the documents above
+2. Cite documents using [1], [2], etc. notation
+3. If information is incomplete, acknowledge what's missing
+4. Be concise but thorough
+5. Emphasize aspects relevant to the user's interests when appropriate
 
 **Answer:**"""
 
@@ -62,9 +105,20 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
 def get_answer_generator_messages(
     question: str,
     documents: list[dict],
-    graph_context: dict | None = None
+    graph_context: dict | None = None,
+    user_context: str | None = None
 ) -> list[dict]:
-    """Get messages for answer generation."""
+    """Get messages for answer generation.
+    
+    Args:
+        question: User's question
+        documents: Retrieved documents
+        graph_context: Graph context dict
+        user_context: Optional user context string for personalization
+        
+    Returns:
+        List of messages for LLM chat completion
+    """
     # Format documents
     docs_text = format_documents_for_prompt(documents)
     
@@ -78,15 +132,28 @@ def get_answer_generator_messages(
         key_orgs = "Not available"
         temporal = "Not available"
     
-    user_content = ANSWER_GENERATOR_USER.format(
-        question=question,
-        documents=docs_text,
-        central_topics=central_topics,
-        key_organizations=key_orgs,
-        temporal_patterns=temporal
-    )
+    # Choose prompts based on whether personalization is enabled
+    if user_context:
+        system_prompt = ANSWER_GENERATOR_SYSTEM_PERSONALIZED
+        user_content = ANSWER_GENERATOR_USER_PERSONALIZED.format(
+            question=question,
+            documents=docs_text,
+            central_topics=central_topics,
+            key_organizations=key_orgs,
+            temporal_patterns=temporal,
+            user_context=user_context
+        )
+    else:
+        system_prompt = ANSWER_GENERATOR_SYSTEM
+        user_content = ANSWER_GENERATOR_USER.format(
+            question=question,
+            documents=docs_text,
+            central_topics=central_topics,
+            key_organizations=key_orgs,
+            temporal_patterns=temporal
+        )
     
     return [
-        {"role": "system", "content": ANSWER_GENERATOR_SYSTEM},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}
     ]

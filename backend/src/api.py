@@ -29,6 +29,7 @@ from src.services import graph_service
 from src.services.news_service import get_news_service
 from src.routes import admin
 from src.routes import events
+from src.routes import feedback
 
 # Initialize OpenTelemetry
 tracer, meter = init_telemetry(
@@ -69,6 +70,9 @@ app.include_router(admin.router, prefix="")
 
 # Include events routes
 app.include_router(events.router, prefix="")
+
+# Include feedback routes
+app.include_router(feedback.router, prefix="")
 
 # Add CORS middleware
 app.add_middleware(
@@ -647,31 +651,67 @@ async def delete_conversation_endpoint(conversation_id: int, user: Optional[dict
 # ========== Knowledge Graph Endpoints ==========
 
 @app.get("/graph/topics")
-async def get_topics(limit: int = 1000):
-    """Get all topics from the knowledge graph."""
+async def get_topics(limit: int = 100, offset: int = 0, search: str = "", sort_by: str = "alphabetical"):
+    """Get all topics from the knowledge graph with pagination, search, and sorting.
+    
+    Args:
+        limit: Maximum number of results to return
+        offset: Number of results to skip
+        search: Optional search term to filter by topic name
+        sort_by: Sort order - 'alphabetical' (default) or 'popularity' (by relationship count)
+    """
     try:
-        topics = graph_service.get_all_topics(limit)
-        return {"topics": topics, "count": len(topics)}
+        return graph_service.get_all_topics(limit, offset, search, sort_by)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/graph/topics/hierarchy")
+async def get_topics_hierarchy(search: str = ""):
+    """Get all topics in hierarchical tree structure using ENCOMPASSES relationships.
+    
+    Returns:
+        roots: List of root topic IDs (topics with no parents)
+        nodes: Dictionary mapping topic_id to topic data with children/parents
+        total_topics: Total count of topics
+    
+    Args:
+        search: Optional search term to filter by topic name
+    """
+    try:
+        return graph_service.get_topics_hierarchy(search)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/graph/organisations")
-async def get_organisations(limit: int = 1000):
-    """Get all organisations from the knowledge graph."""
+async def get_organisations(limit: int = 100, offset: int = 0, sort_by: str = "alphabetical", search: str = ""):
+    """Get all organisations from the knowledge graph with pagination, sorting, and search.
+    
+    Args:
+        limit: Maximum number of results to return
+        offset: Number of results to skip
+        sort_by: Sort order - 'alphabetical' (default) or 'popularity' (by relationship count)
+        search: Optional search term to filter by organization name
+    """
     try:
-        orgs = graph_service.get_all_organisations(limit)
-        return {"organisations": orgs, "count": len(orgs)}
+        return graph_service.get_all_organisations(limit, offset, sort_by, search)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/graph/people")
-async def get_people(limit: int = 1000):
-    """Get all people from the knowledge graph."""
+async def get_people(limit: int = 100, offset: int = 0, sort_by: str = "alphabetical", search: str = ""):
+    """Get all people from the knowledge graph with pagination, sorting, and search.
+    
+    Args:
+        limit: Maximum number of results to return
+        offset: Number of results to skip
+        sort_by: Sort order - 'alphabetical' (default) or 'popularity' (by relationship count)
+        search: Optional search term to filter by person name
+    """
     try:
-        people = graph_service.get_all_people(limit)
-        return {"people": people, "count": len(people)}
+        return graph_service.get_all_people(limit, offset, sort_by, search)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

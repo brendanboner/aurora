@@ -102,18 +102,27 @@ export const updateUserPreferences = async (userId, preferences) => {
 };
 
 // Knowledge Graph
-export const getTopics = async (limit = 1000) => {
-  const response = await apiClient.get(`/backend/graph/topics?limit=${limit}`);
+export const getTopics = async (limit = 100, offset = 0, search = '', sortBy = 'alphabetical') => {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+  const response = await apiClient.get(`/backend/graph/topics?limit=${limit}&offset=${offset}&sort_by=${sortBy}${searchParam}`);
   return response.data;
 };
 
-export const getOrganisations = async (limit = 1000) => {
-  const response = await apiClient.get(`/backend/graph/organisations?limit=${limit}`);
+export const getTopicsHierarchy = async (search = '') => {
+  const searchParam = search ? `?search=${encodeURIComponent(search)}` : '';
+  const response = await apiClient.get(`/backend/graph/topics/hierarchy${searchParam}`);
   return response.data;
 };
 
-export const getPeople = async (limit = 1000) => {
-  const response = await apiClient.get(`/backend/graph/people?limit=${limit}`);
+export const getOrganisations = async (limit = 100, offset = 0, sortBy = 'alphabetical', search = '') => {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+  const response = await apiClient.get(`/backend/graph/organisations?limit=${limit}&offset=${offset}&sort_by=${sortBy}${searchParam}`);
+  return response.data;
+};
+
+export const getPeople = async (limit = 100, offset = 0, sortBy = 'alphabetical', search = '') => {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+  const response = await apiClient.get(`/backend/graph/people?limit=${limit}&offset=${offset}&sort_by=${sortBy}${searchParam}`);
   return response.data;
 };
 
@@ -157,10 +166,13 @@ export const getCategories = async () => {
   return response.data;
 };
 
-// Get filter options (categories, topics, orgs) optionally filtered by datasources
-export const getFilterOptions = async (datasourceIds = null) => {
+// Get filter options (categories, topics, orgs, datasources) with bidirectional filtering
+export const getFilterOptions = async (filters = {}) => {
   const payload = {
-    datasource_ids: datasourceIds,
+    datasource_ids: filters.datasourceIds || null,
+    categories: filters.categories || null,
+    topic_ids: filters.topicIds || null,
+    organization_ids: filters.organizationIds || null,
   };
   const response = await apiClient.post('/oracle/documents/filter-options', payload);
   return response.data;
@@ -187,6 +199,23 @@ export const searchDocuments = async (filters = {}) => {
   return response.data;
 };
 
+// Get count of documents matching filters (without returning the documents)
+export const getDocumentCount = async (filters = {}) => {
+  const payload = {
+    keywords: filters.keywords || null,
+    keyword_match_mode: filters.keywordMatchMode || 'any',
+    datasource_ids: filters.datasourceIds || null,
+    categories: filters.categories || null,
+    topic_ids: filters.topicIds || null,
+    organization_ids: filters.organizationIds || null,
+    date_from: filters.dateFrom || null,
+    date_to: filters.dateTo || null,
+  };
+  
+  const response = await apiClient.post('/oracle/documents/count', payload);
+  return response.data;
+};
+
 // Oracle Query - Enhanced question-answering with graph-aware RAG
 export const sendOracleQuery = async (userId, question, options = {}) => {
   const payload = {
@@ -202,6 +231,7 @@ export const sendOracleQuery = async (userId, question, options = {}) => {
       organizations: options.organizations || null,
       datasource_ids: options.datasourceIds || null,
       recency_boost: options.recencyBoost !== false,
+      personalize: options.personalize || 'auto', // 'off', 'on', or 'auto'
     },
   };
   
@@ -398,6 +428,57 @@ export const getPreferenceProfile = async (userId) => {
 
 export const updatePreferenceProfile = async (userId, payload) => {
   const response = await apiClient.put(`/content_creator_service/preferences/${userId}`, payload);
+  return response.data;
+};
+
+// Feedback
+export const submitFeedback = async (feedbackText, category) => {
+  const response = await apiClient.post('/backend/feedback/submit', {
+    feedback_text: feedbackText,
+    category: category
+  });
+  return response.data;
+};
+
+export const getMyFeedback = async (limit = 50) => {
+  const response = await apiClient.get(`/backend/feedback/my-feedback?limit=${limit}`);
+  return response.data;
+};
+
+// Admin - Feedback Management
+export const getAllFeedback = async (filters = {}) => {
+  const params = new URLSearchParams();
+  if (filters.status) params.append('status', filters.status);
+  if (filters.category) params.append('category', filters.category);
+  if (filters.priority) params.append('priority', filters.priority);
+  if (filters.limit) params.append('limit', filters.limit);
+  if (filters.offset) params.append('offset', filters.offset);
+  
+  const response = await apiClient.get(`/backend/feedback/all?${params.toString()}`);
+  return response.data;
+};
+
+export const getFeedbackStatistics = async () => {
+  const response = await apiClient.get('/backend/feedback/statistics');
+  return response.data;
+};
+
+export const getFeedbackById = async (feedbackId) => {
+  const response = await apiClient.get(`/backend/feedback/${feedbackId}`);
+  return response.data;
+};
+
+export const updateFeedbackStatus = async (feedbackId, status, priority = null) => {
+  const payload = { status };
+  if (priority) {
+    payload.priority = priority;
+  }
+  const response = await apiClient.patch(`/backend/feedback/${feedbackId}`, payload);
+  return response.data;
+};
+
+export const deleteFeedback = async (feedbackId) => {
+  const response = await apiClient.delete(`/backend/feedback/${feedbackId}`);
   return response.data;
 };
 

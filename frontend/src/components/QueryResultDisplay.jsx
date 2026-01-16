@@ -479,7 +479,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
     return (
       <div className="answer-view" ref={answerViewRef}>
         {/* Confidence and Stats Row - Above Answer */}
-        {hasAnswer && (message.confidenceScore !== null && message.confidenceScore !== undefined || statsDisplay) && (
+        {hasAnswer && (message.confidenceScore !== null && message.confidenceScore !== undefined || statsDisplay || message.personalizationApplied) && (
           <div className="answer-stats-row">
             {/* Confidence on the left */}
             {message.confidenceScore !== null && message.confidenceScore !== undefined && (
@@ -495,12 +495,19 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
               </div>
             )}
             
-            {/* Stats on the right */}
-            {statsDisplay && (
-              <div className="answer-stats">
-                <Icon Component={isShowingEnhanced ? SparkleIcon : BarChartIcon} size={14} /> {statsDisplay}
-              </div>
-            )}
+            {/* Stats and personalization on the right */}
+            <div className="answer-stats-right">
+              {message.personalizationApplied && (
+                <span className="personalization-tag" title="Answer tailored to your preferences">
+                  Personalized
+                </span>
+              )}
+              {statsDisplay && (
+                <div className="answer-stats">
+                  <Icon Component={isShowingEnhanced ? SparkleIcon : BarChartIcon} size={14} /> {statsDisplay}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

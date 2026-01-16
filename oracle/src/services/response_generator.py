@@ -30,7 +30,8 @@ class ResponseGenerator:
         question: str,
         documents: list[Document],
         graph_context: Optional[GraphContext],
-        intent: QueryIntent
+        intent: QueryIntent,
+        user_context: Optional[str] = None
     ) -> AnswerResult:
         """
         Generate an LLM answer with citations.
@@ -40,6 +41,7 @@ class ResponseGenerator:
             documents: Retrieved documents
             graph_context: Graph context information
             intent: Classified query intent
+            user_context: Optional user preferences context string for personalization
             
         Returns:
             AnswerResult with answer, citations, and confidence
@@ -82,7 +84,7 @@ class ResponseGenerator:
                 }
             
             # Generate answer
-            messages = get_answer_generator_messages(question, docs_for_prompt, gc_dict)
+            messages = get_answer_generator_messages(question, docs_for_prompt, gc_dict, user_context)
             response = await call_llm(
                 client=client,
                 messages=messages,

@@ -31,32 +31,30 @@ def get_repo() -> GraphRepository:
     if _repo is not None:
         return _repo
     
-    # Use effective settings (prod or dev based on use_prod_data flag)
-    env_uri = settings.effective_neo4j_uri
+    # Use Neo4j settings from environment
+    env_uri = settings.neo4j_uri
     candidates = []
     
     if env_uri:
         candidates.append(env_uri)
     
-    # Add common service DNS names as fallbacks (only if not using prod data)
-    if not settings.use_prod_data:
-        for host in ["bolt://neo4j:7687", "bolt://aurora-neo4j:7687", "bolt://localhost:7687"]:
-            if host not in candidates:
-                candidates.append(host)
+    # Add common service DNS names as fallbacks
+    for host in ["bolt://neo4j:7687", "bolt://aurora-neo4j:7687", "bolt://localhost:7687"]:
+        if host not in candidates:
+            candidates.append(host)
     
     last_error = None
     for uri in candidates:
         try:
             client = Neo4jClient(
                 uri=uri,
-                user=settings.effective_neo4j_user,
-                password=settings.effective_neo4j_password,
-                database=settings.effective_neo4j_database
+                user=settings.neo4j_user,
+                password=settings.neo4j_password,
+                database=settings.neo4j_database
             )
             client.connect()
             _repo = GraphRepository(client)
-            mode = "PROD (read-only)" if settings.use_prod_data else "DEV"
-            logger.info(f"Connected to Neo4j via {uri} [{mode}]")
+            logger.info(f"Connected to Neo4j via {uri}")
             return _repo
         except Exception as e:
             last_error = e
@@ -68,9 +66,9 @@ def get_repo() -> GraphRepository:
     logger.error(f"All Neo4j connection attempts failed; using fallback URI {fallback_uri}. Last error: {last_error}")
     client = Neo4jClient(
         uri=fallback_uri,
-        user=settings.effective_neo4j_user,
-        password=settings.effective_neo4j_password,
-        database=settings.effective_neo4j_database
+        user=settings.neo4j_user,
+        password=settings.neo4j_password,
+        database=settings.neo4j_database
     )
     _repo = GraphRepository(client)
     return _repo

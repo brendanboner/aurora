@@ -38,3 +38,4 @@ export { default as TargetIcon } from './TargetIcon.jsx';
 export { default as SettingsIcon } from './SettingsIcon.jsx';
 export { default as EyeIcon } from './EyeIcon.jsx';
 export { default as EyeOffIcon } from './EyeOffIcon.jsx';
+export { default as FeedbackIcon } from './FeedbackIcon.jsx';

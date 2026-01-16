@@ -13,6 +13,7 @@ import AdminMonitoring from './pages/AdminMonitoring';
 import AdminSystemConfig from './pages/AdminSystemConfig';
 import AdminContentQuality from './pages/AdminContentQuality';
 import AdminChatSessions from './pages/AdminChatSessions';
+import AdminFeedback from './pages/AdminFeedback';
 import News from './pages/News';
 import Events from './pages/Events';
 import EventDetail from './pages/EventDetail';
@@ -21,6 +22,7 @@ import AgentManagement from './pages/AgentManagement';
 import AgentPreferences from './pages/AgentPreferences';
 import DocumentSearch from './pages/DocumentSearch';
 import UserGuide from './pages/UserGuide';
+import SubmitFeedback from './pages/SubmitFeedback';
 import { testBackendConnection } from './services/api';
 
 // Pages that should have no padding in the page-container
@@ -216,6 +218,22 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                               <Route 
                                 path="/guide" 
                                 element={<UserGuide />} 
+                              />
+                              
+                              {/* Submit Feedback route */}
+                              <Route 
+                                path="/feedback" 
+                                element={<SubmitFeedback />} 
+                              />
+                              
+                              {/* Admin Feedback route */}
+                              <Route 
+                                path="/admin/feedback" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminFeedback />
+                                  </ProtectedRoute>
+                                } 
                               />
                               
                               {/* Redirect unknown routes to home */}

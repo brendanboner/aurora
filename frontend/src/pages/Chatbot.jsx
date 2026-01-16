@@ -19,6 +19,10 @@ const Chatbot = ({ backendStatus }) => {
     const saved = localStorage.getItem('queryMode');
     return saved && ['retrieval', 'answer', 'auto'].includes(saved) ? saved : 'answer';
   });
+  const [personalizeMode, setPersonalizeModeState] = useState(() => {
+    const saved = localStorage.getItem('personalizeMode');
+    return saved && ['off', 'on', 'auto'].includes(saved) ? saved : 'auto';
+  });
   const [querySuggestion, setQuerySuggestion] = useState(null); // For pre-query suggestions
   const [pendingQuery, setPendingQuery] = useState(null); // Original query while showing suggestion
   const [pendingDatasourceIds, setPendingDatasourceIds] = useState([]); // Datasources for pending query
@@ -36,6 +40,12 @@ const Chatbot = ({ backendStatus }) => {
   const setQueryMode = (mode) => {
     setQueryModeState(mode);
     localStorage.setItem('queryMode', mode);
+  };
+
+  // Wrapper to persist personalizeMode to localStorage
+  const setPersonalizeMode = (mode) => {
+    setPersonalizeModeState(mode);
+    localStorage.setItem('personalizeMode', mode);
   };
 
   const scrollToBottom = () => {
@@ -276,16 +286,18 @@ What would you like to know?`;
         maxDocuments: 10,
         includeGraphContext: true,
         datasourceIds: datasourceIds.length > 0 ? datasourceIds : null,
+        personalize: personalizeMode,
       });
 
       // Map Oracle response format to our message format
-      // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score }
+      // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score, personalization_applied }
       const assistantMessage = {
         role: 'assistant',
         content: response.answer || (queryMode === 'retrieval' ? 'Here are the relevant documents:' : 'No answer was generated.'),
         timestamp: new Date(),
         queryId: response.query_id, // Store for feedback
         responseMode: response.mode, // 'retrieval' or 'answer'
+        personalizationApplied: response.personalization_applied || false,
         citations: response.citations || [],
         documents: response.documents?.map(doc => ({
           title: doc.title,
@@ -373,9 +385,14 @@ What would you like to know?`;
       console.error('Enhance error:', err);
       const errorCode = err.response?.data?.detail?.error;
       const errorMessage = err.response?.data?.detail?.message;
+      const statusCode = err.response?.status;
       
-      if (errorCode === 'LLM_TIMEOUT' || err.response?.status === 504) {
+      if (errorCode === 'LLM_TIMEOUT' || statusCode === 504) {
         setError('The enhanced answer is taking too long to generate. Please try again in a moment.');
+      } else if (statusCode === 503) {
+        setError('The service is temporarily unavailable. Please wait a moment and try again.');
+      } else if (errorCode === 'FEATURE_DISABLED') {
+        setError('Enhanced answers feature is currently disabled.');
       } else {
         setError(errorMessage || err.response?.data?.detail || 'Failed to enhance answer');
       }
@@ -565,9 +582,22 @@ What would you like to know?`;
                 disabled={isLoading}
                 title="Query mode"
               >
-                <option value="answer">Answer</option>
-                <option value="retrieval">Retrieval</option>
-                <option value="auto">Auto</option>
+                <option value="answer">Query: Answer</option>
+                <option value="retrieval">Query: Retrieval</option>
+                <option value="auto">Query: Auto</option>
+              </select>
+            )}
+            {user && (
+              <select
+                className="personalize-mode-dropdown"
+                value={personalizeMode}
+                onChange={(e) => setPersonalizeMode(e.target.value)}
+                disabled={isLoading}
+                title="Personalization: Tailor answers based on your preferences"
+              >
+                <option value="auto">Personalize: Auto</option>
+                <option value="on">Personalize: On</option>
+                <option value="off">Personalize: Off</option>
               </select>
             )}
             {user && messages.length > 1 && (

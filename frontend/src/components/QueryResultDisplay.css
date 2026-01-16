@@ -414,6 +414,23 @@
   min-width: 36px;
 }
 
+/* Stats and personalization container - right side */
+.answer-stats-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* Personalization Tag - subtle inline style */
+.personalization-tag {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  background-color: rgba(137, 129, 229, 0.1);
+  border-radius: 4px;
+}
+
 /* Answer Stats - Right side */
 .answer-stats {
   color: var(--muted-foreground);
