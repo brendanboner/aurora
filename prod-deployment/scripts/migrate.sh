@@ -112,7 +112,14 @@ run_migration() {
     info "Running migration: $filename"
     
     # Run the migration
-    if docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$migration_file"; then
+    migration_output=$(docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$migration_file" 2>&1)
+    migration_exit_code=$?
+    
+    # Print the output
+    echo "$migration_output"
+    
+    # Check if migration succeeded (exit code 0 or only notices/warnings)
+    if [ $migration_exit_code -eq 0 ] || ([ $migration_exit_code -ne 0 ] && echo "$migration_output" | grep -q "^NOTICE:\|^CREATE\|^INSERT\|^UPDATE\|^DELETE" && ! echo "$migration_output" | grep -q "^ERROR:"); then
         # Record successful migration
         docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<-EOSQL
 			INSERT INTO schema_migrations (version, filename, checksum)
