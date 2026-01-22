@@ -382,8 +382,10 @@ class TestResourceExtraction:
         youtube_resource = resources[1]
         assert "WBA Webinar: Wi-Fi 6E" in youtube_resource.title
         parsed_url = urlparse(youtube_resource.url)
-        host = parsed_url.hostname.lower() if parsed_url.hostname else ""
-        assert host == "youtube.com" or host.endswith(".youtube.com")
+        assert parsed_url.hostname and (
+            parsed_url.hostname == "youtube.com"
+            or parsed_url.hostname.endswith(".youtube.com")
+        )
         assert youtube_resource.category == "webinars"
         assert youtube_resource.publish_date == "2023-12-10"
     
