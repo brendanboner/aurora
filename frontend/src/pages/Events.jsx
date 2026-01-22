@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Events.css';
-import { CalendarIcon, RefreshIcon, CheckIcon, LinkIcon, EyeIcon, EyeOffIcon } from '../components/icons';
+import { CalendarIcon, RefreshIcon, CheckIcon, LinkIcon, EyeIcon, EyeOffIcon, MapPinIcon } from '../components/icons';
 
 const Events = () => {
   const navigate = useNavigate();
@@ -125,6 +125,20 @@ const Events = () => {
   const handleExternalLink = (e, url) => {
     e.stopPropagation();
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  // Create a lookup map for datasource names
+  const datasourceNameMap = React.useMemo(() => {
+    const map = {};
+    availableDatasources.forEach(ds => {
+      map[ds.datasource_id] = ds.name;
+    });
+    return map;
+  }, [availableDatasources]);
+
+  // Helper function to get datasource name
+  const getDatasourceName = (datasourceId) => {
+    return datasourceNameMap[datasourceId] || datasourceId;
   };
 
   // Filter events based on cancelled toggle
@@ -253,6 +267,11 @@ const Events = () => {
 
               <div className="event-meta">
                 <span className="event-type">{event.event_type}</span>
+                {event.datasource_id && (
+                  <span className="event-datasource">
+                    {getDatasourceName(event.datasource_id)}
+                  </span>
+                )}
                 {event.status && event.status !== 'scheduled' && (
                   <span className={`event-status status-${event.status}`}>
                     {event.status}
@@ -272,7 +291,8 @@ const Events = () => {
 
               {event.location && (
                 <div className="event-location">
-                  📍 {event.location}
+                  <MapPinIcon size={16} />
+                  <span>{event.location}</span>
                 </div>
               )}
 

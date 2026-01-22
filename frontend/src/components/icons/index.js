@@ -39,3 +39,5 @@ export { default as SettingsIcon } from './SettingsIcon.jsx';
 export { default as EyeIcon } from './EyeIcon.jsx';
 export { default as EyeOffIcon } from './EyeOffIcon.jsx';
 export { default as FeedbackIcon } from './FeedbackIcon.jsx';
+export { default as MapPinIcon } from './MapPinIcon.jsx';
+export { default as FileTextIcon } from './FileTextIcon.jsx';

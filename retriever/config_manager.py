@@ -33,11 +33,25 @@ class ConfigManager:
     - is_schedule_due(): Checks if a cron schedule is due (or was missed)
     """
     
-    def __init__(self):
-        """Initialize ConfigManager with Neo4j connection."""
+    def __init__(self, neo4j_client: Optional[Neo4jClient] = None):
+        """
+        Initialize ConfigManager with Neo4j connection.
+        
+        Args:
+            neo4j_client: Optional existing Neo4jClient to reuse. If None, creates a new one.
+        """
         self.neo4j_client = None
         self.graph_repository = None
-        self._connect(settings)
+        self._owns_connection = neo4j_client is None  # Track if we created the connection
+        
+        if neo4j_client:
+            # Reuse existing connection
+            self.neo4j_client = neo4j_client
+            self.graph_repository = GraphRepository(self.neo4j_client)
+            logger.debug("ConfigManager: reusing existing Neo4j connection")
+        else:
+            # Create new connection
+            self._connect(settings)
     
     def _connect(self, settings):
         """Establish Neo4j connection."""
@@ -331,8 +345,9 @@ class ConfigManager:
             logger.error(f"Error updating last_scraped for {datasource_id}: {e}")
     
     def close(self):
-        """Close Neo4j connection."""
-        if self.neo4j_client:
+        """Close Neo4j connection only if we own it."""
+        if self.neo4j_client and self._owns_connection:
             self.neo4j_client.close()
-            self.neo4j_client = None
-            self.graph_repository = None
+            logger.debug("ConfigManager: closed owned Neo4j connection")
+        self.neo4j_client = None
+        self.graph_repository = None

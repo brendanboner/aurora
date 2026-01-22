@@ -403,6 +403,10 @@
 }
 
 .document-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
   margin-bottom: 0.75rem;
 }
 
@@ -415,6 +419,18 @@
   color: var(--primary);
   text-decoration: none;
   transition: color 0.2s;
+  flex: 1;
+  min-width: 0;
+}
+
+.document-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .document-title:hover {

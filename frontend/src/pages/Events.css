@@ -164,6 +164,16 @@
   text-transform: capitalize;
 }
 
+.event-datasource {
+  padding: 0.25rem 0.75rem;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border-radius: var(--radius-chip);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-left: auto;
+}
+
 .event-status {
   padding: 0.25rem 0.75rem;
   border-radius: var(--radius-chip);
@@ -196,6 +206,9 @@
 }
 
 .event-location {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.9rem;
   color: var(--muted-foreground);
 }

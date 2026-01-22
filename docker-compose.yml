@@ -379,10 +379,17 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       
-      # WFA Causeway Portal
-      WFA_CAUSEWAY_BASE_URL: ${WFA_CAUSEWAY_BASE_URL:-https://groups.wi-fi.org/}
+      # Neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-your_neo4j_password_here}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      
+      # Web Scraping Authentication
       WFA_CAUSEWAY_USERNAME: ${WFA_CAUSEWAY_USERNAME}
       WFA_CAUSEWAY_PASSWORD: ${WFA_CAUSEWAY_PASSWORD}
+      WBA_USERNAME: ${WBA_USERNAME}
+      WBA_PASSWORD: ${WBA_PASSWORD}
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

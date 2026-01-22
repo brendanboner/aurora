@@ -7,6 +7,8 @@ import {
   LinkIcon,
   UsersIcon,
   ChevronLeftIcon,
+  MapPinIcon,
+  FileTextIcon,
 } from '../components/icons';
 
 const EventDetail = () => {
@@ -19,11 +21,32 @@ const EventDetail = () => {
   const [error, setError] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [showAttendees, setShowAttendees] = useState(false);
+  const [availableDatasources, setAvailableDatasources] = useState([]);
 
   useEffect(() => {
+    fetchFilterOptions();
     fetchEventDetails();
     fetchAttendees();
   }, [urlHash]);
+
+  const fetchFilterOptions = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/backend/events/metadata/filters', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableDatasources(data.datasources || []);
+      }
+    } catch (err) {
+      console.error('Error fetching filter options:', err);
+    }
+  };
 
   const fetchEventDetails = async () => {
     try {
@@ -166,6 +189,11 @@ const EventDetail = () => {
     });
   };
 
+  const getDatasourceName = (datasourceId) => {
+    const datasource = availableDatasources.find(ds => ds.datasource_id === datasourceId);
+    return datasource ? datasource.name : datasourceId;
+  };
+
   const isUpcoming = (startDate) => {
     if (!startDate) return false;
     return new Date(startDate) >= new Date();
@@ -215,6 +243,11 @@ const EventDetail = () => {
 
         <div className="event-detail-meta">
           <span className="event-type-badge">{event.event_type}</span>
+          {event.datasource_id && (
+            <span className="event-datasource-badge">
+              {getDatasourceName(event.datasource_id)}
+            </span>
+          )}
           {event.status && event.status !== 'scheduled' && (
             <span className={`event-status-badge status-${event.status}`}>
               {event.status}
@@ -246,14 +279,14 @@ const EventDetail = () => {
 
         {event.location && (
           <div className="event-detail-section">
-            <h2>📍 Location</h2>
+            <h2><MapPinIcon size={24} /> Location</h2>
             <p>{event.location}</p>
           </div>
         )}
 
         {event.description && (
           <div className="event-detail-section">
-            <h2>📄 Description</h2>
+            <h2><FileTextIcon size={24} /> Description</h2>
             <p className="event-description-text">{event.description}</p>
           </div>
         )}

@@ -420,19 +420,27 @@ async def count_documents(
             where_clauses.append("toLower(r.category) IN $categories")
         
         # Date range filters
+        # Note: publish_date is stored as a string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format)
+        # We use string comparison which works correctly for ISO format dates
         if request.date_from:
             try:
-                datetime.fromisoformat(request.date_from.replace('Z', '+00:00'))
-                params["date_from"] = request.date_from
-                where_clauses.append("r.publish_date >= datetime($date_from)")
+                date_from = request.date_from.replace('Z', '+00:00')
+                if len(date_from) > 10:
+                    date_from = date_from[:10]  # Use just the date part
+                datetime.fromisoformat(date_from)
+                params["date_from"] = date_from
+                where_clauses.append("substring(r.publish_date, 0, 10) >= $date_from")
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date_from format. Use ISO format (YYYY-MM-DD)")
         
         if request.date_to:
             try:
-                datetime.fromisoformat(request.date_to.replace('Z', '+00:00'))
-                params["date_to"] = request.date_to
-                where_clauses.append("r.publish_date <= datetime($date_to)")
+                date_to = request.date_to.replace('Z', '+00:00')
+                if len(date_to) > 10:
+                    date_to = date_to[:10]  # Use just the date part
+                datetime.fromisoformat(date_to)
+                params["date_to"] = date_to
+                where_clauses.append("substring(r.publish_date, 0, 10) <= $date_to")
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date_to format. Use ISO format (YYYY-MM-DD)")
         
@@ -559,20 +567,27 @@ async def search_documents(
             where_clauses.append("toLower(r.category) IN $categories")
         
         # Date range filters
+        # Note: publish_date is stored as a string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format)
+        # We use string comparison which works correctly for ISO format dates
         if request.date_from:
             try:
-                # Validate date format
-                datetime.fromisoformat(request.date_from.replace('Z', '+00:00'))
-                params["date_from"] = request.date_from
-                where_clauses.append("r.publish_date >= datetime($date_from)")
+                date_from = request.date_from.replace('Z', '+00:00')
+                if len(date_from) > 10:
+                    date_from = date_from[:10]  # Use just the date part
+                datetime.fromisoformat(date_from)
+                params["date_from"] = date_from
+                where_clauses.append("substring(r.publish_date, 0, 10) >= $date_from")
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date_from format. Use ISO format (YYYY-MM-DD)")
         
         if request.date_to:
             try:
-                datetime.fromisoformat(request.date_to.replace('Z', '+00:00'))
-                params["date_to"] = request.date_to
-                where_clauses.append("r.publish_date <= datetime($date_to)")
+                date_to = request.date_to.replace('Z', '+00:00')
+                if len(date_to) > 10:
+                    date_to = date_to[:10]  # Use just the date part
+                datetime.fromisoformat(date_to)
+                params["date_to"] = date_to
+                where_clauses.append("substring(r.publish_date, 0, 10) <= $date_to")
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date_to format. Use ISO format (YYYY-MM-DD)")
         

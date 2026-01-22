@@ -320,32 +320,27 @@
       "full_refresh_schedule": null
     },
     {
-      "name": "WBA Resource page",
+      "datasource_id": "wba_resources",
+      "name": "WBA Resource Page",
       "org_id": "wba",
       "source_type": "scraped_webpage",
-      "fetch_url": "https://wballiance.com/resource/",
-      "has_events": true
-    },
-    {
-      "name": "IEEE Explorer API",
-      "org_id": "ieee",
-      "source_type": "api",
-      "fetch_url": "",
-      "has_events": true
-    },
-    {
-      "name": "IETF Datatracker API",
-      "org_id": "ietf",
-      "source_type": "api",
-      "fetch_url": "https://datatracker.ietf.org/",
-      "has_events": true
-    },
-    {
-      "name": "3GPP Resource page",
-      "org_id": "3gpp",
-      "source_type": "scraped_webpage",
-      "fetch_url": "",
-      "has_events": true
+      "fetch_url": "https://wballiance.com/resources/",
+      "has_events": false,
+      "scraper_type": "wba",
+      "resource_url": "/resources/",
+      "scrape_schedule": "0 3 * * 1-6",
+      "run_on_startup": false,
+      "check_content_hash": true,
+      "publish_weight": 1.0,
+      "update_weight": 0.8,
+      "event_weight": 0.9,
+      "temporal_extraction_days": 90,
+      "scraper_delay": 0.5,
+      "max_resources": -1,
+      "max_redirects": 10,
+      "discovery_mode": "incremental",
+      "consecutive_duplicates_limit": 5,
+      "full_refresh_schedule": "0 3 * * 0"
     }
   ]
 }

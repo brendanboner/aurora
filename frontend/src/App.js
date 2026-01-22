@@ -14,7 +14,6 @@ import AdminSystemConfig from './pages/AdminSystemConfig';
 import AdminContentQuality from './pages/AdminContentQuality';
 import AdminChatSessions from './pages/AdminChatSessions';
 import AdminFeedback from './pages/AdminFeedback';
-import News from './pages/News';
 import Events from './pages/Events';
 import EventDetail from './pages/EventDetail';
 import SocialFeed from './pages/SocialFeed';
@@ -101,10 +100,6 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                     <Route 
                       path="/" 
                       element={<Chatbot backendStatus={backendStatus} />} 
-                    />
-                    <Route 
-                      path="/news" 
-                      element={<News backendStatus={backendStatus} />} 
                     />
                     
                         {/* Events routes */}

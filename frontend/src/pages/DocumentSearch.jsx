@@ -658,6 +658,12 @@ const DocumentSearch = () => {
                         {doc.title || 'Untitled Document'}
                         <LinkIcon size={14} />
                       </a>
+                      {doc.publish_date && (
+                        <span className="document-date">
+                          <CalendarIcon size={12} />
+                          {formatDate(doc.publish_date)}
+                        </span>
+                      )}
                     </div>
                     
                     <div className="document-meta">
@@ -669,12 +675,6 @@ const DocumentSearch = () => {
                       {doc.category && (
                         <span className="meta-tag category">
                           {doc.category}
-                        </span>
-                      )}
-                      {doc.publish_date && (
-                        <span className="meta-tag date">
-                          <CalendarIcon size={12} />
-                          {formatDate(doc.publish_date)}
                         </span>
                       )}
                     </div>

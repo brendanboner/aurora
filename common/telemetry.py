@@ -414,14 +414,29 @@ def log_neo4j_query(
         "graph.status": status,
     }
     
+    # Extract first meaningful part of query for context
+    query_preview = cypher.strip().split('\n')[0][:80] if cypher else "unknown"
+    
     if hash_queries:
         attributes["graph.cypher_hash"] = hash_text(cypher, prefix="cypher_")
+        query_context = f"hash:{hash_text(cypher, prefix='cypher_')[:12]}"
     else:
         attributes["graph.cypher"] = cypher[:500]  # Truncate to 500 chars
+        query_context = query_preview
     
     if error:
         attributes["graph.error"] = error
     
-    level = "ERROR" if status == "error" else "INFO"
-    message = f"Neo4j {query_type} query completed: {rows_returned} rows in {duration_ms:.1f}ms"
+    # Use DEBUG for successful queries, ERROR for failures
+    # Use INFO only for slow queries (>100ms) or large result sets (>1000 rows)
+    if status == "error":
+        level = "ERROR"
+        message = f"Neo4j {query_type} query FAILED in {duration_ms:.1f}ms: {query_context}"
+    elif duration_ms > 100 or rows_returned > 1000:
+        level = "INFO"
+        message = f"Neo4j {query_type} query (SLOW/LARGE): {rows_returned} rows in {duration_ms:.1f}ms - {query_context}"
+    else:
+        level = "DEBUG"
+        message = f"Neo4j {query_type}: {rows_returned} rows in {duration_ms:.1f}ms - {query_context}"
+    
     log_structured(level, message, attributes, logger_name="aurora.neo4j")

@@ -87,6 +87,16 @@
   text-transform: capitalize;
 }
 
+.event-datasource-badge {
+  padding: 0.4rem 1rem;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border-radius: var(--radius-chip);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-left: auto;
+}
+
 .event-status-badge {
   padding: 0.4rem 1rem;
   border-radius: var(--radius-chip);

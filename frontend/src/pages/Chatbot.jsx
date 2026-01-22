@@ -791,7 +791,16 @@ What would you like to know?`;
 
       {error && (
         <div className="chat-error">
-          <WarningIcon size={16} /> {error}
+          <span className="chat-error-message">
+            <WarningIcon size={16} /> {error}
+          </span>
+          <button 
+            className="chat-error-dismiss" 
+            onClick={() => setError(null)}
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
         </div>
       )}
 

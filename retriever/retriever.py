@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any, List, Type
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel, HttpUrl, Field
 
-from scrapers import WFAScraper, WFACausewayScraper
+from scrapers import WFAScraper, WFACausewayScraper, WBAScraper
 from scrapers.base import BaseScraper, Resource
 from config_manager import ConfigManager
 from settings import settings
@@ -54,6 +54,7 @@ else:
 SCRAPER_CLASSES: Dict[str, Type[BaseScraper]] = {
     "wfa": WFAScraper,
     "wfa_causeway": WFACausewayScraper,
+    "wba": WBAScraper,
 }
 
 logger.info(f"Available scraper types: {list(SCRAPER_CLASSES.keys())}")
@@ -414,39 +415,50 @@ class RetrieverService:
     
     def get_status(self) -> Dict[str, Any]:
         """Get current status of the retriever service"""
-        # Get datasources and their schedules from database
-        config_manager = ConfigManager()
-        try:
-            grouped_datasources = config_manager.get_datasources_by_scraper_type()
-            all_datasources = config_manager.get_all_scheduled_datasources()
-            
-            datasource_count = sum(len(ds_list) for ds_list in grouped_datasources.values())
+        # Use the service's shared config_manager instance
+        if not self.config_manager:
+            logger.error("ConfigManager not initialized")
             poll_interval = getattr(settings, 'scheduler_poll_interval', 60)
-            
-            # Collect schedule info for each datasource
-            datasource_schedules = [
-                {
-                    "datasource_id": ds.get('datasource_id'),
-                    "name": ds.get('name'),
-                    "schedule": ds.get('scrape_schedule'),
-                    "run_on_startup": ds.get('run_on_startup'),
-                    "last_scraped_at": ds.get('last_scraped_at').isoformat() if ds.get('last_scraped_at') else None
-                }
-                for ds in all_datasources
-            ]
-            
             return {
-                "scheduler_running": self.scheduler_task is not None and not self.scheduler_task.done(),
+                "scheduler_running": False,
                 "poll_interval_seconds": poll_interval,
                 "active_scrapes": len(self.active_scrapes),
                 "total_scrapes_today": self.scrapes_today,
                 "available_scraper_types": list(SCRAPER_CLASSES.keys()),
-                "active_scraper_types": list(grouped_datasources.keys()),
-                "total_datasources": datasource_count,
-                "datasource_schedules": datasource_schedules
+                "active_scraper_types": [],
+                "total_datasources": 0,
+                "datasource_schedules": [],
+                "error": "Service not fully initialized"
             }
-        finally:
-            config_manager.close()
+        
+        grouped_datasources = self.config_manager.get_datasources_by_scraper_type()
+        all_datasources = self.config_manager.get_all_scheduled_datasources()
+        
+        datasource_count = sum(len(ds_list) for ds_list in grouped_datasources.values())
+        poll_interval = getattr(settings, 'scheduler_poll_interval', 60)
+        
+        # Collect schedule info for each datasource
+        datasource_schedules = [
+            {
+                "datasource_id": ds.get('datasource_id'),
+                "name": ds.get('name'),
+                "schedule": ds.get('scrape_schedule'),
+                "run_on_startup": ds.get('run_on_startup'),
+                "last_scraped_at": ds.get('last_scraped_at').isoformat() if ds.get('last_scraped_at') else None
+            }
+            for ds in all_datasources
+        ]
+        
+        return {
+            "scheduler_running": self.scheduler_task is not None and not self.scheduler_task.done(),
+            "poll_interval_seconds": poll_interval,
+            "active_scrapes": len(self.active_scrapes),
+            "total_scrapes_today": self.scrapes_today,
+            "available_scraper_types": list(SCRAPER_CLASSES.keys()),
+            "active_scraper_types": list(grouped_datasources.keys()),
+            "total_datasources": datasource_count,
+            "datasource_schedules": datasource_schedules
+        }
 
 
 # Global service instance
@@ -575,25 +587,6 @@ async def submit_file(
     )
 
 
-# Map datasource_id prefixes to scraper types for content retrieval
-DATASOURCE_TO_SCRAPER: Dict[str, str] = {
-    "wfa_causeway": "wfa_causeway",  # All wfa_causeway_* datasources use WFACausewayScraper
-    "wfa": "wfa",                     # Standard WFA datasources use WFAScraper
-}
-
-
-def _get_scraper_type_for_datasource(datasource_id: str) -> Optional[str]:
-    """
-    Determine which scraper type to use for a given datasource_id.
-    
-    Matches by prefix, e.g., 'wfa_causeway_wifi7mtg' -> 'wfa_causeway'
-    """
-    for prefix, scraper_type in DATASOURCE_TO_SCRAPER.items():
-        if datasource_id.startswith(prefix):
-            return scraper_type
-    return None
-
-
 @app.post("/retrieve/content", response_model=ContentRetrieveResponse)
 async def retrieve_content(request: ContentRetrieveRequest):
     """
@@ -624,9 +617,15 @@ async def retrieve_content(request: ContentRetrieveRequest):
             docs_by_datasource[doc.datasource_id] = []
         docs_by_datasource[doc.datasource_id].append(doc)
     
-    # Process each datasource group
+    # Process each datasource group using the service's shared config_manager
     for datasource_id, docs in docs_by_datasource.items():
-        scraper_type = _get_scraper_type_for_datasource(datasource_id)
+        # Look up the datasource configuration to get its scraper_type
+        try:
+            datasource_config = retriever_service.config_manager.get_datasource_config(datasource_id)
+            scraper_type = datasource_config.get('scraper_type')
+        except Exception as e:
+            logger.error(f"Failed to get config for datasource '{datasource_id}': {e}")
+            scraper_type = None
         
         if scraper_type and scraper_type in SCRAPER_CLASSES:
             # Use the scraper's authenticated session
@@ -689,20 +688,19 @@ async def retrieve_content(request: ContentRetrieveRequest):
                         success=False,
                         error=f"Scraper initialization failed: {str(e)}"
                     ))
-        else:
-            # No scraper available for this datasource - cannot fetch content
-            logger.warning(f"No scraper available for datasource '{datasource_id}' - cannot fetch content")
-            for doc in docs:
-                results.append(ContentRetrieveResult(
-                    url=doc.url,
-                    datasource_id=doc.datasource_id,
-                    content=None,
-                    success=False,
-                    error=f"No scraper configured for datasource '{datasource_id}'"
-                ))
+            else:
+                # No scraper available for this datasource - cannot fetch content
+                logger.warning(f"No scraper available for datasource '{datasource_id}' - cannot fetch content")
+                for doc in docs:
+                    results.append(ContentRetrieveResult(
+                        url=doc.url,
+                        datasource_id=doc.datasource_id,
+                        content=None,
+                        success=False,
+                        error=f"No scraper configured for datasource '{datasource_id}'"
+                    ))
     
     success_count = sum(1 for r in results if r.success)
-    
     return ContentRetrieveResponse(
         results=results,
         total_requested=len(request.documents),
@@ -725,51 +723,47 @@ async def trigger_datasource_scrape(datasource_id: str, user: Optional[dict] = D
     """
     logger.info(f"Manual datasource scrape triggered by {user['email']} (role: {user['role']}): {datasource_id}")
     
-    config_manager = ConfigManager()
-    try:
-        datasource = config_manager.get_datasource_config(datasource_id)
-        
-        # Check if datasource exists and has a scraper_type
-        if not datasource.get('scraper_type'):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Datasource '{datasource_id}' not found or has no scraper configured"
-            )
-        
-        scraper_type = datasource['scraper_type']
-        
-        if scraper_type not in SCRAPER_CLASSES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Datasource '{datasource_id}' uses unknown scraper type '{scraper_type}'"
-            )
-        
-        datasource_name = datasource.get('name', datasource_id)
-        resource_url = datasource.get('resource_url', 'N/A')
-        last_scraped = datasource.get('last_scraped_at')
-        last_scraped_str = last_scraped.isoformat() if last_scraped else 'never'
-        
-        logger.info(f"Manual scrape triggered for datasource: {datasource_name} ({datasource_id})")
-        logger.info(f"  Scraper: {scraper_type}, URL: {resource_url}, Last scraped: {last_scraped_str}")
-        
-        # Run scraper in background for just this one datasource
-        asyncio.create_task(
-            retriever_service._run_scraper_for_datasources(
-                scraper_type,
-                SCRAPER_CLASSES[scraper_type],
-                [datasource]  # Single datasource in list
-            )
+    datasource = retriever_service.config_manager.get_datasource_config(datasource_id)
+    
+    # Check if datasource exists and has a scraper_type
+    if not datasource.get('scraper_type'):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Datasource '{datasource_id}' not found or has no scraper configured"
         )
-        
-        return {
-            "status": "started",
-            "message": f"Scrape started for {datasource_name}",
-            "datasource_id": datasource_id,
-            "datasource_name": datasource_name,
-            "scraper_type": scraper_type
-        }
-    finally:
-        config_manager.close()
+    
+    scraper_type = datasource['scraper_type']
+    
+    if scraper_type not in SCRAPER_CLASSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Datasource '{datasource_id}' uses unknown scraper type '{scraper_type}'"
+        )
+    
+    datasource_name = datasource.get('name', datasource_id)
+    resource_url = datasource.get('resource_url', 'N/A')
+    last_scraped = datasource.get('last_scraped_at')
+    last_scraped_str = last_scraped.isoformat() if last_scraped else 'never'
+    
+    logger.info(f"Manual scrape triggered for datasource: {datasource_name} ({datasource_id})")
+    logger.info(f"  Scraper: {scraper_type}, URL: {resource_url}, Last scraped: {last_scraped_str}")
+    
+    # Run scraper in background for just this one datasource
+    asyncio.create_task(
+        retriever_service._run_scraper_for_datasources(
+            scraper_type,
+            SCRAPER_CLASSES[scraper_type],
+            [datasource]  # Single datasource in list
+        )
+    )
+    
+    return {
+        "status": "started",
+        "message": f"Scrape started for {datasource_name}",
+        "datasource_id": datasource_id,
+        "datasource_name": datasource_name,
+        "scraper_type": scraper_type
+    }
 
 
 @app.post("/scrape/datasource/{datasource_id}/collect")
@@ -787,35 +781,31 @@ async def collect_datasource_scrape(datasource_id: str, max_items: int = 50):
     Returns:
         JSON object with collected resources and events
     """
-    config_manager = ConfigManager()
-    try:
-        datasource = config_manager.get_datasource_config(datasource_id)
-        
-        # Check if datasource exists and has a scraper_type
-        if not datasource.get('scraper_type'):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Datasource '{datasource_id}' not found or has no scraper configured"
-            )
-        
-        scraper_type = datasource['scraper_type']
-        
-        if scraper_type not in SCRAPER_CLASSES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Datasource '{datasource_id}' uses unknown scraper type '{scraper_type}'"
-            )
-        
-        scraper_class = SCRAPER_CLASSES[scraper_type]
-        datasource_name = datasource.get('name', datasource_id)
-        
-        # Override max_resources in config if max_items specified
-        if max_items > 0:
-            datasource['max_resources'] = max_items
-        
-        logger.info(f"Collect scrape for datasource: {datasource_name} ({datasource_id}), max_items={max_items}")
-    finally:
-        config_manager.close()
+    datasource = retriever_service.config_manager.get_datasource_config(datasource_id)
+    
+    # Check if datasource exists and has a scraper_type
+    if not datasource.get('scraper_type'):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Datasource '{datasource_id}' not found or has no scraper configured"
+        )
+    
+    scraper_type = datasource['scraper_type']
+    
+    if scraper_type not in SCRAPER_CLASSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Datasource '{datasource_id}' uses unknown scraper type '{scraper_type}'"
+        )
+    
+    scraper_class = SCRAPER_CLASSES[scraper_type]
+    datasource_name = datasource.get('name', datasource_id)
+    
+    # Override max_resources in config if max_items specified
+    if max_items > 0:
+        datasource['max_resources'] = max_items
+    
+    logger.info(f"Collect scrape for datasource: {datasource_name} ({datasource_id}), max_items={max_items}")
     
     try:
         async with scraper_class() as scraper:
@@ -866,21 +856,19 @@ async def trigger_scrape_all(user: Optional[dict] = Depends(get_user_context)):
     """
     logger.warning(f"Manual scrape of ALL datasources triggered by {user['email']} (role: {user['role']})")
     
-    config_manager = ConfigManager()
-    try:
-        grouped_datasources = config_manager.get_datasources_by_scraper_type()
-        
-        if not grouped_datasources:
-            return {
-                "status": "no_datasources",
-                "message": "No active datasources found with scraper types configured",
-                "scraper_types": []
-            }
-        
-        started = []
-        skipped = []
-        
-        for scraper_type, datasources in grouped_datasources.items():
+    grouped_datasources = retriever_service.config_manager.get_datasources_by_scraper_type()
+    
+    if not grouped_datasources:
+        return {
+            "status": "no_datasources",
+            "message": "No active datasources found with scraper types configured",
+            "scraper_types": []
+        }
+    
+    started = []
+    skipped = []
+    
+    for scraper_type, datasources in grouped_datasources.items():
             if scraper_type not in SCRAPER_CLASSES:
                 skipped.append({
                     "scraper_type": scraper_type,
@@ -911,17 +899,15 @@ async def trigger_scrape_all(user: Optional[dict] = Depends(get_user_context)):
                 "scraper_type": scraper_type,
                 "datasources": datasource_info
             })
-        
-        total_datasources = sum(len(s["datasources"]) for s in started)
-        
-        return {
-            "status": "started",
-            "message": f"Scrape started for {total_datasources} datasource(s) across {len(started)} scraper type(s)",
-            "started": started,
-            "skipped": skipped
-        }
-    finally:
-        config_manager.close()
+    
+    total_datasources = sum(len(s["datasources"]) for s in started)
+    
+    return {
+        "status": "started",
+        "message": f"Scrape started for {total_datasources} datasource(s) across {len(started)} scraper type(s)",
+        "started": started,
+        "skipped": skipped
+    }
 
 
 if __name__ == "__main__":

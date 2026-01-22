@@ -135,9 +135,6 @@ class BaseScraper:
         )
         self.session = None
         
-        # Initialize configuration manager for scraping frequency control
-        self.config_manager = ConfigManager()
-        
         # Batch tracking for ingestion
         self._current_batch_id: Optional[str] = None
         self._current_datasource_id: Optional[str] = None
@@ -148,8 +145,11 @@ class BaseScraper:
         self._collect_mode: bool = False
         self._collected_messages: List[Dict[str, Any]] = []
         
-        # Initialize Neo4j client for URL checking and batch tracking
+        # Initialize ONE Neo4j client shared by both config_manager and graph operations
+        self.neo4j_client: Optional[Neo4jClient] = None
         self.graph_repository: Optional[GraphRepository] = None
+        self.config_manager: Optional[ConfigManager] = None
+        
         try:
             self.neo4j_client = Neo4jClient(
                 uri=settings.neo4j_uri,
@@ -158,8 +158,12 @@ class BaseScraper:
                 database=settings.neo4j_database
             )
             self.neo4j_client.connect()
+            
+            # Share the same Neo4j client with both components
             self.graph_repository = GraphRepository(self.neo4j_client)
-            logger.info("Neo4j connection established for URL deduplication and batch tracking")
+            self.config_manager = ConfigManager(neo4j_client=self.neo4j_client)
+            
+            logger.info("Neo4j connection established for scraper (shared by config and graph operations)")
         except Exception as e:
             logger.warning(f"Failed to connect to Neo4j: {e}. URL deduplication and batch tracking will be disabled.")
             self.neo4j_client = None
@@ -525,7 +529,7 @@ class BaseScraper:
             
             query = """
             UNWIND $url_hashes AS hash
-            OPTIONAL MATCH (r:Resource {url_hash: hash})
+            OPTIONAL MATCH (r:Resource WHERE r.url_hash = hash)
             RETURN hash, r IS NOT NULL AS exists
             """
             results = self.neo4j_client.execute_query(query, {"url_hashes": url_hashes})
@@ -867,15 +871,14 @@ class BaseScraper:
                 existing = status_map.get(event.url)
                 
                 if existing is None:
-                    # New past event - publish with status="completed"
+                    # New past event - publish with status=completed
                     event.status = "completed"
                     events_to_publish.append(event)
-                    logger.debug(f"New past event, marking as completed: {event.name}")
+                    logger.debug(f"New past event: {event.name}")
                 elif existing.get("status") != "completed":
-                    # Existing past event not yet completed - publish to update status
-                    event.status = "completed"
+                    # Existing past event not yet completed - publish to update
                     events_to_publish.append(event)
-                    logger.debug(f"Updating past event to completed: {event.name}")
+                    logger.debug(f"Updating past event: {event.name}")
                 else:
                     # Existing past event already completed - skip
                     skipped_count += 1

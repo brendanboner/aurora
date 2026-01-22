@@ -277,13 +277,13 @@ const AdminFeedback = () => {
                     {editingId === item.id ? (
                       <>
                         <button
-                          className="btn-save"
+                          className="feedback-btn-save"
                           onClick={() => handleSaveEdit(item.id)}
                         >
                           Save
                         </button>
                         <button
-                          className="btn-cancel"
+                          className="feedback-btn-cancel"
                           onClick={handleCancelEdit}
                         >
                           Cancel
@@ -292,13 +292,13 @@ const AdminFeedback = () => {
                     ) : (
                       <>
                         <button
-                          className="btn-edit"
+                          className="feedback-btn-edit"
                           onClick={() => handleEdit(item)}
                         >
                           Edit
                         </button>
                         <button
-                          className="btn-delete"
+                          className="feedback-btn-delete"
                           onClick={() => handleDelete(item.id)}
                           title="Delete feedback"
                         >

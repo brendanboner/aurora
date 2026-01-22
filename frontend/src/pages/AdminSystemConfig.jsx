@@ -158,10 +158,10 @@ const AdminSystemConfig = () => {
         <h2>System Configuration</h2>
         <div className="header-actions">
           <button className="btn-scrape-all" onClick={handleScrapeAllSources}>
-            🔄 Scrape All Sources
+            Scrape All Sources
           </button>
           <button className="btn-purge" onClick={handlePurgeQueue}>
-            🗑️ Purge Queue
+            Purge Queue
           </button>
           <button className="btn-create" onClick={() => setShowCreateForm(true)}>
             + New Configuration
@@ -216,7 +216,7 @@ const ConfigDisplay = ({ config, onEdit, onDelete, onTriggerScraper }) => {
         <div className="config-actions">
           {hasScraperType && (
             <button className="btn-run" onClick={onTriggerScraper} title="Run scraper now">
-              ▶️ Run
+            Run
             </button>
           )}
           <button className="btn-edit" onClick={onEdit}>Edit</button>

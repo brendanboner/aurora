@@ -73,12 +73,19 @@ class SensitiveInfoScrubber:
         # Generic meeting links (be careful with these)
         (r'https?://meet\.[^\s<>"\)]+', 'generic_meet'),
         (r'https?://join\.[^\s<>"\)]+', 'generic_join'),
+        
+        # Bare domain references (without protocol)
+        (r'(?:[\w-]+\.)?zoom\.us/[^\s<>"\)]+', 'zoom_bare'),
+        (r'teams\.microsoft\.com/[^\s<>"\)]+', 'teams_bare'),
+        (r'meet\.google\.com/[^\s<>"\)]+', 'google_meet_bare'),
+        (r'(?:[\w-]+\.)?webex\.com/[^\s<>"\)]+', 'webex_bare'),
     ]
     
     # Meeting ID patterns (various formats)
     MEETING_ID_PATTERNS = [
         (r'(?:meeting\s+)?(?:id|ID|number)[\s:]*\d{3}[\s\-]?\d{3}[\s\-]?\d{3,4}', 'meeting_id_spaces'),
         (r'(?:meeting\s+)?(?:id|ID|number)[\s:]*\d{9,12}', 'meeting_id_consecutive'),
+        (r'(?:meeting\s+)?(?:id|ID|number)[\s:]*\d{6,8}', 'meeting_id_short'),
         (r'(?:zoom|webex|teams)\s+(?:meeting\s+)?(?:id|ID)[\s:]*[\d\s\-]+', 'platform_meeting_id'),
         (r'(?:join|meeting)\s+(?:id|ID|code)[\s:]*[\d\s\-]+', 'generic_meeting_id'),
     ]
@@ -120,7 +127,7 @@ class SensitiveInfoScrubber:
         'video call', 'online meeting', 'virtual meeting'
     ]
     
-    def __init__(self, replacement_text: str = "[Meeting access details removed for privacy. Please view the source link for access details.]"):
+    def __init__(self, replacement_text: str = "[Meeting access details removed for security. Please view the source link for access details.]"):
         """
         Initialize the scrubber.
         

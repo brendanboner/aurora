@@ -249,7 +249,7 @@ class DocumentDigester:
         processing_data = {
             "title": resource_data.get("title") or event_data.get("name") or "Unknown",
             "url": resource_data.get("url") or event_data.get("url") or "",
-            "category": resource_data.get("category") or "event" if event_data else "unknown",
+            "category": resource_data.get("category") or ("event" if event_data else "unknown"),
             "status": "processing",
             "stage": stage,
             "started_at": datetime.now().isoformat(),
@@ -325,7 +325,7 @@ class DocumentDigester:
         completed_data = {
             "title": self._get_message_title(message),
             "url": resource_data.get("url") or event_data.get("url") or "",
-            "category": resource_data.get("category") or "event" if event_data else "unknown",
+            "category": resource_data.get("category") or ("event" if event_data else "unknown"),
             "status": "completed",
             "stage": "inserted",
             "started_at": datetime.now().isoformat(),
@@ -354,7 +354,7 @@ class DocumentDigester:
         failed_data = {
             "title": self._get_message_title(message),
             "url": resource_data.get("url") or event_data.get("url") or "",
-            "category": resource_data.get("category") or "event" if event_data else "unknown",
+            "category": resource_data.get("category") or ("event" if event_data else "unknown"),
             "status": "failed",
             "stage": "error",
             "started_at": datetime.now().isoformat(),

@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     wfa_causeway_username: str = ""
     wfa_causeway_password: str = ""
     
+    # WBA Authentication
+    wba_username: str = ""
+    wba_password: str = ""
+    
     # Event Sanitization Configuration
     sanitize_events: bool = True  # Enable/disable sensitive info sanitization
     sanitization_replacement_text: str = "[Meeting access details removed for privacy. Please view the source link for access details.]"

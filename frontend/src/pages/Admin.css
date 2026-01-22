@@ -2059,9 +2059,6 @@
 .config-actions {
   display: flex;
   gap: 12px;
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border);
 }
 
 .warning-box {

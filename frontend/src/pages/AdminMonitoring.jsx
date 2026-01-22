@@ -171,7 +171,11 @@ const AdminMonitoring = () => {
               <>
                 <div className="queue-stats">
                   <div className="queue-stat"><span className="stat-label">Queue:</span><span className="stat-value">{queueStatus.queue_name}</span></div>
-                  <div className="queue-stat"><span className="stat-label">Total Messages:</span><span className="stat-value">{queueStatus.message_count}</span></div>
+                  <div className="queue-stat">
+                    <span className="stat-label">Total Messages:</span>
+                    <span className="stat-value">{queueStatus.message_count}</span>
+                    <span className="stat-sublabel">({queueStatus.messages_ready || 0} ready + {queueStatus.messages_unacked || 0} processing)</span>
+                  </div>
                   <div className="queue-stat"><span className="stat-label">Unique Docs:</span><span className="stat-value">{queueStatus.resources.length}</span></div>
                   <div className="queue-stat"><span className="stat-label">Consumers:</span><span className="stat-value">{queueStatus.consumer_count}</span></div>
                 </div>

@@ -6,6 +6,7 @@ openai
 pika
 redis
 python-dateutil
+requests
 
 # OpenTelemetry
 opentelemetry-api>=1.0.0

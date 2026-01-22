@@ -47,7 +47,9 @@ class ProcessingResource(BaseModel):
 class QueueStatus(BaseModel):
     """RabbitMQ queue status."""
     queue_name: str
-    message_count: int
+    message_count: int  # Total messages (ready + unacked)
+    messages_ready: int  # Messages waiting to be consumed
+    messages_unacked: int  # Messages currently being processed
     consumer_count: int
     resources: List[QueueResource]
 
@@ -182,6 +184,8 @@ async def get_queue_status():
             return QueueStatus(
                 queue_name=queue_name,
                 message_count=0,
+                messages_ready=0,
+                messages_unacked=0,
                 consumer_count=0,
                 resources=[]
             )
@@ -189,11 +193,72 @@ async def get_queue_status():
         # Get queue information
         try:
             queue = channel.queue_declare(queue=queue_name, durable=True, passive=True)
-            message_count = queue.method.message_count
+            messages_ready = queue.method.message_count  # Only ready messages
             consumer_count = queue.method.consumer_count
+            messages_unacked = 0  # Will try to get from Management API
+            
+            # Try to get more detailed stats via Management HTTP API
+            try:
+                import requests
+                mgmt_host = os.getenv("RABBITMQ_HOST", "rabbitmq")
+                mgmt_port = 15672  # Management API port
+                mgmt_user = os.getenv("RABBITMQ_USER", "guest")
+                mgmt_password = os.getenv("RABBITMQ_PASSWORD", "guest")
+                
+                response = requests.get(
+                    f"http://{mgmt_host}:{mgmt_port}/api/queues/%2F/{queue_name}",
+                    auth=(mgmt_user, mgmt_password),
+                    timeout=2
+                )
+                
+                if response.status_code == 200:
+                    queue_details = response.json()
+                    messages_ready = queue_details.get("messages_ready", 0)
+                    messages_unacked = queue_details.get("messages_unacknowledged", 0)
+                    message_count = messages_ready + messages_unacked
+                    consumer_count = queue_details.get("consumers", 0)
+                    logger.debug(f"Got queue stats from Management API: ready={messages_ready}, unacked={messages_unacked}")
+                else:
+                    logger.warning(f"Management API returned status {response.status_code}")
+                    message_count = messages_ready
+                    messages_unacked = 0
+            except ImportError:
+                logger.warning("requests library not installed, cannot query Management API")
+                message_count = messages_ready
+                messages_unacked = 0
+            except Exception as mgmt_error:
+                logger.warning(f"RabbitMQ Management API not available: {mgmt_error}")
+                # Try using rabbitmqctl as fallback
+                try:
+                    result = subprocess.run(
+                        ["docker", "exec", "aurora-rabbitmq", "rabbitmqctl", "list_queues", 
+                         "name", "messages_ready", "messages_unacknowledged"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        for line in result.stdout.split('\n'):
+                            parts = line.split()
+                            if len(parts) >= 3 and parts[0] == queue_name:
+                                messages_ready = int(parts[1])
+                                messages_unacked = int(parts[2])
+                                message_count = messages_ready + messages_unacked
+                                logger.debug(f"Got queue stats from rabbitmqctl: ready={messages_ready}, unacked={messages_unacked}")
+                                break
+                    else:
+                        message_count = messages_ready
+                        messages_unacked = 0
+                except Exception as ctl_error:
+                    logger.debug(f"rabbitmqctl fallback failed: {ctl_error}")
+                    message_count = messages_ready
+                    messages_unacked = 0
+                
         except Exception:
             # Queue doesn't exist yet
             message_count = 0
+            messages_ready = 0
+            messages_unacked = 0
             consumer_count = 0
         
         # Peek at messages in queue (non-destructive) and deduplicate by URL
@@ -268,6 +333,8 @@ async def get_queue_status():
         return QueueStatus(
             queue_name=queue_name,
             message_count=message_count,
+            messages_ready=messages_ready,
+            messages_unacked=messages_unacked,
             consumer_count=consumer_count,
             resources=resources
         )
