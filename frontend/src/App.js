@@ -14,6 +14,7 @@ import AdminSystemConfig from './pages/AdminSystemConfig';
 import AdminContentQuality from './pages/AdminContentQuality';
 import AdminChatSessions from './pages/AdminChatSessions';
 import AdminFeedback from './pages/AdminFeedback';
+import AdminDLQ from './pages/AdminDLQ';
 import Events from './pages/Events';
 import EventDetail from './pages/EventDetail';
 import SocialFeed from './pages/SocialFeed';
@@ -195,6 +196,14 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                                 element={
                                   <ProtectedRoute requiredRole={['admin', 'superadmin']}>
                                     <AdminChatSessions />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              <Route 
+                                path="/admin/dlq" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminDLQ />
                                   </ProtectedRoute>
                                 } 
                               />

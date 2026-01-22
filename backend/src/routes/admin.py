@@ -11,6 +11,7 @@ import json
 import subprocess
 import logging
 import time
+import asyncio
 from neo4j_client.client import Neo4jClient
 from src.services import postgres, graph_service
 
@@ -103,7 +104,14 @@ def get_rabbitmq_connection():
     password = os.getenv("RABBITMQ_PASSWORD", "guest")
     
     credentials = pika.PlainCredentials(user, password)
-    parameters = pika.ConnectionParameters(host=host, port=port, credentials=credentials)
+    parameters = pika.ConnectionParameters(
+        host=host, 
+        port=port, 
+        credentials=credentials,
+        blocked_connection_timeout=10,
+        socket_timeout=10,
+        connection_attempts=1
+    )
     return pika.BlockingConnection(parameters)
 
 
@@ -268,9 +276,8 @@ async def get_queue_status():
                 peeked_tags = []
                 seen_urls = set()
                 position = 1
-                max_peek = min(message_count, 50)  # Limit peeking to 50 messages for efficiency
                 
-                for _ in range(max_peek):
+                for _ in range(message_count):
                     method_frame, header_frame, body = channel.basic_get(queue=queue_name, auto_ack=False)
                     
                     if not method_frame:
@@ -1012,3 +1019,680 @@ async def sync_user_to_graph(user_id: str):
     except Exception as e:
         logger.error(f"Error syncing user {user_id} to graph: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Dead Letter Queue (DLQ) Endpoints ==========
+
+class DLQMessage(BaseModel):
+    """Dead letter queue message."""
+    message_id: int  # Position in queue for identification
+    title: str
+    url: str
+    category: str
+    error: str
+    error_timestamp: str
+    batch_id: Optional[str] = None
+    datasource_id: Optional[str] = None
+    message_type: Optional[str] = None  # "resource" or "event"
+    original_scraped_at: Optional[str] = None
+    is_duplicate: bool = False  # True if this URL appears multiple times in DLQ
+    duplicate_count: int = 1  # How many times this URL appears
+
+
+class DLQDuplicateGroup(BaseModel):
+    """Group of duplicate messages with the same URL."""
+    url: str
+    title: str
+    count: int
+    message_ids: List[int]  # All message IDs for this URL
+    newest_message_id: int  # The one to keep (most recent error_timestamp)
+    oldest_error_timestamp: str
+    newest_error_timestamp: str
+
+
+class DLQFilterOptions(BaseModel):
+    """Available filter options for DLQ."""
+    error_types: List[str]
+    batch_ids: List[str]
+    datasource_ids: List[str]
+
+
+class DLQStatus(BaseModel):
+    """DLQ status response."""
+    queue_name: str
+    message_count: int
+    messages: List[DLQMessage]
+    filter_options: DLQFilterOptions
+    duplicate_count: int = 0  # Number of URLs that have duplicates
+    duplicate_message_count: int = 0  # Total extra messages that are duplicates
+    duplicates: List[DLQDuplicateGroup] = []  # Grouped duplicate info
+
+
+class DLQRetryRequest(BaseModel):
+    """Request to retry specific DLQ messages."""
+    message_ids: List[int]
+
+
+class DLQRetryResponse(BaseModel):
+    """Response after retrying DLQ messages."""
+    success: bool
+    retried_count: int
+    failed_count: int
+    message: str
+
+
+class DLQDedupeResponse(BaseModel):
+    """Response after deduplicating DLQ."""
+    success: bool
+    duplicates_removed: int
+    unique_messages_kept: int
+    message: str
+
+
+@router.get("/dlq-messages", response_model=DLQStatus)
+async def get_dlq_messages(
+    error_filter: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    datasource_id: Optional[str] = None,
+    limit: int = 100
+):
+    """
+    Get messages from the Dead Letter Queue with optional filtering.
+    
+    Args:
+        error_filter: Filter by error message (case-insensitive partial match)
+        batch_id: Filter by batch ID
+        datasource_id: Filter by datasource ID
+        limit: Maximum messages to return (default 100)
+    """
+    # Run blocking RabbitMQ operations in a thread to avoid blocking the event loop
+    return await asyncio.to_thread(
+        _get_dlq_messages_sync,
+        error_filter,
+        batch_id,
+        datasource_id,
+        limit
+    )
+
+
+def _get_dlq_messages_sync(
+    error_filter: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    datasource_id: Optional[str] = None,
+    limit: int = 100
+) -> DLQStatus:
+    """Synchronous implementation of get_dlq_messages."""
+    dlq_name = f"{os.getenv('RABBITMQ_QUEUE', 'document_processing')}-dlq"
+    empty_filter_options = DLQFilterOptions(error_types=[], batch_ids=[], datasource_ids=[])
+    
+    try:
+        try:
+            connection = get_rabbitmq_connection()
+            channel = connection.channel()
+        except Exception as e:
+            logger.warning(f"RabbitMQ not available for DLQ: {e}")
+            return DLQStatus(
+                queue_name=dlq_name,
+                message_count=0,
+                messages=[],
+                filter_options=empty_filter_options
+            )
+        
+        # Declare the DLQ queue (check if exists with passive=True first)
+        try:
+            # First try passive=True to just check if queue exists
+            queue = channel.queue_declare(queue=dlq_name, durable=True, passive=True)
+            total_messages = queue.method.message_count
+        except Exception as e:
+            # Queue doesn't exist - try to create it (might fail with read-only user)
+            logger.info(f"DLQ queue {dlq_name} not found, attempting to create: {e}")
+            try:
+                # Need to recreate channel after failed passive declare
+                connection.close()
+                connection = get_rabbitmq_connection()
+                channel = connection.channel()
+                queue = channel.queue_declare(queue=dlq_name, durable=True, passive=False)
+                total_messages = queue.method.message_count
+            except Exception as create_err:
+                logger.warning(f"Could not create DLQ queue {dlq_name}: {create_err}")
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+                return DLQStatus(
+                    queue_name=dlq_name,
+                    message_count=0,
+                    messages=[],
+                    filter_options=empty_filter_options
+                )
+        
+        logger.info(f"DLQ queue {dlq_name} has {total_messages} messages")
+        
+        # Fetch all messages from DLQ to build filter options and detect duplicates
+        all_messages_data = []
+        peeked_tags = []
+        position = 0
+        
+        # Sets to collect unique filter values
+        error_types_set = set()
+        batch_ids_set = set()
+        datasource_ids_set = set()
+        
+        # Peek at messages to build filter options
+        logger.info(f"Peeking at {total_messages} messages from DLQ")
+        for _ in range(total_messages):
+            method_frame, header_frame, body = channel.basic_get(queue=dlq_name, auto_ack=False)
+            
+            if not method_frame:
+                break
+            
+            peeked_tags.append(method_frame.delivery_tag)
+            position += 1
+            
+            try:
+                message = json.loads(body)
+                
+                # Extract message data
+                resource_data = message.get("resource_data", {})
+                event_data = message.get("event_data", {})
+                
+                title = resource_data.get("title") or event_data.get("name") or "Unknown"
+                url = resource_data.get("url") or event_data.get("url") or ""
+                category = resource_data.get("category") or event_data.get("type") or "unknown"
+                error = message.get("dlq_error", "Unknown error")
+                error_timestamp = message.get("dlq_timestamp", "")
+                msg_batch_id = message.get("batch_id")
+                msg_datasource_id = message.get("datasource_id")
+                message_type = message.get("message_type", "resource")
+                scraped_at = resource_data.get("scraped_at") or event_data.get("scraped_at")
+                
+                # Collect filter options from ALL messages (before filtering)
+                # Extract error type (first part of error message, up to colon or first 50 chars)
+                error_type = error.split(':')[0].strip() if ':' in error else error[:50].strip()
+                if error_type:
+                    error_types_set.add(error_type)
+                if msg_batch_id:
+                    batch_ids_set.add(msg_batch_id)
+                if msg_datasource_id:
+                    datasource_ids_set.add(msg_datasource_id)
+                
+                # Convert scraped_at timestamp if present
+                original_scraped_at = None
+                if scraped_at:
+                    try:
+                        if isinstance(scraped_at, (int, float)):
+                            original_scraped_at = datetime.fromtimestamp(scraped_at).isoformat()
+                        else:
+                            original_scraped_at = str(scraped_at)
+                    except Exception:
+                        original_scraped_at = str(scraped_at)
+                
+                # Store message data for filtering
+                all_messages_data.append({
+                    "message_id": position,
+                    "title": title,
+                    "url": url,
+                    "category": category,
+                    "error": error,
+                    "error_type": error_type,
+                    "error_timestamp": error_timestamp,
+                    "batch_id": msg_batch_id,
+                    "datasource_id": msg_datasource_id,
+                    "message_type": message_type,
+                    "original_scraped_at": original_scraped_at
+                })
+                    
+            except Exception as e:
+                logger.warning(f"Error parsing DLQ message: {e}")
+                continue
+        
+        logger.info(f"Peeked {len(all_messages_data)} messages, re-queuing {len(peeked_tags)} tags")
+        
+        # Re-queue all peeked messages
+        for tag in peeked_tags:
+            channel.basic_nack(delivery_tag=tag, requeue=True)
+        
+        logger.info("Re-queued all messages, closing connection")
+        
+        try:
+            connection.close()
+        except Exception:
+            pass
+        
+        logger.info("Connection closed, processing duplicates")
+        # Detect duplicates by URL (normalize URL for comparison)
+        def normalize_url(url: str) -> str:
+            """Normalize URL for duplicate detection."""
+            if not url:
+                return ""
+            # Remove trailing slashes
+            url = url.rstrip('/')
+            # Remove common tracking parameters
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+            try:
+                parsed = urlparse(url)
+                # Remove tracking params
+                params = parse_qs(parsed.query)
+                # Remove common tracking params
+                for track_param in ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'ref', 'source']:
+                    params.pop(track_param, None)
+                # Rebuild query string
+                new_query = urlencode(params, doseq=True)
+                normalized = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', new_query, ''))
+                return normalized.lower()
+            except Exception:
+                return url.lower()
+        
+        # Track messages by URL for duplicate detection
+        url_to_messages: Dict[str, List[Dict]] = {}
+        
+        for msg_data in all_messages_data:
+            url = msg_data["url"]
+            
+            if url:
+                normalized_url = normalize_url(url)
+                if normalized_url not in url_to_messages:
+                    url_to_messages[normalized_url] = []
+                url_to_messages[normalized_url].append(msg_data)
+        
+        # Build duplicate groups and mark messages
+        duplicates = []
+        url_duplicate_count = {}  # normalized_url -> count for marking messages
+        
+        # Process URL-based duplicates
+        for url, msgs in url_to_messages.items():
+            if len(msgs) > 1:
+                url_duplicate_count[url] = len(msgs)
+                # Sort by error_timestamp to find newest
+                sorted_msgs = sorted(msgs, key=lambda m: m["error_timestamp"] or "", reverse=True)
+                newest = sorted_msgs[0]
+                oldest = sorted_msgs[-1]
+                
+                duplicates.append(DLQDuplicateGroup(
+                    url=url,
+                    title=newest["title"],
+                    count=len(msgs),
+                    message_ids=[m["message_id"] for m in msgs],
+                    newest_message_id=newest["message_id"],
+                    oldest_error_timestamp=oldest["error_timestamp"] or "",
+                    newest_error_timestamp=newest["error_timestamp"] or ""
+                ))
+        
+        # Sort duplicates by count descending
+        duplicates.sort(key=lambda d: d.count, reverse=True)
+        
+        # Calculate duplicate stats
+        duplicate_count = len(duplicates)
+        duplicate_message_count = sum(d.count - 1 for d in duplicates)  # Extra messages beyond the first
+        
+        # Now apply filters to get the result set
+        filtered_messages = []
+        for msg_data in all_messages_data:
+            # Apply filters
+            if error_filter and error_filter.lower() not in msg_data["error"].lower():
+                continue
+            if batch_id and msg_data["batch_id"] != batch_id:
+                continue
+            if datasource_id and msg_data["datasource_id"] != datasource_id:
+                continue
+            
+            # Mark duplicates (use normalized URL for comparison)
+            url = msg_data["url"]
+            normalized_url = normalize_url(url) if url else ""
+            
+            # Check if duplicate by URL
+            is_duplicate = normalized_url in url_duplicate_count
+            dup_count = url_duplicate_count.get(normalized_url, 1)
+            
+            filtered_messages.append(DLQMessage(
+                message_id=msg_data["message_id"],
+                title=msg_data["title"],
+                url=msg_data["url"],
+                category=msg_data["category"],
+                error=msg_data["error"],
+                error_timestamp=msg_data["error_timestamp"],
+                batch_id=msg_data["batch_id"],
+                datasource_id=msg_data["datasource_id"],
+                message_type=msg_data["message_type"],
+                original_scraped_at=msg_data["original_scraped_at"],
+                is_duplicate=is_duplicate,
+                duplicate_count=dup_count
+            ))
+            
+            if len(filtered_messages) >= limit:
+                break
+        
+        # Build filter options
+        filter_options = DLQFilterOptions(
+            error_types=sorted(list(error_types_set)),
+            batch_ids=sorted(list(batch_ids_set)),
+            datasource_ids=sorted(list(datasource_ids_set))
+        )
+        
+        return DLQStatus(
+            queue_name=dlq_name,
+            message_count=total_messages,
+            messages=filtered_messages,
+            filter_options=filter_options,
+            duplicate_count=duplicate_count,
+            duplicate_message_count=duplicate_message_count,
+            duplicates=duplicates
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get DLQ messages: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get DLQ messages: {str(e)}")
+
+
+@router.post("/dlq-retry", response_model=DLQRetryResponse)
+async def retry_dlq_messages(request: DLQRetryRequest):
+    """
+    Retry specific messages from the DLQ by re-queuing them to the main queue.
+    
+    Messages are identified by their position (message_id) in the DLQ.
+    The selected messages are removed from DLQ and added back to the main processing queue.
+    """
+    dlq_name = f"{os.getenv('RABBITMQ_QUEUE', 'document_processing')}-dlq"
+    main_queue = os.getenv("RABBITMQ_QUEUE", "document_processing")
+    
+    try:
+        connection = get_rabbitmq_connection()
+        channel = connection.channel()
+        
+        # Ensure main queue exists
+        channel.queue_declare(queue=main_queue, durable=True)
+        
+        # Track results
+        retried = 0
+        failed = 0
+        
+        # We need to consume messages and only ack the ones we want to retry
+        # This is tricky because RabbitMQ doesn't support random access
+        # We'll consume all messages, retry selected ones, and requeue the rest
+        
+        messages_to_requeue = []
+        messages_to_retry = []
+        position = 0
+        
+        # First, consume all messages from DLQ
+        while True:
+            method_frame, header_frame, body = channel.basic_get(queue=dlq_name, auto_ack=True)
+            if not method_frame:
+                break
+            
+            position += 1
+            
+            try:
+                message = json.loads(body)
+                
+                if position in request.message_ids:
+                    # Remove DLQ metadata before retrying
+                    message.pop("dlq_error", None)
+                    message.pop("dlq_timestamp", None)
+                    # Reset delivery attempts for fresh retry
+                    message["delivery_attempts"] = 0
+                    # Clear batch_id to prevent double-counting in batch progress
+                    # (the original batch already counted this item when it went to DLQ)
+                    message.pop("batch_id", None)
+                    messages_to_retry.append(message)
+                else:
+                    messages_to_requeue.append(body)
+            except Exception as e:
+                logger.warning(f"Error processing DLQ message for retry: {e}")
+                messages_to_requeue.append(body)
+                failed += 1
+        
+        # Requeue non-selected messages back to DLQ
+        for body in messages_to_requeue:
+            channel.basic_publish(
+                exchange='',
+                routing_key=dlq_name,
+                body=body,
+                properties=pika.BasicProperties(delivery_mode=2)
+            )
+        
+        # Publish selected messages to main queue for retry
+        for message in messages_to_retry:
+            try:
+                channel.basic_publish(
+                    exchange='',
+                    routing_key=main_queue,
+                    body=json.dumps(message),
+                    properties=pika.BasicProperties(delivery_mode=2)
+                )
+                retried += 1
+            except Exception as e:
+                logger.error(f"Failed to retry message: {e}")
+                # Put back in DLQ
+                message["dlq_error"] = f"Retry failed: {str(e)}"
+                message["dlq_timestamp"] = datetime.now().isoformat()
+                channel.basic_publish(
+                    exchange='',
+                    routing_key=dlq_name,
+                    body=json.dumps(message),
+                    properties=pika.BasicProperties(delivery_mode=2)
+                )
+                failed += 1
+        
+        connection.close()
+        
+        logger.info(f"DLQ retry: {retried} messages retried, {failed} failed")
+        
+        return DLQRetryResponse(
+            success=True,
+            retried_count=retried,
+            failed_count=failed,
+            message=f"Retried {retried} messages, {failed} failed"
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to retry DLQ messages: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retry messages: {str(e)}")
+
+
+@router.post("/dlq-retry-all", response_model=DLQRetryResponse)
+async def retry_all_dlq_messages():
+    """
+    Retry ALL messages from the DLQ by re-queuing them to the main processing queue.
+    
+    WARNING: This will retry all failed messages. Use with caution.
+    """
+    dlq_name = f"{os.getenv('RABBITMQ_QUEUE', 'document_processing')}-dlq"
+    main_queue = os.getenv("RABBITMQ_QUEUE", "document_processing")
+    
+    try:
+        connection = get_rabbitmq_connection()
+        channel = connection.channel()
+        
+        # Ensure queues exist
+        channel.queue_declare(queue=main_queue, durable=True)
+        dlq_queue = channel.queue_declare(queue=dlq_name, durable=True, passive=False)
+        total_messages = dlq_queue.method.message_count
+        
+        retried = 0
+        failed = 0
+        
+        # Consume all messages from DLQ and republish to main queue
+        while True:
+            method_frame, header_frame, body = channel.basic_get(queue=dlq_name, auto_ack=True)
+            if not method_frame:
+                break
+            
+            try:
+                message = json.loads(body)
+                
+                # Remove DLQ metadata
+                message.pop("dlq_error", None)
+                message.pop("dlq_timestamp", None)
+                # Reset delivery attempts
+                message["delivery_attempts"] = 0
+                # Clear batch_id to prevent double-counting in batch progress
+                # (the original batch already counted this item when it went to DLQ)
+                message.pop("batch_id", None)
+                
+                channel.basic_publish(
+                    exchange='',
+                    routing_key=main_queue,
+                    body=json.dumps(message),
+                    properties=pika.BasicProperties(delivery_mode=2)
+                )
+                retried += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to retry DLQ message: {e}")
+                # Put back in DLQ
+                channel.basic_publish(
+                    exchange='',
+                    routing_key=dlq_name,
+                    body=body,
+                    properties=pika.BasicProperties(delivery_mode=2)
+                )
+                failed += 1
+        
+        connection.close()
+        
+        logger.info(f"DLQ retry all: {retried} messages retried out of {total_messages}, {failed} failed")
+        
+        return DLQRetryResponse(
+            success=True,
+            retried_count=retried,
+            failed_count=failed,
+            message=f"Retried {retried} of {total_messages} messages, {failed} failed"
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to retry all DLQ messages: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retry all messages: {str(e)}")
+
+
+@router.delete("/dlq-purge")
+async def purge_dlq():
+    """
+    Purge ALL messages from the Dead Letter Queue.
+    
+    WARNING: This permanently deletes all failed messages!
+    """
+    dlq_name = f"{os.getenv('RABBITMQ_QUEUE', 'document_processing')}-dlq"
+    
+    try:
+        connection = get_rabbitmq_connection()
+        channel = connection.channel()
+        
+        try:
+            purged = channel.queue_purge(queue=dlq_name)
+            message_count = purged.method.message_count
+        except Exception:
+            # Queue doesn't exist
+            message_count = 0
+        
+        connection.close()
+        
+        logger.info(f"Purged {message_count} messages from DLQ {dlq_name}")
+        
+        return {
+            "status": "success",
+            "message": f"Purged {message_count} messages from Dead Letter Queue",
+            "queue_name": dlq_name,
+            "messages_purged": message_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to purge DLQ: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to purge DLQ: {str(e)}")
+
+
+@router.post("/dlq-dedupe", response_model=DLQDedupeResponse)
+async def dedupe_dlq():
+    """
+    Remove duplicate messages from the DLQ, keeping only the most recent message for each URL.
+    
+    This is useful when the same document fails multiple times (e.g., scraper picks it up
+    again because it's not in the DB yet).
+    """
+    dlq_name = f"{os.getenv('RABBITMQ_QUEUE', 'document_processing')}-dlq"
+    
+    try:
+        connection = get_rabbitmq_connection()
+        channel = connection.channel()
+        
+        # Consume all messages from DLQ
+        all_messages = []
+        while True:
+            method_frame, header_frame, body = channel.basic_get(queue=dlq_name, auto_ack=True)
+            if not method_frame:
+                break
+            
+            try:
+                message = json.loads(body)
+                resource_data = message.get("resource_data", {})
+                event_data = message.get("event_data", {})
+                url = resource_data.get("url") or event_data.get("url") or ""
+                error_timestamp = message.get("dlq_timestamp", "")
+                
+                all_messages.append({
+                    "body": body,
+                    "message": message,
+                    "url": url,
+                    "error_timestamp": error_timestamp
+                })
+            except Exception as e:
+                # Keep unparseable messages
+                all_messages.append({
+                    "body": body,
+                    "message": None,
+                    "url": "",
+                    "error_timestamp": ""
+                })
+        
+        # Group by URL
+        url_to_messages: Dict[str, List[Dict]] = {}
+        messages_without_url = []
+        
+        for msg in all_messages:
+            url = msg["url"]
+            if url:
+                if url not in url_to_messages:
+                    url_to_messages[url] = []
+                url_to_messages[url].append(msg)
+            else:
+                messages_without_url.append(msg)
+        
+        # For each URL group, keep only the newest message
+        messages_to_keep = []
+        duplicates_removed = 0
+        
+        for url, msgs in url_to_messages.items():
+            if len(msgs) > 1:
+                # Sort by error_timestamp descending (newest first)
+                sorted_msgs = sorted(msgs, key=lambda m: m["error_timestamp"] or "", reverse=True)
+                messages_to_keep.append(sorted_msgs[0])  # Keep newest
+                duplicates_removed += len(sorted_msgs) - 1
+            else:
+                messages_to_keep.append(msgs[0])
+        
+        # Add messages without URL (can't dedupe these)
+        messages_to_keep.extend(messages_without_url)
+        
+        # Re-publish kept messages back to DLQ
+        for msg in messages_to_keep:
+            channel.basic_publish(
+                exchange='',
+                routing_key=dlq_name,
+                body=msg["body"],
+                properties=pika.BasicProperties(delivery_mode=2)
+            )
+        
+        connection.close()
+        
+        logger.info(f"DLQ dedupe: removed {duplicates_removed} duplicates, kept {len(messages_to_keep)} unique messages")
+        
+        return DLQDedupeResponse(
+            success=True,
+            duplicates_removed=duplicates_removed,
+            unique_messages_kept=len(messages_to_keep),
+            message=f"Removed {duplicates_removed} duplicate messages, kept {len(messages_to_keep)} unique messages"
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to dedupe DLQ: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to dedupe DLQ: {str(e)}")

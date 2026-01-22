@@ -41,3 +41,4 @@ export { default as EyeOffIcon } from './EyeOffIcon.jsx';
 export { default as FeedbackIcon } from './FeedbackIcon.jsx';
 export { default as MapPinIcon } from './MapPinIcon.jsx';
 export { default as FileTextIcon } from './FileTextIcon.jsx';
+export { default as AlertCircleIcon } from './AlertCircleIcon.jsx';

@@ -268,8 +268,8 @@ services:
       REDIS_PORT: 6379
       
       # RabbitMQ
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-user}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
@@ -369,8 +369,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-aurora}
       
       # RabbitMQ
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-user}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
@@ -429,8 +429,8 @@ services:
       - aurora-network
     environment:
       # RabbitMQ
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-user}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
@@ -514,8 +514,8 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       
       # RabbitMQ (for queue monitoring)
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-user}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
@@ -588,8 +588,8 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-your_neo4j_password_here}
       NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
 
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-user}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
