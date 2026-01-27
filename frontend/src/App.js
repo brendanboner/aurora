@@ -12,6 +12,7 @@ import AdminKnowledgeGraph from './pages/AdminKnowledgeGraph';
 import AdminMonitoring from './pages/AdminMonitoring';
 import AdminSystemConfig from './pages/AdminSystemConfig';
 import AdminContentQuality from './pages/AdminContentQuality';
+import AdminOracleSettings from './pages/AdminOracleSettings';
 import AdminChatSessions from './pages/AdminChatSessions';
 import AdminFeedback from './pages/AdminFeedback';
 import AdminDLQ from './pages/AdminDLQ';
@@ -203,6 +204,14 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                                 element={
                                   <ProtectedRoute requiredRole={['admin', 'superadmin']}>
                                     <AdminContentQuality />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              <Route 
+                                path="/admin/oracle-settings" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminOracleSettings />
                                   </ProtectedRoute>
                                 } 
                               />

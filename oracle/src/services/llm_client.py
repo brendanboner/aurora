@@ -85,7 +85,7 @@ async def call_llm(
     timeout: Optional[float] = None
 ) -> LLMResponse:
     """
-    Make a call to the Azure OpenAI API.
+    Make a call to the Azure OpenAI API with automatic retry on rate limits.
     
     Args:
         client: Azure OpenAI client
@@ -97,33 +97,81 @@ async def call_llm(
     Returns:
         LLMResponse with content and token usage
     """
+    import asyncio
+    import time
+    
     deployment = getattr(client, '_deployment_name', settings.azure_openai_deployment)
     timeout = timeout or settings.llm_timeout
+    max_retries = settings.llm_rate_limit_retries
     
-    try:
-        # Note: Using synchronous call wrapped in async for simplicity
-        # In production, consider using httpx async client directly
-        response = client.chat.completions.create(
-            model=deployment,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            timeout=timeout,
-        )
-        
-        content = response.choices[0].message.content or ""
-        tokens_used = response.usage.total_tokens if response.usage else 0
-        finish_reason = response.choices[0].finish_reason or "unknown"
-        
-        return LLMResponse(
-            content=content,
-            tokens_used=tokens_used,
-            finish_reason=finish_reason
-        )
-        
-    except Exception as e:
-        logger.error(f"LLM call failed: {e}")
-        raise
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            # Note: Using synchronous call wrapped in async for simplicity
+            # In production, consider using httpx async client directly
+            response = client.chat.completions.create(
+                model=deployment,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                timeout=timeout,
+            )
+            
+            content = response.choices[0].message.content or ""
+            tokens_used = response.usage.total_tokens if response.usage else 0
+            finish_reason = response.choices[0].finish_reason or "unknown"
+            
+            if attempt > 0:
+                logger.info(f"LLM call succeeded after {attempt} retries")
+            
+            return LLMResponse(
+                content=content,
+                tokens_used=tokens_used,
+                finish_reason=finish_reason
+            )
+            
+        except Exception as e:
+            last_exception = e
+            error_str = str(e)
+            
+            # Check if this is a rate limit error (429)
+            if "429" in error_str or "RateLimitReached" in error_str:
+                # Extract retry-after time from error message if available
+                retry_after_ms = None
+                if "retry after" in error_str.lower():
+                    import re
+                    match = re.search(r'retry after (\d+) milliseconds', error_str, re.IGNORECASE)
+                    if match:
+                        retry_after_ms = int(match.group(1))
+                
+                # Calculate wait time
+                if retry_after_ms:
+                    wait_seconds = retry_after_ms / 1000.0
+                else:
+                    # Exponential backoff: 1s, 2s, 4s, 8s, etc.
+                    wait_seconds = 2 ** attempt
+                
+                # Don't retry if we've exhausted attempts
+                if attempt >= max_retries:
+                    logger.error(f"LLM rate limit exceeded after {max_retries} retries")
+                    raise
+                
+                logger.warning(
+                    f"LLM rate limit hit (attempt {attempt + 1}/{max_retries + 1}), "
+                    f"waiting {wait_seconds:.1f}s before retry..."
+                )
+                
+                await asyncio.sleep(wait_seconds)
+                continue
+            
+            # For non-rate-limit errors, fail immediately
+            logger.error(f"LLM call failed: {e}")
+            raise
+    
+    # Should never reach here, but just in case
+    logger.error(f"LLM call failed after {max_retries} retries")
+    raise last_exception or Exception("LLM call failed")
 
 
 def reset_client():
