@@ -184,6 +184,13 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                     <span>Content Quality</span>
                   </Link>
                   <Link 
+                    to="/admin/oracle-settings" 
+                    className={`sidebar-subitem ${isActive('/admin/oracle-settings') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><SettingsIcon size={16} /></span>
+                    <span>Oracle Settings</span>
+                  </Link>
+                  <Link 
                     to="/admin/chat-sessions" 
                     className={`sidebar-subitem ${isActive('/admin/chat-sessions') ? 'active' : ''}`}
                   >
