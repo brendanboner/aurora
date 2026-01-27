@@ -119,26 +119,32 @@ class RollupGenerator:
             raise
     
     async def _get_active_workgroups(self) -> List[Dict[str, str]]:
-        """Get list of active workgroups from Neo4j."""
+        """
+        Get list of active workgroups from Neo4j.
+        
+        WorkGroups are DataSources with:
+        - resource_url containing '/wg/'
+        - scraper_type = 'wfa_causeway' (more types may be added in future)
+        
+        A workgroup is considered active if it has had any activity in the last 90 days.
+        """
         try:
             repo = get_repo()
             
-            # Query for workgroups with recent activity (resources or events in last 90 days)
+            # Query for DataSources that represent workgroups with any documents
+            # Note: publish_date may be NULL for workgroup documents, so we just check for existence
             query = """
-            MATCH (wg:WorkGroup)
-            WHERE EXISTS {
-                MATCH (wg)<-[:MENTIONS]-(r:Resource)
-                WHERE datetime(r.publish_date) >= datetime() - duration({days: 90})
+            MATCH (ds:DataSource)
+            WHERE ds.resource_url CONTAINS '/wg/' 
+              AND ds.scraper_type = 'wfa_causeway'
+            AND EXISTS {
+                MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             }
-            OR EXISTS {
-                MATCH (wg)<-[:BELONGS_TO]-(e:Event)
-                WHERE datetime(e.startTime) >= datetime() - duration({days: 90})
-            }
-            RETURN DISTINCT wg.id as id, wg.name as name
-            ORDER BY wg.name
+            RETURN DISTINCT ds.datasource_id as id, ds.name as name
+            ORDER BY ds.name
             """
             
-            result = repo.query(query)
+            result = repo.client.execute_query(query)
             workgroups = [{"id": record["id"], "name": record["name"]} for record in result]
             
             return workgroups
@@ -300,23 +306,25 @@ class RollupGenerator:
         try:
             repo = get_repo()
             
-            # Query Neo4j for day's activity
+            # Query Neo4j for day's activity from this DataSource (workgroup)
             query = """
-            MATCH (wg:WorkGroup {id: $workgroup_id})
+            MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get events on this day
-            OPTIONAL MATCH (wg)<-[:BELONGS_TO]-(e:Event)
-            WHERE date(e.startTime) = date($target_date)
+            // Get workgroup meeting events on this day
+            OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
+            WHERE e.event_type = 'meeting'
+              AND date(e.startTime) = date($target_date)
             
-            // Get documents published on this day
-            OPTIONAL MATCH (wg)<-[:MENTIONS]-(r:Resource)
-            WHERE date(r.publish_date) = date($target_date)
+            // Get documents published on this day (or all if publish_date is NULL)
+            OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
+            WHERE r.publish_date IS NULL
+               OR date(r.publish_date) = date($target_date)
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
             WHERE rt.relevance >= 0.5
             
-            WITH wg, 
+            WITH ds, 
                  collect(DISTINCT e)[..10] as events,
                  collect(DISTINCT r)[..20] as docs,
                  collect(DISTINCT t.name)[..10] as topics
@@ -329,7 +337,7 @@ class RollupGenerator:
                 topics
             """
             
-            result = repo.query(query, {
+            result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
                 "target_date": target_date.isoformat()
             })
@@ -410,25 +418,27 @@ class RollupGenerator:
         try:
             repo = get_repo()
             
-            # Query Neo4j for week's activity
+            # Query Neo4j for week's activity from this DataSource (workgroup)
             query = """
-            MATCH (wg:WorkGroup {id: $workgroup_id})
+            MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get events in this week
-            OPTIONAL MATCH (wg)<-[:BELONGS_TO]-(e:Event)
-            WHERE date(e.startTime) >= date($week_start)
+            // Get workgroup meeting events in this week
+            OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
+            WHERE e.event_type = 'meeting'
+              AND date(e.startTime) >= date($week_start)
               AND date(e.startTime) <= date($week_end)
             
-            // Get documents published in this week
-            OPTIONAL MATCH (wg)<-[:MENTIONS]-(r:Resource)
-            WHERE date(r.publish_date) >= date($week_start)
-              AND date(r.publish_date) <= date($week_end)
+            // Get documents published in this week (or all if publish_date is NULL)
+            OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
+            WHERE r.publish_date IS NULL
+               OR (date(r.publish_date) >= date($week_start)
+                   AND date(r.publish_date) <= date($week_end))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
             WHERE rt.relevance >= 0.5
             
-            WITH wg,
+            WITH ds,
                  collect(DISTINCT e)[..20] as events,
                  collect(DISTINCT r)[..50] as docs,
                  collect(DISTINCT t.name)[..15] as topics
@@ -441,7 +451,7 @@ class RollupGenerator:
                 topics
             """
             
-            result = repo.query(query, {
+            result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
                 "week_start": week_start.isoformat(),
                 "week_end": week_end.isoformat()
@@ -523,25 +533,27 @@ class RollupGenerator:
         try:
             repo = get_repo()
             
-            # Query Neo4j for month's activity
+            # Query Neo4j for month's activity from this DataSource (workgroup)
             query = """
-            MATCH (wg:WorkGroup {id: $workgroup_id})
+            MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get events in this month
-            OPTIONAL MATCH (wg)<-[:BELONGS_TO]-(e:Event)
-            WHERE date(e.startTime) >= date($month_start)
+            // Get workgroup meeting events in this month
+            OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
+            WHERE e.event_type = 'meeting'
+              AND date(e.startTime) >= date($month_start)
               AND date(e.startTime) <= date($month_end)
             
-            // Get documents published in this month
-            OPTIONAL MATCH (wg)<-[:MENTIONS]-(r:Resource)
-            WHERE date(r.publish_date) >= date($month_start)
-              AND date(r.publish_date) <= date($month_end)
+            // Get documents published in this month (or all if publish_date is NULL)
+            OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
+            WHERE r.publish_date IS NULL
+               OR (date(r.publish_date) >= date($month_start)
+                   AND date(r.publish_date) <= date($month_end))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
             WHERE rt.relevance >= 0.5
             
-            WITH wg,
+            WITH ds,
                  collect(DISTINCT e)[..30] as events,
                  collect(DISTINCT r)[..100] as docs,
                  collect(DISTINCT t.name)[..20] as topics
@@ -554,7 +566,7 @@ class RollupGenerator:
                 topics
             """
             
-            result = repo.query(query, {
+            result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
                 "month_start": month_start.isoformat(),
                 "month_end": month_end.isoformat()
