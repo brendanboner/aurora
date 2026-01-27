@@ -307,18 +307,25 @@ class RollupGenerator:
             repo = get_repo()
             
             # Query Neo4j for day's activity from this DataSource (workgroup)
+            # Intelligent date handling:
+            # - Events: Use startTime (when event actually happens)
+            # - Resources: Use publish_date (when document was published)
+            #              OR INGESTED_IN.created_at (when we scraped it) as fallback
             query = """
             MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get workgroup meeting events on this day
+            // Get workgroup meeting events on this day (by event startTime)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
             WHERE e.event_type = 'meeting'
+              AND e.startTime IS NOT NULL
               AND date(e.startTime) = date($target_date)
             
-            // Get documents published on this day (or all if publish_date is NULL)
+            // Get documents by publish_date (preferred) or ingestion date (fallback)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
-            WHERE r.publish_date IS NULL
-               OR date(r.publish_date) = date($target_date)
+            OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
+            WHERE (r.publish_date IS NOT NULL AND date(r.publish_date) = date($target_date))
+               OR (r.publish_date IS NULL AND batch.created_at IS NOT NULL 
+                   AND date(batch.created_at) = date($target_date))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
@@ -332,8 +339,8 @@ class RollupGenerator:
             RETURN 
                 size(events) as event_count,
                 size(docs) as doc_count,
-                [event IN events | {id: event.id, name: event.name, url: event.url}] as events,
-                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category}] as docs,
+                [event IN events | {id: event.id, name: event.name, url: event.url, startTime: event.startTime}] as events,
+                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
                 topics
             """
             
@@ -419,20 +426,28 @@ class RollupGenerator:
             repo = get_repo()
             
             # Query Neo4j for week's activity from this DataSource (workgroup)
+            # Intelligent date handling:
+            # - Events: Use startTime (when event happens)
+            # - Resources: Use publish_date OR ingestion date as fallback
             query = """
             MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get workgroup meeting events in this week
+            // Get workgroup meeting events in this week (by event startTime)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
             WHERE e.event_type = 'meeting'
+              AND e.startTime IS NOT NULL
               AND date(e.startTime) >= date($week_start)
               AND date(e.startTime) <= date($week_end)
             
-            // Get documents published in this week (or all if publish_date is NULL)
+            // Get documents by publish_date (preferred) or ingestion date (fallback)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
-            WHERE r.publish_date IS NULL
-               OR (date(r.publish_date) >= date($week_start)
+            OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
+            WHERE (r.publish_date IS NOT NULL 
+                   AND date(r.publish_date) >= date($week_start)
                    AND date(r.publish_date) <= date($week_end))
+               OR (r.publish_date IS NULL AND batch.created_at IS NOT NULL
+                   AND date(batch.created_at) >= date($week_start)
+                   AND date(batch.created_at) <= date($week_end))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
@@ -446,8 +461,8 @@ class RollupGenerator:
             RETURN 
                 size(events) as event_count,
                 size(docs) as doc_count,
-                [event IN events | {id: event.id, name: event.name, url: event.url}] as events,
-                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category}] as docs,
+                [event IN events | {id: event.id, name: event.name, url: event.url, startTime: event.startTime}] as events,
+                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
                 topics
             """
             
@@ -534,20 +549,28 @@ class RollupGenerator:
             repo = get_repo()
             
             # Query Neo4j for month's activity from this DataSource (workgroup)
+            # Intelligent date handling:
+            # - Events: Use startTime (when event happens)
+            # - Resources: Use publish_date OR ingestion date as fallback
             query = """
             MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get workgroup meeting events in this month
+            // Get workgroup meeting events in this month (by event startTime)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
             WHERE e.event_type = 'meeting'
+              AND e.startTime IS NOT NULL
               AND date(e.startTime) >= date($month_start)
               AND date(e.startTime) <= date($month_end)
             
-            // Get documents published in this month (or all if publish_date is NULL)
+            // Get documents by publish_date (preferred) or ingestion date (fallback)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
-            WHERE r.publish_date IS NULL
-               OR (date(r.publish_date) >= date($month_start)
+            OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
+            WHERE (r.publish_date IS NOT NULL
+                   AND date(r.publish_date) >= date($month_start)
                    AND date(r.publish_date) <= date($month_end))
+               OR (r.publish_date IS NULL AND batch.created_at IS NOT NULL
+                   AND date(batch.created_at) >= date($month_start)
+                   AND date(batch.created_at) <= date($month_end))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
@@ -561,8 +584,8 @@ class RollupGenerator:
             RETURN 
                 size(events) as event_count,
                 size(docs) as doc_count,
-                [event IN events | {id: event.id, name: event.name, url: event.url}] as events,
-                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category}] as docs,
+                [event IN events | {id: event.id, name: event.name, url: event.url, startTime: event.startTime}] as events,
+                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
                 topics
             """
             
@@ -740,12 +763,14 @@ class RollupGenerator:
     
     def _save_rollup(self, rollup: Rollup):
         """Save rollup to database."""
+        session = self.SessionLocal()
         try:
-            session = self.SessionLocal()
             session.add(rollup)
             session.commit()
-            session.close()
             logger.debug(f"Saved rollup: {rollup.rollup_type} for {rollup.workgroup_name} {rollup.start_date.date()}")
         except Exception as e:
+            session.rollback()
             logger.error(f"Failed to save rollup: {e}")
             raise
+        finally:
+            session.close()

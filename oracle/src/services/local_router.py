@@ -40,22 +40,23 @@ class LocalRouter:
     ROUTE_PATTERNS = [
         # Weekly recap patterns
         (r"(weekly|week)\s+(recap|summary|update)", RouteId.WORKGROUP_WEEKLY_RECAP),
-        (r"what happened (this|last) week", RouteId.WORKGROUP_WEEKLY_RECAP),
+        (r"what happened.*?(this|last) week", RouteId.WORKGROUP_WEEKLY_RECAP),
         (r"(this|last) week('s)?\s+(activities|events|updates)", RouteId.WORKGROUP_WEEKLY_RECAP),
         
         # Daily recap patterns
         (r"(daily|today('s)?)\s+(recap|summary|update)", RouteId.WORKGROUP_DAILY_RECAP),
-        (r"what happened (today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
+        (r"what happened.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
         
         # Monthly patterns
         (r"(monthly|month)\s+(recap|summary|update)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
-        (r"what happened (this|last) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
+        (r"what happened.*?(this|last) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         (r"(this|last) month('s)?\s+(activities|summary)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         
         # Recent updates
         (r"recent (updates|changes|news|developments)", RouteId.WORKGROUP_RECENT_UPDATES),
         (r"what('s| is) new", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"latest (updates|news)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what('s| is) (the )?latest (in|on|with|for)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"latest (updates|news|in|on)", RouteId.WORKGROUP_RECENT_UPDATES),
         
         # Events - upcoming
         (r"upcoming (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
@@ -225,13 +226,15 @@ class LocalRouter:
                     return start, end, 7
                 elif "this month" in pattern:
                     start = today.replace(day=1)
-                    return start, today, 30
+                    days_in_month = (today - start).days + 1
+                    return start, today, days_in_month
                 elif "last month" in pattern:
                     # Previous month
                     first_today = today.replace(day=1)
                     end = first_today - timedelta(days=1)
                     start = end.replace(day=1)
-                    return start, end, 30
+                    days_in_last_month = (end - start).days + 1
+                    return start, end, days_in_last_month
                 elif "recent" in pattern or "latest" in pattern:
                     # Recent/latest - default to last 2 weeks for recent, 1 week for latest
                     start_date = today - delta
@@ -286,20 +289,30 @@ class LocalRouter:
             "people": []
         }
         
-        # Common workgroup patterns (explicit mentions always take precedence)
-        workgroup_patterns = [
-            r"802\.11\w*",  # 802.11be, 802.11ax, etc.
-            r"halow",  # HaLow
-            r"wi-?fi\s*\d*",  # Wi-Fi, WiFi 6, WiFi 7
-            r"wfa",  # Wi-Fi Alliance
-            r"ieee",
-            r"802\.1\w*",  # 802.1x, 802.1Q, etc.
-        ]
+        # Common workgroup name patterns (explicit mentions always take precedence)
+        # These map query keywords to actual Neo4j workgroup names
+        workgroup_keywords = {
+            "wifi 7": "Wi-Fi 7",
+            "wi-fi 7": "Wi-Fi 7",
+            "wifi7": "Wi-Fi 7",
+            "wifi 8": "Wi-Fi 8",
+            "wi-fi 8": "Wi-Fi 8",
+            "wifi8": "Wi-Fi 8",
+            "halow": "HaLow",
+            "802.11ah": "HaLow",
+            "broadcast": "Broadcast",
+            "passpoint": "Passpoint",
+            "security": "Security",
+            "regulatory": "Regulatory",
+            "location": "Location",
+            "xrms": "XRMS",
+            "sensing": "Sensing",
+        }
         
-        # Extract explicit mentions from query
-        for pattern in workgroup_patterns:
-            matches = re.findall(pattern, question, re.IGNORECASE)
-            entities["workgroups"].extend([m.strip() for m in matches])
+        # Extract workgroup mentions from query
+        for keyword, workgroup_name in workgroup_keywords.items():
+            if keyword in question:
+                entities["workgroups"].append(workgroup_name)
         
         # Remove duplicates from explicit mentions
         entities["workgroups"] = list(set(entities["workgroups"]))
