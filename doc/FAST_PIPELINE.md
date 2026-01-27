@@ -936,9 +936,22 @@ curl -X POST http://localhost:8001/oracle/query \
 
 **Q: How are rollups generated?**
 
-**A: TODO - Scheduled job needs to be implemented.**
+**A: IMPORTANT - Rollup generation is NOT YET IMPLEMENTED.**
 
-**Planned Implementation:**
+**Current Status:**
+- Rollup schema exists in PostgreSQL (auto-created on startup)
+- Templates are designed to use rollups when available
+- Templates fallback to recent events/documents when rollups don't exist
+- **No automated job currently generates rollups**
+
+**Workaround:**
+Until rollup generation is implemented, the fast pipeline will:
+1. Check for rollup nodes in Neo4j (none exist currently)
+2. Fallback to querying recent events and documents directly
+3. Use Cypher template defaults (7-30 days) for date ranges
+
+**When will this be fixed?**
+Rollup generation needs to be implemented as a scheduled job. The planned implementation:
 
 ```python
 # oracle/src/jobs/rollup_generator.py

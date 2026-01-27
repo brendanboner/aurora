@@ -19,7 +19,7 @@ from src.services.query_template_registry import QueryTemplateRegistry
 from src.services.fast_cache import FastCache, normalize_query
 from src.services.cache import OracleCache
 from src.services.keyword_retriever import get_repo
-from src.services.personalization import decide_personalization
+from src.services.personalization import decide_personalization, get_user_preferences
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -314,8 +314,17 @@ class FastEngine:
                 logger.info(f"Plan cache hit: route_id={self._get_route_id_str(cached_plan)}")
                 return cached_plan, routing_time_ms
             
+            # Get user preferences for intelligent entity extraction
+            user_prefs = None
+            if user_id:
+                try:
+                    user_prefs = await get_user_preferences(str(user_id))
+                    logger.debug(f"User preferences: topics={len(user_prefs.topics)} orgs={len(user_prefs.organisations)}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch user preferences: {e}")
+            
             # Try local router
-            plan, confidence = await self.local_router.route(question, user_id)
+            plan, confidence = await self.local_router.route(question, user_id, user_prefs)
             
             # Check if we should use LLM fallback
             if (not plan or confidence < settings.fast_router_confidence_threshold) and settings.fast_router_llm_fallback_enabled:

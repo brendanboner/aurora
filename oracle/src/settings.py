@@ -156,8 +156,9 @@ class Settings(BaseSettings):
     fast_rollup_enabled: bool = True  # Enable rollup generation and retrieval
     fast_rollup_generation_enabled: bool = True  # Enable nightly rollup generation job
     fast_rollup_generation_cron: str = "0 2 * * *"  # 2 AM daily (cron format)
-    fast_rollup_weekly_lookback: int = 4  # Generate weekly rollups for last N weeks
     fast_rollup_daily_lookback: int = 14  # Generate daily rollups for last N days
+    fast_rollup_weekly_lookback: int = 4  # Generate weekly rollups for last N weeks
+    fast_rollup_monthly_lookback: int = 3  # Generate monthly rollups for last N months
     fast_rollup_prewarm_on_ingest: bool = True  # Invalidate/rebuild rollups on document ingest
     
     # Fast Pipeline: Caching

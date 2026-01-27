@@ -10,6 +10,7 @@ from typing import Optional, Tuple, List
 from datetime import datetime, timedelta, date
 
 from src.models.route_plan import RoutePlan, RouteId, DetailLevel
+from src.services.personalization import UserPreferences
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ class LocalRouter:
         "last week": lambda: timedelta(days=14),
         "this month": lambda: timedelta(days=30),
         "last month": lambda: timedelta(days=60),
+        "recent": lambda: timedelta(days=14),  # Default "recent" to last 2 weeks
+        "latest": lambda: timedelta(days=7),  # Default "latest" to last week
     }
     
     # Route patterns (query text -> route_id)
@@ -55,10 +58,11 @@ class LocalRouter:
         (r"latest (updates|news)", RouteId.WORKGROUP_RECENT_UPDATES),
         
         # Events - upcoming
-        (r"upcoming (events?|meetings?)", RouteId.UPCOMING_EVENTS),
-        (r"future (events?|meetings?)", RouteId.UPCOMING_EVENTS),
+        (r"upcoming (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
+        (r"future (events?|meetings?|conferences?)", RouteId.UPCOMING_EVENTS),
         (r"what('s| is) (coming up|scheduled)", RouteId.UPCOMING_EVENTS),
-        (r"next (events?|meetings?)", RouteId.UPCOMING_EVENTS),
+        (r"next (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
+        (r"(conferences?|workshops?|summits?) (coming up|scheduled)", RouteId.UPCOMING_EVENTS),
         
         # Events - past
         (r"past (events?|meetings?)", RouteId.PAST_EVENTS),
@@ -115,13 +119,14 @@ class LocalRouter:
         self.confidence_threshold = settings.fast_router_confidence_threshold
         logger.info("Initialized LocalRouter")
     
-    async def route(self, question: str, user_id: Optional[str] = None) -> Tuple[Optional[RoutePlan], float]:
+    async def route(self, question: str, user_id: Optional[str] = None, user_prefs: Optional[UserPreferences] = None) -> Tuple[Optional[RoutePlan], float]:
         """
         Route a query to a specific route plan.
         
         Args:
             question: User query text
             user_id: Optional user ID for personalization
+            user_prefs: Optional user preferences for intelligent entity extraction
             
         Returns:
             Tuple of (RoutePlan, confidence) or (None, 0.0) if no match
@@ -140,8 +145,8 @@ class LocalRouter:
         # Parse date/time references
         start_date, end_date, relative_days = self._parse_dates(question_lower)
         
-        # Extract entities (workgroups, topics, etc.)
-        entities = self._extract_entities(question_lower)
+        # Extract entities (workgroups, topics, etc.) with user preference boost
+        entities = self._extract_entities(question_lower, user_prefs)
         
         # Determine detail level
         detail_level = self._determine_detail_level(question_lower)
@@ -198,11 +203,12 @@ class LocalRouter:
         Returns:
             Tuple of (start_date, end_date, relative_days)
         """
-        # Check for relative date patterns
+        today = date.today()
+        
+        # Check for relative date patterns (ordered by specificity)
         for pattern, delta_fn in self.DATE_PATTERNS.items():
             if pattern in question:
                 delta = delta_fn()
-                today = date.today()
                 
                 if "yesterday" in pattern:
                     return today - timedelta(days=1), today - timedelta(days=1), 1
@@ -226,6 +232,11 @@ class LocalRouter:
                     end = first_today - timedelta(days=1)
                     start = end.replace(day=1)
                     return start, end, 30
+                elif "recent" in pattern or "latest" in pattern:
+                    # Recent/latest - default to last 2 weeks for recent, 1 week for latest
+                    start_date = today - delta
+                    logger.debug(f"Detected '{pattern}' - using date range {start_date} to {today}")
+                    return start_date, today, delta.days
                 
                 # Default relative range
                 start_date = today - delta
@@ -251,15 +262,19 @@ class LocalRouter:
             except ValueError:
                 pass
         
-        # No dates found
+        # For routes that inherently need recent data (events, updates, decisions),
+        # provide a sensible default if no date is specified
+        # This will be handled per-route in the Cypher templates
         return None, None, None
     
-    def _extract_entities(self, question: str) -> dict:
+    def _extract_entities(self, question: str, user_prefs: Optional[UserPreferences] = None) -> dict:
         """
         Extract entities from question using keyword matching.
         
-        This is a simple pattern-based extractor. For better accuracy,
-        we'd use the entity resolver from the graph.
+        User preferences boost relevant entities but DO NOT filter:
+        - If query mentions "HaLow", prioritize HaLow even if not in preferences
+        - If query mentions "802.1x security" and user prefers Wi-Fi, boost Wi-Fi 802.1x over RADIUS 802.1x
+        - If no explicit entities mentioned, use preferences as hints
         
         Returns:
             Dictionary with entity lists
@@ -271,20 +286,65 @@ class LocalRouter:
             "people": []
         }
         
-        # Common workgroup patterns
+        # Common workgroup patterns (explicit mentions always take precedence)
         workgroup_patterns = [
             r"802\.11\w*",  # 802.11be, 802.11ax, etc.
+            r"halow",  # HaLow
             r"wi-?fi\s*\d*",  # Wi-Fi, WiFi 6, WiFi 7
             r"wfa",  # Wi-Fi Alliance
             r"ieee",
+            r"802\.1\w*",  # 802.1x, 802.1Q, etc.
         ]
         
+        # Extract explicit mentions from query
         for pattern in workgroup_patterns:
             matches = re.findall(pattern, question, re.IGNORECASE)
             entities["workgroups"].extend([m.strip() for m in matches])
         
-        # Remove duplicates
+        # Remove duplicates from explicit mentions
         entities["workgroups"] = list(set(entities["workgroups"]))
+        
+        # Check for topic keywords (e.g., "security", "6 GHz")
+        topic_keywords = {
+            "security": ["security", "authentication", "encryption", "802.1x"],
+            "6 GHz": ["6 ghz", "6ghz"],
+            "MLO": ["mlo", "multi-link"],
+            "WPA3": ["wpa3", "wpa 3"],
+        }
+        
+        for topic_name, keywords in topic_keywords.items():
+            if any(kw in question for kw in keywords):
+                entities["topics"].append(topic_name)
+        
+        # If user has preferences, use them intelligently:
+        # 1. If query has explicit entities, DON'T override
+        # 2. If query has ambiguous context (e.g., "security"), prefer user's domain
+        # 3. If no explicit entities AND query could benefit from filtering (events, conferences), add preferences
+        if user_prefs:
+            # If query mentions topics and user has preferences, prioritize user's domain
+            if entities["topics"] and user_prefs.topics:
+                # Example: If user prefers "Wi-Fi" and query mentions "802.1x",
+                # boost Wi-Fi 802.1x interpretation over RADIUS 802.1x
+                user_topics_lower = [t.lower() for t in user_prefs.topics]
+                if any(topic in ["wi-fi", "wifi", "802.11"] for topic in user_topics_lower):
+                    # User is in Wi-Fi domain - boost Wi-Fi interpretations
+                    if "802.1x" in question.lower() or "security" in question.lower():
+                        entities["topics"].append("Wi-Fi Security")
+            
+            # If NO explicit topics AND query is about events/conferences, add user topic preferences
+            # This handles: "What conferences are coming up?" when user prefers "security"
+            if not entities["topics"] and user_prefs.topics:
+                query_keywords = ["conference", "workshop", "event", "summit", "upcoming", "coming up"]
+                if any(kw in question.lower() for kw in query_keywords):
+                    # User wants events - filter by their topic interests
+                    entities["topics"].extend(user_prefs.topics[:3])  # Add top 3 preferences
+                    logger.debug(f"Event query without explicit topics - adding user preferences: {user_prefs.topics[:3]}")
+            
+            # If NO explicit workgroups mentioned, add preferred ones as hints (not filters)
+            if not entities["workgroups"] and user_prefs.organisations:
+                # Add as low-priority hints (will be used for boosting, not filtering)
+                logger.debug(f"No explicit workgroups, adding user prefs as hints: {user_prefs.organisations[:3]}")
+                # DON'T add to entities - let Cypher templates handle boosting
         
         return entities
     
