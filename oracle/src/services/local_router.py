@@ -341,9 +341,9 @@ class LocalRouter:
                 entities["topics"].append(topic_name)
         
         # If user has preferences, use them intelligently:
-        # 1. If query has explicit entities, DON'T override
+        # 1. If query has explicit entities, DON'T override - but ADD user preferences for steering
         # 2. If query has ambiguous context (e.g., "security"), prefer user's domain
-        # 3. If no explicit entities AND query could benefit from filtering (events, conferences), add preferences
+        # 3. If no explicit entities, use ALL user preferences to guide the response
         if user_prefs:
             # If query mentions topics and user has preferences, prioritize user's domain
             if entities["topics"] and user_prefs.topics:
@@ -355,20 +355,31 @@ class LocalRouter:
                     if "802.1x" in question.lower() or "security" in question.lower():
                         entities["topics"].append("Wi-Fi Security")
             
-            # If NO explicit topics AND query is about events/conferences, add user topic preferences
-            # This handles: "What conferences are coming up?" when user prefers "security"
-            if not entities["topics"] and user_prefs.topics:
-                query_keywords = ["conference", "workshop", "event", "summit", "upcoming", "coming up"]
-                if any(kw in question.lower() for kw in query_keywords):
-                    # User wants events - filter by their topic interests
-                    entities["topics"].extend(user_prefs.topics[:3])  # Add top 3 preferences
-                    logger.debug(f"Event query without explicit topics - adding user preferences: {user_prefs.topics[:3]}")
+            # Add ALL user topic preferences to steer the response
+            # The fast engine uses regex and topic discovery, so having all topics helps
+            # prioritize and filter results to match user interests
+            if user_prefs.topics:
+                # Add topics that aren't already explicitly mentioned
+                existing_topics_lower = [t.lower() for t in entities["topics"]]
+                for topic in user_prefs.topics:
+                    if topic.lower() not in existing_topics_lower:
+                        entities["topics"].append(topic)
+                logger.debug(f"Added {len(user_prefs.topics)} user topic preferences for steering")
             
-            # If NO explicit workgroups mentioned, add preferred ones as hints (not filters)
-            if not entities["workgroups"] and user_prefs.organisations:
-                # Add as low-priority hints (will be used for boosting, not filtering)
-                logger.debug(f"No explicit workgroups, adding user prefs as hints: {user_prefs.organisations[:3]}")
-                # DON'T add to entities - let Cypher templates handle boosting
+            # Add ALL user organization preferences to steer the response
+            # Organizations help filter and prioritize results from specific workgroups
+            if user_prefs.organisations:
+                # Add organizations that aren't already explicitly mentioned
+                existing_orgs_lower = [o.lower() for o in entities["organizations"]]
+                for org in user_prefs.organisations:
+                    if org.lower() not in existing_orgs_lower:
+                        entities["organizations"].append(org)
+                logger.debug(f"Added {len(user_prefs.organisations)} user organization preferences for steering")
+            
+            # Add user people preferences for steering (when relevant)
+            if user_prefs.people:
+                entities["people"].extend(user_prefs.people)
+                logger.debug(f"Added {len(user_prefs.people)} user people preferences for steering")
         
         return entities
     
