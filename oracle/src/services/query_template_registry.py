@@ -215,7 +215,7 @@ class QueryTemplateRegistry:
         # WORKGROUP_RECENT_UPDATES - recent documents and events
         self.templates[RouteId.WORKGROUP_RECENT_UPDATES] = QueryTemplate(
             route_id=RouteId.WORKGROUP_RECENT_UPDATES,
-            description="Get recent updates (docs + events) for workgroup",
+            description="Get recent updates (recently published/updated docs + any events they mention)",
             param_schema={
                 "workgroups": "list[str]",
                 "topics": "list[str]",
@@ -223,8 +223,8 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Calculate date threshold
-            WITH datetime() - duration({days: coalesce($relative_days, 7)}) as threshold
+            // Calculate date threshold for document updates (not event dates)
+            WITH datetime() - duration({days: coalesce($relative_days, 14)}) as doc_threshold
             
             // Match workgroups
             MATCH (wg:WorkGroup)
@@ -232,16 +232,15 @@ class QueryTemplateRegistry:
                    OR wg.id IN $workgroups 
                    OR wg.name IN $workgroups)
             
-            // Get recent events
-            OPTIONAL MATCH (wg)<-[:BELONGS_TO]-(e:Event)
-            WHERE datetime(e.startTime) >= threshold
-            
-            // Get recent documents related to workgroup
+            // Get recently PUBLISHED/UPDATED documents (regardless of event dates mentioned)
             OPTIONAL MATCH (wg)<-[:MENTIONS]-(r:Resource)
-            WHERE datetime(r.publish_date) >= threshold
+            WHERE datetime(r.publish_date) >= doc_threshold
+            
+            // Get events mentioned in these recent documents (can be future or past events)
+            OPTIONAL MATCH (r)-[:MENTIONS]->(e:Event)
             
             // Optional: filter by topics
-            WITH wg, e, r, threshold
+            WITH wg, e, r, doc_threshold
             WHERE ($topics IS NULL OR size($topics) = 0 
                    OR EXISTS {
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -499,25 +498,53 @@ class QueryTemplateRegistry:
         # UPCOMING_EVENTS - future events
         self.templates[RouteId.UPCOMING_EVENTS] = QueryTemplate(
             route_id=RouteId.UPCOMING_EVENTS,
-            description="Get upcoming events",
+            description="Get upcoming events (including those mentioned in recent documents)",
             param_schema={
                 "workgroups": "list[str]",
+                "topics": "list[str]",
                 "start_date": "str (ISO date)",
+                "end_date": "str (ISO date)",
                 "limit": "int"
             },
             cypher="""
+            // Find future events (Event nodes)
             MATCH (e:Event)
             WHERE datetime(e.startTime) >= datetime()
-              AND ($workgroups IS NULL OR size($workgroups) = 0
+              AND ($start_date IS NULL OR datetime(e.startTime) >= datetime($start_date))
+              AND ($end_date IS NULL OR datetime(e.startTime) <= datetime($end_date))
+            
+            // Optional workgroup filter
+            WITH e
+            WHERE ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
                        MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
                        WHERE wg.id IN $workgroups OR wg.name IN $workgroups
                    })
-              AND ($start_date IS NULL OR datetime(e.startTime) <= datetime($start_date))
+            
+            // Optional topic filter (topics mentioned in event or related documents)
+            WITH e
+            WHERE ($topics IS NULL OR size($topics) = 0
+                   OR EXISTS {
+                       // Check if event relates to topics directly
+                       MATCH (e)-[:RELATES_TO]->(t:Topic)
+                       WHERE t.name IN $topics
+                   }
+                   OR EXISTS {
+                       // Check if recent documents mention both the event and the topic
+                       MATCH (r:Resource)-[:MENTIONS]->(e)
+                       MATCH (r)-[:RELATES_TO]->(t:Topic)
+                       WHERE t.name IN $topics
+                         AND datetime(r.publish_date) >= datetime() - duration({days: 180})
+                   })
             
             OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
+            OPTIONAL MATCH (e)-[:RELATES_TO]->(t:Topic)
+            OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(e)
+            WHERE datetime(r.publish_date) >= datetime() - duration({days: 180})
             
-            WITH e, wg
+            WITH e, wg,
+                 collect(DISTINCT t.name)[..5] as topics,
+                 collect(DISTINCT r.title)[..3] as mentioning_documents
             ORDER BY e.startTime ASC
             
             RETURN 
@@ -527,7 +554,9 @@ class QueryTemplateRegistry:
                 e.endTime as end_time,
                 e.location as location,
                 e.url as url,
-                wg.name as workgroup
+                wg.name as workgroup,
+                topics,
+                mentioning_documents
             LIMIT $limit
             """
         )
@@ -535,18 +564,30 @@ class QueryTemplateRegistry:
         # PAST_EVENTS - recent past events
         self.templates[RouteId.PAST_EVENTS] = QueryTemplate(
             route_id=RouteId.PAST_EVENTS,
-            description="Get past events",
+            description="Get past events (defaults to last 30 days if no date range specified)",
             param_schema={
                 "workgroups": "list[str]",
                 "start_date": "str (ISO date)",
                 "end_date": "str (ISO date)",
+                "relative_days": "int",
                 "limit": "int"
             },
             cypher="""
+            // Default to last 30 days if no date range specified
+            WITH CASE 
+                WHEN $start_date IS NULL 
+                THEN datetime() - duration({days: coalesce($relative_days, 30)})
+                ELSE datetime($start_date)
+            END as threshold_start,
+            CASE
+                WHEN $end_date IS NULL
+                THEN datetime()
+                ELSE datetime($end_date)
+            END as threshold_end
+            
             MATCH (e:Event)
-            WHERE datetime(e.startTime) < datetime()
-              AND ($start_date IS NULL OR datetime(e.startTime) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(e.startTime) <= datetime($end_date))
+            WHERE datetime(e.startTime) >= threshold_start
+              AND datetime(e.startTime) <= threshold_end
               AND ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
                        MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
