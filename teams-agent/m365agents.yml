@@ -1,0 +1,50 @@
+version: 1.0.0
+
+projectId: aurora-teams-agent
+
+# Environment variables for different stages
+environmentVariableGroups:
+  - name: BOT_ID
+    description: "Bot Framework App ID"
+  - name: BOT_PASSWORD
+    description: "Bot Framework App Password"
+  - name: AURORA_API_URL
+    description: "Aurora Backend API URL"
+    default: "http://localhost:8000"
+  - name: AURORA_FRONTEND_URL
+    description: "Aurora Frontend URL"
+    default: "http://localhost:3000"
+
+provision:
+  - uses: teamsApp/create
+    with:
+      name: Aurora-${{TEAMSFX_ENV}}
+    writeToEnvironmentFile:
+      teamsAppId: TEAMS_APP_ID
+
+  - uses: botFramework/create
+    with:
+      botId: ${{BOT_ID}}
+      name: aurora-bot
+      messagingEndpoint: ${{BOT_ENDPOINT}}/api/messages
+      description: "Aurora knowledge assistant for Teams"
+      channels:
+        - name: msteams
+
+deploy:
+  - uses: cli/runNpmCommand
+    with:
+      args: install
+  
+  - uses: file/createOrUpdateEnvironmentFile
+    with:
+      target: ./.env
+      envs:
+        BOT_ID: ${{BOT_ID}}
+        BOT_PASSWORD: ${{SECRET_BOT_PASSWORD}}
+        AURORA_API_URL: ${{AURORA_API_URL}}
+        AURORA_FRONTEND_URL: ${{AURORA_FRONTEND_URL}}
+
+  - uses: cli/runNpmCommand
+    with:
+      args: run build

@@ -1,0 +1,33 @@
+# Development Dockerfile with debugging support
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install necessary tools for debugging
+RUN apk add --no-cache \
+    dumb-init \
+    curl
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Install all dependencies (including dev)
+RUN npm install
+
+# Copy source code
+COPY src ./src
+
+# Expose bot port and debug port
+EXPOSE 3978
+EXPOSE 9229
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3978/api/health || exit 1
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Run with nodemon for hot reload and enable debugging
+CMD ["npx", "nodemon", "--exec", "node", "--inspect=0.0.0.0:9229", "-r", "ts-node/register", "src/index.ts"]

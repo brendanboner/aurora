@@ -1,0 +1,5 @@
+<!-- Simple SVG icon for outline.png (32x32) -->
+<svg width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simple outline "A" -->
+  <text x="16" y="26" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#000000" text-anchor="middle">A</text>
+</svg>

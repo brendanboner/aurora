@@ -1,0 +1,152 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "🔮",
+                  "size": "ExtraLarge"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Aurora Oracle",
+                  "weight": "Bolder",
+                  "size": "Large"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Q: ${question}",
+                  "isSubtle": true,
+                  "wrap": true,
+                  "size": "Small"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "TextBlock",
+          "text": "${answer}",
+          "wrap": true,
+          "spacing": "Medium"
+        },
+        {
+          "type": "Container",
+          "separator": true,
+          "spacing": "Medium",
+          "items": [
+            {
+              "type": "TextBlock",
+              "text": "📚 **Sources** (${document_count} documents)",
+              "weight": "Bolder",
+              "spacing": "Small",
+              "size": "Medium"
+            }
+          ]
+        },
+        {
+          "type": "Container",
+          "$data": "${documents}",
+          "items": [
+            {
+              "type": "ColumnSet",
+              "columns": [
+                {
+                  "type": "Column",
+                  "width": "auto",
+                  "items": [
+                    {
+                      "type": "TextBlock",
+                      "text": "[${number}]",
+                      "weight": "Bolder"
+                    }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "width": "stretch",
+                  "items": [
+                    {
+                      "type": "TextBlock",
+                      "text": "[${title}](${url})",
+                      "wrap": true,
+                      "size": "Small"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "${summary}",
+                      "wrap": true,
+                      "isSubtle": true,
+                      "size": "Small",
+                      "spacing": "Small"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "📅 ${date}",
+                      "isSubtle": true,
+                      "size": "Small",
+                      "spacing": "Small"
+                    }
+                  ]
+                }
+              ],
+              "separator": true,
+              "spacing": "Small"
+            }
+          ]
+        },
+        {
+          "type": "Container",
+          "$when": "${topics}",
+          "items": [
+            {
+              "type": "TextBlock",
+              "text": "🏷️ **Related Topics:** ${topics}",
+              "isSubtle": true,
+              "size": "Small",
+              "wrap": true,
+              "spacing": "Medium"
+            }
+          ]
+        },
+        {
+          "type": "Container",
+          "$when": "${confidence_score}",
+          "items": [
+            {
+              "type": "TextBlock",
+              "text": "Confidence: ${confidence_score}%",
+              "isSubtle": true,
+              "size": "Small",
+              "spacing": "Small"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.OpenUrl",
+      "title": "🌐 View in Aurora",
+      "url": "${frontend_url}/chatbot"
+    }
+  ]
+}

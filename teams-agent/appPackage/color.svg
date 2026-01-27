@@ -1,0 +1,17 @@
+<!-- Simple SVG icon for color.png (192x192) -->
+<svg width="192" height="192" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="192" height="192" fill="#4A90E2" rx="16"/>
+  
+  <!-- Aurora icon - stylized "A" with orbit -->
+  <circle cx="96" cy="96" r="70" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.3"/>
+  <circle cx="96" cy="96" r="50" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.5"/>
+  
+  <!-- Letter A -->
+  <text x="96" y="130" font-family="Arial, sans-serif" font-size="80" font-weight="bold" fill="#FFFFFF" text-anchor="middle">A</text>
+  
+  <!-- Sparkle effect -->
+  <circle cx="140" cy="60" r="8" fill="#FFD700"/>
+  <circle cx="150" cy="70" r="4" fill="#FFF"/>
+  <circle cx="130" cy="50" r="4" fill="#FFF"/>
+</svg>
