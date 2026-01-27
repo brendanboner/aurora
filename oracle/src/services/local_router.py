@@ -28,6 +28,8 @@ class LocalRouter:
     DATE_PATTERNS = {
         "today": lambda: timedelta(days=0),
         "yesterday": lambda: timedelta(days=1),
+        "in the last week": lambda: timedelta(days=7),  # Check this BEFORE "last week"
+        "in the last month": lambda: timedelta(days=30),  # Check this BEFORE "last month"
         "this week": lambda: timedelta(days=7),
         "last week": lambda: timedelta(days=14),
         "this month": lambda: timedelta(days=30),
@@ -211,25 +213,34 @@ class LocalRouter:
             if pattern in question:
                 delta = delta_fn()
                 
-                if "yesterday" in pattern:
+                if "yesterday" in question:
                     return today - timedelta(days=1), today - timedelta(days=1), 1
-                elif "today" in pattern:
+                elif "today" in question:
                     return today, today, 0
-                elif "this week" in pattern:
-                    # Current week
+                elif "in the last week" in question:
+                    # Rolling last 7 days
+                    start = today - timedelta(days=7)
+                    return start, today, 7
+                elif "this week" in question:
+                    # Current week (Monday to today)
                     start = today - timedelta(days=today.weekday())
                     return start, today, 7
-                elif "last week" in pattern:
-                    # Previous week
+                elif "last week" in question:
+                    # Previous calendar week (Monday-Sunday)
                     end = today - timedelta(days=today.weekday() + 1)
                     start = end - timedelta(days=6)
                     return start, end, 7
-                elif "this month" in pattern:
+                elif "in the last month" in question:
+                    # Rolling last 30 days
+                    start = today - timedelta(days=30)
+                    return start, today, 30
+                elif "this month" in question:
+                    # Current month (1st to today)
                     start = today.replace(day=1)
                     days_in_month = (today - start).days + 1
                     return start, today, days_in_month
-                elif "last month" in pattern:
-                    # Previous month
+                elif "last month" in question:
+                    # Previous calendar month
                     first_today = today.replace(day=1)
                     end = first_today - timedelta(days=1)
                     start = end.replace(day=1)
