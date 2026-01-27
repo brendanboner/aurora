@@ -47,6 +47,66 @@ def _fetchone(query: str, params: tuple = None) -> Optional[dict]:
         return None
 
 
+def _fetchall(query: str, params: tuple = None) -> list[dict]:
+    """Execute query and fetch all results."""
+    conn = _get_pg_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params or ())
+            return cur.fetchall()
+    except psycopg2.Error as e:
+        logger.error(f"PostgreSQL error: {e}")
+        # Try to reconnect on next call
+        global _pg_conn
+        _pg_conn = None
+        return []
+
+
+def _get_popular_people(people_list: list[str], limit: int = 10) -> list[str]:
+    """Sort people by popularity (follower count) and return top N.
+    
+    Args:
+        people_list: List of people to sort
+        limit: Maximum number to return
+        
+    Returns:
+        Sorted list of people names, most popular first
+    """
+    if not people_list:
+        return []
+    
+    # Query to count how many users follow each person
+    # Uses unnest to expand the people array and count occurrences
+    query = """
+        SELECT person_name, COUNT(*) as follower_count
+        FROM (
+            SELECT unnest(people) as person_name
+            FROM user_preferences
+            WHERE people IS NOT NULL AND array_length(people, 1) > 0
+        ) AS all_people
+        WHERE person_name = ANY(%s)
+        GROUP BY person_name
+        ORDER BY follower_count DESC, person_name ASC
+        LIMIT %s
+    """
+    
+    results = _fetchall(query, (people_list, limit))
+    
+    if not results:
+        # If query fails or no data, just return first N from list
+        return people_list[:limit]
+    
+    # Extract sorted person names
+    popular = [row['person_name'] for row in results]
+    
+    # If we got fewer results than limit, add remaining people from original list
+    if len(popular) < limit:
+        remaining = [p for p in people_list if p not in popular]
+        popular.extend(remaining[:limit - len(popular)])
+    
+    return popular
+
+
 @dataclass
 class UserPreferences:
     """User preferences from PostgreSQL."""
@@ -72,11 +132,15 @@ class UserContext:
         parts = []
         
         if self.topics:
-            parts.append(f"- Their areas of interest: {', '.join(self.topics[:10])}")
+            # Include ALL topics - no limit, as they help steer the response
+            parts.append(f"- Their areas of interest: {', '.join(self.topics)}")
         if self.organisations:
-            parts.append(f"- Organizations they follow: {', '.join(self.organisations[:10])}")
+            # Include ALL organizations - no limit, for comprehensive steering
+            parts.append(f"- Organizations they follow: {', '.join(self.organisations)}")
         if self.people:
-            parts.append(f"- People they track: {', '.join(self.people[:5])}")
+            # Limit people to 10 most popular (by follower count across all users)
+            popular_people = _get_popular_people(self.people, limit=10)
+            parts.append(f"- People they track: {', '.join(popular_people)}")
         
         if not parts:
             return ""
