@@ -72,6 +72,16 @@ async def startup():
     logger.info(f"Neo4j URI: {settings.neo4j_uri}")
     logger.info(f"LLM configured: {bool(settings.azure_openai_api_key and settings.azure_openai_deployment)}")
     
+    # Load persisted configuration from database
+    try:
+        from src.services.config_persistence import initialize_config_from_db
+        logger.info("Loading persisted configuration from database...")
+        initialize_config_from_db()
+        logger.info("✓ Configuration loaded from database")
+    except Exception as e:
+        logger.error(f"Failed to load persisted config: {e}", exc_info=True)
+        logger.warning("Continuing with environment variable defaults")
+    
     # Initialize fast pipeline database schema (PostgreSQL)
     if settings.fast_pipeline_enabled:
         try:

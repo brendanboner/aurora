@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ..settings import settings
+from ..services.config_persistence import save_config
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ async def get_query_settings_config() -> QuerySettingsConfig:
 
 @router.put("/query-settings", response_model=QuerySettingsConfig)
 async def update_query_settings_config(config: QuerySettingsConfig) -> QuerySettingsConfig:
-    """Update Oracle query settings (runtime only, not persisted to .env)."""
+    """Update Oracle query settings (persisted to database)."""
     try:
         # Update settings in memory
         settings.fast_pipeline_enabled = config.fast_pipeline_enabled
@@ -104,11 +105,18 @@ async def update_query_settings_config(config: QuerySettingsConfig) -> QuerySett
         settings.fast_cache_answer_ttl = config.fast_cache_answer_ttl_minutes * 60
         settings.fast_deep_dive_enabled = config.fast_deep_dive_enabled
         
+        # Persist to database
+        config_dict = config.model_dump()
+        saved = save_config('query_settings', config_dict)
+        if not saved:
+            logger.warning("Failed to persist config to database, but in-memory settings updated")
+        
         logger.info(
             f"Query settings updated: fast_pipeline_enabled={config.fast_pipeline_enabled}, "
             f"rollout={config.fast_pipeline_rollout_percentage}%, "
             f"shadow_mode={config.fast_pipeline_shadow_mode}, "
-            f"confidence_threshold={config.fast_confidence_threshold}"
+            f"confidence_threshold={config.fast_confidence_threshold}, "
+            f"persisted={saved}"
         )
         
         return config
@@ -137,7 +145,13 @@ async def reset_query_settings_config() -> Dict[str, Any]:
         settings.fast_cache_answer_ttl = default_config.fast_cache_answer_ttl_minutes * 60
         settings.fast_deep_dive_enabled = default_config.fast_deep_dive_enabled
         
-        logger.info("Query settings reset to defaults")
+        # Persist to database
+        config_dict = default_config.model_dump()
+        saved = save_config('query_settings', config_dict)
+        if not saved:
+            logger.warning("Failed to persist reset config to database")
+        
+        logger.info(f"Query settings reset to defaults (persisted={saved})")
         
         return {
             "message": "Query settings reset to default values",

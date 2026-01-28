@@ -61,15 +61,11 @@ class QueryTemplate:
         if plan.relative_days:
             params["relative_days"] = plan.relative_days
         
-        # Entity parameters
-        if plan.workgroups:
-            params["workgroups"] = plan.workgroups
-        if plan.topics:
-            params["topics"] = plan.topics
-        if plan.organizations:
-            params["organizations"] = plan.organizations
-        if plan.people:
-            params["people"] = plan.people
+        # Entity parameters - always provide them (as empty list if not set) for Cypher
+        params["workgroups"] = plan.workgroups if plan.workgroups else []
+        params["topics"] = plan.topics if plan.topics else []
+        params["organizations"] = plan.organizations if plan.organizations else []
+        params["people"] = plan.people if plan.people else []
         
         # Content exclusion (for agent deduplication)
         # Extract from raw_query if it contains exclusion markers
@@ -82,6 +78,49 @@ class QueryTemplate:
                 params["exclude_ids"] = []
         else:
             params["exclude_ids"] = []
+        
+        # For GENERIC_SEARCH, extract key terms from query for full-text matching
+        if hasattr(plan, 'route_id'):
+            route_id_val = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+            if route_id_val == "generic_search" and plan.raw_query:
+                # Extract key terms from definition-style queries
+                # "what is X" -> "X", "tell me about X" -> "X"
+                query_lower = plan.raw_query.lower().strip()
+                extracted_term = None
+                
+                if query_lower.startswith("what is "):
+                    extracted_term = plan.raw_query[8:].strip().rstrip("?")
+                elif query_lower.startswith("what's "):
+                    extracted_term = plan.raw_query[7:].strip().rstrip("?")
+                elif query_lower.startswith("what are "):
+                    extracted_term = plan.raw_query[9:].strip().rstrip("?")
+                elif "tell me about " in query_lower:
+                    extracted_term = plan.raw_query.split("tell me about ", 1)[1].strip().rstrip("?")
+                elif "explain " in query_lower:
+                    extracted_term = plan.raw_query.split("explain ", 1)[1].strip().rstrip("?")
+                else:
+                    extracted_term = plan.raw_query.strip()
+                
+                # Remove leading articles (a, an, the) for better matching
+                if extracted_term:
+                    extracted_lower = extracted_term.lower()
+                    if extracted_lower.startswith("a "):
+                        extracted_term = extracted_term[2:].strip()
+                    elif extracted_lower.startswith("an "):
+                        extracted_term = extracted_term[3:].strip()
+                    elif extracted_lower.startswith("the "):
+                        extracted_term = extracted_term[4:].strip()
+                    
+                    # Strip trailing punctuation (but keep hyphens and underscores in middle)
+                    # This handles "sticky client?" -> "sticky client"
+                    import re
+                    extracted_term = re.sub(r'[.,;:!?]+$', '', extracted_term).strip()
+                
+                params["query_text"] = extracted_term if extracted_term else None
+            else:
+                params["query_text"] = None
+        else:
+            params["query_text"] = None
         
         # Limits
         params["limit"] = settings.fast_template_max_nodes
@@ -1523,19 +1562,23 @@ class QueryTemplateRegistry:
             """
         )
         
-        # GENERIC_SEARCH - fallback for unmatched queries with KG-based hybrid scoring
+        # GENERIC_SEARCH - fallback for unmatched queries with full-text + KG-based scoring
         self.templates[RouteId.GENERIC_SEARCH] = QueryTemplate(
             route_id=RouteId.GENERIC_SEARCH,
-            description="Generic search fallback using hybrid KG scoring",
+            description="Generic search with full-text matching and KG scoring",
             param_schema={
+                "query_text": "str (optional - for full-text search)",
                 "limit": "int"
             },
             cypher="""
-            // Use KG structure for relevance even without specific entities
-            // Find recently published resources with rich graph connections
+            // Full-text search in title and summary when query_text provided
+            // Falls back to graph-based scoring when no query_text
             MATCH (r:Resource)
             WHERE r.publish_date IS NOT NULL
               AND r.summary IS NOT NULL
+              AND ($query_text IS NULL 
+                   OR toLower(r.title) CONTAINS toLower($query_text)
+                   OR toLower(r.summary) CONTAINS toLower($query_text))
             
             // Get graph richness metrics
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -1547,16 +1590,23 @@ class QueryTemplateRegistry:
                  count(DISTINCT o) as org_count,
                  count(DISTINCT p) as person_count,
                  collect(DISTINCT t.name)[0..5] as topics,
-                 collect(DISTINCT o.name)[0..3] as orgs
+                 collect(DISTINCT o.name)[0..3] as orgs,
+                 // Text match bonus: higher if query_text found in title vs summary
+                 CASE 
+                     WHEN $query_text IS NULL THEN 0
+                     WHEN toLower(r.title) CONTAINS toLower($query_text) THEN 10
+                     WHEN toLower(r.summary) CONTAINS toLower($query_text) THEN 5
+                     ELSE 0
+                 END as text_match_score
             
-            // Hybrid scoring: recency + graph connectivity
-            WITH r, topic_count, org_count, person_count, topics, orgs,
+            // Hybrid scoring: text match + graph connectivity + recency
+            WITH r, topic_count, org_count, person_count, topics, orgs, text_match_score,
                  (topic_count * 2 + org_count + person_count) as graph_score,
                  duration.between(datetime(r.publish_date), datetime()).days as days_old
             
-            // Score = graph richness - age penalty
-            WITH r, topics, orgs, graph_score,
-                 graph_score - (days_old / 30.0) as hybrid_score
+            // Score = text relevance + graph richness - age penalty
+            WITH r, topics, orgs, text_match_score, graph_score,
+                 text_match_score + graph_score - (days_old / 30.0) as hybrid_score
             
             ORDER BY hybrid_score DESC, r.publish_date DESC
             

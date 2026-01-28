@@ -269,6 +269,13 @@ class LocalRouter:
         if skip_user_prefs:
             logger.debug(f"Skipping user preference expansion for {route_id.value} (focused query)")
         
+        # Validate route: DOCUMENTS_BY_TOPIC requires at least one topic
+        # If no topics found, fall back to GENERIC_SEARCH (full-text search)
+        if route_id == RouteId.DOCUMENTS_BY_TOPIC and not entities.get("topics"):
+            logger.info(f"Route {route_id.value} requires topics but none found, falling back to GENERIC_SEARCH")
+            route_id = RouteId.GENERIC_SEARCH
+            route_confidence = 0.6  # Lower confidence for fallback
+        
         # Determine detail level
         detail_level = self._determine_detail_level(question_lower)
         
