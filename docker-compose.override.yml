@@ -1,6 +1,8 @@
 
 services:
   oracle:
+    ports:
+      - "8003:8000"  # Expose for CLI access
     volumes:
       - ./oracle:/app/oracle
       - ./common:/app/common
