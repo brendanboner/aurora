@@ -267,6 +267,11 @@ class TopicOrganizer:
         - Algorithmic inference (fast, no LLM) if enabled
         - LLM-based analysis (legacy, slower but more accurate)
         
+        Both modes support automatic switching between full and incremental curation
+        based on the total number of topics:
+        - Below threshold: Process ALL topics for unified hierarchy
+        - Above threshold: Process only UNORGANIZED topics (incremental mode)
+        
         Returns:
             Statistics dictionary with results
         """
@@ -401,6 +406,8 @@ class TopicOrganizer:
         
         Original implementation with clustering and LLM analysis.
         Slower but handles ambiguous hierarchical relationships better.
+        Supports automatic switching between full and incremental curation
+        based on the total number of topics.
         """
         self.logger.info("="*80)
         self.logger.info("Starting LLM-BASED topic hierarchy organization (legacy mode)")
