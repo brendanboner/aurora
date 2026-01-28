@@ -452,6 +452,7 @@ class LocalRouter:
         entities["workgroups"] = list(set(entities["workgroups"]))
         
         # Check for topic keywords (e.g., "security", "6 GHz")
+        # ORDER MATTERS: More specific/common topics first
         topic_keywords = {
             # IEEE 802.11 Standards (Wi-Fi generations)
             # NOTE: These keys must match exact Topic.name values in Neo4j
@@ -460,8 +461,9 @@ class LocalRouter:
             "802.11ax": ["802.11ax", "ax", "wifi 6", "wi-fi 6", "high efficiency"],
             "802.11ac": ["802.11ac", "ac", "wifi 5", "wi-fi 5"],
             "802.11n": ["802.11n", "wifi 4", "wi-fi 4"],
-            "wi-fi certified halow": ["halow", "wi-fi halow", "wifi halow"],  # Primary HaLow topic (41 docs)
-            "ieee p802.11ah": ["802.11ah", "ah", "sub-1 ghz"],  # Technical designation (1 doc)
+            # HaLow: Check primary topic FIRST (more specific keywords)
+            "wi-fi certified halow": ["wi-fi halow", "wifi halow", "halow"],  # Primary (41 docs) - check first!
+            "ieee p802.11ah": ["802.11ah", "sub-1 ghz"],  # Technical (1 doc) - fallback only
             "802.11ad": ["802.11ad", "ad", "wigig", "60 ghz"],
             "802.11ay": ["802.11ay", "ay"],
             "802.11az": ["802.11az", "az", "next generation positioning", "ngp"],

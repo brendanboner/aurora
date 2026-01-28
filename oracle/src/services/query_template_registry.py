@@ -741,6 +741,8 @@ class QueryTemplateRegistry:
               AND rt.relevance >= 0.5
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
               AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+              // Exclude documents with invalid future dates (data quality issue - year 3109 etc)
+              AND (r.publish_date IS NULL OR datetime(r.publish_date).year <= 2030)
             
             // Count total topics for this resource (specificity calculation)
             WITH r, t, rt.relevance as base_relevance
