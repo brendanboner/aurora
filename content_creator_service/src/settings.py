@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "neo4j_password"
     neo4j_database: str = "neo4j"
+    
+    # Oracle Service (content discovery via fast engine)
+    oracle_service_url: str = "http://oracle:8003"
+    use_oracle_for_discovery: bool = Field(
+        default=True,
+        description="Use Oracle service for content discovery instead of direct Neo4j queries. "
+                    "Oracle provides rollup caching, deduplication, and query optimization.",
+    )
 
     # RabbitMQ (optional event triggers)
     rabbitmq_host: str = "rabbitmq"

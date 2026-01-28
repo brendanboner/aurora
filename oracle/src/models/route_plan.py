@@ -70,10 +70,39 @@ class RouteId(str, Enum):
     COMPARE_TIMEFRAMES = "compare_timeframes"
     ACTIVITY_COMPARISON = "activity_comparison"
     WORKGROUP_COMPARISON = "workgroup_comparison"
+    TOPIC_COMPARISON = "topic_comparison"  # Compare two topics/standards side-by-side
+    
+    # Status & Progress
+    STATUS_CHECK = "status_check"  # Current status of topic/standard
+    PROGRESS_TRACKING = "progress_tracking"  # Progress updates on topic
+    
+    # Technical Documentation
+    TECHNICAL_EXPLANATION = "technical_explanation"  # How does X work, architecture
+    IMPLEMENTATION_GUIDE = "implementation_guide"  # How to implement X
+    
+    # Adoption & Deployment
+    ADOPTION_STATUS = "adoption_status"  # Who supports/uses X
+    VENDOR_PRODUCTS = "vendor_products"  # Company-specific product queries
+    
+    # People Queries
+    PERSON_PROFILE = "person_profile"  # Who is [Person Name]
+    ORGANIZATION_REPRESENTATIVES = "organization_representatives"  # Who represents X at Y
+    
+    # Learning & Education
+    LEARNING_RESOURCES = "learning_resources"  # Tutorials, guides, getting started
+    
+    # Issues & Problems
+    ISSUE_TRACKING = "issue_tracking"  # Problems, bugs, limitations
+    
+    # Regulatory & Compliance
+    REGULATORY_INFO = "regulatory_info"  # Regulations, compliance, certification
     
     # Meta queries (about the system)
     DATASOURCE_SUMMARY = "datasource_summary"
     COVERAGE_CHECK = "coverage_check"
+    
+    # Creator Agents
+    AGENT_CONTENT_DISCOVERY = "agent_content_discovery"
     
     # Fallback
     GENERIC_SEARCH = "generic_search"

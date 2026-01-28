@@ -294,6 +294,12 @@ export const submitOracleFeedback = async (queryId, feedback, options = {}) => {
   return response.data;
 };
 
+// Oracle Settings - Get Oracle service configuration (fast pipeline, etc.)
+export const getOracleSettings = async () => {
+  const response = await apiClient.get('/oracle/admin/config/query-settings');
+  return response.data;
+};
+
 // Chat Conversations
 export const getConversations = async (limit = 50) => {
   const response = await apiClient.get(`/backend/conversations?limit=${limit}`);

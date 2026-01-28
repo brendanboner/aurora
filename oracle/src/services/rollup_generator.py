@@ -314,18 +314,22 @@ class RollupGenerator:
             query = """
             MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get workgroup meeting events on this day (by event startTime)
+            // Get workgroup meeting events on this day (by event start_date)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
             WHERE e.event_type = 'meeting'
-              AND e.startTime IS NOT NULL
-              AND date(e.startTime) = date($target_date)
+              AND e.start_date IS NOT NULL
+              AND e.start_date >= localdatetime($target_date)
+              AND e.start_date < localdatetime($target_date) + duration('P1D')
             
             // Get documents by publish_date (preferred) or ingestion date (fallback)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
-            WHERE (r.publish_date IS NOT NULL AND date(r.publish_date) = date($target_date))
+            WHERE (r.publish_date IS NOT NULL 
+                   AND r.publish_date >= localdatetime($target_date)
+                   AND r.publish_date < localdatetime($target_date) + duration('P1D'))
                OR (r.publish_date IS NULL AND batch.created_at IS NOT NULL 
-                   AND date(batch.created_at) = date($target_date))
+                   AND batch.created_at >= localdatetime($target_date)
+                   AND batch.created_at < localdatetime($target_date) + duration('P1D'))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
@@ -339,14 +343,14 @@ class RollupGenerator:
             RETURN 
                 size(events) as event_count,
                 size(docs) as doc_count,
-                [event IN events | {id: event.id, name: event.name, url: event.url, startTime: event.startTime}] as events,
+                [event IN events | {id: event.url_hash, name: event.name, url: event.url, start_date: event.start_date}] as events,
                 [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
                 topics
             """
             
             result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
-                "target_date": target_date.isoformat()
+                "target_date": target_date.strftime("%Y-%m-%d")
             })
             
             if not result:
@@ -432,22 +436,22 @@ class RollupGenerator:
             query = """
             MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get workgroup meeting events in this week (by event startTime)
+            // Get workgroup meeting events in this week (by event start_date)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
             WHERE e.event_type = 'meeting'
-              AND e.startTime IS NOT NULL
-              AND date(e.startTime) >= date($week_start)
-              AND date(e.startTime) <= date($week_end)
+              AND e.start_date IS NOT NULL
+              AND e.start_date >= localdatetime($week_start)
+              AND e.start_date < localdatetime($week_end) + duration('P1D')
             
             // Get documents by publish_date (preferred) or ingestion date (fallback)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
             WHERE (r.publish_date IS NOT NULL 
-                   AND date(r.publish_date) >= date($week_start)
-                   AND date(r.publish_date) <= date($week_end))
+                   AND r.publish_date >= localdatetime($week_start)
+                   AND r.publish_date < localdatetime($week_end) + duration('P1D'))
                OR (r.publish_date IS NULL AND batch.created_at IS NOT NULL
-                   AND date(batch.created_at) >= date($week_start)
-                   AND date(batch.created_at) <= date($week_end))
+                   AND batch.created_at >= localdatetime($week_start)
+                   AND batch.created_at < localdatetime($week_end) + duration('P1D'))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
@@ -461,15 +465,15 @@ class RollupGenerator:
             RETURN 
                 size(events) as event_count,
                 size(docs) as doc_count,
-                [event IN events | {id: event.id, name: event.name, url: event.url, startTime: event.startTime}] as events,
+                [event IN events | {id: event.url_hash, name: event.name, url: event.url, start_date: event.start_date}] as events,
                 [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
                 topics
             """
             
             result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
-                "week_start": week_start.isoformat(),
-                "week_end": week_end.isoformat()
+                "week_start": week_start.strftime("%Y-%m-%d"),
+                "week_end": week_end.strftime("%Y-%m-%d")
             })
             
             if not result:
@@ -555,22 +559,22 @@ class RollupGenerator:
             query = """
             MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get workgroup meeting events in this month (by event startTime)
+            // Get workgroup meeting events in this month (by event start_date)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
             WHERE e.event_type = 'meeting'
-              AND e.startTime IS NOT NULL
-              AND date(e.startTime) >= date($month_start)
-              AND date(e.startTime) <= date($month_end)
+              AND e.start_date IS NOT NULL
+              AND e.start_date >= localdatetime($month_start)
+              AND e.start_date < localdatetime($month_end) + duration('P1D')
             
             // Get documents by publish_date (preferred) or ingestion date (fallback)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
             WHERE (r.publish_date IS NOT NULL
-                   AND date(r.publish_date) >= date($month_start)
-                   AND date(r.publish_date) <= date($month_end))
+                   AND r.publish_date >= localdatetime($month_start)
+                   AND r.publish_date < localdatetime($month_end) + duration('P1D'))
                OR (r.publish_date IS NULL AND batch.created_at IS NOT NULL
-                   AND date(batch.created_at) >= date($month_start)
-                   AND date(batch.created_at) <= date($month_end))
+                   AND batch.created_at >= localdatetime($month_start)
+                   AND batch.created_at < localdatetime($month_end) + duration('P1D'))
             
             // Get top topics from these documents
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
@@ -584,15 +588,15 @@ class RollupGenerator:
             RETURN 
                 size(events) as event_count,
                 size(docs) as doc_count,
-                [event IN events | {id: event.id, name: event.name, url: event.url, startTime: event.startTime}] as events,
+                [event IN events | {id: event.url_hash, name: event.name, url: event.url, start_date: event.start_date}] as events,
                 [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
                 topics
             """
             
             result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
-                "month_start": month_start.isoformat(),
-                "month_end": month_end.isoformat()
+                "month_start": month_start.strftime("%Y-%m-%d"),
+                "month_end": month_end.strftime("%Y-%m-%d")
             })
             
             if not result:
@@ -737,6 +741,7 @@ class RollupGenerator:
         workgroup_id: str
     ):
         """Delete existing rollup to allow refresh."""
+        session = None
         try:
             session = self.SessionLocal()
             
@@ -753,21 +758,52 @@ class RollupGenerator:
             ).delete()
             
             session.commit()
-            session.close()
             
             if deleted > 0:
                 logger.debug(f"Deleted existing {rollup_type} rollup for refresh")
             
         except Exception as e:
             logger.error(f"Failed to delete rollup: {e}")
+            if session:
+                session.rollback()
+        finally:
+            if session:
+                session.close()
     
     def _save_rollup(self, rollup: Rollup):
-        """Save rollup to database."""
+        """Save rollup to database, updating if already exists."""
         session = self.SessionLocal()
         try:
-            session.add(rollup)
+            # Try to find existing rollup with same key
+            existing = session.query(Rollup).filter(
+                and_(
+                    Rollup.rollup_type == rollup.rollup_type,
+                    Rollup.start_date == rollup.start_date,
+                    Rollup.workgroup_id == rollup.workgroup_id
+                )
+            ).first()
+            
+            if existing:
+                # Update existing rollup
+                existing.end_date = rollup.end_date
+                existing.workgroup_name = rollup.workgroup_name
+                existing.summary = rollup.summary
+                existing.key_events = rollup.key_events
+                existing.key_decisions = rollup.key_decisions
+                existing.top_topics = rollup.top_topics
+                existing.links = rollup.links
+                existing.event_count = rollup.event_count
+                existing.document_count = rollup.document_count
+                existing.generated_at = rollup.generated_at
+                existing.generation_method = rollup.generation_method
+                existing.template_version = rollup.template_version
+                logger.debug(f"Updated rollup: {rollup.rollup_type} for {rollup.workgroup_name} {rollup.start_date.date()}")
+            else:
+                # Insert new rollup
+                session.add(rollup)
+                logger.debug(f"Saved rollup: {rollup.rollup_type} for {rollup.workgroup_name} {rollup.start_date.date()}")
+            
             session.commit()
-            logger.debug(f"Saved rollup: {rollup.rollup_type} for {rollup.workgroup_name} {rollup.start_date.date()}")
         except Exception as e:
             session.rollback()
             logger.error(f"Failed to save rollup: {e}")

@@ -55,11 +55,9 @@ class QueryTemplate:
         """
         params = {}
         
-        # Date parameters
-        if plan.start_date:
-            params["start_date"] = plan.start_date.isoformat()
-        if plan.end_date:
-            params["end_date"] = plan.end_date.isoformat()
+        # Date parameters - always provide them (as None if not set) for Cypher NULL checks
+        params["start_date"] = plan.start_date.isoformat() if plan.start_date else None
+        params["end_date"] = plan.end_date.isoformat() if plan.end_date else None
         if plan.relative_days:
             params["relative_days"] = plan.relative_days
         
@@ -72,6 +70,18 @@ class QueryTemplate:
             params["organizations"] = plan.organizations
         if plan.people:
             params["people"] = plan.people
+        
+        # Content exclusion (for agent deduplication)
+        # Extract from raw_query if it contains exclusion markers
+        if plan.raw_query and "exclude_ids:" in plan.raw_query:
+            try:
+                # Parse exclusion IDs from query
+                exclude_part = plan.raw_query.split("exclude_ids:")[1].split()[0]
+                params["exclude_ids"] = exclude_part.strip("[]").split(",")
+            except:
+                params["exclude_ids"] = []
+        else:
+            params["exclude_ids"] = []
         
         # Limits
         params["limit"] = settings.fast_template_max_nodes
@@ -734,9 +744,9 @@ class QueryTemplateRegistry:
             
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
             
-            WITH r, t,
+            WITH r, t, rt.relevance as relevance,
                  count(DISTINCT o) as org_mentions
-            ORDER BY r.publish_date DESC, rt.relevance DESC
+            ORDER BY r.publish_date DESC, relevance DESC
             
             RETURN 
                 r.url_hash as id,
@@ -966,6 +976,551 @@ class QueryTemplateRegistry:
                     url: r.url,
                     topics: topics
                 })[..$limit] as recent_activity
+            """
+        )
+        
+        # AGENT_CONTENT_DISCOVERY - specialized route for creator agents
+        # Combines recent updates with deduplication and relevance scoring
+        self.templates[RouteId.AGENT_CONTENT_DISCOVERY] = QueryTemplate(
+            route_id=RouteId.AGENT_CONTENT_DISCOVERY,
+            description="Discover content for creator agents with deduplication",
+            param_schema={
+                "topics": "list[str]",
+                "organizations": "list[str]",
+                "start_date": "str (ISO date)",
+                "end_date": "str (ISO date)",
+                "exclude_ids": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            // Calculate date threshold
+            WITH datetime() - duration({days: coalesce($relative_days, 7)}) as doc_threshold
+            
+            // Match resources by topics or organizations
+            MATCH (r:Resource)
+            WHERE datetime(r.publish_date) >= doc_threshold
+              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
+              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+              // Exclude previously used content
+              AND NOT r.url_hash IN $exclude_ids
+            
+            // Filter by topics or organizations
+            WITH r, doc_threshold
+            WHERE (
+                ($topics IS NOT NULL AND size($topics) > 0 AND EXISTS {
+                    MATCH (r)-[:RELATES_TO]->(t:Topic)
+                    WHERE t.name IN $topics
+                }) OR
+                ($organizations IS NOT NULL AND size($organizations) > 0 AND EXISTS {
+                    MATCH (r)-[:MENTIONS]->(o:Organization)
+                    WHERE o.name IN $organizations OR o.org_id IN $organizations
+                })
+            )
+            
+            // Get related entities for context
+            OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
+            WHERE rt.relevance >= 0.5
+            
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            OPTIONAL MATCH (r)-[:MENTIONS]->(e:Event)
+            OPTIONAL MATCH (r)-[:MENTIONS]->(p:Person)
+            
+            // Calculate relevance score for agent content
+            WITH r,
+                 collect(DISTINCT t.name)[..5] as topics,
+                 collect(DISTINCT o.name)[..3] as organizations,
+                 collect(DISTINCT e.name)[..2] as events,
+                 collect(DISTINCT p.name)[..3] as people,
+                 // Topic specificity: fewer topics = more focused
+                 CASE 
+                    WHEN size(collect(DISTINCT t)) = 0 THEN 0.5
+                    WHEN size(collect(DISTINCT t)) <= 3 THEN 1.0
+                    WHEN size(collect(DISTINCT t)) <= 6 THEN 0.8
+                    ELSE 0.6
+                 END as specificity_score,
+                 // Recency: exponential decay with 7-day half-life
+                 CASE
+                    WHEN r.publish_date IS NULL THEN 0.5
+                    ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 7.0)
+                 END as recency_score,
+                 // Importance boost
+                 CASE toLower(r.importance)
+                    WHEN 'high' THEN 1.2
+                    WHEN 'critical' THEN 1.5
+                    ELSE 1.0
+                 END as importance_multiplier
+            
+            // Combined relevance score
+            WITH r, topics, organizations, events, people,
+                 (specificity_score * 0.6 + recency_score * 0.4) * importance_multiplier as relevance_score
+            
+            ORDER BY relevance_score DESC, r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as publish_date,
+                r.last_updated as last_updated,
+                r.url as url,
+                r.category as category,
+                r.importance as importance,
+                topics,
+                organizations,
+                events,
+                people,
+                relevance_score
+            LIMIT $limit
+            """
+        )
+        
+        # TOPIC_COMPARISON - compare two topics/standards side-by-side
+        self.templates[RouteId.TOPIC_COMPARISON] = QueryTemplate(
+            route_id=RouteId.TOPIC_COMPARISON,
+            description="Compare two topics or standards side-by-side",
+            param_schema={
+                "topics": "list[str] (expects 2+ topics)",
+                "start_date": "str (ISO date)",
+                "limit": "int"
+            },
+            cypher="""
+            // Find the topics to compare
+            MATCH (t:Topic)
+            WHERE t.name IN $topics OR t.topic_id IN $topics
+            
+            WITH collect(t) as topics_to_compare
+            WHERE size(topics_to_compare) >= 2
+            
+            // Get resources for each topic
+            UNWIND topics_to_compare as topic
+            MATCH (r:Resource)-[rt:RELATES_TO]->(topic)
+            WHERE rt.relevance >= 0.5
+              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
+            
+            // Collect organizations and key attributes
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            
+            WITH topic,
+                 count(DISTINCT r) as resource_count,
+                 collect(DISTINCT r.publish_date)[0..5] as recent_dates,
+                 collect(DISTINCT o.name)[0..10] as related_orgs,
+                 collect(DISTINCT {
+                     id: r.url_hash,
+                     title: r.title,
+                     date: r.publish_date,
+                     url: r.url,
+                     summary: r.summary
+                 })[0..($limit/size(topics_to_compare))] as sample_resources
+            
+            RETURN 
+                topic.name as topic_name,
+                topic.topic_id as topic_id,
+                topic.description as description,
+                topic.classification as classification,
+                resource_count,
+                recent_dates,
+                related_orgs,
+                sample_resources
+            ORDER BY resource_count DESC
+            """
+        )
+        
+        # STATUS_CHECK - current status of topic/standard
+        self.templates[RouteId.STATUS_CHECK] = QueryTemplate(
+            route_id=RouteId.STATUS_CHECK,
+            description="Get current status of a topic or standard",
+            param_schema={
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            // Find resources with status keywords
+            MATCH (t:Topic)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            
+            MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE r.title =~ '(?i).*(status|progress|update|approved|final|draft|ratified|published|released|version).*'
+            
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            
+            WITH r, t,
+                 collect(DISTINCT o.name)[0..3] as orgs
+            ORDER BY r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as date,
+                r.url as url,
+                r.category as type,
+                t.name as topic,
+                orgs as organizations
+            LIMIT $limit
+            """
+        )
+        
+        # TECHNICAL_EXPLANATION - how does X work, architecture, design
+        self.templates[RouteId.TECHNICAL_EXPLANATION] = QueryTemplate(
+            route_id=RouteId.TECHNICAL_EXPLANATION,
+            description="Get technical documentation and explanations",
+            param_schema={
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            MATCH (t:Topic)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            
+            MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE (r.category IN ['specification', 'whitepaper', 'technical_guide', 'standard']
+                   OR r.title =~ '(?i).*(architecture|design|implementation|guide|specification|technical|mechanism|structure).*')
+              AND r.publish_date IS NOT NULL
+            
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            
+            WITH r, t,
+                 collect(DISTINCT o.name)[0..3] as orgs
+            ORDER BY r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as date,
+                r.url as url,
+                r.category as type,
+                t.name as topic,
+                orgs as organizations
+            LIMIT $limit
+            """
+        )
+        
+        # ADOPTION_STATUS - who supports/uses X
+        self.templates[RouteId.ADOPTION_STATUS] = QueryTemplate(
+            route_id=RouteId.ADOPTION_STATUS,
+            description="Find organizations that support or use a technology",
+            param_schema={
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            MATCH (t:Topic)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            
+            // Find resources about this topic mentioning adoption
+            MATCH (r:Resource)-[:RELATES_TO]->(t)
+            MATCH (r)-[:MENTIONS]->(o:Organization)
+            WHERE r.title =~ '(?i).*(adopt|deploy|support|implement|launch|announce|using|enable).*'
+            
+            // Count mentions per organization
+            WITH o, t,
+                 count(DISTINCT r) as mention_count,
+                 collect(DISTINCT {
+                     id: r.url_hash,
+                     title: r.title,
+                     date: r.publish_date,
+                     url: r.url
+                 })[0..5] as supporting_resources
+            ORDER BY mention_count DESC
+            
+            RETURN 
+                o.name as organization,
+                o.org_id as org_id,
+                o.org_type as org_type,
+                mention_count,
+                supporting_resources
+            LIMIT $limit
+            """
+        )
+        
+        # PERSON_PROFILE - who is [Person Name]
+        self.templates[RouteId.PERSON_PROFILE] = QueryTemplate(
+            route_id=RouteId.PERSON_PROFILE,
+            description="Get profile information for a person",
+            param_schema={
+                "people": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            // Find the person
+            MATCH (p:Person)
+            WHERE ($people IS NULL OR size($people) = 0 OR p.name IN $people OR p.person_id IN $people)
+            
+            // Get their affiliations
+            OPTIONAL MATCH (p)-[aff:AFFILIATED_WITH]->(o:Organization)
+            
+            // Get topics they're connected to
+            OPTIONAL MATCH (p)-[:CONNECTED_TO]->(t:Topic)
+            
+            // Get recent resources mentioning them
+            OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
+            WHERE r.publish_date IS NOT NULL
+            
+            WITH p, o, 
+                 collect(DISTINCT t.name)[0..10] as topics,
+                 collect(DISTINCT {
+                     id: r.url_hash,
+                     title: r.title,
+                     date: r.publish_date,
+                     url: r.url
+                 })[0..10] as recent_resources
+            ORDER BY r.publish_date DESC
+            
+            RETURN 
+                p.name as name,
+                p.person_id as person_id,
+                p.email as email,
+                collect(DISTINCT {name: o.name, role: aff.role})[0..5] as affiliations,
+                topics,
+                recent_resources
+            LIMIT $limit
+            """
+        )
+        
+        # ORGANIZATION_REPRESENTATIVES - who represents X at Y
+        self.templates[RouteId.ORGANIZATION_REPRESENTATIVES] = QueryTemplate(
+            route_id=RouteId.ORGANIZATION_REPRESENTATIVES,
+            description="Find people representing an organization at meetings/events",
+            param_schema={
+                "organizations": "list[str]",
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            // Find the organization
+            MATCH (org:Organization)
+            WHERE org.name IN $organizations OR org.org_id IN $organizations
+            
+            // Find people affiliated with this org
+            MATCH (p:Person)-[aff:AFFILIATED_WITH]->(org)
+            
+            // If topics specified, filter by topic connections
+            OPTIONAL MATCH (p)-[:CONNECTED_TO]->(t:Topic)
+            WHERE $topics IS NULL OR size($topics) = 0 OR t.name IN $topics
+            
+            // Get recent resources/events they're mentioned in
+            OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
+            WHERE r.publish_date IS NOT NULL
+            
+            WITH p, org, aff,
+                 count(DISTINCT r) as activity_count,
+                 collect(DISTINCT t.name)[0..5] as topics,
+                 collect(DISTINCT {
+                     id: r.url_hash,
+                     title: r.title,
+                     date: r.publish_date,
+                     url: r.url
+                 })[0..5] as recent_activity
+            ORDER BY activity_count DESC
+            
+            RETURN 
+                p.name as name,
+                p.email as email,
+                aff.role as role,
+                org.name as organization,
+                topics,
+                activity_count,
+                recent_activity
+            LIMIT $limit
+            """
+        )
+        
+        # LEARNING_RESOURCES - tutorials, guides, getting started
+        self.templates[RouteId.LEARNING_RESOURCES] = QueryTemplate(
+            route_id=RouteId.LEARNING_RESOURCES,
+            description="Find educational resources and tutorials",
+            param_schema={
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            MATCH (t:Topic)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            
+            MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE (r.category IN ['tutorial', 'guide', 'training', 'documentation']
+                   OR r.title =~ '(?i).*(intro|tutorial|guide|learn|beginner|getting started|how to|step by step).*')
+            
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            
+            WITH r, t,
+                 collect(DISTINCT o.name)[0..3] as orgs
+            ORDER BY r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as date,
+                r.url as url,
+                r.category as type,
+                t.name as topic,
+                orgs as organizations
+            LIMIT $limit
+            """
+        )
+        
+        # VENDOR_PRODUCTS - company-specific product queries
+        self.templates[RouteId.VENDOR_PRODUCTS] = QueryTemplate(
+            route_id=RouteId.VENDOR_PRODUCTS,
+            description="Find vendor-specific products and implementations",
+            param_schema={
+                "organizations": "list[str]",
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            // Find resources that mention both the organization and topic
+            MATCH (o:Organization)
+            WHERE o.name IN $organizations OR o.org_id IN $organizations
+            
+            MATCH (r:Resource)-[:MENTIONS]->(o)
+            WHERE r.title =~ '(?i).*(product|chip|chipset|solution|platform|system|device|equipment|implementation).*'
+            
+            // Filter by topics if specified
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+            WHERE $topics IS NULL OR size($topics) = 0 OR t.name IN $topics
+            
+            WITH r, o,
+                 collect(DISTINCT t.name)[0..5] as topics
+            WHERE size(topics) > 0 OR ($topics IS NULL OR size($topics) = 0)
+            ORDER BY r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as date,
+                r.url as url,
+                r.category as type,
+                o.name as organization,
+                topics
+            LIMIT $limit
+            """
+        )
+        
+        # ISSUE_TRACKING - problems, bugs, limitations
+        self.templates[RouteId.ISSUE_TRACKING] = QueryTemplate(
+            route_id=RouteId.ISSUE_TRACKING,
+            description="Find issues and problems with a technology",
+            param_schema={
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            MATCH (t:Topic)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            
+            // Find resources with critical/concerned stance or issue keywords
+            MATCH (r:Resource)-[rt:RELATES_TO]->(t)
+            WHERE (rt.stance IN ['critical', 'concerned']
+                   OR r.title =~ '(?i).*(issue|problem|bug|limitation|challenge|concern|vulnerability|flaw|weakness).*')
+            
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            
+            WITH r, t, rt,
+                 collect(DISTINCT o.name)[0..3] as orgs
+            ORDER BY r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as date,
+                r.url as url,
+                r.category as type,
+                t.name as topic,
+                rt.stance as stance,
+                orgs as organizations
+            LIMIT $limit
+            """
+        )
+        
+        # REGULATORY_INFO - regulations, compliance, certification
+        self.templates[RouteId.REGULATORY_INFO] = QueryTemplate(
+            route_id=RouteId.REGULATORY_INFO,
+            description="Find regulatory and compliance information",
+            param_schema={
+                "topics": "list[str]",
+                "limit": "int"
+            },
+            cypher="""
+            MATCH (t:Topic)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            
+            MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE r.title =~ '(?i).*(regulation|compliance|certification|requirement|rule|legal|mandate|policy|standard).*'
+            
+            // Prefer documents from regulatory bodies
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            WHERE o.org_type IN ['government', 'regulatory', 'standards body']
+            
+            WITH r, t,
+                 collect(DISTINCT o.name)[0..3] as regulatory_orgs,
+                 CASE WHEN size(collect(DISTINCT o)) > 0 THEN 1.5 ELSE 1.0 END as boost
+            ORDER BY boost DESC, r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as date,
+                r.url as url,
+                r.category as type,
+                t.name as topic,
+                regulatory_orgs as organizations
+            LIMIT $limit
+            """
+        )
+        
+        # GENERIC_SEARCH - fallback for unmatched queries with KG-based hybrid scoring
+        self.templates[RouteId.GENERIC_SEARCH] = QueryTemplate(
+            route_id=RouteId.GENERIC_SEARCH,
+            description="Generic search fallback using hybrid KG scoring",
+            param_schema={
+                "limit": "int"
+            },
+            cypher="""
+            // Use KG structure for relevance even without specific entities
+            // Find recently published resources with rich graph connections
+            MATCH (r:Resource)
+            WHERE r.publish_date IS NOT NULL
+              AND r.summary IS NOT NULL
+            
+            // Get graph richness metrics
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            OPTIONAL MATCH (r)-[:MENTIONS]->(p:Person)
+            
+            WITH r,
+                 count(DISTINCT t) as topic_count,
+                 count(DISTINCT o) as org_count,
+                 count(DISTINCT p) as person_count,
+                 collect(DISTINCT t.name)[0..5] as topics,
+                 collect(DISTINCT o.name)[0..3] as orgs
+            
+            // Hybrid scoring: recency + graph connectivity
+            WITH r, topic_count, org_count, person_count, topics, orgs,
+                 (topic_count * 2 + org_count + person_count) as graph_score,
+                 duration.between(datetime(r.publish_date), datetime()).days as days_old
+            
+            // Score = graph richness - age penalty
+            WITH r, topics, orgs, graph_score,
+                 graph_score - (days_old / 30.0) as hybrid_score
+            
+            ORDER BY hybrid_score DESC, r.publish_date DESC
+            
+            RETURN 
+                r.url_hash as id,
+                r.title as title,
+                r.summary as summary,
+                r.publish_date as date,
+                r.url as url,
+                r.category as type,
+                topics,
+                orgs as organizations
+            LIMIT $limit
             """
         )
         

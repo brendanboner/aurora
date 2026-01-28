@@ -13,7 +13,7 @@ import asyncio
 from dataclasses import dataclass
 import logging
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.models.response import Document, QueryIntent
 from src.services.keyword_retriever import KeywordRetriever, RetrievalResult
@@ -198,7 +198,8 @@ def apply_recency_boost(
     if not settings.recency_boost_enabled:
         return documents
     
-    cutoff_date = datetime.now() - timedelta(days=boost_days)
+    # Use timezone-aware datetime to match Neo4j ISO dates with timezone info
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=boost_days)
     
     boosted_docs = []
     for doc in documents:
@@ -211,6 +212,10 @@ def apply_recency_boost(
                     pub_date = datetime.fromisoformat(doc.publish_date.replace("Z", "+00:00"))
                 else:
                     pub_date = doc.publish_date
+                
+                # Ensure timezone-aware for comparison
+                if pub_date.tzinfo is None:
+                    pub_date = pub_date.replace(tzinfo=timezone.utc)
                 
                 # Apply boost if recent
                 if pub_date >= cutoff_date:

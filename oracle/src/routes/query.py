@@ -230,7 +230,10 @@ async def query(
                 
                 # Try fast engine with fallback to baseline
                 try:
-                    response = await engine.query(request, user, span)
+                    response = await engine.query(request, user, span, query_id)
+                    
+                    # Set pipeline field to indicate fast pipeline was used
+                    response.pipeline = "fast"
                     
                     # Record successful fast pipeline execution
                     processing_time_ms = response.metadata.processing_time_ms
@@ -296,6 +299,9 @@ async def query(
             
             # Execute engine (baseline or fallback)
             response = await engine.query(request, user, span, query_id)
+            
+            # Set pipeline field to indicate which pipeline was used
+            response.pipeline = pipeline_name
             
             # Record metrics
             processing_time_ms = response.metadata.processing_time_ms
