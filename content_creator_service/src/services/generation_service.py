@@ -394,7 +394,7 @@ class GenerationService:
             return []
     
     def _transform_oracle_content(self, content_items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        \"\"\"
+        """
         Transform Oracle content items into events and documents format.
         
         Oracle returns unified content with:
@@ -403,7 +403,7 @@ class GenerationService:
         - relevance_score
         
         We split into events (has events array) and documents (publications/decisions).
-        \"\"\"
+        """
         events = []
         documents = []
         
@@ -450,11 +450,11 @@ class GenerationService:
         organisations: List[str],
         window_days: int,
     ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        \"\"\"
+        """
         Fallback to direct Neo4j queries (legacy path).
         
         Used when Oracle service is unavailable or disabled.
-        \"\"\"
+        """
         # Minimum relevance score based on agent tolerance
         min_relevance = 0.5 - (agent.discovery_tolerance * 0.3)
         
@@ -528,11 +528,11 @@ class GenerationService:
         events: List[Dict[str, Any]],
         documents: List[Dict[str, Any]],
     ) -> List[PostSource]:
-        \"\"\"
+        """
         Extract sources from LLM response or context.
         
         Now uses content 'id' as source_identifier for proper deduplication tracking.
-        \"\"\"
+        """
         sources: List[PostSource] = []
         if raw_sources:
             for raw in raw_sources:

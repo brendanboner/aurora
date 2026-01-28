@@ -725,10 +725,10 @@ class QueryTemplateRegistry:
             """
         )
         
-        # DOCUMENTS_BY_TOPIC - documents on specific topics
+        # DOCUMENTS_BY_TOPIC - documents on specific topics with KG-based relevance scoring
         self.templates[RouteId.DOCUMENTS_BY_TOPIC] = QueryTemplate(
             route_id=RouteId.DOCUMENTS_BY_TOPIC,
-            description="Get documents by topic",
+            description="Get documents by topic with intelligent KG-based scoring",
             param_schema={
                 "topics": "list[str]",
                 "start_date": "str (ISO date)",
@@ -742,11 +742,56 @@ class QueryTemplateRegistry:
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
               AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
             
-            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            // Count total topics for this resource (specificity calculation)
+            WITH r, t, rt.relevance as base_relevance
+            MATCH (r)-[:RELATES_TO]->(all_topics:Topic)
+            WITH r, t, base_relevance, count(DISTINCT all_topics) as topic_count
             
-            WITH r, t, rt.relevance as relevance,
-                 count(DISTINCT o) as org_mentions
-            ORDER BY r.publish_date DESC, relevance DESC
+            // Calculate specificity score (fewer topics = more specific = higher score)
+            WITH r, t, base_relevance, topic_count,
+                 CASE 
+                   WHEN topic_count = 1 THEN 1.0      // Highly specific
+                   WHEN topic_count = 2 THEN 0.9      // Very focused
+                   WHEN topic_count <= 5 THEN 0.7     // Focused
+                   ELSE 0.5                           // Broad/general
+                 END as specificity_score
+            
+            // Calculate content type boost (whitepapers > specs > meeting minutes)
+            WITH r, t, base_relevance, topic_count, specificity_score,
+                 CASE r.category
+                   WHEN 'whitepaper' THEN 1.3         // Whitepapers are comprehensive
+                   WHEN 'specification' THEN 1.2      // Specs are authoritative
+                   WHEN 'technical_report' THEN 1.1   // Reports are detailed
+                   WHEN 'standard' THEN 1.2           // Standards are definitive
+                   WHEN 'draft' THEN 1.0              // Drafts are current
+                   WHEN 'presentation' THEN 0.8       // Presentations are summaries
+                   WHEN 'meeting_minutes' THEN 0.5    // Minutes are activity logs
+                   WHEN 'email' THEN 0.4              // Emails are fragments
+                   ELSE 0.8                           // Other content
+                 END as content_type_boost
+            
+            // Calculate recency score (newer content gets boost for "what is" queries)
+            WITH r, t, base_relevance, topic_count, specificity_score, content_type_boost,
+                 CASE
+                   WHEN r.publish_date IS NOT NULL AND datetime(r.publish_date) >= datetime() - duration({days: 180}) THEN 1.2  // Last 6 months
+                   WHEN r.publish_date IS NOT NULL AND datetime(r.publish_date) >= datetime() - duration({days: 365}) THEN 1.1  // Last year
+                   WHEN r.publish_date IS NOT NULL AND datetime(r.publish_date) >= datetime() - duration({days: 730}) THEN 1.0  // Last 2 years
+                   ELSE 0.9                                                         // Older content or no date
+                 END as recency_score
+            
+            // Calculate final KG relevance score
+            WITH r, t, base_relevance, topic_count, specificity_score, content_type_boost, recency_score,
+                 (base_relevance * 0.4 +              // Base semantic relevance (40%)
+                  specificity_score * 0.3 +           // Topic specificity (30%)
+                  content_type_boost * 0.2 +          // Content type quality (20%)
+                  recency_score * 0.1                 // Recency factor (10%)
+                 ) as kg_score
+            
+            // Normalize kg_score to 0-1 range for consistency
+            WITH r, t, base_relevance, topic_count, kg_score,
+                 kg_score / 2.0 as normalized_kg_score
+            
+            ORDER BY normalized_kg_score DESC, r.publish_date DESC
             
             RETURN 
                 r.url_hash as id,
@@ -755,7 +800,9 @@ class QueryTemplateRegistry:
                 r.publish_date as date,
                 r.url as url,
                 r.category as type,
-                t.name as topic
+                t.name as topic,
+                round(normalized_kg_score * 100) / 100.0 as relevance_score,
+                topic_count as topic_breadth
             LIMIT $limit
             """
         )
