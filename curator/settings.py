@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     hierarchy_confidence_threshold: float = 0.7
     enable_cross_cluster_analysis: bool = True  # Analyze cluster representatives for cross-cluster relationships
     
+    # Scaling Configuration
+    # When total topics exceed this threshold, switch from processing ALL topics
+    # to only processing UNORGANIZED topics (those without hierarchy relationships).
+    # This dramatically reduces LLM calls for large knowledge graphs.
+    # Set to 0 to always process all topics, or a very high number to always use incremental mode.
+    incremental_curation_threshold: int = 4000  # Switch to incremental mode above this count
+    
     # Wait Configuration
     wait_for_digester: bool = True  # Whether to wait for digester to complete
     queue_empty_wait_seconds: int = 30  # How long queue must be empty before proceeding

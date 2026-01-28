@@ -14,6 +14,9 @@ from services.topic_organizer import TopicOrganizer
 from services.event_reconciler import EventReconciler
 from utils.logger import setup_logger
 from common.auth_middleware import get_user_context, require_role
+from neo4j_client import Neo4jClient, GraphRepository
+from neo4j_client.models import Topic
+from settings import settings
 
 # Import OpenTelemetry instrumentation
 try:
@@ -103,10 +106,69 @@ def update_job_state(job_name: str, **kwargs):
         _job_state[job_name].update(kwargs)
 
 
+class TopicStats(BaseModel):
+    """Topic organization statistics."""
+    total_topics: int
+    unorganized_topics: int
+    organized_topics: int
+    curation_threshold: int
+    curation_mode: str  # "full" or "incremental"
+
+
 @app.get("/health")
 async def health_check():
     """Simple health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.get("/topics/stats", response_model=TopicStats)
+@require_role(["admin", "superadmin"])
+async def get_topic_stats(user: Optional[dict] = Depends(get_user_context)):
+    """
+    Get topic organization statistics.
+    
+    Returns counts of total, organized, and unorganized topics,
+    along with current curation mode.
+    
+    Requires admin or superadmin role.
+    """
+    logger.info(f"Topic stats requested by {user['email']} (role: {user['role']})")
+    
+    neo4j_client = None
+    try:
+        # Connect to Neo4j
+        neo4j_client = Neo4jClient(
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_user,
+            password=settings.neo4j_password,
+            database=settings.neo4j_database,
+            logger_instance=logger
+        )
+        neo4j_client.connect()
+        repo = GraphRepository(neo4j_client, logger_instance=logger)
+        
+        # Get counts
+        total_topics = repo.count_nodes(Topic)
+        unorganized_topics = len(repo.get_unorganized_topics())
+        organized_topics = total_topics - unorganized_topics
+        
+        # Determine curation mode
+        threshold = settings.incremental_curation_threshold
+        curation_mode = "incremental" if total_topics > threshold else "full"
+        
+        return TopicStats(
+            total_topics=total_topics,
+            unorganized_topics=unorganized_topics,
+            organized_topics=organized_topics,
+            curation_threshold=threshold,
+            curation_mode=curation_mode
+        )
+    except Exception as e:
+        logger.error(f"Error getting topic stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if neo4j_client:
+            neo4j_client.close()
 
 
 @app.get("/status", response_model=ServiceStatus)

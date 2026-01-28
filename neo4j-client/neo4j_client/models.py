@@ -692,6 +692,17 @@ class Topic(Node):
         description="Service that created this topic (e.g., 'digester', 'curator', 'manual', 'api')"
     )
     
+    # Curation tracking - used to avoid repeatedly processing stubborn topics
+    curation_attempts: int = Field(
+        default=0,
+        description="Number of times this topic has been processed by the curator without being organized"
+    )
+    
+    last_curated_at: Optional[str] = Field(
+        None,
+        description="ISO timestamp of last curation attempt (e.g., '2026-01-28T10:30:00Z')"
+    )
+    
     # Deduplication metadata (populated during deduplication process)
     deduplication_best_match_id: Optional[str] = Field(
         None,

@@ -2093,3 +2093,184 @@
   padding: 40px 20px;
   color: var(--muted-foreground);
 }
+
+/* ==================== Admin Curation Page ==================== */
+
+.curation-mode-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  margin: 0 13px 24px 13px;
+}
+
+.curation-mode-card h3 {
+  margin: 0 0 16px 0;
+  font-size: var(--text-lg);
+  color: var(--foreground);
+}
+
+.curation-mode-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.curation-mode-badge {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: fit-content;
+}
+
+.curation-mode-badge.full {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.curation-mode-badge.incremental {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.curation-mode-description {
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.curation-mode-threshold {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+  margin: 0;
+  opacity: 0.8;
+}
+
+.curation-job-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  margin: 0 13px 24px 13px;
+}
+
+.curation-job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.curation-job-header h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--foreground);
+}
+
+.curation-job-status {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background-color: rgba(137, 129, 229, 0.04);
+  border-radius: var(--radius-button);
+}
+
+.job-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.job-status-label {
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  min-width: 120px;
+}
+
+.job-status-value {
+  font-size: var(--text-sm);
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.job-status-value.running {
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.job-status-value.idle {
+  color: var(--muted-foreground);
+}
+
+.job-status-value.error,
+.job-status-row.error .job-status-value {
+  color: #ef4444;
+}
+
+.curation-trigger-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.curation-trigger-section .btn-lg {
+  padding: 12px 24px;
+  font-size: var(--text-base);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trigger-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: var(--radius-button);
+  font-size: var(--text-sm);
+}
+
+.trigger-message.success {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.trigger-message.error {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.curation-trigger-help {
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

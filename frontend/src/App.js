@@ -15,6 +15,7 @@ import AdminContentQuality from './pages/AdminContentQuality';
 import AdminChatSessions from './pages/AdminChatSessions';
 import AdminFeedback from './pages/AdminFeedback';
 import AdminDLQ from './pages/AdminDLQ';
+import AdminCuration from './pages/AdminCuration';
 import Events from './pages/Events';
 import EventDetail from './pages/EventDetail';
 import SocialFeed from './pages/SocialFeed';
@@ -214,6 +215,16 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                                 element={
                                   <ProtectedRoute requiredRole={['admin', 'superadmin']}>
                                     <AgentManagement />
+                                  </ProtectedRoute>
+                                } 
+                              />
+                              
+                              {/* Admin Curation route */}
+                              <Route 
+                                path="/admin/curation" 
+                                element={
+                                  <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                                    <AdminCuration />
                                   </ProtectedRoute>
                                 } 
                               />

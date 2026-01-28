@@ -153,6 +153,13 @@ class MockNeo4jClient:
             if key.startswith(f"{label}:")
         ]
     
+    def count_nodes(self, label: str) -> int:
+        """Count all nodes of a given label."""
+        return len([
+            node for key, node in self._nodes.items()
+            if key.startswith(f"{label}:")
+        ])
+    
     def clear(self):
         """Clear all data."""
         self._nodes.clear()
@@ -191,6 +198,41 @@ class MockGraphRepository:
         """
         label = getattr(node_class, "node_label", node_class.__name__)
         return self.client.get_all_nodes(label)
+    
+    def count_nodes(self, node_class: Type) -> int:
+        """
+        Count all nodes of a given type.
+        
+        Args:
+            node_class: The node model class (e.g., Topic, Event)
+            
+        Returns:
+            Count of nodes
+        """
+        label = getattr(node_class, "node_label", node_class.__name__)
+        return self.client.count_nodes(label)
+    
+    def get_unorganized_topics(self) -> List[Dict[str, Any]]:
+        """
+        Get topics without hierarchy relationships.
+        
+        For the mock, returns topics that have no relationships.
+        In a real implementation, this filters by ENCOMPASSES/SUBTOPIC_OF.
+        
+        Returns:
+            List of unorganized topic dictionaries
+        """
+        all_topics = self.client.get_all_nodes("Topic")
+        
+        # Get all topic IDs involved in relationships
+        organized_ids = set()
+        for rel in self.client._relationships:
+            if rel.get("type") in ["ENCOMPASSES", "SUBTOPIC_OF"]:
+                organized_ids.add(rel.get("source_id"))
+                organized_ids.add(rel.get("target_id"))
+        
+        # Return topics not in any hierarchy relationship
+        return [t for t in all_topics if t.get("topic_id") not in organized_ids]
     
     def create_node(self, node: Any) -> Dict[str, Any]:
         """

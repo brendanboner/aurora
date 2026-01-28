@@ -115,6 +115,11 @@ class TopicOrganizer:
         """
         Run topic hierarchy organization.
         
+        Automatically switches between full and incremental curation based on
+        the total number of topics:
+        - Below threshold: Process ALL topics for unified hierarchy
+        - Above threshold: Process only UNORGANIZED topics (incremental mode)
+        
         Returns:
             Statistics dictionary with results
         """
@@ -124,6 +129,7 @@ class TopicOrganizer:
         
         stats = {
             "topics_processed": 0,
+            "total_topics": 0,
             "new_topics_created": 0,
             "clusters_created": 0,
             "relationships_created": 0,
@@ -132,27 +138,69 @@ class TopicOrganizer:
             "cycles_prevented": 0,
             "redundant_skipped": 0,
             "errors": 0,
-            "success": False
+            "success": False,
+            "curation_mode": "full"  # "full" or "incremental"
         }
         
         try:
-            # Step 1: Retrieve all topics
-            self.logger.info("Step 1: Retrieving all topics from knowledge graph...")
-            topics = self.graph_repository.get_all_nodes(Topic)
-            stats["topics_processed"] = len(topics)
-            self.logger.info(f"Retrieved {len(topics)} topics")
+            # Step 1: Determine curation mode based on total topic count
+            self.logger.info("Step 1: Checking topic count to determine curation mode...")
+            total_topics = self.graph_repository.count_nodes(Topic)
+            stats["total_topics"] = total_topics
             
-            if not topics:
-                self.logger.warning("No topics found to organize")
-                stats["success"] = True
-                return stats
+            threshold = settings.incremental_curation_threshold
             
-            # Log some sample topics
-            self.logger.info(f"Sample topics: {[t.get('name') for t in topics[:5]]}")
-            
-            # Step 2: Cluster topics
-            self.logger.info("\nStep 2: Clustering topics by semantic similarity...")
-            clusters = self.clusterer.cluster_topics(topics)
+            if total_topics > threshold:
+                # Incremental mode: process unorganized topics with organized context
+                stats["curation_mode"] = "incremental"
+                self.logger.info(
+                    f"Total topics ({total_topics}) exceeds threshold ({threshold}). "
+                    f"Using INCREMENTAL curation mode."
+                )
+                
+                # Get unorganized topics (seeds) and all topics (for context)
+                unorganized_topics = self.graph_repository.get_unorganized_topics()
+                self.logger.info(f"Retrieved {len(unorganized_topics)} unorganized topics as seeds")
+                
+                if not unorganized_topics:
+                    self.logger.info("No unorganized topics found - hierarchy is up to date")
+                    stats["success"] = True
+                    return stats
+                
+                # Get all topics for building context clusters
+                all_topics = self.graph_repository.get_all_nodes(Topic)
+                self.logger.info(f"Retrieved {len(all_topics)} total topics for context")
+                
+                stats["topics_processed"] = len(unorganized_topics)
+                topics = unorganized_topics  # For sample logging
+                
+                # Build clusters around unorganized topics with organized context
+                self.logger.info("\nStep 2: Building context clusters around unorganized topics...")
+                clusters = self.clusterer.build_clusters_around_seeds(
+                    seed_topics=unorganized_topics,
+                    all_topics=all_topics,
+                    context_neighbors=settings.cluster_max_size - 1  # Leave room for the seed
+                )
+            else:
+                # Full mode: process all topics
+                stats["curation_mode"] = "full"
+                self.logger.info(
+                    f"Total topics ({total_topics}) is below threshold ({threshold}). "
+                    f"Using FULL curation mode (all topics)."
+                )
+                topics = self.graph_repository.get_all_nodes(Topic)
+                self.logger.info(f"Retrieved {len(topics)} total topics to process")
+                
+                stats["topics_processed"] = len(topics)
+                
+                if not topics:
+                    self.logger.warning("No topics found to organize")
+                    stats["success"] = True
+                    return stats
+                
+                # Standard clustering for full mode
+                self.logger.info("\nStep 2: Clustering topics by semantic similarity...")
+                clusters = self.clusterer.cluster_topics(topics)
             
             if not clusters:
                 self.logger.warning("No clusters created")
@@ -511,6 +559,8 @@ class TopicOrganizer:
         self.logger.info("\n" + "="*80)
         self.logger.info("TOPIC HIERARCHY ORGANIZATION COMPLETE")
         self.logger.info("="*80)
+        self.logger.info(f"  Curation mode: {stats.get('curation_mode', 'full').upper()}")
+        self.logger.info(f"  Total topics in graph: {stats.get('total_topics', 'N/A')}")
         self.logger.info(f"  Topics processed: {stats['topics_processed']}")
         self.logger.info(f"  New topics created: {stats['new_topics_created']}")
         if new_topics:

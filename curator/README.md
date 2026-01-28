@@ -135,11 +135,56 @@ Inserts validated relationships into the Neo4j knowledge graph:
       → "Wi-Fi 7" correctly connects to "Wi-Fi" and "Wireless Standards"
    ```
 
+### Automatic Scaling Mode
+
+The curator automatically switches between **full** and **incremental** curation modes based on the total number of topics in the knowledge graph:
+
+- **Below threshold (default: 4000 topics)**: **FULL MODE** - processes all topics to ensure unified hierarchy
+- **Above threshold**: **INCREMENTAL MODE** - builds context clusters around unorganized topics
+
+**How Incremental Mode Works:**
+
+Instead of clustering only unorganized topics (which would create isolated hierarchies), incremental mode:
+
+1. **Identifies seed topics**: Gets all unorganized topics (those without ENCOMPASSES/SUBTOPIC_OF relationships)
+2. **Builds context clusters**: For each seed topic, finds its nearest neighbors from ALL topics (including already-organized ones)
+3. **Integrates into hierarchy**: The LLM sees the new topic alongside relevant existing topics and can properly place it in the hierarchy
+
+**Example:**
+```
+New unorganized topic: "Wi-Fi 7"
+
+Context cluster built around it:
+  - Wi-Fi 7 (seed - unorganized)
+  - Wi-Fi 6E (neighbor - organized, already under "Wi-Fi")
+  - Wi-Fi 6 (neighbor - organized, already under "Wi-Fi")
+  - Wi-Fi (neighbor - organized, under "Wireless Standards")
+  
+→ LLM correctly places: "Wi-Fi" ENCOMPASSES "Wi-Fi 7"
+→ New topic integrates into existing hierarchy!
+```
+
+This dramatically reduces LLM calls for large knowledge graphs while maintaining hierarchy quality:
+
+| Topic Count | Mode | Topics Processed | Estimated LLM Calls |
+|-------------|------|------------------|---------------------|
+| 1,000 | Full | 1,000 | ~200 |
+| 4,000 | Full | 4,000 | ~800 |
+| 10,000 | Incremental | ~50-100 new | ~20-40 |
+| 50,000 | Incremental | ~50-100 new | ~20-40 |
+
+Configure the threshold via environment variable:
+```bash
+INCREMENTAL_CURATION_THRESHOLD=4000  # Default, switch modes at 4000 topics
+INCREMENTAL_CURATION_THRESHOLD=0     # Always use full mode (not recommended for large graphs)
+INCREMENTAL_CURATION_THRESHOLD=999999 # Always use incremental mode
+```
+
 ### Scheduling Recommendations
 
 - **Small graphs (<500 topics)**: Run daily with all topics
-- **Medium graphs (500-2000 topics)**: Run 2-3 times per week with all topics
-- **Large graphs (2000+ topics)**: Run weekly with all topics, or implement incremental integration (future enhancement)
+- **Medium graphs (500-4000 topics)**: Run 2-3 times per week with all topics
+- **Large graphs (4000+ topics)**: Automatic incremental mode kicks in - safe to run daily
 
 ## Cross-Cluster Analysis
 
@@ -281,12 +326,12 @@ LLM_MAX_TOKENS=4096                   # Maximum tokens for LLM response
 LLM_TEMPERATURE=0.1                   # LLM temperature (lower = more deterministic)
 ENABLE_CROSS_CLUSTER_ANALYSIS=true   # Analyze cluster representatives for cross-cluster relationships
 
-# Curation Strategy
-PROCESS_ALL_TOPICS=true               # true = unified hierarchy (recommended)
-                                      # false = only new topics (creates fragmented hierarchies)
-
-# Future: Scheduling
-CURATION_INTERVAL_HOURS=24           # How often to run curation (not yet implemented)
+# Scaling / Curation Mode
+INCREMENTAL_CURATION_THRESHOLD=4000   # Switch to incremental mode above this topic count
+                                      # Below threshold: process ALL topics (unified hierarchy)
+                                      # Above threshold: process only UNORGANIZED topics (efficient)
+                                      # Set to 0 to always use full mode
+                                      # Set very high to always use incremental mode
 
 # Logging
 LOG_LEVEL=INFO                        # DEBUG, INFO, WARNING, ERROR, CRITICAL

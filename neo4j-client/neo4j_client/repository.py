@@ -689,6 +689,67 @@ class GraphRepository:
         self.logger.info(f"Retrieved {len(nodes)} {label} nodes from knowledge graph")
         return nodes
 
+    def count_nodes(self, node_type: type[Node]) -> int:
+        """
+        Count the total number of nodes of a specific type.
+        
+        More efficient than get_all_nodes when you only need the count.
+        
+        Args:
+            node_type: The Node class type (e.g., Topic, Person, Organization)
+            
+        Returns:
+            Total count of nodes of the specified type
+            
+        Example:
+            topic_count = repo.count_nodes(Topic)
+            print(f"Total topics: {topic_count}")
+        """
+        label = node_type.model_fields['node_label'].default
+        
+        query = f"""
+        MATCH (n:{label})
+        RETURN count(n) as count
+        """
+        
+        results = self.client.execute_query(query)
+        count = results[0].get("count", 0) if results else 0
+        
+        self.logger.debug(f"Counted {count} {label} nodes")
+        return count
+
+    def get_unorganized_topics(self) -> List[Dict[str, Any]]:
+        """
+        Retrieve topics that have no hierarchical relationships.
+        
+        Returns topics that are NOT involved in any ENCOMPASSES or SUBTOPIC_OF
+        relationships (neither as source nor target). These are "orphan" topics
+        that haven't been organized into the hierarchy yet.
+        
+        This is useful for incremental curation - only processing new topics
+        instead of re-processing the entire knowledge graph.
+        
+        Returns:
+            List of topic dictionaries without hierarchy relationships
+            
+        Example:
+            unorganized = repo.get_unorganized_topics()
+            print(f"Found {len(unorganized)} topics needing organization")
+        """
+        query = """
+        MATCH (t:Topic)
+        WHERE NOT (t)-[:ENCOMPASSES]-() 
+          AND NOT (t)-[:SUBTOPIC_OF]-()
+        RETURN t
+        ORDER BY t.topic_id
+        """
+        
+        results = self.client.execute_query(query)
+        topics = [result.get("t", {}) for result in results]
+        
+        self.logger.info(f"Retrieved {len(topics)} unorganized topics (no hierarchy relationships)")
+        return topics
+
     def get_events_by_datasource_and_date(
         self,
         datasource_id: str,

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon, FeedbackIcon, AlertCircleIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon, FeedbackIcon, AlertCircleIcon, ToolIcon } from '../components/icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
@@ -193,6 +193,13 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
                   >
                     <span className="sidebar-icon"><FeedbackIcon size={16} /></span>
                     <span>Feedback</span>
+                  </Link>
+                  <Link 
+                    to="/admin/curation" 
+                    className={`sidebar-subitem ${isActive('/admin/curation') ? 'active' : ''}`}
+                  >
+                    <span className="sidebar-icon"><ToolIcon size={16} /></span>
+                    <span>Topic Curation</span>
                   </Link>
                 </div>
               )}

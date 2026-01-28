@@ -482,4 +482,41 @@ export const deleteFeedback = async (feedbackId) => {
   return response.data;
 };
 
+// ==================== Curator Service ====================
+
+/**
+ * Get topic organization statistics from the curator service.
+ * Returns counts of total, organized, and unorganized topics.
+ */
+export const getCuratorTopicStats = async () => {
+  const response = await apiClient.get('/curator/topics/stats');
+  return response.data;
+};
+
+/**
+ * Get curator service status including job states.
+ */
+export const getCuratorStatus = async () => {
+  const response = await apiClient.get('/curator/status');
+  return response.data;
+};
+
+/**
+ * Trigger topic curation job manually.
+ * Requires admin role.
+ */
+export const triggerTopicCuration = async () => {
+  const response = await apiClient.post('/curator/trigger/topics');
+  return response.data;
+};
+
+/**
+ * Trigger event reconciliation job manually.
+ * Requires admin role.
+ */
+export const triggerEventReconciliation = async () => {
+  const response = await apiClient.post('/curator/trigger/reconcile');
+  return response.data;
+};
+
 export default apiClient;
