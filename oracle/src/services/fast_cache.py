@@ -313,7 +313,8 @@ class FastCache:
     def _answer_cache_key(self, plan: RoutePlan, result_digest: str) -> str:
         """Generate cache key for answer cache."""
         plan_hash = hash_route_plan(plan)
-        return f"{FastCachePrefix.ANSWER}{plan_hash}:{result_digest[:8]}:{plan.detail_level.value}"
+        detail_level_str = plan.detail_level if isinstance(plan.detail_level, str) else plan.detail_level.value
+        return f"{FastCachePrefix.ANSWER}{plan_hash}:{result_digest[:8]}:{detail_level_str}"
     
     # ===== Invalidation =====
     
