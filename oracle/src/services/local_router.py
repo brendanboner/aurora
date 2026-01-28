@@ -123,6 +123,14 @@ class LocalRouter:
         (r"what('s| is)\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|alliance)\s+(working on|focusing on)", RouteId.ORGANIZATION_ACTIVITY),
         (r"(activity|updates?|news|progress) (from|by|at)\s+", RouteId.ORGANIZATION_ACTIVITY),
         
+        # === WORKGROUP-SPECIFIC ACTIVITY QUERIES (highest priority for workgroup synopsis) ===
+        # These patterns match queries asking about activity/discussions in specific workgroups
+        (r"what happened in.*?(workgroup|wg|group)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what was discussed in.*?(workgroup|wg|group)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"(activity|updates|discussions?) in (the )?(halow|security|802\.1x|802\.11|wifi|wi-fi|network).*?(workgroup|wg)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"(halow|security|802\.1x|802\.11|wifi|wi-fi|network)\s+(workgroup|wg)\s+(activity|updates|discussions?|progress)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what('s| is) (happening|going on|being discussed) in.*?(workgroup|wg)", RouteId.WORKGROUP_RECENT_UPDATES),
+        
         # === TIME-BASED "WHAT HAPPENED" & "WHAT WAS DISCUSSED" QUERIES ===
         (r"what happened.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
         (r"what happened.*?(this|last|past) week", RouteId.WORKGROUP_WEEKLY_RECAP),
@@ -245,8 +253,21 @@ class LocalRouter:
         # Parse date/time references
         start_date, end_date, relative_days = self._parse_dates(question_lower)
         
-        # Extract entities (workgroups, topics, etc.) with user preference boost
-        entities = self._extract_entities(question_lower, user_prefs)
+        # For definition/document queries, skip user preference expansion to focus on explicit topic
+        skip_user_prefs_routes = [
+            RouteId.DOCUMENTS_BY_TOPIC,
+            RouteId.TECHNICAL_EXPLANATION,
+            RouteId.TOPIC_COMPARISON,
+            RouteId.STATUS_CHECK,
+            RouteId.LEARNING_RESOURCES,
+        ]
+        skip_user_prefs = route_id in skip_user_prefs_routes
+        
+        # Extract entities (workgroups, topics, etc.) with conditional user preference boost
+        entities = self._extract_entities(question_lower, user_prefs, skip_user_prefs)
+        
+        if skip_user_prefs:
+            logger.debug(f"Skipping user preference expansion for {route_id.value} (focused query)")
         
         # Determine detail level
         detail_level = self._determine_detail_level(question_lower)
@@ -380,7 +401,7 @@ class LocalRouter:
         # This will be handled per-route in the Cypher templates
         return None, None, None
     
-    def _extract_entities(self, question: str, user_prefs: Optional[UserPreferences] = None) -> dict:
+    def _extract_entities(self, question: str, user_prefs: Optional[UserPreferences] = None, skip_user_prefs: bool = False) -> dict:
         """
         Extract entities from question using keyword matching.
         
@@ -388,6 +409,11 @@ class LocalRouter:
         - If query mentions "HaLow", prioritize HaLow even if not in preferences
         - If query mentions "802.1x security" and user prefers Wi-Fi, boost Wi-Fi 802.1x over RADIUS 802.1x
         - If no explicit entities mentioned, use preferences as hints
+        
+        Args:
+            question: Query text to extract entities from
+            user_prefs: Optional user preferences for boosting
+            skip_user_prefs: If True, skip adding user preferences (for focused queries)
         
         Returns:
             Dictionary with entity lists
@@ -408,8 +434,6 @@ class LocalRouter:
             "wifi 8": "Wi-Fi 8",
             "wi-fi 8": "Wi-Fi 8",
             "wifi8": "Wi-Fi 8",
-            "halow": "HaLow",
-            "802.11ah": "HaLow",
             "broadcast": "Broadcast",
             "passpoint": "Passpoint",
             "security": "Security",
@@ -430,12 +454,14 @@ class LocalRouter:
         # Check for topic keywords (e.g., "security", "6 GHz")
         topic_keywords = {
             # IEEE 802.11 Standards (Wi-Fi generations)
+            # NOTE: These keys must match exact Topic.name values in Neo4j
             "802.11bn": ["802.11bn", "bn", "wifi 8", "wi-fi 8"],
             "802.11be": ["802.11be", "be", "wifi 7", "wi-fi 7", "extremely high throughput", "eht"],
             "802.11ax": ["802.11ax", "ax", "wifi 6", "wi-fi 6", "high efficiency"],
             "802.11ac": ["802.11ac", "ac", "wifi 5", "wi-fi 5"],
             "802.11n": ["802.11n", "wifi 4", "wi-fi 4"],
-            "802.11ah": ["802.11ah", "ah", "halow", "sub-1 ghz"],
+            "wi-fi certified halow": ["halow", "wi-fi halow", "wifi halow"],  # Primary HaLow topic (41 docs)
+            "ieee p802.11ah": ["802.11ah", "ah", "sub-1 ghz"],  # Technical designation (1 doc)
             "802.11ad": ["802.11ad", "ad", "wigig", "60 ghz"],
             "802.11ay": ["802.11ay", "ay"],
             "802.11az": ["802.11az", "az", "next generation positioning", "ngp"],
@@ -474,33 +500,84 @@ class LocalRouter:
             if any(kw in question for kw in keywords):
                 entities["topics"].append(topic_name)
         
-        # If user has preferences, use them intelligently:
-        # 1. If query has explicit entities, DON'T override - but ADD user preferences for steering
-        # 2. If query has ambiguous context (e.g., "security"), prefer user's domain
-        # 3. If no explicit entities, use ALL user preferences to guide the response
-        if user_prefs:
-            # If query mentions topics and user has preferences, prioritize user's domain
-            if entities["topics"] and user_prefs.topics:
-                # Example: If user prefers "Wi-Fi" and query mentions "802.1x",
-                # boost Wi-Fi 802.1x interpretation over RADIUS 802.1x
-                user_topics_lower = [t.lower() for t in user_prefs.topics]
-                if any(topic in ["wi-fi", "wifi", "802.11"] for topic in user_topics_lower):
-                    # User is in Wi-Fi domain - boost Wi-Fi interpretations
-                    if "802.1x" in question.lower() or "security" in question.lower():
-                        entities["topics"].append("Wi-Fi Security")
+        # Generate query hints for intelligent routing (pattern-based, no LLM)
+        query_hints = {
+            # Definition queries: "what is X" or "what are X"
+            "is_definition": bool(re.search(r"^what (is|are)\s+[^?]+\??", question, re.IGNORECASE)),
             
-            # Add ALL user topic preferences to steer the response
-            # The fast engine uses regex and topic discovery, so having all topics helps
-            # prioritize and filter results to match user interests
-            if user_prefs.topics:
-                # Add topics that aren't already explicitly mentioned
-                existing_topics_lower = [t.lower() for t in entities["topics"]]
-                for topic in user_prefs.topics:
-                    if topic.lower() not in existing_topics_lower:
-                        entities["topics"].append(topic)
-                logger.debug(f"Added {len(user_prefs.topics)} user topic preferences for steering")
+            # Workgroup synopsis queries: mentions workgroup/wg with activity keywords
+            "is_workgroup_synopsis": bool(
+                re.search(r"(workgroup|wg)\s+(activity|updates?|discussions?|progress)", question, re.IGNORECASE) or
+                re.search(r"(activity|updates?|discussions?|progress)\s+in.*(workgroup|wg)", question, re.IGNORECASE) or
+                re.search(r"what (happened|was discussed).*?(workgroup|wg)", question, re.IGNORECASE)
+            ),
             
-            # Add ALL user organization preferences to steer the response
+            # Synopsis queries: "what happened", "what was discussed"
+            "is_synopsis": bool(re.search(r"what (happened|was discussed|is (happening|going on))", question, re.IGNORECASE)),
+            
+            # Exploration queries: broad questions without specific entities
+            "is_exploration": len(entities["topics"]) == 0 and len(entities["workgroups"]) == 0,
+            
+            # Focused queries: explicit entity mentions
+            "is_focused": len(entities["topics"]) > 0 or len(entities["workgroups"]) > 0,
+        }
+        
+        # Store hints in entities for downstream use
+        entities["_query_hints"] = query_hints
+        
+        logger.debug(f"Query hints: definition={query_hints['is_definition']}, "
+                    f"workgroup_synopsis={query_hints['is_workgroup_synopsis']}, "
+                    f"synopsis={query_hints['is_synopsis']}, "
+                    f"exploration={query_hints['is_exploration']}, "
+                    f"focused={query_hints['is_focused']}")
+        
+        # If user has preferences, use them intelligently:based on query hints:
+        # 1. Workgroup synopsis with explicit workgroup → Skip topic preferences (focus on workgroup only)
+        # 2. Definition query with explicit topic → Skip preferences (focus on exact topic)
+        # 3. Definition query without explicit topic → Use preferences as fallback
+        # 4. Synopsis/exploration query → Add preferences for boosting
+        if user_prefs and not skip_user_prefs:
+            # Strategy 1: Workgroup synopsis with explicit workgroup - DON'T add topic preferences
+            if query_hints["is_workgroup_synopsis"] and entities["workgroups"]:
+                logger.debug("Workgroup synopsis with explicit workgroup - skipping topic preferences to focus on workgroup activity")
+                # Don't add topic preferences - let workgroup be the primary filter
+                pass
+            
+            # Strategy 2: Definition query with explicit topic - DON'T add preferences (focused lookup)
+            elif query_hints["is_definition"] and entities["topics"]:
+                logger.debug("Definition query with explicit topic - skipping preferences for focused lookup")
+                # Don't dilute with preferences - user wants THIS topic specifically
+                pass
+            
+            # Strategy 3: Definition query without explicit topic - USE preferences as fallback
+            elif query_hints["is_definition"] and not entities["topics"] and user_prefs.topics:
+                logger.debug("Definition query without explicit topic - using user preferences as fallback")
+                # No explicit topic, so interpret based on user's domain
+                for topic in user_prefs.topics[:3]:  # Use top 3 preferences
+                    entities["topics"].append(topic)
+            
+            # Strategy 4: Synopsis/exploration queries - ADD preferences for boosting
+            else:
+                # If query mentions topics and user has preferences, prioritize user's domain
+                if entities["topics"] and user_prefs.topics:
+                    # Example: If user prefers "Wi-Fi" and query mentions "802.1x",
+                    # boost Wi-Fi 802.1x interpretation over RADIUS 802.1x
+                    user_topics_lower = [t.lower() for t in user_prefs.topics]
+                    if any(topic in ["wi-fi", "wifi", "802.11"] for topic in user_topics_lower):
+                        # User is in Wi-Fi domain - boost Wi-Fi interpretations
+                        if "802.1x" in question.lower() or "security" in question.lower():
+                            entities["topics"].append("Wi-Fi Security")
+                
+                # Add user topic preferences to steer the response
+                if user_prefs.topics:
+                    # Add topics that aren't already explicitly mentioned
+                    existing_topics_lower = [t.lower() for t in entities["topics"]]
+                    for topic in user_prefs.topics:
+                        if topic.lower() not in existing_topics_lower:
+                            entities["topics"].append(topic)
+                    logger.debug(f"Added {len(user_prefs.topics)} user topic preferences for steering")
+            
+            # Add user organization preferences to steer the response
             # Organizations help filter and prioritize results from specific workgroups
             if user_prefs.organisations:
                 # Add organizations that aren't already explicitly mentioned

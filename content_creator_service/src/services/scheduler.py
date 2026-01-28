@@ -308,7 +308,7 @@ class AgentScheduler:
         return meets_threshold
     
     def _select_perspective(self, agent: CreatorAgent, now: datetime) -> Optional[str]:
-        \"\"\"
+        """
         Select perspective for content discovery to add variety.
         
         Rotates perspectives based on day of week:
@@ -316,7 +316,7 @@ class AgentScheduler:
         - Tuesday/Thursday: "trends" (analysis)
         - Wednesday/Friday: None (default cadence-based)
         - Weekend: "decisions" (recaps)
-        \"\"\"
+        """
         weekday = now.weekday()  # 0=Monday, 6=Sunday
         
         # Only vary perspectives for weekly+ cadences
