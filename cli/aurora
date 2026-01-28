@@ -8,6 +8,14 @@ export ORIGINAL_CWD
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Source .env from workspace root if it exists
+ENV_FILE="$SCRIPT_DIR/../.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a  # Mark all variables for export
+    source "$ENV_FILE"
+    set +a  # Unmark
+fi
+
 # Check if first argument is 'parse'
 if [ "$1" = "parse" ]; then
         # Run aurora_parse.py with remaining arguments

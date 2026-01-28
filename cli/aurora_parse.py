@@ -87,6 +87,7 @@ class DocumentUploader:
     def __init__(
         self,
         backend_url: str = "http://localhost:8000",
+        user_id: Optional[str] = None,
         user_email: Optional[str] = None,
         enrich_metadata: bool = True
     ):
@@ -95,6 +96,7 @@ class DocumentUploader:
         
         Args:
             backend_url: Backend API URL
+            user_id: User UUID for tracking uploads
             user_email: Email address for tracking uploads
             enrich_metadata: Use LLM to fill missing metadata fields
         """
@@ -103,8 +105,17 @@ class DocumentUploader:
             raise ValueError(f"Invalid email address: {user_email}")
         
         self.backend_url = backend_url.rstrip('/')
-        self.user_email = user_email or os.getenv('AURORA_USER', 'bbonner@extremenetworks.com')
+        self.user_id = user_id or os.getenv('TEST_USER_ID', 'dev-user-123')
+        self.user_email = user_email or os.getenv('TEST_USER_EMAIL', 'dev@example.com')
+        self.user_role = os.getenv('AURORA_ROLE', 'user')
         self.enrich_metadata = enrich_metadata
+        
+        # Auth headers for dev/testing (bypasses Cognito)
+        self.auth_headers = {
+            "X-User-Id": self.user_id,
+            "X-User-Email": self.user_email,
+            "X-User-Role": self.user_role
+        }
         
         # LLM client lazy-loaded on first use
         self.llm_client = None
@@ -495,9 +506,14 @@ Guidelines:
             
             # Upload via backend API
             import requests
+            headers = {
+                "Content-Type": "application/json",
+                **self.auth_headers  # Add auth headers for dev/testing
+            }
             response = requests.post(
                 f"{self.backend_url}/upload",
                 json=message,
+                headers=headers,
                 timeout=30
             )
             
@@ -655,8 +671,14 @@ Examples:
     
     parser.add_argument(
         '--user',
-        default=os.getenv('AURORA_USER', 'bbonner@extremenetworks.com'),
-        help='Email address for tracking uploads (default: AURORA_USER env var or bbonner@extremenetworks.com)'
+        default=os.getenv('TEST_USER_EMAIL', 'dev@example.com'),
+        help='Email address for tracking uploads (default: TEST_USER_EMAIL env var or dev@example.com)'
+    )
+    
+    parser.add_argument(
+        '--user-id',
+        default=os.getenv('TEST_USER_ID', 'dev-user-123'),
+        help='User UUID for tracking uploads (default: TEST_USER_ID env var or dev-user-123)'
     )
     
     parser.add_argument(
@@ -681,6 +703,7 @@ Examples:
     # Initialize uploader
     uploader = DocumentUploader(
         backend_url=args.backend_url,
+        user_id=args.user_id,
         user_email=args.user,
         enrich_metadata=not args.no_enrich
     )
@@ -720,7 +743,7 @@ Examples:
         for key, value in metadata.items():
             if value:
                 print(f"  {key.capitalize().replace('_', ' ')}: {value}")
-        print("  User Email: " + uploader.user_email)
+        print(f"  User: {uploader.user_email} ({uploader.user_id})")
         print("=" * 60)
         
         # Upload files
