@@ -2,6 +2,19 @@
 
 Maps route IDs to parameterized Cypher queries with schemas
 and post-processing logic.
+
+IMPORTANT: Date Handling
+All temporal queries MUST use robust date fallback since publish_date is often NULL.
+Use this pattern in WHERE clauses:
+    CASE 
+        WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+        WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+        WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+        ELSE datetime()
+    END as effective_date
+
+This ensures Resources with NULL publish_date still appear in temporal queries
+using their ingestion timestamp (created_at) or scrape timestamp (scraped_at).
 """
 
 import logging
@@ -58,14 +71,50 @@ class QueryTemplate:
         # Date parameters - always provide them (as None if not set) for Cypher NULL checks
         params["start_date"] = plan.start_date.isoformat() if plan.start_date else None
         params["end_date"] = plan.end_date.isoformat() if plan.end_date else None
-        if plan.relative_days:
-            params["relative_days"] = plan.relative_days
+        params["relative_days"] = plan.relative_days if plan.relative_days else None
         
         # Entity parameters - always provide them (as empty list if not set) for Cypher
         params["workgroups"] = plan.workgroups if plan.workgroups else []
         params["topics"] = plan.topics if plan.topics else []
         params["organizations"] = plan.organizations if plan.organizations else []
         params["people"] = plan.people if plan.people else []
+        params["content_types"] = []  # Content type filter (e.g., ['decision', 'action'])
+        
+        # For DOCUMENTS_BY_TOPIC, if no topics were extracted, try to extract from "what is X" query
+        if hasattr(plan, 'route_id'):
+            route_id_val = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+            if route_id_val == "documents_by_topic" and not params["topics"] and plan.raw_query:
+                query_lower = plan.raw_query.lower().strip()
+                extracted_term = None
+                
+                if query_lower.startswith("what is "):
+                    extracted_term = plan.raw_query[8:].strip().rstrip("?")
+                elif query_lower.startswith("what's "):
+                    extracted_term = plan.raw_query[7:].strip().rstrip("?")
+                elif query_lower.startswith("what are "):
+                    extracted_term = plan.raw_query[9:].strip().rstrip("?")
+                elif "tell me about " in query_lower:
+                    extracted_term = plan.raw_query.split("tell me about ", 1)[1].strip().rstrip("?")
+                elif "explain " in query_lower:
+                    extracted_term = plan.raw_query.split("explain ", 1)[1].strip().rstrip("?")
+                
+                if extracted_term:
+                    # Remove leading articles
+                    extracted_lower = extracted_term.lower()
+                    if extracted_lower.startswith("a "):
+                        extracted_term = extracted_term[2:].strip()
+                    elif extracted_lower.startswith("an "):
+                        extracted_term = extracted_term[3:].strip()
+                    elif extracted_lower.startswith("the "):
+                        extracted_term = extracted_term[4:].strip()
+                    
+                    # Strip trailing punctuation
+                    import re
+                    extracted_term = re.sub(r'[.,;:!?]+$', '', extracted_term).strip()
+                    
+                    # Use extracted term as fallback topic
+                    params["topics"] = [extracted_term]
+                    logger.info(f"Extracted topic from 'what is' query: {extracted_term}")
         
         # Content exclusion (for agent deduplication)
         # Extract from raw_query if it contains exclusion markers
@@ -157,6 +206,154 @@ class QueryTemplateRegistry:
     def _register_templates(self):
         """Register all query templates."""
         
+        # ========================================
+        # UNIFIED TEMPLATES (New Architecture)
+        # ========================================
+        
+        # RECENT_CONTENT - Unified temporal query with smart fallback
+        # Replaces: WORKGROUP_RECENT_UPDATES, RECENT_PUBLICATIONS, DOCUMENTS_BY_DATE
+        self.templates[RouteId.RECENT_CONTENT] = QueryTemplate(
+            route_id=RouteId.RECENT_CONTENT,
+            description="Get recent content with smart time window expansion",
+            param_schema={
+                "relative_days": "int (default: 14, expands to 56, 180 if empty)",
+                "workgroups": "list[str] (datasource_ids or names)",
+                "topics": "list[str] (topic names)",
+                "organizations": "list[str] (org names or ids)",
+                "content_types": "list[str] (categories: decision, action, etc)",
+                "limit": "int"
+            },
+            cypher="""
+            // Calculate expanding time windows
+            WITH coalesce($relative_days, 14) as requested_days,
+                 toInteger($limit / 2.0) as half_limit
+            WITH requested_days, half_limit,
+                 datetime() - duration({days: requested_days}) as primary_threshold,
+                 datetime() - duration({days: 56}) as fallback_threshold,
+                 datetime() - duration({days: 180}) as max_threshold
+            
+            // Get resources with robust date fallback: publish_date -> created_at -> scraped_at
+            MATCH (r:Resource)
+            WITH r, primary_threshold, fallback_threshold, max_threshold, half_limit, requested_days,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            WHERE effective_date >= max_threshold
+            
+            // Filter by datasource if specified
+            WITH r, effective_date, primary_threshold, fallback_threshold, half_limit, requested_days
+            WHERE $workgroups IS NULL OR size($workgroups) = 0
+               OR EXISTS {
+                   MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+                   WHERE ds.datasource_id IN $workgroups
+               }
+            
+            // Categorize by time window using effective date
+            WITH r, effective_date, half_limit, requested_days,
+                 CASE 
+                     WHEN effective_date >= primary_threshold THEN 'primary'
+                     WHEN effective_date >= fallback_threshold THEN 'fallback'
+                     ELSE 'max'
+                 END as time_bucket
+            
+            WITH collect(CASE WHEN time_bucket = 'primary' THEN r ELSE null END) as primary_docs,
+                 collect(CASE WHEN time_bucket = 'fallback' THEN r ELSE null END) as fallback_docs,
+                 collect(CASE WHEN time_bucket = 'max' THEN r ELSE null END) as max_docs,
+                 half_limit, requested_days
+            
+            // Use first non-empty bucket
+            WITH CASE 
+                    WHEN size([d IN primary_docs WHERE d IS NOT NULL]) > 0 
+                         THEN [d IN primary_docs WHERE d IS NOT NULL]
+                    WHEN size([d IN fallback_docs WHERE d IS NOT NULL]) > 0 
+                         THEN [d IN fallback_docs WHERE d IS NOT NULL]
+                    ELSE [d IN max_docs WHERE d IS NOT NULL]
+                 END as final_docs,
+                 CASE 
+                     WHEN size([d IN primary_docs WHERE d IS NOT NULL]) > 0 THEN requested_days
+                     WHEN size([d IN fallback_docs WHERE d IS NOT NULL]) > 0 THEN 56
+                     ELSE 180
+                 END as actual_window_days,
+                 half_limit
+            
+            UNWIND final_docs as r
+            
+            // Calculate effective date for this resource
+            WITH r, actual_window_days, half_limit,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            
+            // Get datasource for grouping
+            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+            
+            // Get events mentioned in these documents
+            OPTIONAL MATCH (r)-[:MENTIONS]->(e:Event)
+            
+            // Get topics
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+            
+            // Group by datasource
+            WITH coalesce(ds.datasource_id, 'unknown') as workgroup_id,
+                 coalesce(ds.name, 'Unknown Source') as workgroup_name,
+                 actual_window_days,
+                 half_limit,
+                 collect(DISTINCT e) as all_events,
+                 collect(DISTINCT {resource: r, effective_date: effective_date}) as all_docs_with_dates,
+                 collect(DISTINCT t.name)[..5] as top_topics
+            
+            // Skip empty groups
+            WHERE size(all_docs_with_dates) > 0 OR size(all_events) > 0
+            
+            // Calculate last update date using effective dates
+            WITH workgroup_id, workgroup_name, actual_window_days, half_limit,
+                 all_events, all_docs_with_dates, top_topics,
+                 CASE 
+                     WHEN size(all_docs_with_dates) > 0 THEN 
+                         reduce(latest = datetime('1970-01-01'), doc IN all_docs_with_dates | 
+                             CASE WHEN doc.effective_date > latest 
+                                  THEN doc.effective_date 
+                                  ELSE latest END)
+                     ELSE null
+                 END as last_update_date
+            
+            RETURN 
+                workgroup_id,
+                workgroup_name,
+                actual_window_days as time_window_used,
+                toString(last_update_date) as last_content_date,
+                top_topics,
+                [event IN all_events[..half_limit] | {
+                    type: 'event',
+                    id: event.url_hash,
+                    title: event.name,
+                    startTime: event.start_date,
+                    url: event.url
+                }] as recent_events,
+                [doc IN all_docs_with_dates[..half_limit] | {
+                    type: 'document',
+                    id: doc.resource.url_hash,
+                    title: doc.resource.title,
+                    summary: doc.resource.summary,
+                    publishDate: toString(doc.effective_date),
+                    url: doc.resource.url,
+                    category: doc.resource.category
+                }] as recent_documents
+            ORDER BY last_update_date DESC
+            LIMIT $limit
+            """
+        )
+        
+        # ========================================
+        # LEGACY TEMPLATES (To be deprecated)
+        # ========================================
+        
         # WORKGROUP_WEEKLY_RECAP - fetch weekly rollup
         self.templates[RouteId.WORKGROUP_WEEKLY_RECAP] = QueryTemplate(
             route_id=RouteId.WORKGROUP_WEEKLY_RECAP,
@@ -169,7 +366,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             // Match workgroups (by ID or name)
-            MATCH (wg:WorkGroup)
+            MATCH (wg:Workgroup)
             WHERE ($workgroups IS NULL OR size($workgroups) = 0 
                    OR wg.id IN $workgroups 
                    OR wg.name IN $workgroups)
@@ -222,7 +419,7 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            MATCH (wg:WorkGroup)
+            MATCH (wg:Workgroup)
             WHERE ($workgroups IS NULL OR size($workgroups) = 0 
                    OR wg.id IN $workgroups 
                    OR wg.name IN $workgroups)
@@ -273,44 +470,58 @@ class QueryTemplateRegistry:
             },
             cypher="""
             // Calculate date threshold for document updates (not event dates)
-            WITH datetime() - duration({days: coalesce($relative_days, 14)}) as doc_threshold
+            WITH datetime() - duration({days: coalesce($relative_days, 14)}) as doc_threshold,
+                 toInteger($limit / 2.0) as half_limit
             
-            // Match workgroups
-            MATCH (wg:WorkGroup)
-            WHERE ($workgroups IS NULL OR size($workgroups) = 0 
-                   OR wg.id IN $workgroups 
-                   OR wg.name IN $workgroups)
+            // Get recently PUBLISHED/UPDATED documents (use date fallback for NULL publish_date)
+            MATCH (r:Resource)
+            WITH r, doc_threshold, half_limit,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            WHERE effective_date >= doc_threshold
             
-            // Get recently PUBLISHED/UPDATED documents (regardless of event dates mentioned)
-            OPTIONAL MATCH (wg)<-[:MENTIONS]-(r:Resource)
-            WHERE datetime(r.publish_date) >= doc_threshold
+            // Filter by datasource (workgroup) via INGESTED_FROM relationship
+            WITH r, doc_threshold, half_limit
+            WHERE $workgroups IS NULL OR size($workgroups) = 0
+               OR EXISTS {
+                   MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+                   WHERE ds.datasource_id IN $workgroups
+               }
             
-            // Get events mentioned in these recent documents (can be future or past events)
+            // Get the datasource for grouping
+            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+            
+            // Get events mentioned in these recent documents
             OPTIONAL MATCH (r)-[:MENTIONS]->(e:Event)
             
-            // Optional: filter by topics
-            WITH wg, e, r, doc_threshold
-            WHERE ($topics IS NULL OR size($topics) = 0 
-                   OR EXISTS {
-                       MATCH (r)-[:RELATES_TO]->(t:Topic)
-                       WHERE t.name IN $topics
-                   })
+            // Get topics for scoring (don't filter by them - user preferences shouldn't limit results)
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             
-            WITH wg, 
-                 collect(DISTINCT e)[..$limit/2] as events,
-                 collect(DISTINCT r)[..$limit/2] as docs
+            // Group by datasource and collect results
+            WITH coalesce(ds.datasource_id, 'unknown') as workgroup_id,
+                 coalesce(ds.name, 'Unknown') as workgroup_name,
+                 half_limit,
+                 collect(DISTINCT e) as all_events,
+                 collect(DISTINCT r) as all_docs
+            
+            // Skip empty groups
+            WHERE size(all_docs) > 0 OR size(all_events) > 0
             
             RETURN 
-                wg.id as workgroup_id,
-                wg.name as workgroup_name,
-                [event IN events | {
+                workgroup_id,
+                workgroup_name,
+                [event IN all_events[..half_limit] | {
                     type: 'event',
-                    id: event.id,
+                    id: event.url_hash,
                     title: event.name,
-                    startTime: event.startTime,
+                    startTime: event.start_date,
                     url: event.url
                 }] as recent_events,
-                [doc IN docs | {
+                [doc IN all_docs[..half_limit] | {
                     type: 'document',
                     id: doc.url_hash,
                     title: doc.title,
@@ -334,9 +545,16 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)
+            WITH r,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
             WHERE toLower(r.category) = 'decision'
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+              AND ($start_date IS NULL OR effective_date >= datetime($start_date))
+              AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
             // Optional workgroup filter
             WITH r
@@ -421,16 +639,28 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Get resources in date range
+            // Get resources in date range - don't filter by user topic preferences
+            // User preferences should boost, not limit results (user might discover new topics)
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
-            WHERE ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+            WITH r, rt, t,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
+              AND ($end_date IS NULL OR effective_date <= datetime($end_date))
               AND rt.relevance >= 0.5
-              AND ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics)
             
             // Count mentions per topic
-            WITH t, count(DISTINCT r) as mention_count, collect(DISTINCT r)[..10] as resources
-            ORDER BY mention_count DESC
+            WITH t, 
+                 count(DISTINCT r) as mention_count, 
+                 collect(DISTINCT r)[..10] as resources,
+                 // Boost score if topic matches user preferences (for ranking, not filtering)
+                 CASE WHEN $topics IS NOT NULL AND size($topics) > 0 AND t.name IN $topics 
+                      THEN 1.5 ELSE 1.0 END as preference_boost
+            ORDER BY mention_count * preference_boost DESC
             
             RETURN 
                 t.topic_id as topic_id,
@@ -459,9 +689,16 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)-[:MENTIONS]->(p:Person)
+            WITH r, p,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
             WHERE ($people IS NULL OR size($people) = 0 OR p.name IN $people)
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+              AND ($start_date IS NULL OR effective_date >= datetime($start_date))
+              AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
             // Optional topic filter
             WITH r, p
@@ -509,7 +746,7 @@ class QueryTemplateRegistry:
             WITH e
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
-                       MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
+                       MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
                        WHERE wg.id IN $workgroups OR wg.name IN $workgroups
                    })
             
@@ -521,7 +758,7 @@ class QueryTemplateRegistry:
                        WHERE t.name IN $topics
                    })
             
-            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
+            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
             OPTIONAL MATCH (e)<-[:RELATES_TO]-(r:Resource)
             
             WITH e, wg, collect(DISTINCT r)[..5] as docs
@@ -566,7 +803,7 @@ class QueryTemplateRegistry:
             WITH e
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
-                       MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
+                       MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
                        WHERE wg.id IN $workgroups OR wg.name IN $workgroups
                    })
             
@@ -583,13 +820,25 @@ class QueryTemplateRegistry:
                        MATCH (r:Resource)-[:MENTIONS]->(e)
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
                        WHERE t.name IN $topics
-                         AND datetime(r.publish_date) >= datetime() - duration({days: 180})
+                         AND (CASE 
+                             WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                             WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                             WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                             ELSE datetime()
+                         END) >= datetime() - duration({days: 180})
                    })
             
-            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
+            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
             OPTIONAL MATCH (e)-[:RELATES_TO]->(t:Topic)
             OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(e)
-            WHERE datetime(r.publish_date) >= datetime() - duration({days: 180})
+            WITH e, wg, t, r,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            WHERE r IS NULL OR effective_date >= datetime() - duration({days: 180})
             
             WITH e, wg,
                  collect(DISTINCT t.name)[..5] as topics,
@@ -639,11 +888,11 @@ class QueryTemplateRegistry:
               AND datetime(e.startTime) <= threshold_end
               AND ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
-                       MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
+                       MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
                        WHERE wg.id IN $workgroups OR wg.name IN $workgroups
                    })
             
-            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:WorkGroup)
+            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
             
             WITH e, wg
             ORDER BY e.startTime DESC
@@ -671,8 +920,15 @@ class QueryTemplateRegistry:
             WITH datetime() - duration({days: coalesce($relative_days, 30)}) as threshold
             
             MATCH (r:Resource)
+            WITH r, threshold,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
             WHERE toLower(r.category) = 'decision'
-              AND datetime(r.publish_date) >= threshold
+              AND effective_date >= threshold
             
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             WHERE t.relevance >= 0.5
@@ -765,6 +1021,7 @@ class QueryTemplateRegistry:
         )
         
         # DOCUMENTS_BY_TOPIC - documents on specific topics with KG-based relevance scoring
+        # Supports both exact Topic node matching AND fuzzy text search fallback
         self.templates[RouteId.DOCUMENTS_BY_TOPIC] = QueryTemplate(
             route_id=RouteId.DOCUMENTS_BY_TOPIC,
             description="Get documents by topic with intelligent KG-based scoring",
@@ -775,75 +1032,144 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
-            WHERE t.name IN $topics
-              AND rt.relevance >= 0.5
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
-              // Exclude documents with invalid future dates (data quality issue - year 3109 etc)
-              AND (r.publish_date IS NULL OR datetime(r.publish_date).year <= 2030)
+            // Try exact Topic match first
+            CALL {
+                MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
+                WHERE t.name IN $topics
+                  AND rt.relevance >= 0.5
+                
+                // Date fallback
+                WITH r, t, rt.relevance as base_relevance,
+                     CASE 
+                         WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                         WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                         WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                         ELSE datetime()
+                     END as effective_date
+                
+                RETURN r, effective_date, base_relevance, t.name as topic_name, 'exact' as match_type
+                
+                UNION
+                
+                // Fallback: fuzzy text search in title/summary if no exact topic matches
+                MATCH (r:Resource)
+                WHERE (
+                    // Check if any topic keywords appear in title or summary
+                    any(topic IN $topics WHERE 
+                        toLower(r.title) CONTAINS toLower(topic) OR 
+                        toLower(coalesce(r.summary, '')) CONTAINS toLower(topic)
+                    )
+                )
+                
+                // Date fallback
+                WITH r,
+                     CASE 
+                         WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                         WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                         WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                         ELSE datetime()
+                     END as effective_date
+                
+                // Get the first matching topic for metadata
+                WITH r, effective_date,
+                     head([topic IN $topics WHERE 
+                         toLower(r.title) CONTAINS toLower(topic) OR 
+                         toLower(coalesce(r.summary, '')) CONTAINS toLower(topic)
+                     ]) as topic_name
+                
+                RETURN r, effective_date, 0.5 as base_relevance, topic_name, 'fuzzy' as match_type
+            }
+            
+            WITH r, effective_date, base_relevance, topic_name, match_type
+            
+            WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
+              AND ($end_date IS NULL OR effective_date <= datetime($end_date))
+              // Exclude documents with invalid future dates
+              AND effective_date.year <= 2030
             
             // Count total topics for this resource (specificity calculation)
-            WITH r, t, rt.relevance as base_relevance
+            WITH DISTINCT r, effective_date, base_relevance, topic_name, match_type
             MATCH (r)-[:RELATES_TO]->(all_topics:Topic)
-            WITH r, t, base_relevance, count(DISTINCT all_topics) as topic_count
+            WITH r, effective_date, base_relevance, topic_name, match_type, count(DISTINCT all_topics) as topic_count
             
-            // Calculate specificity score (fewer topics = more specific = higher score)
-            WITH r, t, base_relevance, topic_count,
+            // Calculate specificity score
+            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count,
                  CASE 
-                   WHEN topic_count = 1 THEN 1.0      // Highly specific
-                   WHEN topic_count = 2 THEN 0.9      // Very focused
-                   WHEN topic_count <= 5 THEN 0.7     // Focused
-                   ELSE 0.5                           // Broad/general
+                   WHEN topic_count = 1 THEN 1.0
+                   WHEN topic_count = 2 THEN 0.9
+                   WHEN topic_count <= 5 THEN 0.7
+                   ELSE 0.5
                  END as specificity_score
             
-            // Calculate content type boost (whitepapers > specs > meeting minutes)
-            WITH r, t, base_relevance, topic_count, specificity_score,
+            // Calculate content type boost
+            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count, specificity_score,
                  CASE r.category
-                   WHEN 'whitepaper' THEN 1.3         // Whitepapers are comprehensive
-                   WHEN 'specification' THEN 1.2      // Specs are authoritative
-                   WHEN 'technical_report' THEN 1.1   // Reports are detailed
-                   WHEN 'standard' THEN 1.2           // Standards are definitive
-                   WHEN 'draft' THEN 1.0              // Drafts are current
-                   WHEN 'presentation' THEN 0.8       // Presentations are summaries
-                   WHEN 'meeting_minutes' THEN 0.5    // Minutes are activity logs
-                   WHEN 'email' THEN 0.4              // Emails are fragments
-                   ELSE 0.8                           // Other content
+                   WHEN 'whitepaper' THEN 1.3
+                   WHEN 'specification' THEN 1.2
+                   WHEN 'technical_report' THEN 1.1
+                   WHEN 'standard' THEN 1.2
+                   WHEN 'draft' THEN 1.0
+                   WHEN 'presentation' THEN 0.8
+                   WHEN 'meeting_minutes' THEN 0.5
+                   WHEN 'email' THEN 0.4
+                   ELSE 0.8
                  END as content_type_boost
             
-            // Calculate recency score (newer content gets boost for "what is" queries)
-            WITH r, t, base_relevance, topic_count, specificity_score, content_type_boost,
+            // Calculate recency score
+            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count, specificity_score, content_type_boost,
                  CASE
-                   WHEN r.publish_date IS NOT NULL AND datetime(r.publish_date) >= datetime() - duration({days: 180}) THEN 1.2  // Last 6 months
-                   WHEN r.publish_date IS NOT NULL AND datetime(r.publish_date) >= datetime() - duration({days: 365}) THEN 1.1  // Last year
-                   WHEN r.publish_date IS NOT NULL AND datetime(r.publish_date) >= datetime() - duration({days: 730}) THEN 1.0  // Last 2 years
-                   ELSE 0.9                                                         // Older content or no date
+                   WHEN effective_date >= datetime() - duration({days: 180}) THEN 1.2
+                   WHEN effective_date >= datetime() - duration({days: 365}) THEN 1.1
+                   WHEN effective_date >= datetime() - duration({days: 730}) THEN 1.0
+                   ELSE 0.9
                  END as recency_score
             
+            // Apply match type penalty (fuzzy matches rank slightly lower)
+            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count, specificity_score, content_type_boost, recency_score,
+                 CASE match_type
+                   WHEN 'exact' THEN 1.0
+                   WHEN 'fuzzy' THEN 0.8
+                   ELSE 0.7
+                 END as match_type_penalty
+            
             // Calculate final KG relevance score
-            WITH r, t, base_relevance, topic_count, specificity_score, content_type_boost, recency_score,
-                 (base_relevance * 0.4 +              // Base semantic relevance (40%)
-                  specificity_score * 0.3 +           // Topic specificity (30%)
-                  content_type_boost * 0.2 +          // Content type quality (20%)
-                  recency_score * 0.1                 // Recency factor (10%)
+            WITH r, effective_date, topic_name, topic_count, match_type,
+                 (base_relevance * 0.4 * match_type_penalty +
+                  specificity_score * 0.3 +
+                  content_type_boost * 0.2 +
+                  recency_score * 0.1
                  ) as kg_score
             
             // Normalize kg_score to 0-1 range for consistency
-            WITH r, t, base_relevance, topic_count, kg_score,
+            WITH r, effective_date, topic_name, topic_count, match_type, kg_score,
                  kg_score / 2.0 as normalized_kg_score
             
-            ORDER BY normalized_kg_score DESC, r.publish_date DESC
+            ORDER BY normalized_kg_score DESC, effective_date DESC
+            
+            // Get additional metadata: datasource, topics, organizations
+            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(all_topics:Topic)
+            OPTIONAL MATCH (r)-[:MENTIONS]->(org:Organization)
+            
+            WITH r, effective_date, topic_name, topic_count, match_type, normalized_kg_score,
+                 ds.datasource_id as datasource_id,
+                 collect(DISTINCT all_topics.name) as all_topic_names,
+                 collect(DISTINCT org.name) as org_names
             
             RETURN 
                 r.url_hash as id,
                 r.title as title,
                 r.summary as summary,
-                r.publish_date as date,
+                toString(effective_date) as date,
                 r.url as url,
-                r.category as type,
-                t.name as topic,
+                r.category as category,
+                datasource_id,
+                all_topic_names as topics,
+                org_names as organizations,
+                topic_name as matched_topic,
                 round(normalized_kg_score * 100) / 100.0 as relevance_score,
-                topic_count as topic_breadth
+                topic_count as topic_breadth,
+                match_type
             LIMIT $limit
             """
         )
@@ -861,7 +1187,14 @@ class QueryTemplateRegistry:
             WITH datetime() - duration({days: coalesce($relative_days, 14)}) as threshold
             
             MATCH (r:Resource)
-            WHERE datetime(r.publish_date) >= threshold
+            WITH r, threshold,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            WHERE effective_date >= threshold
               AND ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
                        MATCH (r)-[:MENTIONS]->(o:Organization)
@@ -996,7 +1329,7 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            MATCH (wg:WorkGroup)
+            MATCH (wg:Workgroup)
             WHERE ($workgroups IS NULL OR size($workgroups) = 0 
                    OR wg.id IN $workgroups 
                    OR wg.name IN $workgroups)
@@ -1044,8 +1377,15 @@ class QueryTemplateRegistry:
             WHERE o.name IN $organizations OR o.org_id IN $organizations
             
             MATCH (o)<-[:MENTIONS]-(r:Resource)
-            WHERE ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+            WITH o, r,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
+              AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             WHERE t.relevance >= 0.5
@@ -1086,9 +1426,16 @@ class QueryTemplateRegistry:
             
             // Match resources by topics or organizations
             MATCH (r:Resource)
-            WHERE datetime(r.publish_date) >= doc_threshold
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+            WITH r, doc_threshold,
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                     WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                     WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                     ELSE datetime()
+                 END as effective_date
+            WHERE effective_date >= doc_threshold
+              AND ($start_date IS NULL OR effective_date >= datetime($start_date))
+              AND ($end_date IS NULL OR effective_date <= datetime($end_date))
               // Exclude previously used content
               AND NOT r.url_hash IN $exclude_ids
             
@@ -1568,15 +1915,25 @@ class QueryTemplateRegistry:
             description="Generic search with full-text matching and KG scoring",
             param_schema={
                 "query_text": "str (optional - for full-text search)",
+                "workgroups": "list[str]",
                 "limit": "int"
             },
             cypher="""
             // Full-text search in title and summary when query_text provided
             // Falls back to graph-based scoring when no query_text
+            // Optional workgroup (datasource) filtering via INGESTED_FROM relationship
             MATCH (r:Resource)
-            WHERE ($query_text IS NULL 
-                   OR toLower(r.title) CONTAINS toLower($query_text)
-                   OR (r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text)))
+            WHERE $query_text IS NULL 
+               OR toLower(r.title) CONTAINS toLower($query_text)
+               OR (r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text))
+            
+            // Filter by datasource (workgroup) if specified
+            WITH r
+            WHERE $workgroups IS NULL OR size($workgroups) = 0 
+               OR EXISTS {
+                   MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+                   WHERE ds.datasource_id IN $workgroups
+               }
             
             // Get graph richness metrics
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)

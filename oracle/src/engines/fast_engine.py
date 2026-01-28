@@ -21,6 +21,7 @@ from src.services.cache import OracleCache
 from src.services.keyword_retriever import get_repo
 from src.services.personalization import decide_personalization, get_user_preferences
 from src.services.llm_client import get_llm_client, call_llm
+from src.services.rollup_generator import RollupGenerator
 from src.prompts.answer_generator import get_answer_generator_messages
 from src.settings import settings
 
@@ -47,6 +48,7 @@ class FastEngine:
         self.local_router = LocalRouter()
         self.template_registry = QueryTemplateRegistry()
         self.fast_cache: Optional[FastCache] = None
+        self.rollup_generator = RollupGenerator()
         
         # Will initialize in query() on first call
         self._initialized = False
@@ -133,6 +135,13 @@ class FastEngine:
             options = request.options
             personalize_mode = getattr(options, 'personalize', PersonalizeMode.AUTO) if options else PersonalizeMode.AUTO
             
+            # Extract datasource_ids (workgroups) from options if provided
+            datasource_ids = getattr(options, 'datasource_ids', None) if options else None
+            if datasource_ids:
+                logger.info(f"[{query_id}] Using datasource_ids filter: {datasource_ids}")
+            else:
+                logger.debug(f"[{query_id}] No datasource_ids filter provided")
+            
             # Decide personalization (fast engine doesn't support full personalization yet)
             # For now, just determine if we should skip cache
             personalization_enabled = False
@@ -166,6 +175,7 @@ class FastEngine:
                 question=request.question,
                 normalized_query=normalized_query,
                 user_id=request.user_id,
+                datasource_ids=datasource_ids,
                 span=span
             )
             
@@ -311,10 +321,14 @@ class FastEngine:
         question: str,
         normalized_query: str,
         user_id: Optional[str],
+        datasource_ids: Optional[list],
         span
     ) -> tuple[Optional[RoutePlan], int]:
         """
         Route query to a plan (Phase 1).
+        
+        Args:
+            datasource_ids: Optional list of datasource IDs to filter by
         
         Returns:
             Tuple of (RoutePlan, routing_time_ms)
@@ -322,8 +336,8 @@ class FastEngine:
         route_start = time.time()
         
         with tracer.start_as_current_span("fast.route_query", context=trace.set_span_in_context(span)):
-            # Check plan cache first
-            cached_plan = await self.fast_cache.get_plan(normalized_query)
+            # Check plan cache first (includes datasource_ids in cache key)
+            cached_plan = await self.fast_cache.get_plan(normalized_query, datasource_ids=datasource_ids)
             
             if cached_plan:
                 routing_time_ms = int((time.time() - route_start) * 1000)
@@ -339,8 +353,12 @@ class FastEngine:
                 except Exception as e:
                     logger.warning(f"Failed to fetch user preferences: {e}")
             
+            # Pass datasource_ids to router
+            if datasource_ids:
+                logger.debug(f"Passing datasource_ids to router: {datasource_ids}")
+            
             # Try local router
-            plan, confidence = await self.local_router.route(question, user_id, user_prefs)
+            plan, confidence = await self.local_router.route(question, user_id, user_prefs, datasource_ids)
             
             # Check if we should use LLM fallback
             if (not plan or confidence < settings.fast_router_confidence_threshold) and settings.fast_router_llm_fallback_enabled:
@@ -352,8 +370,8 @@ class FastEngine:
                 # For now, use local result even if low confidence
             
             if plan:
-                # Cache the plan
-                await self.fast_cache.set_plan(normalized_query, plan)
+                # Cache the plan (includes datasource_ids in cache key)
+                await self.fast_cache.set_plan(normalized_query, plan, datasource_ids=datasource_ids)
             
             routing_time_ms = int((time.time() - route_start) * 1000)
             
@@ -365,7 +383,7 @@ class FastEngine:
         span
     ) -> tuple[RouteResult, int]:
         """
-        Retrieve data using Cypher template (Phase 2).
+        Retrieve data using Cypher template or PostgreSQL rollups (Phase 2).
         
         Returns:
             Tuple of (RouteResult, retrieval_time_ms)
@@ -381,70 +399,152 @@ class FastEngine:
                 logger.info(f"Result cache hit: {cached_result.node_count} nodes")
                 return cached_result, retrieval_time_ms
             
-            # Get template for route
-            template = self.template_registry.get_template(plan.route_id)
+            # Check if this is a rollup route - query PostgreSQL instead of Neo4j
+            if plan.route_id in [RouteId.WORKGROUP_DAILY_RECAP, RouteId.WORKGROUP_WEEKLY_RECAP]:
+                return await self._retrieve_rollup_data(plan, retrieval_start, span)
             
-            if not template:
-                raise Exception(f"No template found for route: {self._get_route_id_str(plan)}")
-            
-            # Build Cypher parameters
-            params = template.build_params(plan)
-            
-            logger.debug(
-                f"Executing Cypher template: route={self._get_route_id_str(plan)} "
-                f"params={json.dumps(params, default=str)[:200]}"
-            )
-            
-            # Execute Cypher query
-            repo = get_repo()
-            
-            query_start = time.time()
-            results = repo.client.execute_query(
-                template.cypher,
-                params
-            )
-            query_time_ms = int((time.time() - query_start) * 1000)
-            
-            # Post-process results
-            processed_results = template.execute_post_process(results)
-            
-            # Check if we got a rollup
-            rollup = None
-            if processed_results and "rollup_id" in processed_results[0]:
-                first = processed_results[0]
-                if first.get("rollup_id"):
-                    rollup = {
-                        "id": first["rollup_id"],
-                        "summary": first.get("rollup_summary"),
-                        "key_events": first.get("key_events", []),
-                        "key_decisions": first.get("key_decisions", []),
-                        "top_topics": first.get("top_topics", []),
-                        "links": first.get("links", []),
-                        "start": first.get("rollup_start"),
-                        "end": first.get("rollup_end"),
-                    }
-            
-            # Build RouteResult
-            route_result = RouteResult(
-                route_id=plan.route_id,
-                nodes=processed_results,
-                rollup=rollup,
-                execution_time_ms=query_time_ms,
-                node_count=len(processed_results),
-                cache_hit=False
-            )
-            
-            # Cache result
-            await self.fast_cache.set_result(plan, route_result)
-            
-            retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
-            
-            logger.info(
-                f"Retrieved {len(processed_results)} nodes in {query_time_ms}ms "
-                f"(has_rollup={rollup is not None})"
-            )
-            
-            return route_result, retrieval_time_ms
+            # Standard Neo4j Cypher query
+            return await self._retrieve_neo4j_data(plan, retrieval_start, span)
+    
+    async def _retrieve_rollup_data(
+        self,
+        plan: RoutePlan,
+        retrieval_start: float,
+        span
+    ) -> tuple[RouteResult, int]:
+        """Retrieve data from PostgreSQL rollups for temporal workgroup queries."""
+        query_start = time.time()
+        
+        # Determine rollup type from route
+        rollup_type = "day" if plan.route_id == RouteId.WORKGROUP_DAILY_RECAP else "week"
+        
+        # Extract date range from plan (handle both datetime and date objects)
+        if plan.start_date:
+            start_date = plan.start_date.date() if hasattr(plan.start_date, 'date') else plan.start_date
+        else:
+            start_date = None
+        
+        if plan.end_date:
+            end_date = plan.end_date.date() if hasattr(plan.end_date, 'date') else plan.end_date
+        else:
+            end_date = None
+        
+        # Query PostgreSQL
+        logger.info(f"Querying PostgreSQL for {rollup_type} rollups: workgroups={plan.workgroups}, dates={start_date} to {end_date}")
+        results = self.rollup_generator.query_rollups(
+            rollup_type=rollup_type,
+            workgroup_ids=plan.workgroups if plan.workgroups else None,
+            start_date=start_date,
+            end_date=end_date,
+            limit=10
+        )
+        
+        query_time_ms = int((time.time() - query_start) * 1000)
+        
+        # Extract rollup if we got one
+        rollup = None
+        if results:
+            first = results[0]
+            rollup = {
+                "id": first["rollup_id"],
+                "summary": first["rollup_summary"],
+                "key_events": first.get("key_events", []),
+                "key_decisions": first.get("key_decisions", []),
+                "top_topics": first.get("top_topics", []),
+                "links": first.get("links", []),
+                "start": first.get("rollup_start"),
+                "end": first.get("rollup_end"),
+            }
+        
+        # Build RouteResult
+        route_result = RouteResult(
+            route_id=plan.route_id,
+            nodes=results,
+            rollup=rollup,
+            execution_time_ms=query_time_ms,
+            node_count=len(results),
+            cache_hit=False
+        )
+        
+        # Cache the result
+        await self.fast_cache.set_result(plan, route_result)
+        
+        retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
+        logger.info(f"PostgreSQL rollup query: {len(results)} results in {query_time_ms}ms")
+        
+        return route_result, retrieval_time_ms
+    
+    async def _retrieve_neo4j_data(
+        self,
+        plan: RoutePlan,
+        retrieval_start: float,
+        span
+    ) -> tuple[RouteResult, int]:
+        """Retrieve data from Neo4j using Cypher templates."""
+        # Get template for route
+        template = self.template_registry.get_template(plan.route_id)
+        
+        if not template:
+            raise Exception(f"No template found for route: {self._get_route_id_str(plan)}")
+        
+        # Build Cypher parameters
+        params = template.build_params(plan)
+        
+        logger.debug(
+            f"Executing Cypher template: route={self._get_route_id_str(plan)} "
+            f"params={json.dumps(params, default=str)[:200]}"
+        )
+        
+        # Execute Cypher query
+        repo = get_repo()
+        
+        query_start = time.time()
+        results = repo.client.execute_query(
+            template.cypher,
+            params
+        )
+        query_time_ms = int((time.time() - query_start) * 1000)
+        
+        # Post-process results
+        processed_results = template.execute_post_process(results)
+        
+        # Check if we got a rollup (shouldn't happen for Neo4j queries now)
+        rollup = None
+        if processed_results and "rollup_id" in processed_results[0]:
+            first = processed_results[0]
+            if first.get("rollup_id"):
+                rollup = {
+                    "id": first["rollup_id"],
+                    "summary": first.get("rollup_summary"),
+                    "key_events": first.get("key_events", []),
+                    "key_decisions": first.get("key_decisions", []),
+                    "top_topics": first.get("top_topics", []),
+                    "links": first.get("links", []),
+                    "start": first.get("rollup_start"),
+                    "end": first.get("rollup_end"),
+                }
+        
+        # Build RouteResult
+        route_result = RouteResult(
+            route_id=plan.route_id,
+            nodes=processed_results,
+            rollup=rollup,
+            execution_time_ms=query_time_ms,
+            node_count=len(processed_results),
+            cache_hit=False
+        )
+        
+        # Cache result
+        await self.fast_cache.set_result(plan, route_result)
+        
+        retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
+        
+        logger.info(
+            f"Retrieved {len(processed_results)} nodes in {query_time_ms}ms "
+            f"(has_rollup={rollup is not None})"
+        )
+        
+        return route_result, retrieval_time_ms
     
     async def _deep_dive_retrieval(
         self,
@@ -748,6 +848,7 @@ class FastEngine:
     def _nodes_to_documents(self, nodes: List[Dict]) -> List[Document]:
         """
         Convert Neo4j nodes to Document objects.
+        Handles both flat node structure and grouped structure (recent_documents/recent_events).
         
         Args:
             nodes: List of node dictionaries from Cypher results
@@ -758,23 +859,95 @@ class FastEngine:
         documents = []
         
         for idx, node in enumerate(nodes):
-            # Extract common fields
-            doc_id = node.get("id") or node.get("url_hash") or node.get("event_id") or f"node_{idx}"
-            title = node.get("title") or node.get("name") or "Untitled"
-            url = node.get("url", "")
-            summary = node.get("summary") or node.get("description", "")
-            date = node.get("date") or node.get("startTime") or node.get("publish_date")
-            
-            doc = Document(
-                id=str(doc_id),
-                title=title,
-                summary=summary,
-                url=url,
-                relevance_score=1.0,  # Template results are pre-filtered
-                publish_date=date,
-                source="fast_template"
-            )
-            
-            documents.append(doc)
+            # Check if this is a grouped result (from RECENT_CONTENT template)
+            if "recent_documents" in node or "recent_events" in node:
+                # Flatten recent_documents array
+                for doc_node in node.get("recent_documents", []):
+                    doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
+                    title = doc_node.get("title") or "Untitled"
+                    url = doc_node.get("url", "")
+                    summary = doc_node.get("summary", "")
+                    date = doc_node.get("publishDate") or doc_node.get("publish_date")
+                    category = doc_node.get("category") or doc_node.get("type")
+                    
+                    # Grouped results include workgroup context
+                    datasource_id = node.get("workgroup_id")
+                    source = node.get("workgroup_name")
+                    
+                    doc = Document(
+                        id=str(doc_id),
+                        title=title,
+                        summary=summary,
+                        url=url,
+                        relevance_score=1.0,
+                        publish_date=date,
+                        source=source,
+                        datasource_id=datasource_id,
+                        category=category
+                    )
+                    documents.append(doc)
+                
+                # Flatten recent_events array
+                for event_node in node.get("recent_events", []):
+                    event_id = event_node.get("id") or event_node.get("event_id") or f"event_{len(documents)}"
+                    title = event_node.get("title") or event_node.get("name") or "Untitled Event"
+                    url = event_node.get("url", "")
+                    summary = event_node.get("summary") or event_node.get("description", "")
+                    date = event_node.get("eventDate") or event_node.get("startTime")
+                    category = event_node.get("category") or "event"
+                    
+                    datasource_id = node.get("workgroup_id")
+                    source = node.get("workgroup_name")
+                    
+                    doc = Document(
+                        id=str(event_id),
+                        title=title,
+                        summary=summary,
+                        url=url,
+                        relevance_score=1.0,
+                        publish_date=date,
+                        source=source,
+                        datasource_id=datasource_id,
+                        category=category
+                    )
+                    documents.append(doc)
+            else:
+                # Regular flat node structure
+                doc_id = node.get("id") or node.get("url_hash") or node.get("event_id") or f"node_{idx}"
+                title = node.get("title") or node.get("name") or "Untitled"
+                url = node.get("url", "")
+                summary = node.get("summary") or node.get("description", "")
+                date = node.get("date") or node.get("startTime") or node.get("publish_date")
+                
+                # Extract real metadata from Neo4j results
+                datasource_id = node.get("datasource_id")
+                category = node.get("category") or node.get("type")
+                topics = node.get("topics", []) or node.get("all_topic_names", [])
+                organizations = node.get("organizations", []) or node.get("org_names", [])
+                relevance = node.get("relevance_score", 1.0)
+                
+                # Build source name from datasource_id or fall back to category
+                source = None
+                if datasource_id:
+                    # Convert datasource_id to readable name (e.g., "wfa_causeway" -> "WFA Causeway")
+                    source = datasource_id.replace("_", " ").title()
+                elif category:
+                    source = category.replace("_", " ").title()
+                
+                doc = Document(
+                    id=str(doc_id),
+                    title=title,
+                    summary=summary,
+                    url=url,
+                    relevance_score=relevance,
+                    publish_date=date,
+                    source=source,
+                    datasource_id=datasource_id,
+                    category=category,
+                    topics=topics if isinstance(topics, list) else [],
+                    organizations=organizations if isinstance(organizations, list) else []
+                )
+                
+                documents.append(doc)
         
         return documents

@@ -810,3 +810,81 @@ class RollupGenerator:
             raise
         finally:
             session.close()
+    
+    def query_rollups(
+        self,
+        rollup_type: str,
+        workgroup_ids: Optional[List[str]] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Query rollups from PostgreSQL.
+        
+        Args:
+            rollup_type: Type of rollup ('day', 'week', 'month')
+            workgroup_ids: Filter by workgroup IDs (datasource_ids)
+            start_date: Filter rollups that overlap with this date or later
+            end_date: Filter rollups that overlap with this date or earlier
+            limit: Maximum number of rollups to return
+            
+        Returns:
+            List of rollup dictionaries
+        """
+        self._ensure_initialized()
+        session = self.SessionLocal()
+        
+        try:
+            query = session.query(Rollup).filter(Rollup.rollup_type == rollup_type)
+            
+            # Filter by workgroup IDs
+            if workgroup_ids:
+                query = query.filter(Rollup.workgroup_id.in_(workgroup_ids))
+            
+            # Filter by date range (rollups that overlap with requested range)
+            if start_date:
+                # Rollup end_date >= start_date (rollup extends into or past our start)
+                query = query.filter(Rollup.end_date >= datetime.combine(start_date, datetime.min.time()))
+            
+            if end_date:
+                # Rollup start_date <= end_date (rollup begins before or at our end)
+                query = query.filter(Rollup.start_date <= datetime.combine(end_date, datetime.max.time()))
+            
+            # Order by most recent first
+            query = query.order_by(Rollup.start_date.desc())
+            
+            # Apply limit
+            query = query.limit(limit)
+            
+            rollups = query.all()
+            
+            # Convert to dictionaries for compatibility with Neo4j result format
+            results = []
+            for r in rollups:
+                results.append({
+                    "rollup_id": str(r.id),
+                    "rollup_type": r.rollup_type,
+                    "rollup_summary": r.summary,
+                    "key_events": r.key_events or [],
+                    "key_decisions": r.key_decisions or [],
+                    "top_topics": r.top_topics or [],
+                    "links": r.links or [],
+                    "rollup_start": r.start_date.isoformat() if r.start_date else None,
+                    "rollup_end": r.end_date.isoformat() if r.end_date else None,
+                    "workgroup_id": r.workgroup_id,
+                    "workgroup_name": r.workgroup_name,
+                    "event_count": r.event_count,
+                    "document_count": r.document_count,
+                    "generated_at": r.generated_at.isoformat() if r.generated_at else None,
+                    "source_type": "rollup"
+                })
+            
+            logger.info(f"Retrieved {len(results)} {rollup_type} rollups from PostgreSQL")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Failed to query rollups: {e}")
+            return []
+        finally:
+            session.close()

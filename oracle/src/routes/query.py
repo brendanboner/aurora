@@ -209,6 +209,45 @@ async def query(
         try:
             logger.info(f"[{query_id}] Processing query for user={request.user_id}: {request.question[:100]}...")
             
+            # Extract @mentions from query text if datasource_ids not provided
+            # Example: "@broadcast what happened?" -> datasource_ids=["wfa_causeway_broadcasttg"]
+            if not request.options or not request.options.datasource_ids:
+                import re
+                mention_pattern = r'@(\w+)'
+                mentions = re.findall(mention_pattern, request.question)
+                
+                if mentions:
+                    # Map mention names to datasource_ids
+                    from src.services.neo4j_client import Neo4jClient
+                    neo4j_client = Neo4jClient()
+                    
+                    datasource_ids = []
+                    for mention in mentions:
+                        # Query Neo4j for datasource with matching name or ID
+                        result = await neo4j_client.run_async("""
+                            MATCH (ds:DataSource)
+                            WHERE toLower(ds.name) CONTAINS toLower($mention)
+                               OR toLower(ds.datasource_id) CONTAINS toLower($mention)
+                            RETURN ds.datasource_id
+                            LIMIT 1
+                        """, mention=mention)
+                        
+                        if result:
+                            datasource_ids.append(result[0]["ds.datasource_id"])
+                    
+                    if datasource_ids:
+                        logger.info(f"[{query_id}] Extracted datasource_ids from @mentions: {datasource_ids}")
+                        # Create or update options with datasource_ids
+                        if not request.options:
+                            from src.models.request import QueryOptions
+                            request.options = QueryOptions()
+                        request.options.datasource_ids = datasource_ids
+                        
+                        # Remove @mentions from question text
+                        clean_question = re.sub(mention_pattern, '', request.question).strip()
+                        request.question = clean_question
+                        logger.info(f"[{query_id}] Cleaned question: {clean_question[:100]}...")
+            
             # Determine which pipeline to use (A/B test)
             use_fast_pipeline = should_use_fast_pipeline(str(request.user_id) if request.user_id else None)
             pipeline_name = "fast" if use_fast_pipeline else "baseline"

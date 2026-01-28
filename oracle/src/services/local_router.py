@@ -125,25 +125,28 @@ class LocalRouter:
         
         # === WORKGROUP-SPECIFIC ACTIVITY QUERIES (highest priority for workgroup synopsis) ===
         # These patterns match queries asking about activity/discussions in specific workgroups
-        (r"what happened in.*?(workgroup|wg|group)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what was discussed in.*?(workgroup|wg|group)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"(activity|updates|discussions?) in (the )?(halow|security|802\.1x|802\.11|wifi|wi-fi|network).*?(workgroup|wg)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"(halow|security|802\.1x|802\.11|wifi|wi-fi|network)\s+(workgroup|wg)\s+(activity|updates|discussions?|progress)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what('s| is) (happening|going on|being discussed) in.*?(workgroup|wg)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what happened in.*?(workgroup|wg|group)", RouteId.RECENT_CONTENT),
+        (r"what was discussed in.*?(workgroup|wg|group)", RouteId.RECENT_CONTENT),
+        (r"(activity|updates|discussions?) in (the )?(halow|security|802\.1x|802\.11|wifi|wi-fi|network).*?(workgroup|wg)", RouteId.RECENT_CONTENT),
+        (r"(halow|security|802\.1x|802\.11|wifi|wi-fi|network)\s+(workgroup|wg)\s+(activity|updates|discussions?|progress)", RouteId.RECENT_CONTENT),
+        (r"what('s| is) (happening|going on|being discussed) in.*?(workgroup|wg)", RouteId.RECENT_CONTENT),
         
         # === TIME-BASED "WHAT HAPPENED" & "WHAT WAS DISCUSSED" QUERIES ===
         (r"what happened.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
         (r"what happened.*?(this|last|past) week", RouteId.WORKGROUP_WEEKLY_RECAP),
         (r"what happened.*?(this|last|past) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
-        (r"what happened.*?in the last (week|month|\d+\s+days?)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what happened.*?in the last (week|month|\d+\s+days?)", RouteId.RECENT_CONTENT),
         
         # "What was discussed" patterns - similar to "what happened"
         (r"what was discussed.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
         (r"what was discussed.*?(this|last|past) week", RouteId.WORKGROUP_WEEKLY_RECAP),
         (r"what was discussed.*?(this|last|past) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
-        (r"what was discussed.*?in the last (week|month|\d+\s+days?)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what('s| is) being discussed", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what (have we|did we|were we) discuss", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what was discussed.*?in the last (week|month|\d+\s+days?)", RouteId.RECENT_CONTENT),
+        (r"what was discussed.*?(at|in|during) the (last|latest|recent|previous) (meeting|call|session)", RouteId.RECENT_CONTENT),
+        (r"what happened.*?(at|in|during) the (last|latest|recent|previous) (meeting|call|session)", RouteId.RECENT_CONTENT),
+        (r"(last|latest|recent|previous) (meeting|call|session)", RouteId.RECENT_CONTENT),
+        (r"what('s| is) being discussed", RouteId.RECENT_CONTENT),
+        (r"what (have we|did we|were we) discuss", RouteId.RECENT_CONTENT),
         
         # Weekly recap patterns
         (r"(weekly|week)\s+(recap|summary|update|report)", RouteId.WORKGROUP_WEEKLY_RECAP),
@@ -158,10 +161,11 @@ class LocalRouter:
         (r"(this|last|past) month('s)?\s+(activities|summary|events)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         
         # Recent updates (general)
-        (r"recent (updates|changes|news|developments|activity)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what('s| is) new\s+(in|with|at|for)?", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what('s| is) (the )?latest (in|on|with|for|at)\s+", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"latest (updates|news|developments|activity)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"recent (updates|changes|news|developments|activity)", RouteId.RECENT_CONTENT),
+        (r"what('s| is) new\s+(in|with|at|for)?", RouteId.RECENT_CONTENT),
+        (r"what('s| is) (the )?latest (in|on|with|for|at)\s+", RouteId.RECENT_CONTENT),
+        (r"latest (updates|news|developments|activity)", RouteId.RECENT_CONTENT),
+        (r"(what is|what's) (the )?latest (update|news|development)", RouteId.RECENT_CONTENT),  # "what is the latest update"
         
         # === EVENTS & MEETINGS ===
         # Upcoming events
@@ -227,7 +231,7 @@ class LocalRouter:
         self.confidence_threshold = settings.fast_router_confidence_threshold
         logger.info("Initialized LocalRouter")
     
-    async def route(self, question: str, user_id: Optional[str] = None, user_prefs: Optional[UserPreferences] = None) -> Tuple[Optional[RoutePlan], float]:
+    async def route(self, question: str, user_id: Optional[str] = None, user_prefs: Optional[UserPreferences] = None, datasource_ids: Optional[List[str]] = None) -> Tuple[Optional[RoutePlan], float]:
         """
         Route a query to a specific route plan.
         
@@ -235,6 +239,7 @@ class LocalRouter:
             question: User query text
             user_id: Optional user ID for personalization
             user_prefs: Optional user preferences for intelligent entity extraction
+            datasource_ids: Optional list of datasource IDs (workgroups) to filter by
             
         Returns:
             Tuple of (RoutePlan, confidence) or (None, 0.0) if no match
@@ -252,6 +257,31 @@ class LocalRouter:
         
         # Parse date/time references
         start_date, end_date, relative_days = self._parse_dates(question_lower)
+        
+        # Override routing when datasource_ids provided with temporal keywords
+        # For specific meeting/discussion queries, prefer RECENT_CONTENT over rollups
+        #  (rollups don't have full document URLs/summaries)
+        is_meeting_query = bool(re.search(r'(meeting|discussion|talked about|discussed)', question_lower))
+        
+        if datasource_ids and relative_days and not is_meeting_query:
+            # Has explicit workgroup + temporal context → Use rollup templates
+            if relative_days <= 1:
+                route_id = RouteId.WORKGROUP_DAILY_RECAP
+                route_confidence = 0.90
+                logger.debug(f"Override: Using WORKGROUP_DAILY_RECAP for datasource_ids={datasource_ids} with {relative_days} days")
+            elif relative_days <= 7:
+                route_id = RouteId.WORKGROUP_WEEKLY_RECAP
+                route_confidence = 0.90
+                logger.debug(f"Override: Using WORKGROUP_WEEKLY_RECAP for datasource_ids={datasource_ids} with {relative_days} days")
+            else:
+                route_id = RouteId.RECENT_CONTENT
+                route_confidence = 0.85
+                logger.debug(f"Override: Using RECENT_CONTENT for datasource_ids={datasource_ids} with {relative_days} days")
+        elif is_meeting_query and datasource_ids:
+            # Meeting queries need full document data, not rollups
+            logger.debug(f"Meeting query with datasource_ids, using RECENT_CONTENT instead of rollups")
+            route_id = RouteId.RECENT_CONTENT
+            route_confidence = 0.90
         
         # For definition/document queries, skip user preference expansion to focus on explicit topic
         skip_user_prefs_routes = [
@@ -283,13 +313,21 @@ class LocalRouter:
         deep_dive = self._should_deep_dive(question_lower, detail_level)
         
         # Build route plan
+        # Use datasource_ids filter from request if provided, otherwise use extracted workgroups
+        workgroups_filter = datasource_ids if datasource_ids else entities.get("workgroups", [])
+        if datasource_ids:
+            logger.debug(f"Using workgroups filter from datasource_ids: {datasource_ids}")
+            # Boost confidence when explicit datasource filter provided (more focused query)
+            route_confidence = min(0.95, route_confidence + 0.15)
+            logger.debug(f"Boosted confidence to {route_confidence:.2f} due to datasource filter")
+        
         plan = RoutePlan(
             route_id=route_id,
             confidence=route_confidence,
             start_date=start_date,
             end_date=end_date,
             relative_days=relative_days,
-            workgroups=entities.get("workgroups", []),
+            workgroups=workgroups_filter,
             topics=entities.get("topics", []),
             organizations=entities.get("organizations", []),
             people=entities.get("people", []),
@@ -324,7 +362,7 @@ class LocalRouter:
         
         # Fallback to generic search instead of None
         logger.debug("No specific pattern matched, using GENERIC_SEARCH fallback")
-        return RouteId.GENERIC_SEARCH, 0.5
+        return RouteId.GENERIC_SEARCH, 0.6  # Increased to meet threshold
     
     def _parse_dates(self, question: str) -> Tuple[Optional[date], Optional[date], Optional[int]]:
         """
@@ -565,7 +603,7 @@ class LocalRouter:
                 for topic in user_prefs.topics[:3]:  # Use top 3 preferences
                     entities["topics"].append(topic)
             
-            # Strategy 4: Synopsis/exploration queries - ADD preferences for boosting
+            # Strategy 4: Synopsis/exploration queries - DON'T add preferences (they should boost, not filter)
             else:
                 # If query mentions topics and user has preferences, prioritize user's domain
                 if entities["topics"] and user_prefs.topics:
@@ -577,29 +615,13 @@ class LocalRouter:
                         if "802.1x" in question.lower() or "security" in question.lower():
                             entities["topics"].append("Wi-Fi Security")
                 
-                # Add user topic preferences to steer the response
-                if user_prefs.topics:
-                    # Add topics that aren't already explicitly mentioned
-                    existing_topics_lower = [t.lower() for t in entities["topics"]]
-                    for topic in user_prefs.topics:
-                        if topic.lower() not in existing_topics_lower:
-                            entities["topics"].append(topic)
-                    logger.debug(f"Added {len(user_prefs.topics)} user topic preferences for steering")
+                # DON'T add user preferences as filters - they should only boost ranking
+                # User preferences are for personalization/ranking, not hard filtering
+                logger.debug("Skipping user preference expansion (preferences used for ranking only)")
             
-            # Add user organization preferences to steer the response
-            # Organizations help filter and prioritize results from specific workgroups
-            if user_prefs.organisations:
-                # Add organizations that aren't already explicitly mentioned
-                existing_orgs_lower = [o.lower() for o in entities["organizations"]]
-                for org in user_prefs.organisations:
-                    if org.lower() not in existing_orgs_lower:
-                        entities["organizations"].append(org)
-                logger.debug(f"Added {len(user_prefs.organisations)} user organization preferences for steering")
-            
-            # Add user people preferences for steering (when relevant)
-            if user_prefs.people:
-                entities["people"].extend(user_prefs.people)
-                logger.debug(f"Added {len(user_prefs.people)} user people preferences for steering")
+            # DON'T add user organization/people preferences as filters
+            # They should be used for scoring/ranking in templates, not as hard filters
+            # This ensures users can discover new content outside their preferences
         
         return entities
     

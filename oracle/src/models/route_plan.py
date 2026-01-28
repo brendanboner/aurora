@@ -9,10 +9,15 @@ from pydantic import BaseModel, Field
 class RouteId(str, Enum):
     """Predefined route IDs mapping to Cypher templates."""
     
+    # === UNIFIED TEMPLATES (New Architecture) ===
+    # Temporal queries with smart fallback
+    RECENT_CONTENT = "recent_content"  # Replaces: workgroup_recent_updates, recent_publications, documents_by_date
+    
+    # === LEGACY TEMPLATES (To be deprecated) ===
     # Workgroup/Organization-focused routes (Recaps & Updates)
     WORKGROUP_WEEKLY_RECAP = "workgroup_weekly_recap"
     WORKGROUP_DAILY_RECAP = "workgroup_daily_recap"
-    WORKGROUP_RECENT_UPDATES = "workgroup_recent_updates"
+    WORKGROUP_RECENT_UPDATES = "workgroup_recent_updates"  # DEPRECATED: Use RECENT_CONTENT
     WORKGROUP_MONTHLY_SUMMARY = "workgroup_monthly_summary"
     ORGANIZATION_ACTIVITY = "organization_activity"
     ORGANIZATION_COMPARISON = "organization_comparison"
