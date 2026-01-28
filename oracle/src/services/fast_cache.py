@@ -97,13 +97,14 @@ class FastCache:
     
     # ===== Plan Cache =====
     
-    async def get_plan(self, query: str, user_prefs: Optional[dict] = None) -> Optional[RoutePlan]:
+    async def get_plan(self, query: str, user_prefs: Optional[dict] = None, datasource_ids: Optional[list] = None) -> Optional[RoutePlan]:
         """
         Get cached route plan for a query.
         
         Args:
             query: Normalized user query
             user_prefs: Optional user preferences (for personalization)
+            datasource_ids: Optional datasource/workgroup filter
             
         Returns:
             Cached RoutePlan or None
@@ -113,7 +114,7 @@ class FastCache:
         
         try:
             # Generate cache key
-            cache_key = self._plan_cache_key(query, user_prefs)
+            cache_key = self._plan_cache_key(query, user_prefs, datasource_ids)
             
             # Get from Redis
             cached = await self.redis_client.get(cache_key)
@@ -134,6 +135,7 @@ class FastCache:
         query: str,
         plan: RoutePlan,
         user_prefs: Optional[dict] = None,
+        datasource_ids: Optional[list] = None,
         ttl: Optional[int] = None
     ):
         """
@@ -143,13 +145,14 @@ class FastCache:
             query: Normalized user query
             plan: Route plan to cache
             user_prefs: Optional user preferences
+            datasource_ids: Optional datasource/workgroup filter
             ttl: Time to live in seconds (default from settings)
         """
         if not self.enabled:
             return
         
         try:
-            cache_key = self._plan_cache_key(query, user_prefs)
+            cache_key = self._plan_cache_key(query, user_prefs, datasource_ids)
             ttl = ttl or settings.fast_cache_plan_ttl
             
             # Serialize plan (mode='json' handles date/datetime serialization)
@@ -163,7 +166,7 @@ class FastCache:
         except Exception as e:
             logger.error(f"Error caching plan: {e}", exc_info=True)
     
-    def _plan_cache_key(self, query: str, user_prefs: Optional[dict] = None) -> str:
+    def _plan_cache_key(self, query: str, user_prefs: Optional[dict] = None, datasource_ids: Optional[list] = None) -> str:
         """Generate cache key for plan cache."""
         normalized = normalize_query(query)
         
@@ -173,9 +176,22 @@ class FastCache:
             prefs_str = json.dumps(user_prefs, sort_keys=True)
             prefs_hash = hashlib.sha256(prefs_str.encode()).hexdigest()[:8]
         
+        # Include datasource_ids hash if present (for workgroup filtering)
+        ds_hash = ""
+        if datasource_ids:
+            ds_str = json.dumps(sorted(datasource_ids), sort_keys=True)
+            ds_hash = hashlib.sha256(ds_str.encode()).hexdigest()[:8]
+        
         query_hash = hashlib.sha256(normalized.encode()).hexdigest()[:16]
         
-        return f"{FastCachePrefix.PLAN}{query_hash}:{prefs_hash}" if prefs_hash else f"{FastCachePrefix.PLAN}{query_hash}"
+        # Build cache key with all components
+        parts = [query_hash]
+        if prefs_hash:
+            parts.append(prefs_hash)
+        if ds_hash:
+            parts.append(ds_hash)
+        
+        return f"{FastCachePrefix.PLAN}" + ":".join(parts)
     
     # ===== Result Cache =====
     
