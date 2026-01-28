@@ -1574,11 +1574,9 @@ class QueryTemplateRegistry:
             // Full-text search in title and summary when query_text provided
             // Falls back to graph-based scoring when no query_text
             MATCH (r:Resource)
-            WHERE r.publish_date IS NOT NULL
-              AND r.summary IS NOT NULL
-              AND ($query_text IS NULL 
+            WHERE ($query_text IS NULL 
                    OR toLower(r.title) CONTAINS toLower($query_text)
-                   OR toLower(r.summary) CONTAINS toLower($query_text))
+                   OR (r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text)))
             
             // Get graph richness metrics
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -1595,20 +1593,25 @@ class QueryTemplateRegistry:
                  CASE 
                      WHEN $query_text IS NULL THEN 0
                      WHEN toLower(r.title) CONTAINS toLower($query_text) THEN 10
-                     WHEN toLower(r.summary) CONTAINS toLower($query_text) THEN 5
+                     WHEN r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text) THEN 5
                      ELSE 0
                  END as text_match_score
             
-            // Hybrid scoring: text match + graph connectivity + recency
+            // Hybrid scoring: text match + graph connectivity + recency (with null-safe date handling)
             WITH r, topic_count, org_count, person_count, topics, orgs, text_match_score,
                  (topic_count * 2 + org_count + person_count) as graph_score,
-                 duration.between(datetime(r.publish_date), datetime()).days as days_old
+                 CASE 
+                     WHEN r.publish_date IS NOT NULL 
+                     THEN duration.between(datetime(r.publish_date), datetime()).days 
+                     ELSE 365 
+                 END as days_old
             
             // Score = text relevance + graph richness - age penalty
             WITH r, topics, orgs, text_match_score, graph_score,
                  text_match_score + graph_score - (days_old / 30.0) as hybrid_score
             
-            ORDER BY hybrid_score DESC, r.publish_date DESC
+            ORDER BY hybrid_score DESC, 
+                     CASE WHEN r.publish_date IS NOT NULL THEN r.publish_date ELSE '1970-01-01' END DESC
             
             RETURN 
                 r.url_hash as id,
