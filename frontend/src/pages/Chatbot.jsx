@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback } from '../services/api';
+import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, SparkleIcon } from '../components/icons';
 import Icon from '../components/Icon';
@@ -31,6 +31,7 @@ const Chatbot = ({ backendStatus }) => {
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionSearchText, setMentionSearchText] = useState('');
   const [selectedDatasources, setSelectedDatasources] = useState([]); // Selected @mentions
+  const [fastPipelineEnabled, setFastPipelineEnabled] = useState(false); // Track if fast pipeline is enabled
   const messagesEndRef = useRef(null);
   const messageRefs = useRef({}); // Refs for each message element
   const skipNextScroll = useRef(false); // Flag to skip auto-scroll on toggle
@@ -52,7 +53,7 @@ const Chatbot = ({ backendStatus }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Load datasources on mount for @mention autocomplete
+  // Load datasources and Oracle settings on mount
   useEffect(() => {
     const loadDatasources = async () => {
       try {
@@ -62,7 +63,20 @@ const Chatbot = ({ backendStatus }) => {
         console.warn('Failed to load datasources:', err);
       }
     };
+    
+    const loadOracleSettings = async () => {
+      try {
+        const settings = await getOracleSettings();
+        setFastPipelineEnabled(settings.fast_pipeline_enabled || false);
+      } catch (err) {
+        console.warn('Failed to load Oracle settings:', err);
+        // Default to false if we can't fetch settings
+        setFastPipelineEnabled(false);
+      }
+    };
+    
     loadDatasources();
+    loadOracleSettings();
   }, []);
 
   useEffect(() => {
@@ -290,7 +304,7 @@ What would you like to know?`;
       });
 
       // Map Oracle response format to our message format
-      // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score, personalization_applied }
+      // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score, personalization_applied, pipeline }
       const assistantMessage = {
         role: 'assistant',
         content: response.answer || (queryMode === 'retrieval' ? 'Here are the relevant documents:' : 'No answer was generated.'),
@@ -298,6 +312,7 @@ What would you like to know?`;
         queryId: response.query_id, // Store for feedback
         responseMode: response.mode, // 'retrieval' or 'answer'
         personalizationApplied: response.personalization_applied || false,
+        pipeline: response.pipeline || null, // 'fast' or 'baseline' - track which pipeline was used
         citations: response.citations || [],
         documents: response.documents?.map(doc => ({
           title: doc.title,
@@ -517,6 +532,12 @@ What would you like to know?`;
     setInputValue('');
     setError(null);
     setShowMentionDropdown(false);
+
+    // Skip query analysis if fast pipeline is enabled
+    if (fastPipelineEnabled) {
+      executeQuery(queryText, datasourceIds);
+      return;
+    }
 
     try {
       // First, analyze the query for quality

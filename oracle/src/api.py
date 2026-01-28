@@ -12,6 +12,7 @@ from src.routes.history import router as history_router
 from src.routes.documents import router as documents_router
 from src.routes.metrics import router as metrics_router
 from src.routes.admin import router as admin_router
+from src.routes.agent import router as agent_router
 from src.services.query_history import get_query_history_service
 from src.services.rollup_scheduler import RollupScheduler
 from src.settings import settings
@@ -61,6 +62,7 @@ app.include_router(history_router)
 app.include_router(documents_router)
 app.include_router(metrics_router)
 app.include_router(admin_router)
+app.include_router(agent_router)
 
 
 @app.on_event("startup")

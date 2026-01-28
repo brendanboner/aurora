@@ -39,82 +39,179 @@ class LocalRouter:
     }
     
     # Route patterns (query text -> route_id)
+    # CRITICAL: ORDER MATTERS - Most specific patterns first, general patterns last
     ROUTE_PATTERNS = [
+        # === PEOPLE QUERIES (highest priority - very specific) ===
+        # "who represents X at Y" / "who is X's representative"
+        (r"who (represents?|is representing)\s+[\w\s\-]+\s+(at|in|for|on)\s+", RouteId.ORGANIZATION_REPRESENTATIVES),
+        (r"(who is|who's)\s+[\w\s\-]+('s)?\s+(representative|rep|liaison|contact|member)", RouteId.ORGANIZATION_REPRESENTATIVES),
+        (r"(who attends?|who('s| is) (at|in|attending))\s+[\w\s\-]+\s+(meetings?|events?)", RouteId.MEETING_ATTENDEES),
+        (r"(people|attendees|participants|members) (at|in|from|on)\s+[\w\s\-]+", RouteId.MEETING_ATTENDEES),
+        
+        # "who is X" (person identification - capital letter indicates name)
+        (r"who is\s+[A-Z][\w\s\-]+\??$", RouteId.PERSON_PROFILE),
+        (r"who('s| is)\s+(dr\.?|prof\.?|mr\.?|ms\.?|mrs\.?)\s+[\w\s\-]+", RouteId.PERSON_PROFILE),
+        
+        # "who said/mentioned" (person quotes/contributions)
+        (r"who (said|mentioned|talked about|discussed|presented|announced)\s+", RouteId.WHO_SAID_WHAT),
+        (r"did (anyone|someone|anybody) (say|mention|discuss|present|announce)\s+", RouteId.WHO_SAID_WHAT),
+        
+        # Person activity
+        (r"(activity|contributions?|work|involvement|papers|presentations) (by|from|of)\s+[\w\s\-]+", RouteId.PERSON_ACTIVITY),
+        (r"what (has|did)\s+[\w\s\-]+\s+(do|say|contribute|present|work on|publish)", RouteId.PERSON_ACTIVITY),
+        (r"[\w\s\-]+('s)?\s+(contributions?|activity|work|papers|presentations|involvement)", RouteId.PERSON_ACTIVITY),
+        
+        # === COMPARISON QUERIES (high priority - very common) ===
+        (r"compare\s+[\w\s\-]+\s+(and|vs\.?|versus|with|to)\s+", RouteId.TOPIC_COMPARISON),
+        (r"[\w\s\-]+\s+(vs\.?|versus)\s+[\w\s\-]+", RouteId.TOPIC_COMPARISON),
+        (r"(differences?|difference|diff) between\s+[\w\s\-]+\s+and\s+", RouteId.TOPIC_COMPARISON),
+        (r"[\w\s\-]+\s+or\s+[\w\s\-]+\s+(which|better|best)", RouteId.TOPIC_COMPARISON),
+        (r"(compare|comparison)\s+(of|between)\s+", RouteId.TOPIC_COMPARISON),
+        
+        # === STATUS & PROGRESS QUERIES (high priority) ===
+        (r"(status|state|progress) of\s+[\w\s\-]+", RouteId.STATUS_CHECK),
+        (r"(where is|what('s| is) the status)\s+[\w\s\-]+", RouteId.STATUS_CHECK),
+        (r"is\s+[\w\s\-]+\s+(ready|done|complete|finalized|approved)", RouteId.STATUS_CHECK),
+        (r"(when will|when is)\s+[\w\s\-]+\s+(be )?(ready|done|released|finalized)", RouteId.STATUS_CHECK),
+        (r"[\w\s\-]+\s+(certification|approval|ratification)\s+status", RouteId.STATUS_CHECK),
+        (r"progress (on|of|with)\s+[\w\s\-]+", RouteId.PROGRESS_TRACKING),
+        
+        # === ADOPTION & "WHO SUPPORTS" QUERIES ===
+        (r"who (supports?|uses?|implements?|adopted|deploys?)\s+", RouteId.ADOPTION_STATUS),
+        (r"(companies|organizations|vendors) (using|supporting|with)\s+", RouteId.ADOPTION_STATUS),
+        (r"[\w\s\-]+\s+(adoption|deployment|support|implementation)\s+(status|rate)?", RouteId.ADOPTION_STATUS),
+        (r"(adoption|deployment|support) (of|for)\s+[\w\s\-]+", RouteId.ADOPTION_STATUS),
+        (r"market share\s+(of|for)\s+", RouteId.ADOPTION_STATUS),
+        
+        # === VENDOR/COMPANY-SPECIFIC PRODUCT QUERIES ===
+        (r"[\w\s\-]+\s+(products?|chipsets?|solutions?|platforms?)\s+(for|with|supporting)\s+", RouteId.VENDOR_PRODUCTS),
+        (r"[\w\s\-]+('s)?\s+(implementation|support|version)\s+of\s+", RouteId.VENDOR_PRODUCTS),
+        
+        # === TECHNICAL EXPLANATION QUERIES ===
+        (r"how (does|do|did)\s+[\w\s\-]+\s+work", RouteId.TECHNICAL_EXPLANATION),
+        (r"how to (implement|use|configure|setup|deploy)\s+", RouteId.IMPLEMENTATION_GUIDE),
+        (r"[\w\s\-]+\s+(architecture|design|structure|mechanism)", RouteId.TECHNICAL_EXPLANATION),
+        (r"[\w\s\-]+\s+(specification|requirements|specs?)\s*$", RouteId.TECHNICAL_EXPLANATION),
+        (r"(explain|describe)\s+how\s+[\w\s\-]+\s+works?", RouteId.TECHNICAL_EXPLANATION),
+        
+        # === LEARNING & TUTORIAL QUERIES ===
+        (r"(learn|learning|study)\s+[\w\s\-]+", RouteId.LEARNING_RESOURCES),
+        (r"[\w\s\-]+\s+(tutorial|guide|introduction|intro)", RouteId.LEARNING_RESOURCES),
+        (r"(getting started|get started|begin|start)\s+with\s+", RouteId.LEARNING_RESOURCES),
+        (r"[\w\s\-]+\s+for\s+(beginners?|dummies|newbies)", RouteId.LEARNING_RESOURCES),
+        
+        # === TIMELINE & HISTORY QUERIES ===
+        (r"(history|timeline|evolution) (of|for)\s+[\w\s\-]+", RouteId.TOPIC_TIMELINE),
+        (r"when (did|was)\s+[\w\s\-]+\s+(start|begin|launch|release)", RouteId.TOPIC_TIMELINE),
+        (r"[\w\s\-]+\s+over time", RouteId.TOPIC_TIMELINE),
+        (r"(versions?|releases?) of\s+[\w\s\-]+\s+over time", RouteId.STANDARD_VERSIONS),
+        
+        # === ISSUE & PROBLEM QUERIES ===
+        (r"(problems?|issues?|bugs?) (with|in)\s+[\w\s\-]+", RouteId.ISSUE_TRACKING),
+        (r"[\w\s\-]+\s+(limitations?|challenges?|concerns?|drawbacks?)", RouteId.ISSUE_TRACKING),
+        (r"(security|vulnerability|exploit)\s+(issues?|problems?)\s+(in|with)\s+", RouteId.ISSUE_TRACKING),
+        
+        # === REGULATORY & COMPLIANCE QUERIES ===
+        (r"[\w\s\-]+\s+(regulations?|compliance|rules?|requirements?)", RouteId.REGULATORY_INFO),
+        (r"(fcc|etsi|regulatory)\s+(rules?|requirements?)\s+for\s+", RouteId.REGULATORY_INFO),
+        (r"(certification|compliance)\s+requirements?\s+for\s+", RouteId.REGULATORY_INFO),
+        (r"legal\s+requirements?\s+(for|of)\s+", RouteId.REGULATORY_INFO),
+        
+        # === ORGANIZATION QUERIES (before general "what is") ===
+        # "what is ORG doing" - organization activity
+        (r"what is\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|qualcomm|intel|broadcom|extreme|cisco)\s+doing", RouteId.ORGANIZATION_ACTIVITY),
+        (r"what('s| is)\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|alliance)\s+(working on|focusing on)", RouteId.ORGANIZATION_ACTIVITY),
+        (r"(activity|updates?|news|progress) (from|by|at)\s+", RouteId.ORGANIZATION_ACTIVITY),
+        
+        # === TIME-BASED "WHAT HAPPENED" & "WHAT WAS DISCUSSED" QUERIES ===
+        (r"what happened.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
+        (r"what happened.*?(this|last|past) week", RouteId.WORKGROUP_WEEKLY_RECAP),
+        (r"what happened.*?(this|last|past) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
+        (r"what happened.*?in the last (week|month|\d+\s+days?)", RouteId.WORKGROUP_RECENT_UPDATES),
+        
+        # "What was discussed" patterns - similar to "what happened"
+        (r"what was discussed.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
+        (r"what was discussed.*?(this|last|past) week", RouteId.WORKGROUP_WEEKLY_RECAP),
+        (r"what was discussed.*?(this|last|past) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
+        (r"what was discussed.*?in the last (week|month|\d+\s+days?)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what('s| is) being discussed", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what (have we|did we|were we) discuss", RouteId.WORKGROUP_RECENT_UPDATES),
+        
         # Weekly recap patterns
-        (r"(weekly|week)\s+(recap|summary|update)", RouteId.WORKGROUP_WEEKLY_RECAP),
-        (r"what happened.*?(this|last) week", RouteId.WORKGROUP_WEEKLY_RECAP),
-        (r"(this|last) week('s)?\s+(activities|events|updates)", RouteId.WORKGROUP_WEEKLY_RECAP),
+        (r"(weekly|week)\s+(recap|summary|update|report)", RouteId.WORKGROUP_WEEKLY_RECAP),
+        (r"(this|last|past) week('s)?\s+(activities|events|updates|summary)", RouteId.WORKGROUP_WEEKLY_RECAP),
         
         # Daily recap patterns
-        (r"(daily|today('s)?)\s+(recap|summary|update)", RouteId.WORKGROUP_DAILY_RECAP),
-        (r"what happened.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
+        (r"(daily|today('s)?)\s+(recap|summary|update|report)", RouteId.WORKGROUP_DAILY_RECAP),
+        (r"(today('s)?|yesterday('s)?)\s+(activities|events|updates)", RouteId.WORKGROUP_DAILY_RECAP),
         
         # Monthly patterns
-        (r"(monthly|month)\s+(recap|summary|update)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
-        (r"what happened.*?(this|last) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
-        (r"(this|last) month('s)?\s+(activities|summary)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
+        (r"(monthly|month)\s+(recap|summary|update|report)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
+        (r"(this|last|past) month('s)?\s+(activities|summary|events)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         
-        # Recent updates
-        (r"recent (updates|changes|news|developments)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what('s| is) new", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"what('s| is) (the )?latest (in|on|with|for)", RouteId.WORKGROUP_RECENT_UPDATES),
-        (r"latest (updates|news|in|on)", RouteId.WORKGROUP_RECENT_UPDATES),
+        # Recent updates (general)
+        (r"recent (updates|changes|news|developments|activity)", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what('s| is) new\s+(in|with|at|for)?", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"what('s| is) (the )?latest (in|on|with|for|at)\s+", RouteId.WORKGROUP_RECENT_UPDATES),
+        (r"latest (updates|news|developments|activity)", RouteId.WORKGROUP_RECENT_UPDATES),
         
-        # Events - upcoming
-        (r"upcoming (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
-        (r"future (events?|meetings?|conferences?)", RouteId.UPCOMING_EVENTS),
-        (r"what('s| is) (coming up|scheduled)", RouteId.UPCOMING_EVENTS),
-        (r"next (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
-        (r"(conferences?|workshops?|summits?) (coming up|scheduled)", RouteId.UPCOMING_EVENTS),
+        # === EVENTS & MEETINGS ===
+        # Upcoming events
+        (r"upcoming (events?|meetings?|conferences?|workshops?|summits?)", RouteId.UPCOMING_EVENTS),
+        (r"(future|planned|scheduled) (events?|meetings?|conferences?)", RouteId.UPCOMING_EVENTS),
+        (r"what('s| is) (coming up|scheduled|planned)", RouteId.UPCOMING_EVENTS),
+        (r"(next|future) (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
+        (r"when is (the )?(next|upcoming)\s+", RouteId.UPCOMING_EVENTS),
         
-        # Events - past
-        (r"past (events?|meetings?)", RouteId.PAST_EVENTS),
-        (r"previous (events?|meetings?)", RouteId.PAST_EVENTS),
-        (r"recent (events?|meetings?)", RouteId.PAST_EVENTS),
+        # Past events
+        (r"(past|previous|recent) (events?|meetings?|conferences?)", RouteId.PAST_EVENTS),
+        (r"what (events?|meetings?) (happened|occurred|took place)", RouteId.PAST_EVENTS),
         
-        # Decisions
-        (r"(decisions?|decided)\s+(made|reached|taken)", RouteId.DECISIONS_IN_RANGE),
-        (r"what (was|were) decided", RouteId.DECISIONS_IN_RANGE),
-        (r"key decisions", RouteId.DECISIONS_IN_RANGE),
-        (r"recent decisions", RouteId.RECENT_DECISIONS),
-        (r"latest decisions", RouteId.RECENT_DECISIONS),
-        (r"decisions? (on|about|regarding)\s+\w+", RouteId.DECISIONS_BY_TOPIC),
+        # Meeting search by title/topic
+        (r"meeting (about|regarding|on|covering|discussing)\s+", RouteId.MEETING_BY_TITLE),
+        (r"(find|show|get|search for|locate)\s+(the )?meeting", RouteId.MEETING_BY_TITLE),
+        (r"(minutes|notes|summary) (from|of)\s+(the )?meeting", RouteId.MEETING_MINUTES),
         
-        # Action items
-        (r"(action items?|tasks?|todos?|follow[- ]?ups?)", RouteId.ACTION_ITEMS_OPEN),
+        # === DECISIONS ===
+        (r"(decisions?|decided)\s+(made|reached|taken|about)", RouteId.DECISIONS_IN_RANGE),
+        (r"what (was|were|has been) decided\s+(on|about)?", RouteId.DECISIONS_IN_RANGE),
+        (r"key decisions?\s+(on|about|regarding)?", RouteId.DECISIONS_IN_RANGE),
+        (r"recent decisions?\s+(on|about)?", RouteId.RECENT_DECISIONS),
+        (r"latest decisions?\s+(on|about)?", RouteId.RECENT_DECISIONS),
+        (r"decisions? (on|about|regarding)\s+[\w\s\-]+", RouteId.DECISIONS_BY_TOPIC),
+        
+        # === ACTION ITEMS & TASKS ===
+        (r"(action items?|tasks?|todos?|follow[- ]?ups?)\s+(for|from|by)?", RouteId.ACTION_ITEMS_OPEN),
         (r"what needs to be done", RouteId.ACTION_ITEMS_OPEN),
-        (r"outstanding (items|tasks)", RouteId.ACTION_ITEMS_OPEN),
-        (r"(my|his|her|their)\s+(action items?|tasks?)", RouteId.ACTION_ITEMS_BY_PERSON),
-        (r"assigned to\s+\w+", RouteId.ACTION_ITEMS_BY_PERSON),
+        (r"(outstanding|open|pending) (items?|tasks?|actions?)", RouteId.ACTION_ITEMS_OPEN),
+        (r"(my|his|her|their|[\w\-]+('s)?)\s+(action items?|tasks?|assignments?)", RouteId.ACTION_ITEMS_BY_PERSON),
+        (r"(assigned to|for)\s+[\w\s\-]+", RouteId.ACTION_ITEMS_BY_PERSON),
         
-        # Topics
-        (r"(topics?|discussions?)\s+(trend|discussed|covered)", RouteId.TOPICS_TREND),
-        (r"what (topics?|subjects?) (are|were) discussed", RouteId.TOPICS_TREND),
-        (r"trending topics?", RouteId.TOPICS_TREND),
-        (r"(topics?|discussions?)\s+timeline", RouteId.TOPIC_TIMELINE),
-        (r"evolution of\s+\w+", RouteId.TOPIC_TIMELINE),
-        (r"related to\s+\w+", RouteId.RELATED_TOPICS),
-        (r"similar topics?", RouteId.RELATED_TOPICS),
+        # === STANDARDS & SPECIFICATIONS ===
+        (r"(standard|spec|specification)\s+(status|progress|state)", RouteId.STANDARD_STATUS),
+        (r"(updates?|changes?|modifications?) to\s+(the\s+)?[\w\s\-]+\s+(standard|spec)", RouteId.STANDARD_UPDATES),
         
-        # Documents
-        (r"documents? (on|about|regarding)\s+\w+", RouteId.DOCUMENTS_BY_TOPIC),
-        (r"(find|show|get)\s+documents?", RouteId.DOCUMENTS_BY_TOPIC),
-        (r"recent (publications?|documents?|papers?)", RouteId.RECENT_PUBLICATIONS),
-        (r"latest (publications?|documents?|papers?)", RouteId.RECENT_PUBLICATIONS),
+        # === TOPICS & TRENDS ===
+        (r"(topics?|discussions?)\s+(trend|discussed|covered|popular)", RouteId.TOPICS_TREND),
+        (r"what (topics?|subjects?|themes?) (are|were|have been) discussed", RouteId.TOPICS_TREND),
+        (r"trending (topics?|subjects?|discussions?)", RouteId.TOPICS_TREND),
+        (r"(popular|hot|emerging|important) topics?", RouteId.TOPICS_TREND),
+        (r"(related to|similar to|connected to)\s+[\w\s\-]+", RouteId.RELATED_TOPICS),
+        (r"(similar|related) (topics?|subjects?)", RouteId.RELATED_TOPICS),
         
-        # People
-        (r"who (said|mentioned|talked about)", RouteId.WHO_SAID_WHAT),
-        (r"did (anyone|someone) (say|mention)", RouteId.WHO_SAID_WHAT),
-        (r"(activity|contributions?) (by|from)\s+\w+", RouteId.PERSON_ACTIVITY),
-        (r"what (has|did)\s+\w+\s+(do|say|contribute)", RouteId.PERSON_ACTIVITY),
+        # === DOCUMENTS & PUBLICATIONS ===
+        # Specific document queries
+        (r"(recent|latest|new) (publications?|documents?|papers?|articles?|specs?)", RouteId.RECENT_PUBLICATIONS),
+        (r"(find|show|get|search for)\s+(documents?|papers?|publications?)", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"documents? (on|about|regarding|covering|discussing)\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"(papers?|articles?|specs?) (on|about|regarding)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         
-        # Organizations
-        (r"(activity|updates?) (from|by)\s+\w+", RouteId.ORGANIZATION_ACTIVITY),
-        (r"what is\s+\w+\s+doing", RouteId.ORGANIZATION_ACTIVITY),
-        
-        # Meeting search
-        (r"meeting (about|regarding|on)", RouteId.MEETING_BY_TITLE),
-        (r"(find|search for) meeting", RouteId.MEETING_BY_TITLE),
+        # === DEFINITION/EXPLANATION QUERIES (must come late - very general) ===
+        # "what is X" (topic/concept explanation) - comes after organization and status checks
+        (r"what (is|are)\s+[\w\s\-]+\??$", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"what('s| is)\s+[\w\s\-]+\s+\??$", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"(tell me about|explain|describe|define)\s+[\w\s\-]+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"(definition|meaning|explanation) of\s+[\w\s\-]+", RouteId.DOCUMENTS_BY_TOPIC),
     ]
     
     def __init__(self):
@@ -197,7 +294,9 @@ class LocalRouter:
                 logger.debug(f"Matched pattern: {pattern} -> {route_id.value}")
                 return route_id, confidence
         
-        return None, 0.0
+        # Fallback to generic search instead of None
+        logger.debug("No specific pattern matched, using GENERIC_SEARCH fallback")
+        return RouteId.GENERIC_SEARCH, 0.5
     
     def _parse_dates(self, question: str) -> Tuple[Optional[date], Optional[date], Optional[int]]:
         """
@@ -330,10 +429,45 @@ class LocalRouter:
         
         # Check for topic keywords (e.g., "security", "6 GHz")
         topic_keywords = {
-            "security": ["security", "authentication", "encryption", "802.1x"],
-            "6 GHz": ["6 ghz", "6ghz"],
-            "MLO": ["mlo", "multi-link"],
+            # IEEE 802.11 Standards (Wi-Fi generations)
+            "802.11bn": ["802.11bn", "bn", "wifi 8", "wi-fi 8"],
+            "802.11be": ["802.11be", "be", "wifi 7", "wi-fi 7", "extremely high throughput", "eht"],
+            "802.11ax": ["802.11ax", "ax", "wifi 6", "wi-fi 6", "high efficiency"],
+            "802.11ac": ["802.11ac", "ac", "wifi 5", "wi-fi 5"],
+            "802.11n": ["802.11n", "wifi 4", "wi-fi 4"],
+            "802.11ah": ["802.11ah", "ah", "halow", "sub-1 ghz"],
+            "802.11ad": ["802.11ad", "ad", "wigig", "60 ghz"],
+            "802.11ay": ["802.11ay", "ay"],
+            "802.11az": ["802.11az", "az", "next generation positioning", "ngp"],
+            
+            # Security standards
+            "security": ["security", "authentication", "encryption", "802.1x", "wpa", "secure"],
             "WPA3": ["wpa3", "wpa 3"],
+            "WPA2": ["wpa2", "wpa 2"],
+            "802.1X": ["802.1x", "radius", "eap"],
+            
+            # Spectrum and frequency bands
+            "6 GHz": ["6 ghz", "6ghz", "6 gigahertz"],
+            "5 GHz": ["5 ghz", "5ghz", "5 gigahertz"],
+            "2.4 GHz": ["2.4 ghz", "2.4ghz"],
+            "60 GHz": ["60 ghz", "60ghz"],
+            
+            # Key technologies
+            "MLO": ["mlo", "multi-link", "multilink"],
+            "OFDMA": ["ofdma"],
+            "MU-MIMO": ["mu-mimo", "mumimo", "multi-user mimo"],
+            "Beamforming": ["beamforming", "beam forming"],
+            "TWT": ["twt", "target wake time"],
+            
+            # Wi-Fi Alliance programs
+            "Passpoint": ["passpoint", "hotspot 2.0"],
+            "Easy Connect": ["easy connect", "dpp", "device provisioning"],
+            "WPA3-Enterprise": ["wpa3-enterprise", "wpa3 enterprise"],
+            
+            # Sensing and location
+            "Sensing": ["sensing", "wi-fi sensing", "motion detection"],
+            "Location": ["location", "positioning", "ftm", "fine timing"],
+            "SLAM": ["slam", "simultaneous localization"],
         }
         
         for topic_name, keywords in topic_keywords.items():

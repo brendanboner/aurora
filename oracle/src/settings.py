@@ -138,8 +138,8 @@ class Settings(BaseSettings):
     query_history_max_response_size: int = 50000  # Max chars to store per response
     
     # Fast Pipeline (A/B Testing)
-    fast_pipeline_enabled: bool = False  # Enable fast retrieval pipeline
-    fast_pipeline_rollout_percentage: int = 0  # 0-100: percentage of users in fast pipeline
+    fast_pipeline_enabled: bool = True  # Enable fast retrieval pipeline
+    fast_pipeline_rollout_percentage: int = 100  # 0-100: percentage of users in fast pipeline
     fast_pipeline_shadow_mode: bool = False  # Run fast pipeline in shadow mode (log only, return baseline)
     
     # Fast Pipeline: Routing

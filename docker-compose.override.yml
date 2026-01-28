@@ -1,0 +1,8 @@
+
+services:
+  oracle:
+    volumes:
+      - ./oracle:/app/oracle
+      - ./common:/app/common
+      - ./neo4j-client:/app/neo4j-client
+    command: uvicorn oracle.src.api:app --host 0.0.0.0 --port 8000 --reload

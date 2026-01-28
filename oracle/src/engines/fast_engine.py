@@ -20,6 +20,8 @@ from src.services.fast_cache import FastCache, normalize_query
 from src.services.cache import OracleCache
 from src.services.keyword_retriever import get_repo
 from src.services.personalization import decide_personalization, get_user_preferences
+from src.services.llm_client import get_llm_client, call_llm
+from src.prompts.answer_generator import get_answer_generator_messages
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -178,13 +180,19 @@ class FastEngine:
             span.set_attribute("fast.confidence", plan.confidence)
             span.set_attribute("fast.routing_method", plan.routing_method)
             
-            # Check confidence threshold
-            if plan.confidence < settings.fast_confidence_threshold:
-                logger.info(
-                    f"[{query_id}] Low confidence ({plan.confidence:.2f}), "
-                    f"fallback to baseline"
-                )
-                raise Exception(f"Low confidence routing: {plan.confidence:.2f}")
+            # Check confidence threshold - if too low, use LLM fallback
+            if plan.confidence < settings.fast_router_confidence_threshold:
+                if settings.fast_router_llm_fallback_enabled:
+                    logger.info(
+                        f"[{query_id}] Local router confidence too low ({plan.confidence:.2f}), "
+                        f"falling back to baseline LLM routing"
+                    )
+                    raise Exception(f"Low confidence routing: {plan.confidence:.2f}")
+                else:
+                    logger.warning(
+                        f"[{query_id}] Low confidence ({plan.confidence:.2f}) but LLM fallback disabled, "
+                        f"proceeding with local route"
+                    )
             
             # Phase 2: Retrieve from Neo4j (with result cache)
             route_result, retrieval_time_ms = await self._retrieve_data(
@@ -209,15 +217,23 @@ class FastEngine:
                 
                 span.set_attribute("fast.deep_dive_snippets", len(deep_dive_result.snippets) if deep_dive_result else 0)
             
-            # Phase 4: Compose Answer (with answer cache)
-            answer, documents, citations, answer_time_ms = await self._compose_answer(
-                plan=plan,
-                route_result=route_result,
-                deep_dive_result=deep_dive_result,
-                request=request,
-                span=span,
-                skip_cache=personalization_enabled
-            )
+            # Phase 4: Compose Answer (only in ANSWER mode, with answer cache)
+            answer = ""
+            citations = []
+            answer_time_ms = 0
+            
+            if request.mode == QueryMode.ANSWER:
+                answer, documents, citations, answer_time_ms = await self._compose_answer(
+                    plan=plan,
+                    route_result=route_result,
+                    deep_dive_result=deep_dive_result,
+                    request=request,
+                    span=span,
+                    skip_cache=personalization_enabled
+                )
+            else:
+                # In retrieval mode, just convert nodes to documents without LLM synthesis
+                documents = self._nodes_to_documents(route_result.nodes)
             
             # Build response
             processing_time_ms = int((time.time() - start_time) * 1000)
@@ -383,10 +399,9 @@ class FastEngine:
             repo = get_repo()
             
             query_start = time.time()
-            results = await repo.execute_read_query(
+            results = repo.client.execute_query(
                 template.cypher,
-                params,
-                timeout=settings.fast_template_timeout
+                params
             )
             query_time_ms = int((time.time() - query_start) * 1000)
             
@@ -602,9 +617,10 @@ class FastEngine:
                     documents.append(doc)
                     
                     citation = Citation(
-                        document_id=doc.id,
-                        text=f"[{idx}]",
-                        url=doc.url
+                        index=idx,
+                        document_url=doc.url,
+                        title=doc.title,
+                        excerpt=None
                     )
                     citations.append(citation)
         
@@ -629,29 +645,105 @@ class FastEngine:
         # Convert nodes to documents
         documents = self._nodes_to_documents(route_result.nodes)
         
-        # For now, return a simple formatted answer
-        # TODO: Implement LLM synthesis
-        answer_parts = [
-            f"Found {len(documents)} relevant items for your query.",
-            f"\nRoute: {self._get_route_id_str(plan)}",
-        ]
+        if not documents:
+            return "I couldn't find any relevant documents to answer your question.", [], []
         
-        if route_result.rollup:
-            answer_parts.append(f"\nSummary: {route_result.rollup.get('summary', 'N/A')}")
+        # Get LLM client
+        client = get_llm_client()
         
-        answer = "\n".join(answer_parts)
+        if client is None:
+            # Fallback: return simple summary without LLM
+            answer_parts = [
+                f"Found {len(documents)} relevant items:",
+            ]
+            
+            citations = []
+            for idx, doc in enumerate(documents[:5], 1):
+                title = doc.title or "Untitled"
+                answer_parts.append(f"\n[{idx}] {title}")
+                if doc.summary:
+                    answer_parts.append(f"    {doc.summary[:150]}...")
+                
+                citations.append(Citation(
+                    index=idx,
+                    document_url=doc.url,
+                    title=doc.title,
+                    excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary
+                ))
+            
+            answer = "".join(answer_parts)
+            logger.info(f"Composed answer without LLM: {len(answer)} chars, {len(documents)} docs")
+            return answer, documents, citations
         
-        citations = []
-        for idx, doc in enumerate(documents[:5], 1):
-            citations.append(Citation(
-                document_id=doc.id,
-                text=f"[{idx}]",
-                url=doc.url
-            ))
-        
-        logger.info(f"Composed answer with LLM: {len(answer)} chars, {len(documents)} docs")
-        
-        return answer, documents, citations
+        try:
+            # Prepare documents for prompt (limit to 10 for context window)
+            docs_for_prompt = [
+                {
+                    "title": doc.title or "Untitled",
+                    "summary": doc.summary or "No summary available",
+                    "publish_date": doc.publish_date or "Unknown date",
+                    "url": doc.url,
+                    "topics": doc.topics,
+                    "organizations": doc.organizations,
+                }
+                for doc in documents[:10]
+            ]
+            
+            # Generate answer using LLM
+            messages = get_answer_generator_messages(
+                request.question,
+                docs_for_prompt,
+                None,  # No graph context in fast pipeline
+                None   # No user context
+            )
+            
+            response = await call_llm(
+                client=client,
+                messages=messages,
+                max_tokens=settings.max_answer_tokens,
+                temperature=0.3
+            )
+            
+            answer = response.content
+            
+            # Create citations from documents
+            citations = []
+            for idx, doc in enumerate(documents[:5], 1):
+                citations.append(Citation(
+                    index=idx,
+                    document_url=doc.url,
+                    title=doc.title,
+                    excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary
+                ))
+            
+            logger.info(f"Composed answer with LLM: {len(answer)} chars, {len(documents)} docs")
+            
+            return answer, documents, citations
+            
+        except Exception as e:
+            logger.error(f"LLM synthesis failed: {e}, falling back to simple summary")
+            
+            # Fallback on error
+            answer_parts = [
+                f"Found {len(documents)} relevant items:",
+            ]
+            
+            citations = []
+            for idx, doc in enumerate(documents[:5], 1):
+                title = doc.title or "Untitled"
+                answer_parts.append(f"\n[{idx}] {title}")
+                if doc.summary:
+                    answer_parts.append(f"    {doc.summary[:150]}...")
+                
+                citations.append(Citation(
+                    index=idx,
+                    document_url=doc.url,
+                    title=doc.title,
+                    excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary
+                ))
+            
+            answer = "".join(answer_parts)
+            return answer, documents, citations
     
     def _nodes_to_documents(self, nodes: List[Dict]) -> List[Document]:
         """

@@ -41,7 +41,7 @@ def hash_route_plan(plan: RoutePlan) -> str:
     """
     # Include key plan attributes
     plan_dict = {
-        "route_id": plan.route_id.value,
+        "route_id": plan.route_id if isinstance(plan.route_id, str) else plan.route_id.value,
         "start_date": plan.start_date.isoformat() if plan.start_date else None,
         "end_date": plan.end_date.isoformat() if plan.end_date else None,
         "relative_days": plan.relative_days,
@@ -49,7 +49,7 @@ def hash_route_plan(plan: RoutePlan) -> str:
         "topics": sorted(plan.topics),
         "organizations": sorted(plan.organizations),
         "people": sorted(plan.people),
-        "detail_level": plan.detail_level.value,
+        "detail_level": plan.detail_level if isinstance(plan.detail_level, str) else plan.detail_level.value,
         "template_version": plan.template_version,
     }
     
