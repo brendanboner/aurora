@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     hierarchy_confidence_threshold: float = 0.7
     enable_cross_cluster_analysis: bool = True  # Analyze cluster representatives for cross-cluster relationships
     
+    # Algorithmic Inference Configuration (Optimization)
+    use_algorithmic_inference: bool = True  # Use algorithmic methods instead of LLM
+    algorithmic_confidence_threshold: float = 0.75  # Threshold for high-confidence algorithmic relationships
+    enable_llm_fallback: bool = True  # Use LLM for low-confidence cases
+    llm_review_interval_hours: int = 24  # How often to run LLM review batch
+    incremental_processing: bool = True  # Only process new/unorganized topics
+    
     # Scaling Configuration
     # When total topics exceed this threshold, switch from processing ALL topics
     # to only processing UNORGANIZED topics (those without hierarchy relationships).
