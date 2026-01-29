@@ -43,7 +43,8 @@ class RollupScheduler:
             try:
                 await self._run_generation()
             except Exception as e:
-                logger.error(f"Initial rollup generation failed: {e}", exc_info=True)
+                logger.error(f"Initial rollup generation failed: {e}, will use cached rollups if available", exc_info=True)
+                logger.warning("Service will continue with stale PostgreSQL cache or direct Neo4j queries")
         
         # Start periodic scheduler
         self._shutdown_event.clear()
@@ -100,8 +101,11 @@ class RollupScheduler:
         
         if should_run:
             logger.info(f"Triggering scheduled rollup generation at {now.isoformat()}")
-            await self._run_generation()
-            self._last_run_date = current_day
+            try:
+                await self._run_generation()
+                self._last_run_date = current_day
+            except Exception as e:
+                logger.error(f"Scheduled rollup generation failed: {e}, previous rollups remain available", exc_info=True)
         else:
             logger.debug(f"Scheduler tick: current_hour={current_hour}, "
                         f"target_hour={self._target_hour}, "

@@ -54,12 +54,14 @@ class LocalRouter:
         
         # "who said/mentioned" (person quotes/contributions)
         (r"who (said|mentioned|talked about|discussed|presented|announced)\s+", RouteId.WHO_SAID_WHAT),
+        (r"who (is )?talking (about|regarding|on)\s+", RouteId.WHO_SAID_WHAT),
         (r"did (anyone|someone|anybody) (say|mention|discuss|present|announce)\s+", RouteId.WHO_SAID_WHAT),
         
         # Person activity
         (r"(activity|contributions?|work|involvement|papers|presentations) (by|from|of)\s+[\w\s\-]+", RouteId.PERSON_ACTIVITY),
         (r"what (has|did)\s+[\w\s\-]+\s+(do|say|contribute|present|work on|publish)", RouteId.PERSON_ACTIVITY),
-        (r"[\w\s\-]+('s)?\s+(contributions?|activity|work|papers|presentations|involvement)", RouteId.PERSON_ACTIVITY),
+        # Match "John's work" but not "work in" (technical context)
+        (r"[\w\s\-]+('s)\s+(contributions?|activity|work|papers|presentations|involvement)($|\s+(on|about|regarding|with))", RouteId.PERSON_ACTIVITY),
         
         # === COMPARISON QUERIES (high priority - very common) ===
         (r"compare\s+[\w\s\-]+\s+(and|vs\.?|versus|with|to)\s+", RouteId.TOPIC_COMPARISON),
@@ -122,6 +124,11 @@ class LocalRouter:
         (r"what is\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|qualcomm|intel|broadcom|extreme|cisco)\s+doing", RouteId.ORGANIZATION_ACTIVITY),
         (r"what('s| is)\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|alliance)\s+(working on|focusing on)", RouteId.ORGANIZATION_ACTIVITY),
         (r"(activity|updates?|news|progress) (from|by|at)\s+", RouteId.ORGANIZATION_ACTIVITY),
+        # Organization publications
+        (r"what\s+(has\s+)?(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|qualcomm|intel|broadcom|extreme|cisco|alliance)\s+(published|released|announced|issued)\s+(about|on|regarding)", RouteId.ORGANIZATION_ACTIVITY),
+        # Workgroup/organization association queries
+        (r"what (workgroups?|wgs?|groups?).*(people|person|members?|contributors?).*(from|at|with)", RouteId.ORGANIZATION_ACTIVITY),
+        (r"(people|members?).*(from|at|with).*(associated|involved|participating).*(workgroups?|wgs?)", RouteId.ORGANIZATION_ACTIVITY),
         
         # === WORKGROUP-SPECIFIC ACTIVITY QUERIES (highest priority for workgroup synopsis) ===
         # These patterns match queries asking about activity/discussions in specific workgroups
@@ -142,8 +149,8 @@ class LocalRouter:
         (r"what was discussed.*?(this|last|past) week", RouteId.WORKGROUP_WEEKLY_RECAP),
         (r"what was discussed.*?(this|last|past) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         (r"what was discussed.*?in the last (week|month|\d+\s+days?)", RouteId.RECENT_CONTENT),
-        (r"what was discussed.*?(at|in|during) the (last|latest|recent|previous) (meeting|call|session)", RouteId.RECENT_CONTENT),
-        (r"what happened.*?(at|in|during) the (last|latest|recent|previous) (meeting|call|session)", RouteId.RECENT_CONTENT),
+        (r"what was discussed.*(at|in|during|from).*(last|latest|recent|previous).*(meeting|call|session)", RouteId.RECENT_CONTENT),
+        (r"what happened.*(at|in|during).*(last|latest|recent|previous).*(meeting|call|session)", RouteId.RECENT_CONTENT),
         (r"(last|latest|recent|previous) (meeting|call|session)", RouteId.RECENT_CONTENT),
         (r"what('s| is) being discussed", RouteId.RECENT_CONTENT),
         (r"what (have we|did we|were we) discuss", RouteId.RECENT_CONTENT),
@@ -159,6 +166,7 @@ class LocalRouter:
         # Monthly patterns
         (r"(monthly|month)\s+(recap|summary|update|report)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         (r"(this|last|past) month('s)?\s+(activities|summary|events)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
+        (r"(give|show).*?(idea|summary|overview).*(last|past|this)\s+month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         
         # Recent updates (general)
         (r"recent (updates|changes|news|developments|activity)", RouteId.RECENT_CONTENT),
@@ -166,6 +174,7 @@ class LocalRouter:
         (r"what('s| is) (the )?latest (in|on|with|for|at)\s+", RouteId.RECENT_CONTENT),
         (r"latest (updates|news|developments|activity)", RouteId.RECENT_CONTENT),
         (r"(what is|what's) (the )?latest (update|news|development)", RouteId.RECENT_CONTENT),  # "what is the latest update"
+        (r"(give|show|provide).*?(update|summary|overview)\s+on", RouteId.RECENT_CONTENT),
         
         # === EVENTS & MEETINGS ===
         # Upcoming events
@@ -174,6 +183,7 @@ class LocalRouter:
         (r"what('s| is) (coming up|scheduled|planned)", RouteId.UPCOMING_EVENTS),
         (r"(next|future) (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
         (r"when is (the )?(next|upcoming)\s+", RouteId.UPCOMING_EVENTS),
+        (r"(events?|conferences?|meetings?).*?(this|next)\s+(quarter|month|week)", RouteId.UPCOMING_EVENTS),
         
         # Past events
         (r"(past|previous|recent) (events?|meetings?|conferences?)", RouteId.PAST_EVENTS),
@@ -213,17 +223,27 @@ class LocalRouter:
         
         # === DOCUMENTS & PUBLICATIONS ===
         # Specific document queries
-        (r"(recent|latest|new) (publications?|documents?|papers?|articles?|specs?)", RouteId.RECENT_PUBLICATIONS),
+        (r"(recent|latest|new) (publications?|documents?|papers?|articles?|specs?|press releases?)", RouteId.RECENT_PUBLICATIONS),
+        (r"press releases?(\s+about)?", RouteId.RECENT_PUBLICATIONS),
         (r"(find|show|get|search for)\s+(documents?|papers?|publications?)", RouteId.DOCUMENTS_BY_TOPIC),
         (r"documents? (on|about|regarding|covering|discussing)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(papers?|articles?|specs?) (on|about|regarding)\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"what (standards?|changes?).*?ieee\s+802", RouteId.RECENT_PUBLICATIONS),
+        (r"(published|released)\s+(by|from)\s+[\w\s\-]+\s+about", RouteId.RECENT_PUBLICATIONS),
         
         # === DEFINITION/EXPLANATION QUERIES (must come late - very general) ===
         # "what is X" (topic/concept explanation) - comes after organization and status checks
         (r"what (is|are)\s+[\w\s\-]+\??$", RouteId.DOCUMENTS_BY_TOPIC),
         (r"what('s| is)\s+[\w\s\-]+\s+\??$", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"what (is )?new (in|about|with|for|on)\s+", RouteId.RECENT_CONTENT),
         (r"(tell me about|explain|describe|define)\s+[\w\s\-]+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(definition|meaning|explanation) of\s+[\w\s\-]+", RouteId.DOCUMENTS_BY_TOPIC),
+        # Technical questions about topics/technologies
+        (r"what (frequency|frequencies|bands?|channels?|spectrum|range)\s+(does|do)\s+[\w\s\-]+\s+(use|work|operate)", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"(how|where)\s+does\s+[\w\s\-]+\s+(work|operate|function)", RouteId.DOCUMENTS_BY_TOPIC),
+        # Comparison and improvement questions
+        (r"what (are the )?(key )?improvements?.*?compared (to|with|against)", RouteId.TOPIC_COMPARISON),
+        (r"what (has |should )?changed", RouteId.RECENT_CONTENT),
     ]
     
     def __init__(self):
@@ -488,9 +508,10 @@ class LocalRouter:
             "sensing": "Sensing",
         }
         
-        # Extract workgroup mentions from query
+        # Extract workgroup mentions from query (case-insensitive)
+        question_lower = question.lower()
         for keyword, workgroup_name in workgroup_keywords.items():
-            if keyword in question:
+            if keyword.lower() in question_lower:
                 entities["workgroups"].append(workgroup_name)
         
         # Remove duplicates from explicit mentions
@@ -513,6 +534,20 @@ class LocalRouter:
             "802.11ay": ["802.11ay", "ay"],
             "802.11az": ["802.11az", "az", "next generation positioning", "ngp"],
             
+            # General Wi-Fi (catch-all for Wi-Fi mentions)
+            "wi-fi": ["wifi", "wi-fi"],
+            
+            # Common Wi-Fi Alliance topics and features
+            "sticky clients": ["sticky client", "sticky-client", "client stickiness", "ap stickiness"],
+            "client steering": ["client steering", "ap steering", "client association"],
+            "ap selection": ["ap selection", "access point selection"],
+            "roaming": ["roaming", "handoff", "seamless roaming"],
+            "band steering": ["band steering"],
+            "RSSI": ["rssi", "signal strength"],
+            "throughput": ["throughput", "data rate", "bandwidth"],
+            "latency": ["latency", "jitter", "delay"],
+            "coverage": ["coverage", "range", "signal coverage"],
+            
             # Security standards
             "security": ["security", "authentication", "encryption", "802.1x", "wpa", "secure"],
             "WPA3": ["wpa3", "wpa 3"],
@@ -520,10 +555,11 @@ class LocalRouter:
             "802.1X": ["802.1x", "radius", "eap"],
             
             # Spectrum and frequency bands
-            "6 GHz": ["6 ghz", "6ghz", "6 gigahertz"],
+            "6 GHz": ["6 ghz", "6ghz", "6 gigahertz", "upper 6 ghz"],
             "5 GHz": ["5 ghz", "5ghz", "5 gigahertz"],
             "2.4 GHz": ["2.4 ghz", "2.4ghz"],
             "60 GHz": ["60 ghz", "60ghz"],
+            "5G": ["5g", "5-g", "fifth generation"],
             
             # Key technologies
             "MLO": ["mlo", "multi-link", "multilink"],
@@ -544,7 +580,7 @@ class LocalRouter:
         }
         
         for topic_name, keywords in topic_keywords.items():
-            if any(kw in question for kw in keywords):
+            if any(kw.lower() in question_lower for kw in keywords):
                 entities["topics"].append(topic_name)
         
         # Generate query hints for intelligent routing (pattern-based, no LLM)
