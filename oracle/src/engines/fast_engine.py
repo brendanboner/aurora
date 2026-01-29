@@ -8,7 +8,8 @@ import time
 import hashlib
 import json
 import uuid
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
+from datetime import datetime
 from opentelemetry import trace
 
 from src.models.request import QueryRequest, QueryMode, PersonalizeMode
@@ -71,7 +72,7 @@ class FastEngine:
         """Get engine name."""
         return "fast"
     
-    def get_capabilities(self) -> Dict[str, any]:
+    def get_capabilities(self) -> Dict[str, Any]:
         """Get fast engine capabilities."""
         return {
             "name": "fast",
@@ -109,6 +110,7 @@ class FastEngine:
             QueryResponse with answer and metadata
         """
         await self._ensure_initialized()
+        assert self.fast_cache is not None, "FastCache should be initialized"
         
         start_time = time.time()
         
@@ -418,16 +420,10 @@ class FastEngine:
         # Determine rollup type from route
         rollup_type = "day" if plan.route_id == RouteId.WORKGROUP_DAILY_RECAP else "week"
         
-        # Extract date range from plan (handle both datetime and date objects)
-        if plan.start_date:
-            start_date = plan.start_date.date() if hasattr(plan.start_date, 'date') else plan.start_date
-        else:
-            start_date = None
-        
-        if plan.end_date:
-            end_date = plan.end_date.date() if hasattr(plan.end_date, 'date') else plan.end_date
-        else:
-            end_date = None
+        # Extract date range from plan
+        # Note: start_date and end_date are already date objects per RoutePlan model
+        start_date = plan.start_date
+        end_date = plan.end_date
         
         # Query PostgreSQL
         logger.info(f"Querying PostgreSQL for {rollup_type} rollups: workgroups={plan.workgroups}, dates={start_date} to {end_date}")
@@ -507,6 +503,33 @@ class FastEngine:
         
         # Post-process results
         processed_results = template.execute_post_process(results)
+        
+        # Fallback: If no results and query had date filters, retry without dates
+        if len(processed_results) == 0 and (params.get('start_date') or params.get('end_date') or params.get('relative_days')):
+            logger.info(
+                f"Zero results with date filters, retrying without temporal constraints "
+                f"(route={self._get_route_id_str(plan)})"
+            )
+            
+            # Remove date filters for fallback
+            fallback_params = params.copy()
+            fallback_params['start_date'] = None
+            fallback_params['end_date'] = None
+            fallback_params['relative_days'] = None
+            
+            fallback_start = time.time()
+            fallback_results = repo.client.execute_query(
+                template.cypher,
+                fallback_params
+            )
+            fallback_time_ms = int((time.time() - fallback_start) * 1000)
+            processed_results = template.execute_post_process(fallback_results)
+            
+            if len(processed_results) > 0:
+                logger.info(f"Fallback succeeded: retrieved {len(processed_results)} undated documents")
+                query_time_ms += fallback_time_ms
+            else:
+                logger.warning("Fallback also returned zero results")
         
         # Check if we got a rollup (shouldn't happen for Neo4j queries now)
         rollup = None
@@ -707,7 +730,6 @@ class FastEngine:
             for idx, link in enumerate(rollup["links"][:10], 1):
                 if isinstance(link, dict):
                     doc = Document(
-                        id=link.get("id", f"doc_{idx}"),
                         title=link.get("title", "Document"),
                         url=link.get("url", ""),
                         relevance_score=1.0,
@@ -875,7 +897,6 @@ class FastEngine:
                     source = node.get("workgroup_name")
                     
                     doc = Document(
-                        id=str(doc_id),
                         title=title,
                         summary=summary,
                         url=url,
@@ -900,7 +921,6 @@ class FastEngine:
                     source = node.get("workgroup_name")
                     
                     doc = Document(
-                        id=str(event_id),
                         title=title,
                         summary=summary,
                         url=url,
@@ -935,7 +955,6 @@ class FastEngine:
                     source = category.replace("_", " ").title()
                 
                 doc = Document(
-                    id=str(doc_id),
                     title=title,
                     summary=summary,
                     url=url,
