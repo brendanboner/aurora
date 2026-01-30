@@ -4,31 +4,43 @@
       "org_id": "wfa",
       "name": "Wi-Fi Alliance",
       "org_type": "alliance",
-      "homepage_url": "https://www.wi-fi.org/"
+      "homepage_url": "https://www.wi-fi.org/",
+      "aliases": ["WFA", "Wi-Fi Alliance", "WiFi Alliance"]
     },
     {
       "org_id": "wba",
       "name": "Wireless Broadband Alliance",
       "org_type": "alliance",
-      "homepage_url": "https://wballiance.com/"
+      "homepage_url": "https://wballiance.com/",
+      "aliases": ["WBA", "Wireless Broadband Alliance"]
     },
     {
       "org_id": "ieee",
       "name": "IEEE",
       "org_type": "standards body",
-      "homepage_url": "https://www.ieee.org/"
+      "homepage_url": "https://www.ieee.org/",
+      "aliases": ["IEEE"]
     },
     {
       "org_id": "ietf",
       "name": "IETF",
       "org_type": "standards body",
-      "homepage_url": "https://www.ietf.org/"
+      "homepage_url": "https://www.ietf.org/",
+      "aliases": ["IETF"]
     },
     {
       "org_id": "3gpp",
       "name": "3GPP",
       "org_type": "standards body",
-      "homepage_url": "https://www.3gpp.org/"
+      "homepage_url": "https://www.3gpp.org/",
+      "aliases": ["3GPP"]
+    },
+    {
+      "org_id": "extreme",
+      "name": "Extreme Networks",
+      "org_type": "vendor",
+      "homepage_url": "https://www.extremenetworks.com/",
+      "aliases": ["Extreme", "Extreme Networks", "extremenetworks", "extreme networks"]
     }
   ],
   "data_sources": [
@@ -341,6 +353,56 @@
       "discovery_mode": "incremental",
       "consecutive_duplicates_limit": 5,
       "full_refresh_schedule": "0 3 * * 0"
+    }
+  ],
+  "topics": [
+    {
+      "name": "Wi-Fi 6",
+      "classification": "technology",
+      "identifier": "802.11ax",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["802.11ax", "Wi-Fi 6", "High Efficiency Wireless", "HE", "ax"],
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi 7",
+      "classification": "technology",
+      "identifier": "802.11be",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["802.11be", "Wi-Fi 7", "Extremely High Throughput", "EHT", "be"],
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi 6E",
+      "classification": "technology",
+      "identifier": "Wi-Fi 6E",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["Wi-Fi 6E", "6E", "Wi-Fi6E", "wifi 6e"],
+      "created_by": "system"
+    },
+    {
+      "name": "5G",
+      "classification": "technology",
+      "identifier": "5G",
+      "issuer": "3GPP",
+      "aliases": ["5G", "fifth generation", "5th generation", "fifth-generation", "mobile networks"],
+      "created_by": "system"
+    },
+    {
+      "name": "regulatory affairs",
+      "classification": "topic",
+      "identifier": "regulatory",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["regulatory affairs", "regulatory", "regulation", "compliance"],
+      "created_by": "system"
+    },
+    {
+      "name": "RSPG",
+      "classification": "organization",
+      "identifier": "RSPG",
+      "issuer": "European Commission",
+      "aliases": ["RSPG", "Radio Spectrum Policy Group"],
+      "created_by": "system"
     }
   ]
 }

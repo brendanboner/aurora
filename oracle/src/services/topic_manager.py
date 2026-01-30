@@ -32,7 +32,7 @@ class TopicManager:
     - Thread-safe operations
     """
     
-    def __init__(self, neo4j_client, refresh_interval_hours: int = 1, auto_create_threshold: int = 10):
+    def __init__(self, neo4j_client, refresh_interval_hours: int = 1, auto_create_threshold: int = 10, min_search_count: int = 2):
         """
         Initialize TopicManager.
         
@@ -40,10 +40,12 @@ class TopicManager:
             neo4j_client: Neo4j client for graph queries
             refresh_interval_hours: How often to reload topics from graph
             auto_create_threshold: Number of searches before auto-creating topic
+            min_search_count: Minimum search count for a topic to be considered "common" (filters out random topics)
         """
         self.neo4j_client = neo4j_client
         self.refresh_interval = timedelta(hours=refresh_interval_hours)
         self.auto_create_threshold = auto_create_threshold
+        self.min_search_count = min_search_count
         
         # Topic cache: {normalized_name: [original_name, alias1, alias2, ...]}
         self.topic_cache: Dict[str, List[str]] = {}
@@ -63,18 +65,26 @@ class TopicManager:
         return re.sub(r'\s+', ' ', text.lower().strip())
     
     def _refresh_topics(self) -> None:
-        """Load all topics and aliases from Neo4j."""
+        """Load all topics and aliases from Neo4j, filtering out low-frequency random topics."""
         try:
             query = """
             MATCH (t:Topic)
-            RETURN t.name AS name, t.aliases AS aliases
+            RETURN t.name AS name, t.aliases AS aliases, t.search_count AS search_count
             """
             results = self.neo4j_client.execute_query(query)
             
             new_cache = {}
+            filtered_count = 0
             for record in results:
                 name = record.get('name')
                 if not name:
+                    continue
+                
+                # Filter out "random" topics with low search counts
+                # (unless they have no search_count set, meaning they're manually curated)
+                search_count = record.get('search_count', 0)
+                if search_count is not None and search_count > 0 and search_count < self.min_search_count:
+                    filtered_count += 1
                     continue
                 
                 # Store original name + all aliases
@@ -97,6 +107,9 @@ class TopicManager:
             with self.lock:
                 self.topic_cache = new_cache
                 self.last_refresh = datetime.utcnow()
+            
+            if filtered_count > 0:
+                logger.debug(f"Filtered out {filtered_count} low-frequency topics (search_count < {self.min_search_count})")
             
             logger.info(f"Loaded {len(new_cache)} topics from Neo4j")
             
@@ -192,15 +205,35 @@ class TopicManager:
         
         for normalized, variations in topic_cache.items():
             # Match with word boundaries to avoid partial matches
-            # e.g., don't match "or" in "workgroups" or "ar" in "are"
-            # Use regex with \b word boundaries
-            pattern = r'\b' + re.escape(normalized) + r'\b'
+            # Special handling for:
+            # - Alphanumeric terms (5G, 6G, Wi-Fi 6E) - use lookahead/lookbehind
+            # - Technical terms with dots (802.11ax) - escape dots
+            
+            # Build regex pattern based on topic characteristics
+            if '.' in normalized:
+                # For terms like \"802.11ax\", use word boundaries with escaped dots
+                pattern = r'\b' + re.escape(normalized) + r'\b'
+            elif re.match(r'^\d+[a-z]+$', normalized) or re.match(r'^[a-z]+\d+[a-z]*$', normalized):
+                # Alphanumeric like \"5g\" or \"wifi6e\" - use negative lookahead/lookbehind
+                pattern = r'(?<!\w)' + re.escape(normalized) + r'(?!\w)'
+            else:
+                # Standard word boundary matching
+                pattern = r'\b' + re.escape(normalized) + r'\b'
+            
             if re.search(pattern, question_lower):
                 # Return the variation that best matches what appeared in the question
                 # This ensures we use "wi-fi halow" when user asks about it, not "wi-fi certified halow"
                 best_match = variations[0]  # Default to canonical
                 for variation in variations:
-                    var_pattern = r'\b' + re.escape(self._normalize(variation)) + r'\b'
+                    var_normalized = self._normalize(variation)
+                    # Apply same pattern logic for variation matching
+                    if '.' in var_normalized:
+                        var_pattern = r'\b' + re.escape(var_normalized) + r'\b'
+                    elif re.match(r'^\d+[a-z]+$', var_normalized) or re.match(r'^[a-z]+\d+[a-z]*$', var_normalized):
+                        var_pattern = r'(?<!\w)' + re.escape(var_normalized) + r'(?!\w)'
+                    else:
+                        var_pattern = r'\b' + re.escape(var_normalized) + r'\b'
+                    
                     if re.search(var_pattern, question_lower):
                         best_match = variation
                         break
