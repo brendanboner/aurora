@@ -65,6 +65,10 @@ class LocalRouter:
         (r"who (is )?talking (about|regarding|on)\s+", RouteId.WHO_SAID_WHAT),
         (r"did (anyone|someone|anybody) (say|mention|discuss|present|announce)\s+", RouteId.WHO_SAID_WHAT),
         
+        # === ORGANIZATION PUBLICATION QUERIES (before person activity to avoid false matches) ===
+        # "what has [ORG] published/released" - organization publications
+        (r"what\s+(has\s+)?(the\s+)?([\w\s\-]+\s+)?(alliance|foundation|consortium|organization|institute|3gpp|ieee|ietf|etsi|wfa|oma|gsma)\s+(published|released|announced|issued)\s+(about|on|regarding)", RouteId.ORGANIZATION_ACTIVITY),
+        
         # Person activity
         (r"(activity|contributions?|work|involvement|papers|presentations) (by|from|of)\s+[\w\s\-]+", RouteId.PERSON_ACTIVITY),
         (r"what (has|did)\s+[\w\s\-]+\s+(do|say|contribute|present|work on|publish)", RouteId.PERSON_ACTIVITY),
@@ -132,11 +136,12 @@ class LocalRouter:
         (r"what is\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|qualcomm|intel|broadcom|extreme|cisco)\s+doing", RouteId.ORGANIZATION_ACTIVITY),
         (r"what('s| is)\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|alliance)\s+(working on|focusing on)", RouteId.ORGANIZATION_ACTIVITY),
         (r"(activity|updates?|news|progress) (from|by|at)\s+", RouteId.ORGANIZATION_ACTIVITY),
-        # Organization publications
-        (r"what\s+(has\s+)?(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|qualcomm|intel|broadcom|extreme|cisco|alliance)\s+(published|released|announced|issued)\s+(about|on|regarding)", RouteId.ORGANIZATION_ACTIVITY),
+        # Note: Organization publication patterns moved earlier (before person activity patterns)
+        
         # Workgroup/organization association queries
         (r"what (workgroups?|wgs?|groups?).*(people|person|members?|contributors?).*(from|at|with)", RouteId.ORGANIZATION_ACTIVITY),
         (r"(people|members?).*(from|at|with).*(associated|involved|participating).*(workgroups?|wgs?)", RouteId.ORGANIZATION_ACTIVITY),
+        (r"(workgroups?|wgs?|groups?).*(have|with).*(people|members?).*(from|at)", RouteId.ORGANIZATION_ACTIVITY),
         
         # === WORKGROUP DISCOVERY BY TOPIC ===
         # "What workgroups are talking about X?" - find datasources discussing a topic
@@ -345,6 +350,14 @@ class LocalRouter:
         # Should we do deep dive?
         deep_dive = self._should_deep_dive(question_lower, detail_level)
         
+        # For event queries, detect if conferences (not meetings) are requested
+        exclude_meetings = None
+        if route_id == RouteId.UPCOMING_EVENTS:
+            # Exclude meetings if query asks for conferences, events, summits, workshops (but not meetings)
+            if re.search(r'\b(conference|summit|event|workshop)', question_lower) and not re.search(r'\b(meeting)', question_lower):
+                exclude_meetings = True
+                logger.debug("Detected conference query - will exclude meetings from results")
+        
         # Build route plan
         # Use datasource_ids filter from request if provided, otherwise use extracted workgroups
         workgroups_filter = datasource_ids if datasource_ids else entities.get("workgroups", [])
@@ -365,6 +378,7 @@ class LocalRouter:
             organizations=entities.get("organizations", []),
             people=entities.get("people", []),
             category=entities.get("category"),
+            exclude_meetings=exclude_meetings,
             detail_level=detail_level,
             deep_dive=deep_dive,
             template_version=settings.fast_template_version,

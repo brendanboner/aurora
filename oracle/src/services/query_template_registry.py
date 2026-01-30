@@ -78,6 +78,7 @@ class QueryTemplate:
         params["organizations"] = plan.organizations if plan.organizations else []
         params["people"] = plan.people if plan.people else []
         params["category"] = plan.category if hasattr(plan, 'category') and plan.category else None
+        params["exclude_meetings"] = plan.exclude_meetings if hasattr(plan, 'exclude_meetings') and plan.exclude_meetings is not None else None
         params["content_types"] = []  # Content type filter (e.g., ['decision', 'action'])
         
         # For DOCUMENTS_BY_TOPIC, if no topics were extracted, try to extract from "what is X" query
@@ -737,21 +738,24 @@ class QueryTemplateRegistry:
         # UPCOMING_EVENTS - future events
         self.templates[RouteId.UPCOMING_EVENTS] = QueryTemplate(
             route_id=RouteId.UPCOMING_EVENTS,
-            description="Get upcoming events (including those mentioned in recent documents)",
+            description="Get upcoming events (excluding meetings when conferences are requested)",
             param_schema={
                 "workgroups": "list[str]",
                 "topics": "list[str]",
                 "start_date": "str (ISO date)",
                 "end_date": "str (ISO date)",
+                "exclude_meetings": "bool (true for conference queries)",
                 "limit": "int"
             },
             cypher="""
-            // Find future events (Event nodes) - prioritize public conferences over internal meetings
+            // Strategy 1: Find Event nodes with future startTime
             MATCH (e:Event)
             WHERE datetime(e.startTime) >= datetime()
               AND ($start_date IS NULL OR datetime(e.startTime) >= datetime($start_date))
               // Extend "this quarter" to 90 days ahead
               AND ($end_date IS NULL OR datetime(e.startTime) <= datetime($end_date))
+              // Exclude meetings if conferences specifically requested
+              AND ($exclude_meetings IS NULL OR $exclude_meetings = false OR toLower(coalesce(e.type, '')) NOT IN ['meeting', 'workgroup meeting', 'task group meeting'])
             
             // Get related datasource to determine if this is a public event or workgroup meeting
             OPTIONAL MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
@@ -785,13 +789,13 @@ class QueryTemplateRegistry:
                    OR EXISTS {
                        // Check if event relates to topics directly
                        MATCH (e)-[:RELATES_TO]->(t:Topic)
-                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
                    }
                    OR EXISTS {
                        // Check if recent documents mention both the event and the topic
                        MATCH (r:Resource)-[:MENTIONS]->(e)
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
-                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
                          AND (CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END) >= datetime() - duration({days: 180})
                    })
             
@@ -814,9 +818,76 @@ class QueryTemplateRegistry:
                 e.endTime as end_time,
                 e.location as location,
                 e.url as url,
+                e.type as event_type,
                 wg.name as workgroup,
                 topics,
                 mentioning_documents
+            LIMIT $limit
+            
+            UNION
+            
+            // Strategy 2 (Fallback): If no Event nodes found, search for documents about upcoming events
+            // This handles cases where events are mentioned in documents but no Event node exists yet
+            CALL {
+                MATCH (e:Event)
+                WHERE datetime(e.startTime) >= datetime()
+                  AND ($start_date IS NULL OR datetime(e.startTime) >= datetime($start_date))
+                  AND ($end_date IS NULL OR datetime(e.startTime) <= datetime($end_date))
+                RETURN count(e) as event_count
+            }
+            WITH event_count
+            WHERE event_count = 0  // Only use fallback if no Event nodes found
+            
+            // Find recent documents about upcoming events/conferences
+            MATCH (r:Resource)
+            WHERE (toLower(r.title) CONTAINS 'conference' 
+                   OR toLower(r.title) CONTAINS 'summit' 
+                   OR toLower(r.title) CONTAINS 'event'
+                   OR toLower(r.title) CONTAINS 'workshop'
+                   OR toLower(coalesce(r.summary, '')) CONTAINS 'upcoming'
+                   OR toLower(coalesce(r.summary, '')) CONTAINS 'save the date')
+              AND r.category IN ['press release', 'news', 'announcement', 'blog']
+            
+            WITH r, CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+            
+            // Filter by recent publications (last 90 days)
+            WHERE effective_date >= datetime() - duration({days: 90})
+            
+            // Filter by datasource (workgroups) if specified
+            WITH r, effective_date
+            WHERE $workgroups IS NULL OR size($workgroups) = 0 
+               OR EXISTS {
+                   MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+                   WHERE ds.datasource_id IN $workgroups
+               }
+            
+            // Topic filter if specified
+            WITH r, effective_date
+            WHERE $topics IS NULL OR size($topics) = 0
+               OR EXISTS {
+                   MATCH (r)-[:RELATES_TO]->(t:Topic)
+                   WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
+               }
+            
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+            
+            WITH r, effective_date,
+                 collect(DISTINCT t.name)[..5] as topics,
+                 ds.datasource_id as datasource_id
+            ORDER BY effective_date DESC
+            
+            RETURN 
+                r.url_hash as event_id,
+                r.title as title,
+                null as start_time,
+                null as end_time,
+                null as location,
+                r.url as url,
+                'document_mention' as event_type,
+                null as workgroup,
+                topics,
+                [] as mentioning_documents
             LIMIT $limit
             """
         )
@@ -1301,9 +1372,11 @@ class QueryTemplateRegistry:
         # ORGANIZATION_ACTIVITY - organization activity summary
         self.templates[RouteId.ORGANIZATION_ACTIVITY] = QueryTemplate(
             route_id=RouteId.ORGANIZATION_ACTIVITY,
-            description="Get organization activity",
+            description="Get organization activity - prioritizes public content unless workgroup specified",
             param_schema={
                 "organizations": "list[str]",
+                "workgroups": "list[str]",
+                "topics": "list[str]",
                 "start_date": "str (ISO date)",
                 "end_date": "str (ISO date)",
                 "limit": "int"
@@ -1318,20 +1391,55 @@ class QueryTemplateRegistry:
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
-            // Apply topic filter if provided (combine with organization filter using AND)
-            WITH o, r, effective_date
-            WHERE ($topics IS NULL OR size($topics) = 0)
-              OR EXISTS {
-                  MATCH (r)-[:RELATES_TO]->(t:Topic)
-                  WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
-              }
+            // Get datasource to determine priority
+            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
             
+            // Calculate priority: 
+            // - If workgroups specified: workgroup content = 3, public = 2, other workgroups = 1
+            // - If no workgroups: public = 3, workgroup = 1
+            WITH o, r, effective_date, ds,
+                 CASE 
+                     WHEN $workgroups IS NOT NULL AND size($workgroups) > 0 THEN
+                         CASE 
+                             WHEN ds.datasource_id IN $workgroups THEN 3
+                             WHEN ds.datasource_id IN ['wfa_resource_page', 'wba_resource_page'] THEN 2
+                             ELSE 1
+                         END
+                     ELSE
+                         CASE 
+                             WHEN ds.datasource_id IN ['wfa_resource_page', 'wba_resource_page'] THEN 3
+                             WHEN ds.scraper_type = 'wfa_causeway' THEN 1
+                             ELSE 2
+                         END
+                 END as source_priority
+            
+            // Get topic + org associations for scoring and response
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
-            WHERE t.relevance >= 0.5
+            OPTIONAL MATCH (r)-[:MENTIONS]->(mentioned_org:Organization)
             
-            WITH o, r,
-                 collect(DISTINCT t.name)[..5] as topics
-            ORDER BY r.publish_date DESC
+            WITH o, r, effective_date, source_priority,
+                 collect(DISTINCT t.name)[..5] as topics,
+                 collect(DISTINCT mentioned_org.name)[0..3] as orgs,
+                 // Topic preference bonus: if personalization topics provided, boost docs that match them
+                 // This PREFERS relevant topics but doesn't filter them out
+                 CASE 
+                     WHEN $topics IS NULL OR size($topics) = 0 THEN 0
+                     ELSE reduce(bonus = 0, topic IN $topics | 
+                         bonus + CASE 
+                             WHEN toLower(r.title) CONTAINS toLower(topic) THEN 20
+                             WHEN r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower(topic) THEN 10
+                             WHEN EXISTS {
+                                 MATCH (r)-[:RELATES_TO]->(related_topic:Topic)
+                                 WHERE toLower(related_topic.name) = toLower(topic) 
+                                    OR any(alias IN related_topic.aliases WHERE toLower(alias) = toLower(topic))
+                             } THEN 15
+                             ELSE 0
+                         END
+                     )
+                 END as topic_preference_score
+            
+            // Order by topic preference (personalization), then priority, then date
+            ORDER BY topic_preference_score DESC, source_priority DESC, effective_date DESC
             
             RETURN 
                 o.org_id as org_id,
@@ -1339,9 +1447,12 @@ class QueryTemplateRegistry:
                 collect({
                     id: r.url_hash,
                     title: r.title,
-                    date: r.publish_date,
+                    date: toString(effective_date),
                     url: r.url,
-                    topics: topics
+                    topics: topics,
+                    organizations: orgs,
+                    priority: source_priority,
+                    topic_score: topic_preference_score
                 })[..$limit] as recent_activity
             """
         )

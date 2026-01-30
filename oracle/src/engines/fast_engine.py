@@ -953,8 +953,37 @@ class FastEngine:
         documents = []
         
         for idx, node in enumerate(nodes):
-            # Check if this is a grouped result (from RECENT_CONTENT template)
-            if "recent_documents" in node or "recent_events" in node:
+            # Check if this is a grouped result (from RECENT_CONTENT or ORGANIZATION_ACTIVITY templates)
+            if "recent_documents" in node or "recent_events" in node or "recent_activity" in node:
+                # Flatten recent_activity array (from ORGANIZATION_ACTIVITY)
+                for doc_node in node.get("recent_activity", []):
+                    doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
+                    title = doc_node.get("title") or "Untitled"
+                    url = doc_node.get("url", "")
+                    summary = doc_node.get("summary", "")
+                    date = doc_node.get("date") or doc_node.get("publishDate") or doc_node.get("publish_date")
+                    category = doc_node.get("category") or doc_node.get("type")
+                    topics = doc_node.get("topics", [])
+                    orgs = doc_node.get("organizations", [])
+                    
+                    # Organization context from parent node
+                    datasource_id = node.get("datasource_id")
+                    source = node.get("org_name") or (node.get("datasource_id", "").replace("_", " ").title() if node.get("datasource_id") else None)
+                    
+                    doc = Document(
+                        title=title,
+                        summary=summary,
+                        url=url,
+                        relevance_score=doc_node.get("topic_score", 1.0),
+                        publish_date=date,
+                        source=source,
+                        datasource_id=datasource_id,
+                        category=category,
+                        topics=topics if isinstance(topics, list) else [],
+                        organizations=orgs if isinstance(orgs, list) else []
+                    )
+                    documents.append(doc)
+                
                 # Flatten recent_documents array
                 for doc_node in node.get("recent_documents", []):
                     doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"

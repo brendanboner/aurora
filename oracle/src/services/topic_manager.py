@@ -175,24 +175,31 @@ class TopicManager:
         
         logger.debug(f"TopicManager.extract_topics: normalized question = '{question_lower}'")
         
-        # Extract potential definition queries: "What is X?", "Define X", etc.
-        # Stop capture before verbs (talking, discussing, doing) or prepositions (about, with, in)
-        # to avoid capturing "workgroups are talking about X" as a topic
-        definition_patterns = [
-            r'what\s+(?:is|are|was|were)\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\s+(?:talking|discussing|working|doing|saying|about|with|in|for|at|on)|[?,]|$)',
-            r'define\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
-            r'explain\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
-            r'tell\s+me\s+about\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
-        ]
-        
-        definition_terms = []
-        for pattern in definition_patterns:
-            matches = re.finditer(pattern, question_lower)
-            for match in matches:
-                term = match.group(1).strip()
-                if len(term) > 2:  # Avoid very short terms
-                    definition_terms.append(term)
-                    logger.debug(f"TopicManager: definition pattern matched term = '{term}'")
+        # Skip definition extraction for temporal/action queries
+        skip_keywords = ['latest', 'recent', 'new', 'updates', 'changed', 'published', 'coming up']
+        if any(keyword in question_lower for keyword in skip_keywords):
+            logger.debug(f"TopicManager: skipping definition patterns (temporal/action query)")
+            definition_terms = []
+        else:
+            # Extract potential definition queries: "What is X?", "Define X", etc.
+            # Stop capture before verbs (talking, discussing, doing) or prepositions (about, with, in)
+            # to avoid capturing "workgroups are talking about X" as a topic
+            # Skip queries with "latest", "updates", "changed" - these are temporal/action queries, not topic definitions
+            definition_patterns = [
+                r'what\s+(?:is|are|was|were)\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\s+(?:talking|discussing|working|doing|saying|about|with|in|for|at|on)|[?,]|$)',
+                r'define\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
+                r'explain\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
+                r'tell\s+me\s+about\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
+            ]
+            
+            definition_terms = []
+            for pattern in definition_patterns:
+                matches = re.finditer(pattern, question_lower)
+                for match in matches:
+                    term = match.group(1).strip()
+                    if len(term) > 2:  # Avoid very short terms
+                        definition_terms.append(term)
+                        logger.debug(f"TopicManager: definition pattern matched term = '{term}'")
         
         logger.debug(f"TopicManager: definition_terms = {definition_terms}")
         
