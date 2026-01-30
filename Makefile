@@ -21,10 +21,10 @@
 #   VERSION is automatically determined from git SHA
 # =============================================================================
 
-.PHONY: help test-all build-push-all ship-all login clean-all \
-        test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx \
-        build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx \
-        ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx \
+.PHONY: help test-all build-push-all ship-all login connect_aurora_ec2clean-all \
+        test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator \
+        build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator \
+        ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator \
         dev
 
 # Load common configuration (colors, ECR, region)
@@ -32,7 +32,7 @@
 include Makefile.common
 
 # Services
-SERVICES := auth backend curator digester retriever frontend neo4j-init nginx
+SERVICES := auth backend curator digester retriever frontend neo4j-init nginx oracle content_creator_service
 
 # =============================================================================
 # Help
@@ -56,6 +56,7 @@ help:
 	@echo "  make build-push-all    - Build and push all service images to ECR"
 	@echo "  make ship-all          - Test, build, and ship all services to ECR"
 	@echo "  make login             - Login to AWS ECR"
+	@echo "  make connect_aurora_ec2 - Connect to Aurora EC2 instance via SSM"
 	@echo ""
 	@echo "$(GREEN)Service-Specific Commands:$(NC)"
 	@echo "  make test-<service>         - Run tests for a specific service"
@@ -82,7 +83,7 @@ help:
 # Test All Services
 # =============================================================================
 
-test-all: test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init
+test-all: test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-oracle test-content-creator
 	@echo "$(GREEN)✓ All tests completed$(NC)"
 
 test-auth:
@@ -117,11 +118,19 @@ test-nginx:
 	@echo "$(CYAN)Running tests for nginx service...$(NC)"
 	@cd nginx && $(MAKE) test
 
+test-oracle:
+	@echo "$(CYAN)Running tests for oracle service...$(NC)"
+	@cd oracle && $(MAKE) test
+
+test-content-creator:
+	@echo "$(CYAN)Running tests for content-creator service...$(NC)"
+	@cd content_creator_service && $(MAKE) test
+
 # =============================================================================
 # Build and Push All Services
 # =============================================================================
 
-build-push-all: build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx
+build-push-all: build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator
 	@echo "$(GREEN)✓ All images built and pushed successfully$(NC)"
 
 build-push-auth:
@@ -155,6 +164,14 @@ build-push-neo4j-init:
 build-push-nginx:
 	@echo "$(CYAN)Building and pushing nginx service...$(NC)"
 	@cd nginx && $(MAKE) build-push ECR_REGISTRY=$(ECR_REGISTRY) VERSION=$(VERSION)
+
+build-push-oracle:
+	@echo "$(CYAN)Building and pushing oracle service...$(NC)"
+	@cd oracle && $(MAKE) build-push ECR_REGISTRY=$(ECR_REGISTRY) VERSION=$(VERSION)
+
+build-push-content-creator:
+	@echo "$(CYAN)Building and pushing content-creator service...$(NC)"
+	@cd content_creator_service && $(MAKE) build-push ECR_REGISTRY=$(ECR_REGISTRY) VERSION=$(VERSION)
 
 # =============================================================================
 # Ship All Services (with tests and builds)
@@ -195,14 +212,34 @@ ship-nginx:
 	@echo "$(CYAN)Testing, building, and shipping nginx service...$(NC)"
 	@cd nginx && $(MAKE) ship
 
+ship-oracle:
+	@echo "$(CYAN)Testing, building, and shipping oracle service...$(NC)"
+	@cd oracle && $(MAKE) ship
+
+ship-content-creator:
+	@echo "$(CYAN)Testing, building, and shipping content-creator service...$(NC)"
+	@cd content_creator_service && $(MAKE) ship
+
 # =============================================================================
 # AWS ECR Login
 # =============================================================================
 
+# Will need to have AWS SSO configured with a profile named in AWS_SSO_PROFILE
 login:
+	@echo "$(CYAN)Starting AWS SSO login...$(NC)"
+	@aws sso login --profile $(AWS_SSO_PROFILE)
 	@echo "$(CYAN)Logging into AWS ECR...$(NC)"
-	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
+	@aws ecr get-login-password --region $(AWS_REGION) --profile $(AWS_SSO_PROFILE) m| docker login --username AWS --password-stdin $(ECR_REGISTRY)
 	@echo "$(GREEN)✓ Successfully logged into ECR$(NC)"
+
+connect_aurora_ec2:
+	@echo "$(CYAN)Connecting to Aurora EC2 instance...$(NC)"
+	@echo "$(CYAN)To switch to ec2-user run 'sudo -i -u ec2-user' after connecting$(NC)"
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION)
+
 
 # =============================================================================
 # Environment Management

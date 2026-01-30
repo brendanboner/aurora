@@ -91,7 +91,7 @@ class TestAuthMeEndpoint:
             
             assert response.status_code == 200
             data = response.json()
-            assert data["user_id"] == "test-user-123"
+            assert data["id"] == "test-user-123"
             assert data["email"] == "testuser@example.com"
     
     def test_auth_me_without_token(self, client):

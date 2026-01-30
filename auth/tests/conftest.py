@@ -17,6 +17,8 @@ os.environ.update({
     "BACKEND_SERVICE_URL": "http://backend:8000",
     "CURATOR_SERVICE_URL": "http://curator:8000",
     "RETRIEVER_SERVICE_URL": "http://retriever:8000",
+    "CONTENT_CREATOR_SERVICE_URL": "http://content-creator:8000",
+    "ORACLE_SERVICE_URL": "http://oracle:8000",
     "DEPLOYMENT_DOMAIN": "localhost",
     "USE_HTTPS": "false",
 })
@@ -90,7 +92,10 @@ def valid_token_claims():
         "custom:role": "user",
         "exp": int(time.time()) + 3600,  # Expires in 1 hour
         "aud": "test_client_id",
-        "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST"
+        "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST",
+        # Include extracted user info fields for tests that mock at a higher level
+        "id": "test-user-123",
+        "role": "user",
     }
 
 
