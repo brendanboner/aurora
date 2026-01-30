@@ -130,8 +130,9 @@ class TestFilterOptionsEndpoint:
     
     def test_filter_options_returns_200_with_auth(self, client, mock_repo):
         """Test filter-options returns 200 with authentication."""
-        # Mock returns for categories, topics, organizations queries
+        # Mock returns for datasources, categories, topics, organizations queries
         mock_repo.client.execute_query.side_effect = [
+            [{"datasource_id": "ds-wifi8", "name": "Wi-Fi 8", "doc_count": 100}],  # datasources
             [{"category": "press_release", "doc_count": 50}],  # categories
             [{"topic_id": "wifi7", "name": "Wi-Fi 7", "doc_count": 30}],  # topics
             [{"org_id": "wfa", "name": "Wi-Fi Alliance", "doc_count": 20}],  # orgs

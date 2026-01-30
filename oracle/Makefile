@@ -5,7 +5,7 @@
 .PHONY: help test install clean-venv
 
 # Service-specific configuration
-SERVICE_NAME := oracle-service
+SERVICE_NAME := aurora-oracle
 DOCKERFILE := Dockerfile
 BUILD_CONTEXT := ..
 
@@ -23,8 +23,8 @@ help:
 	@echo ""
 	@echo "Available commands:"
 	@echo "  make test        - Run tests with pytest (creates venv automatically)"
-	@echo "  make build-push  - Build and push Docker image to ECR"
-	@echo "  make push        - Run tests, build, and push to ECR"
+	@echo "  make build-push  - Build and push Docker image to ECR (skips tests)"
+	@echo "  make ship        - Run tests, build, and push to ECR"
 	@echo "  make clean       - Clean up test artifacts"
 	@echo "  make clean-venv  - Remove virtual environment"
 

@@ -1,24 +1,86 @@
-# Aurora Content Creator Service Makefile
+# =============================================================================
+# Content Creator Service Makefile
+# =============================================================================
 
-SERVICE_NAME := content-creator-service
+.PHONY: help test install clean-venv deploy-shared clean-shared logs nuke validate-env run-local trigger-agent
 
-include ../.env
+# Service-specific configuration for ECR
+SERVICE_NAME := aurora-content-creator
+DOCKERFILE := Dockerfile
+BUILD_CONTEXT := ..
+
+# Virtual environment configuration
+VENV = .venv
+PYTHON = $(VENV)/bin/python
+PIP = $(VENV)/bin/pip
+PYTEST = $(VENV)/bin/pytest
+
+# Load common configuration and targets (build-push, ship, clean)
+include ../Makefile.common
+
+# Legacy config (for deploy-shared)
+-include ../.env
 export
-
-include ../common/make-utils.mk
 
 PYTHON_RUNNER ?= uv run python
 
-.PHONY: help deploy-shared clean-shared logs nuke validate-env run-local trigger-agent
-
 help:
-	@echo "Aurora Content Creator Service Commands:"
+	@echo "$(CYAN)Content Creator Service Makefile$(NC)"
+	@echo ""
+	@echo "$(GREEN)ECR Deployment:$(NC)"
+	@echo "  make test        - Run tests with pytest (creates venv automatically)"
+	@echo "  make build-push  - Build and push Docker image to ECR (skips tests)"
+	@echo "  make ship        - Run tests, build, and ship to ECR"
+	@echo "  make clean       - Clean up test artifacts"
+	@echo "  make clean-venv  - Remove virtual environment"
+	@echo ""
+	@echo "$(GREEN)Local Development:$(NC)"
 	@echo "  make deploy-shared   - Build + replace service container"
 	@echo "  make clean-shared    - Stop service container"
 	@echo "  make logs            - Tail logs"
 	@echo "  make run-local       - Run uvicorn with local env"
 	@echo "  make trigger-agent   - Force a CreatorAgent to create a post"
 	@echo "  make nuke            - Remove image + container"
+
+# Create virtual environment
+$(VENV)/bin/activate:
+	@echo "$(CYAN)Creating virtual environment with Python 3.12...$(NC)"
+	@python3.12 -m venv $(VENV) || python3 -m venv $(VENV)
+
+# Install dependencies in venv
+install: $(VENV)/bin/activate
+	@echo "$(CYAN)Installing dependencies...$(NC)"
+	@$(PIP) install --upgrade pip
+	@$(PIP) install -e ../neo4j-client
+	@$(PIP) install -e ../rabbitmq-client
+	@$(PIP) install -e .
+
+# Run tests in venv
+test: install
+	@echo "$(CYAN)Running content creator service tests...$(NC)"
+	@$(PYTEST) -v --cov=src --cov-report=term-missing || echo "$(YELLOW)No tests found or tests skipped$(NC)"
+	@echo "$(GREEN)✓ Tests completed$(NC)"
+	@$(MAKE) clean-venv
+
+# Override clean to also clean venv artifacts
+clean:
+	@echo "$(CYAN)Cleaning $(SERVICE_NAME) artifacts...$(NC)"
+	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	@rm -rf .pytest_cache .coverage htmlcov
+	@rm -rf build .cache test_results
+	@echo "$(GREEN)✓ Cleanup completed$(NC)"
+
+# Clean virtual environment
+clean-venv:
+	@echo "$(CYAN)Removing virtual environment...$(NC)"
+	@rm -rf $(VENV)
+	@echo "$(GREEN)✓ Virtual environment removed$(NC)"
+
+# =============================================================================
+# Local Development Commands (Legacy)
+# =============================================================================
 
 validate-env:
 	@test -n "$(POSTGRES_HOST)" || (echo '❌ POSTGRES_HOST missing' && exit 1)

@@ -28,10 +28,14 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
+# Load environment variables from .env
+-include .env
+export
+
 # Docker compose file
 COMPOSE_FILE := docker-compose.prod.yml
 
-.PHONY: help deploy start stop restart logs status backup backup-setup backup-status backup-logs update clean
+.PHONY: help deploy start stop restart logs status backup backup-setup backup-status backup-logs update clean ecr-login
 
 # =============================================================================
 # Help
@@ -68,12 +72,23 @@ help:
 	@echo "$(GREEN)Maintenance:$(NC)"
 	@echo "  make clean         - Remove stopped containers"
 	@echo "  make pull          - Pull latest images from ECR"
+	@echo "  make ecr-login     - Login to Amazon ECR"
 	@echo "  make health        - Check service health"
 	@echo ""
 	@echo "$(GREEN)Quick Checks:$(NC)"
 	@echo "  make ps            - List running containers"
 	@echo "  make disk          - Check disk usage"
 	@echo ""
+
+# =============================================================================
+# Deployment Prep
+# =============================================================================
+
+ecr-login:
+	@echo "$(CYAN)Logging into Amazon ECR...$(NC)"
+	@aws ecr get-login-password --region $(AWS_REGION) \
+		| docker login --username AWS --password-stdin \
+		  $(ECR_REGISTRY)
 
 # =============================================================================
 # Deployment
@@ -108,7 +123,7 @@ restart-nginx:
 	@docker compose -f $(COMPOSE_FILE) restart nginx
 	@echo "$(GREEN)✓ Nginx restarted$(NC)"
 
-update:
+update: ecr-login
 	@echo "$(CYAN)Updating services...$(NC)"
 	@echo "$(YELLOW)→ Creating backup first...$(NC)"
 	@$(MAKE) backup
@@ -118,7 +133,7 @@ update:
 	@docker compose -f $(COMPOSE_FILE) up -d
 	@echo "$(GREEN)✓ Services updated$(NC)"
 
-pull:
+pull: ecr-login
 	@echo "$(CYAN)Pulling latest images from ECR...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) pull
 	@echo "$(GREEN)✓ Images pulled$(NC)"

@@ -18,8 +18,8 @@
 
 # Service-specific configuration
 SERVICE_NAME := aurora-nginx
-BUILD_CONTEXT := .
-DOCKERFILE := Dockerfile.letsencrypt
+BUILD_CONTEXT := ..
+DOCKERFILE := Dockerfile.cloudfront
 
 # Load common configuration and targets (build-push, ship, clean)
 include ../Makefile.common
@@ -30,13 +30,9 @@ include ../Makefile.common
 
 test:
 	@echo "$(CYAN)Testing nginx configuration...$(NC)"
-	@echo "$(GREEN)→ Validating nginx.prod.conf syntax...$(NC)"
-	@docker run --rm -v $(PWD)/nginx.prod.conf:/etc/nginx/nginx.conf:ro nginx:alpine nginx -t
-	@echo "$(GREEN)→ Checking init-ssl.sh exists and is executable...$(NC)"
-	@test -x init-ssl.sh || (echo "$(RED)✗ init-ssl.sh not executable$(NC)" && exit 1)
-	@echo "$(GREEN)→ Checking renew-certs.sh exists and is executable...$(NC)"
-	@test -x renew-certs.sh || (echo "$(RED)✗ renew-certs.sh not executable$(NC)" && exit 1)
-	@echo "$(GREEN)→ Validating Dockerfile.prod exists...$(NC)"
+	@echo "$(GREEN)→ Validating nginx.cloudfront.conf syntax...$(NC)"
+	@docker run --rm --add-host=auth:127.0.0.1 -v $(PWD)/nginx.cloudfront.conf:/etc/nginx/conf.d/default.conf:ro nginx:alpine nginx -t
+	@echo "$(GREEN)→ Validating Dockerfile.cloudfront exists...$(NC)"
 	@test -f $(DOCKERFILE) || (echo "$(RED)✗ $(DOCKERFILE) not found$(NC)" && exit 1)
 	@echo "$(GREEN)✓ All nginx configuration tests passed$(NC)"
 

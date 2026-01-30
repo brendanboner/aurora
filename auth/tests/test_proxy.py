@@ -46,7 +46,7 @@ class TestProxyRequest:
         mock_request.query_params = {}
         
         user_info = {
-            "user_id": "user-123",
+            "id": "user-123",
             "email": "test@example.com",
             "role": "user"
         }
@@ -82,7 +82,7 @@ class TestProxyRequest:
         mock_request.body = AsyncMock(return_value=b"")
         mock_request.query_params = {}
         
-        user_info = {"user_id": "user-123", "email": "test@example.com", "role": "user"}
+        user_info = {"id": "user-123", "email": "test@example.com", "role": "user"}
         
         import httpx
         with patch('httpx.AsyncClient') as mock_client:

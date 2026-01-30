@@ -173,7 +173,7 @@ class TestExtractUserInfo:
         }
         
         result = extract_user_info(claims)
-        assert result["user_id"] == "user-123"
+        assert result["id"] == "user-123"
         assert result["email"] == "test@example.com"
         assert result["role"] == "admin"
     

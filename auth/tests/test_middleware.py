@@ -21,7 +21,7 @@ class TestValidateRequestToken:
         with patch('utils.middleware.validate_jwt_token', return_value=valid_token_claims):
             result = await validate_request_token(mock_request)
             
-            assert result["user_id"] == "test-user-123"
+            assert result["id"] == "test-user-123"
             assert result["email"] == "testuser@example.com"
             assert result["role"] == "user"
     
@@ -59,7 +59,7 @@ class TestValidateRequestToken:
                       return_value={"access_token": "new-token", "id_token": "new-id-token"}):
                 result = await validate_request_token(mock_request)
                 
-                assert result["user_id"] == "test-user-123"
+                assert result["id"] == "test-user-123"
                 assert hasattr(mock_request.state, 'new_access_token')
                 assert mock_request.state.new_access_token == "new-token"
                 assert hasattr(mock_request.state, 'new_id_token')
