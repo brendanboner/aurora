@@ -237,12 +237,14 @@ class QueryTemplateRegistry:
                   CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
               WHERE effective_date >= max_threshold
 
-              // Filter by datasource if specified
+              // Filter by datasource if specified - validate WFA Causeway workgroups only
               WITH r, effective_date, primary_threshold, fallback_threshold, half_limit, requested_days
               WHERE $workgroups IS NULL OR size($workgroups) = 0
                 OR EXISTS {
                     MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                    WHERE ds.datasource_id IN $workgroups
+                    WHERE ds.scraper_type = 'wfa_causeway' 
+                      AND ds.resource_url CONTAINS '/wg/'
+                      AND ds.datasource_id IN $workgroups
                 }
 
               // Categorize by time window using effective date
@@ -334,13 +336,16 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Match DataSource nodes (workgroups)
+            // Match DataSource nodes (workgroups) - validate WFA Causeway workgroups only
             MATCH (ds:DataSource)
-            WHERE ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
+            WHERE ds.scraper_type = 'wfa_causeway' 
+              AND ds.resource_url CONTAINS '/wg/'
+              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
-            WITH ds, r, CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+            WITH ds, r,
+                CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -378,13 +383,16 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Match DataSource nodes (workgroups)
+            // Match DataSource nodes (workgroups) - validate WFA Causeway workgroups only
             MATCH (ds:DataSource)
-            WHERE ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
+            WHERE ds.scraper_type = 'wfa_causeway' 
+              AND ds.resource_url CONTAINS '/wg/'
+              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
-            WITH ds, r, CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+            WITH ds, r,
+                CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -954,18 +962,8 @@ class QueryTemplateRegistry:
                   AND rt.relevance >= 0.5
                 
                 // Date fallback with validation - handle NULL publish_date
-                WITH r, t, rt.relevance as base_relevance
-                WITH r, t, base_relevance,
-                     CASE 
-                       WHEN r.publish_date IS NOT NULL 
-                         AND r.publish_date <> '' 
-                         AND r.publish_date <> 'unknown' 
-                         AND toInteger(substring(toString(r.publish_date), 0, 4)) BETWEEN 2000 AND 2030 
-                       THEN datetime(r.publish_date)
-                       WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
-                       WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
-                       ELSE datetime()
-                     END as effective_date
+                WITH r, t, rt.relevance as base_relevance,
+                     CASE WHEN (r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030) THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
                 RETURN r, effective_date, base_relevance, t.name as topic_name, 'exact' as match_type
                 
@@ -982,18 +980,8 @@ class QueryTemplateRegistry:
                 )
                 
                 // Date fallback - handle NULL publish_date
-                WITH r
                 WITH r,
-                     CASE 
-                       WHEN r.publish_date IS NOT NULL 
-                         AND r.publish_date <> '' 
-                         AND r.publish_date <> 'unknown' 
-                         AND toInteger(substring(toString(r.publish_date), 0, 4)) BETWEEN 2000 AND 2030
-                       THEN datetime(r.publish_date)
-                       WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
-                       WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
-                       ELSE datetime()
-                     END as effective_date
+                     CASE WHEN (r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030) THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
                 // Get the first matching topic for metadata
                 WITH r, effective_date,
@@ -1242,14 +1230,16 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Match DataSource nodes (workgroups)
-            // Filter to WFA Causeway workgroups if workgroups list is empty
+            // Match DataSource nodes (workgroups) - validate WFA Causeway workgroups only
             MATCH (ds:DataSource)
-            WHERE ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
+            WHERE ds.scraper_type = 'wfa_causeway' 
+              AND ds.resource_url CONTAINS '/wg/'
+              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
-            WITH ds, r, CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+            WITH ds, r,
+                CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             

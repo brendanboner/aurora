@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, date
 
 from src.models.route_plan import RoutePlan, RouteId, DetailLevel
 from src.services.personalization import UserPreferences
+from src.services.topic_manager import get_topic_manager, initialize_topic_manager
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -25,17 +26,24 @@ class LocalRouter:
     """
     
     # Date patterns
+    # FIXED TIME WINDOWS: Used for explicit time references (daily/weekly/monthly recap routes)
+    # EXPANDING TIME WINDOWS: Used for relative terms (recent/lately) via RECENT_CONTENT template
     DATE_PATTERNS = {
-        "today": lambda: timedelta(days=0),
+        # Fixed windows - explicit time references
+        "today": lambda: timedelta(days=1),
         "yesterday": lambda: timedelta(days=1),
         "in the last week": lambda: timedelta(days=7),  # Check this BEFORE "last week"
         "in the last month": lambda: timedelta(days=30),  # Check this BEFORE "last month"
         "this week": lambda: timedelta(days=7),
-        "last week": lambda: timedelta(days=14),
+        "last week": lambda: timedelta(days=7),  # Fixed 7 days for WORKGROUP_WEEKLY_RECAP
         "this month": lambda: timedelta(days=30),
-        "last month": lambda: timedelta(days=60),
-        "recent": lambda: timedelta(days=14),  # Default "recent" to last 2 weeks
-        "latest": lambda: timedelta(days=7),  # Default "latest" to last week
+        "last month": lambda: timedelta(days=30),  # Fixed 30 days for monthly queries
+        
+        # Expanding windows - relative terms (RECENT_CONTENT handles 14→56→180 day expansion)
+        "recent": lambda: timedelta(days=14),  # Initial window, template expands if needed
+        "recently": lambda: timedelta(days=14),
+        "lately": lambda: timedelta(days=14),
+        "latest": lambda: timedelta(days=7),
     }
     
     # Route patterns (query text -> route_id)
@@ -517,71 +525,18 @@ class LocalRouter:
         # Remove duplicates from explicit mentions
         entities["workgroups"] = list(set(entities["workgroups"]))
         
-        # Check for topic keywords (e.g., "security", "6 GHz")
-        # ORDER MATTERS: More specific/common topics first
-        topic_keywords = {
-            # IEEE 802.11 Standards (Wi-Fi generations)
-            # NOTE: These keys must match exact Topic.name values in Neo4j
-            "802.11bn": ["802.11bn", "bn", "wifi 8", "wi-fi 8"],
-            "802.11be": ["802.11be", "be", "wifi 7", "wi-fi 7", "extremely high throughput", "eht"],
-            "802.11ax": ["802.11ax", "ax", "wifi 6", "wi-fi 6", "high efficiency"],
-            "802.11ac": ["802.11ac", "ac", "wifi 5", "wi-fi 5"],
-            "802.11n": ["802.11n", "wifi 4", "wi-fi 4"],
-            # HaLow: Check primary topic FIRST (more specific keywords)
-            "wi-fi certified halow": ["wi-fi halow", "wifi halow", "halow"],  # Primary (41 docs) - check first!
-            "ieee p802.11ah": ["802.11ah", "sub-1 ghz"],  # Technical (1 doc) - fallback only
-            "802.11ad": ["802.11ad", "ad", "wigig", "60 ghz"],
-            "802.11ay": ["802.11ay", "ay"],
-            "802.11az": ["802.11az", "az", "next generation positioning", "ngp"],
-            
-            # General Wi-Fi (catch-all for Wi-Fi mentions)
-            "wi-fi": ["wifi", "wi-fi"],
-            
-            # Common Wi-Fi Alliance topics and features
-            "sticky clients": ["sticky client", "sticky-client", "client stickiness", "ap stickiness"],
-            "client steering": ["client steering", "ap steering", "client association"],
-            "ap selection": ["ap selection", "access point selection"],
-            "roaming": ["roaming", "handoff", "seamless roaming"],
-            "band steering": ["band steering"],
-            "RSSI": ["rssi", "signal strength"],
-            "throughput": ["throughput", "data rate", "bandwidth"],
-            "latency": ["latency", "jitter", "delay"],
-            "coverage": ["coverage", "range", "signal coverage"],
-            
-            # Security standards
-            "security": ["security", "authentication", "encryption", "802.1x", "wpa", "secure"],
-            "WPA3": ["wpa3", "wpa 3"],
-            "WPA2": ["wpa2", "wpa 2"],
-            "802.1X": ["802.1x", "radius", "eap"],
-            
-            # Spectrum and frequency bands
-            "6 GHz": ["6 ghz", "6ghz", "6 gigahertz", "upper 6 ghz"],
-            "5 GHz": ["5 ghz", "5ghz", "5 gigahertz"],
-            "2.4 GHz": ["2.4 ghz", "2.4ghz"],
-            "60 GHz": ["60 ghz", "60ghz"],
-            "5G": ["5g", "5-g", "fifth generation"],
-            
-            # Key technologies
-            "MLO": ["mlo", "multi-link", "multilink"],
-            "OFDMA": ["ofdma"],
-            "MU-MIMO": ["mu-mimo", "mumimo", "multi-user mimo"],
-            "Beamforming": ["beamforming", "beam forming"],
-            "TWT": ["twt", "target wake time"],
-            
-            # Wi-Fi Alliance programs
-            "Passpoint": ["passpoint", "hotspot 2.0"],
-            "Easy Connect": ["easy connect", "dpp", "device provisioning"],
-            "WPA3-Enterprise": ["wpa3-enterprise", "wpa3 enterprise"],
-            
-            # Sensing and location
-            "Sensing": ["sensing", "wi-fi sensing", "motion detection"],
-            "Location": ["location", "positioning", "ftm", "fine timing"],
-            "SLAM": ["slam", "simultaneous localization"],
-        }
-        
-        for topic_name, keywords in topic_keywords.items():
-            if any(kw.lower() in question_lower for kw in keywords):
-                entities["topics"].append(topic_name)
+        # Use TopicManager for dynamic topic extraction from Neo4j
+        topic_manager = get_topic_manager()
+        if topic_manager:
+            try:
+                extracted_topics = topic_manager.extract_topics(question)
+                entities["topics"].extend(extracted_topics)
+                logger.debug(f"TopicManager extracted topics: {extracted_topics}")
+            except Exception as e:
+                logger.error(f"TopicManager extraction failed: {e}")
+                # Fallback: Continue without topics rather than crash
+        else:
+            logger.warning("TopicManager not initialized - topics will not be extracted")
         
         # Generate query hints for intelligent routing (pattern-based, no LLM)
         query_hints = {
