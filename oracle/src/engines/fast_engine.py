@@ -838,6 +838,26 @@ class FastEngine:
         
         try:
             # Prepare documents for prompt (limit to 10 for context window)
+            # For "which workgroups" queries, add datasource summary
+            import re
+            from collections import defaultdict
+            is_workgroup_query = bool(re.search(r'(what|which)\s+(workgroups?|datasources?|groups?|wgs?)\s+(are|is|have|has|discussed|mentioned|talking|working)', request.question.lower()))
+            
+            datasource_summary = ""
+            if is_workgroup_query and len(documents) > 10:
+                # Group documents by datasource
+                datasource_counts = defaultdict(int)
+                for doc in documents:
+                    ds = doc.datasource_id or "Unknown source"
+                    datasource_counts[ds] += 1
+                
+                # Create summary
+                sorted_datasources = sorted(datasource_counts.items(), key=lambda x: x[1], reverse=True)
+                summary_parts = [f"**Document Distribution:** Total {len(documents)} documents from {len(datasource_counts)} datasources:"]
+                for ds, count in sorted_datasources:
+                    summary_parts.append(f"  - {ds}: {count} documents")
+                datasource_summary = "\n".join(summary_parts) + "\n\n"
+            
             docs_for_prompt = [
                 {
                     "title": doc.title or "Untitled",
@@ -846,9 +866,22 @@ class FastEngine:
                     "url": doc.url,
                     "topics": doc.topics,
                     "organizations": doc.organizations,
+                    "datasource_id": doc.datasource_id or "Unknown source",
                 }
                 for doc in documents[:10]
             ]
+            
+            # Add datasource summary to the first doc's summary if it exists
+            if datasource_summary and docs_for_prompt:
+                docs_for_prompt.insert(0, {
+                    "title": "📊 Distribution Summary",
+                    "summary": datasource_summary.strip(),
+                    "publish_date": "",
+                    "url": "",
+                    "topics": [],
+                    "organizations": [],
+                    "datasource_id": "summary",
+                })
             
             # Generate answer using LLM
             messages = get_answer_generator_messages(
