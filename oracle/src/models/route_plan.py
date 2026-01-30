@@ -192,6 +192,11 @@ class RoutePlan(BaseModel):
         description="Document category filter (press release, whitepaper, article, blog, newsletter, technical specification)"
     )
     
+    exclude_meetings: Optional[bool] = Field(
+        default=None,
+        description="For event queries: exclude meetings and only return conferences/summits"
+    )
+    
     # Response preferences
     detail_level: DetailLevel = Field(
         default=DetailLevel.DETAILED,
