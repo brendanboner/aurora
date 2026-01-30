@@ -28,10 +28,10 @@ class GraphRepository:
 
     def initialize_base_data(self):
         """
-        Initialize base organizations and data sources from the local initial_data.json file.
-        Creates organizations, data sources, and their relationships.
+        Initialize base organizations, data sources, and common topics from initial_data.json.
+        Creates organizations, data sources, topics, and their relationships.
         """
-        self.logger.info("Initializing base data (organizations and data sources)...")
+        self.logger.info("Initializing base data (organizations, data sources, and topics)...")
         
         json_path = Path(__file__).parent / "initial_data.json"
         if not json_path.exists():
@@ -43,6 +43,7 @@ class GraphRepository:
         
         orgs = data.get("organizations", [])
         data_sources = data.get("data_sources", [])
+        topics = data.get("topics", [])
         
         # Create organizations
         for org_dict in orgs:
@@ -62,7 +63,12 @@ class GraphRepository:
                 ds_to_org_rel = DataSourceBelongsToOrganization(source_id=ds.datasource_id, target_id=org_id)
                 self.create_relationship(ds_to_org_rel)
         
-        self.logger.info(f"Base data initialization complete ({len(orgs)} organizations, {len(data_sources)} data sources)")
+        # Create common topics with aliases
+        for topic_dict in topics:
+            topic = Topic(**topic_dict)
+            self.create_node(topic)
+        
+        self.logger.info(f"Base data initialization complete ({len(orgs)} organizations, {len(data_sources)} data sources, {len(topics)} topics)")
 
     def _log_document_change(
         self,

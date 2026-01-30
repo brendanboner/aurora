@@ -5,21 +5,8 @@ import argparse
 import os
 import requests
 import sys
-import threading
 import time
-import itertools
 from typing import Optional, List
-
-
-def spinner(stop_event, message="Processing"):
-    """Display a spinner animation while waiting."""
-    spinner_chars = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
-    while not stop_event.is_set():
-        sys.stdout.write(f'\r{message} {next(spinner_chars)} ')
-        sys.stdout.flush()
-        time.sleep(0.1)
-    sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r')  # Clear the spinner line
-    sys.stdout.flush()
 
 
 def main():
@@ -93,14 +80,8 @@ def main():
         "X-User-Role": user_role
     }
 
-    # Start spinner in a separate thread
-    stop_spinner = threading.Event()
-    spinner_message = "Querying Oracle service" if args.mode == "retrieval" else "Generating answer with Oracle"
-    spinner_thread = threading.Thread(
-        target=spinner, 
-        args=(stop_spinner, spinner_message)
-    )
-    spinner_thread.start()
+    # Start timer
+    start_time = time.time()
 
     try:
         resp = requests.post(
@@ -109,20 +90,20 @@ def main():
             headers=headers,
             timeout=60,
         )
+        elapsed_time = time.time() - start_time
     except requests.RequestException as e:
-        stop_spinner.set()
-        spinner_thread.join()
+        elapsed_time = time.time() - start_time
         print(f"❌ Error contacting Oracle service: {e}", file=sys.stderr)
         sys.exit(1)
-    finally:
-        stop_spinner.set()
-        spinner_thread.join()
 
     if resp.status_code != 200:
         print(f"❌ Oracle service error {resp.status_code}: {resp.text}", file=sys.stderr)
         sys.exit(1)
 
     data = resp.json()
+
+    # Display query timing
+    print(f"\n⏱️  Query completed in {elapsed_time:.2f}s")
 
     # Display verbose metadata first if requested
     if args.verbose:

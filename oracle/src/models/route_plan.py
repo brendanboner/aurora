@@ -187,6 +187,11 @@ class RoutePlan(BaseModel):
         description="Person names or IDs"
     )
     
+    category: Optional[str] = Field(
+        default=None,
+        description="Document category filter (press release, whitepaper, article, blog, newsletter, technical specification)"
+    )
+    
     # Response preferences
     detail_level: DetailLevel = Field(
         default=DetailLevel.DETAILED,

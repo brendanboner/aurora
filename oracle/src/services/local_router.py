@@ -239,7 +239,7 @@ class LocalRouter:
         (r"(recent|latest|new) (publications?|documents?|papers?|articles?|specs?|press releases?)", RouteId.RECENT_PUBLICATIONS),
         (r"press releases?(\s+about)?", RouteId.RECENT_PUBLICATIONS),
         (r"(find|show|get|search for)\s+(documents?|papers?|publications?)", RouteId.DOCUMENTS_BY_TOPIC),
-        (r"documents? (on|about|regarding|covering|discussing)\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"documents? (on|about|regarding|covering|discussing|mention|mentioning)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(papers?|articles?|specs?) (on|about|regarding)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"what (standards?|changes?).*?ieee\s+802", RouteId.RECENT_PUBLICATIONS),
         (r"(published|released)\s+(by|from)\s+[\w\s\-]+\s+about", RouteId.RECENT_PUBLICATIONS),
@@ -364,6 +364,7 @@ class LocalRouter:
             topics=entities.get("topics", []),
             organizations=entities.get("organizations", []),
             people=entities.get("people", []),
+            category=entities.get("category"),
             detail_level=detail_level,
             deep_dive=deep_dive,
             template_version=settings.fast_template_version,
@@ -516,8 +517,10 @@ class LocalRouter:
             "passpoint": "Passpoint",
             "security": "Security",
             "regulatory": "Regulatory",
+            "regulatory affairs": "Regulatory",
             "location": "Location",
             "xrms": "XRMS",
+            "xr": "XRMS",
             "sensing": "Sensing",
         }
         
@@ -530,18 +533,71 @@ class LocalRouter:
         # Remove duplicates from explicit mentions
         entities["workgroups"] = list(set(entities["workgroups"]))
         
+        # Extract organization mentions with abbreviation expansion
+        org_abbreviations = {
+            "wfa": "Wi-Fi Alliance",
+            "wifi alliance": "Wi-Fi Alliance",
+            "wi-fi alliance": "Wi-Fi Alliance",
+            "wba": "Wireless Broadband Alliance",
+            "wireless broadband alliance": "Wireless Broadband Alliance",
+            "ieee": "IEEE",
+            "ietf": "IETF",
+            "3gpp": "3GPP",
+            "extreme": "Extreme Networks",
+            "extreme networks": "Extreme Networks",
+        }
+        
+        for abbrev, full_name in org_abbreviations.items():
+            # Use word boundaries to match abbreviations
+            pattern = r'\b' + re.escape(abbrev) + r'\b'
+            if re.search(pattern, question_lower):
+                entities["organizations"].append(full_name)
+                logger.debug(f"Expanded organization abbreviation: {abbrev} -> {full_name}")
+        
+        # Remove duplicates
+        entities["organizations"] = list(set(entities["organizations"]))
+        
         # Use TopicManager for dynamic topic extraction from Neo4j
         topic_manager = get_topic_manager()
         if topic_manager:
             try:
                 extracted_topics = topic_manager.extract_topics(question)
-                entities["topics"].extend(extracted_topics)
-                logger.debug(f"TopicManager extracted topics: {extracted_topics}")
+                # Filter out topics that match organization names (avoid double-counting WFA as both topic and org)
+                org_names_lower = {org.lower() for org in entities["organizations"]}
+                filtered_topics = [t for t in extracted_topics if t.lower() not in org_names_lower and t.lower() not in org_abbreviations]
+                entities["topics"].extend(filtered_topics)
+                logger.debug(f"TopicManager extracted topics: {filtered_topics}")
             except Exception as e:
                 logger.error(f"TopicManager extraction failed: {e}")
                 # Fallback: Continue without topics rather than crash
         else:
             logger.warning("TopicManager not initialized - topics will not be extracted")
+        
+        # Extract category filter from query (press release, whitepaper, article, blog, newsletter, specification)
+        category_keywords = {
+            "press release": "press release",
+            "press releases": "press release",
+            "whitepaper": "whitepaper",
+            "whitepapers": "whitepaper",
+            "article": "article",
+            "articles": "article",
+            "blog": "blog",
+            "blogs": "blog",
+            "blog post": "blog",
+            "newsletter": "newsletter",
+            "newsletters": "newsletter",
+            "technical specification": "technical specification",
+            "specification": "technical specification",
+            "specifications": "technical specification",
+            "spec": "technical specification",
+            "specs": "technical specification",
+        }
+        
+        for keyword, category in category_keywords.items():
+            if keyword in question_lower:
+                entities["category"] = category
+                logger.debug(f"Extracted category filter: {category}")
+                break
         
         # Generate query hints for intelligent routing (pattern-based, no LLM)
         query_hints = {

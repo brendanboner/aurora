@@ -77,6 +77,7 @@ class QueryTemplate:
         params["topics"] = plan.topics if plan.topics else []
         params["organizations"] = plan.organizations if plan.organizations else []
         params["people"] = plan.people if plan.people else []
+        params["category"] = plan.category if hasattr(plan, 'category') and plan.category else None
         params["content_types"] = []  # Content type filter (e.g., ['decision', 'action'])
         
         # For DOCUMENTS_BY_TOPIC, if no topics were extracted, try to extract from "what is X" query
@@ -238,14 +239,24 @@ class QueryTemplateRegistry:
               WHERE effective_date >= max_threshold
 
               // Filter by datasource if specified - validate WFA Causeway workgroups only
+              // OR filter by organization if specified
               WITH r, effective_date, primary_threshold, fallback_threshold, half_limit, requested_days
-              WHERE $workgroups IS NULL OR size($workgroups) = 0
+              WHERE (($workgroups IS NULL OR size($workgroups) = 0)
                 OR EXISTS {
                     MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
                     WHERE ds.scraper_type = 'wfa_causeway' 
                       AND ds.resource_url CONTAINS '/wg/'
                       AND ds.datasource_id IN $workgroups
+                })
+              AND (($organizations IS NULL OR size($organizations) = 0)
+                OR EXISTS {
+                    MATCH (r)-[:MENTIONS|PUBLISHED_BY]->(org:Organization)
+                    WHERE org.name IN $organizations
                 }
+                OR EXISTS {
+                    MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)-[:OPERATED_BY]->(org:Organization)
+                    WHERE org.name IN $organizations
+                })
 
               // Categorize by time window using effective date
               WITH r, effective_date, half_limit, requested_days,
@@ -647,7 +658,7 @@ class QueryTemplateRegistry:
             WHERE ($topics IS NULL OR size($topics) = 0
                    OR EXISTS {
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
-                       WHERE t.name IN $topics
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                    })
             
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -697,7 +708,7 @@ class QueryTemplateRegistry:
             WHERE ($topics IS NULL OR size($topics) = 0
                    OR EXISTS {
                        MATCH (e)<-[:RELATES_TO]-(r:Resource)-[:RELATES_TO]->(t:Topic)
-                       WHERE t.name IN $topics
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                    })
             
             OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
@@ -735,18 +746,37 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Find future events (Event nodes)
+            // Find future events (Event nodes) - prioritize public conferences over internal meetings
             MATCH (e:Event)
             WHERE datetime(e.startTime) >= datetime()
               AND ($start_date IS NULL OR datetime(e.startTime) >= datetime($start_date))
+              // Extend "this quarter" to 90 days ahead
               AND ($end_date IS NULL OR datetime(e.startTime) <= datetime($end_date))
             
-            // Optional workgroup filter
+            // Get related datasource to determine if this is a public event or workgroup meeting
+            OPTIONAL MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
+            WITH e, ds,
+                 // Prioritize events from public datasources (not workgroup-specific)
+                 CASE 
+                     WHEN ds.datasource_id IN ['wfa_resource_page', 'wba_resource_page'] THEN 2
+                     WHEN ds.scraper_type = 'wfa_causeway' THEN 1
+                     ELSE 0
+                 END as datasource_priority
+            
+            // For conference queries (no explicit workgroup), prefer public datasources
+            WITH e, max(datasource_priority) as max_priority
+            WHERE ($workgroups IS NULL OR size($workgroups) = 0 OR max_priority >= 1)
+            
+            // Optional workgroup filter (only apply if workgroups specified)
             WITH e
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
                        MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
                        WHERE wg.id IN $workgroups OR wg.name IN $workgroups
+                   }
+                   OR EXISTS {
+                       MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
+                       WHERE ds.datasource_id IN $workgroups
                    })
             
             // Optional topic filter (topics mentioned in event or related documents)
@@ -755,13 +785,13 @@ class QueryTemplateRegistry:
                    OR EXISTS {
                        // Check if event relates to topics directly
                        MATCH (e)-[:RELATES_TO]->(t:Topic)
-                       WHERE t.name IN $topics
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                    }
                    OR EXISTS {
                        // Check if recent documents mention both the event and the topic
                        MATCH (r:Resource)-[:MENTIONS]->(e)
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
-                       WHERE t.name IN $topics
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                          AND (CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END) >= datetime() - duration({days: 180})
                    })
             
@@ -955,10 +985,10 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Try exact Topic match first
+            // Try exact Topic match first (case-insensitive for topic names)
             CALL {
                 MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
-                WHERE t.name IN $topics
+                WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                   AND rt.relevance >= 0.5
                 
                 // Date fallback with validation - handle NULL publish_date
@@ -1084,6 +1114,7 @@ class QueryTemplateRegistry:
             param_schema={
                 "relative_days": "int",
                 "workgroups": "list[str]",
+                "category": "str",
                 "limit": "int"
             },
             cypher="""
@@ -1101,6 +1132,7 @@ class QueryTemplateRegistry:
                        MATCH (r)-[:MENTIONS]->(o:Organization)
                        WHERE o.name IN $workgroups OR o.org_id IN $workgroups
                    })
+              AND ($category IS NULL OR toLower(r.category) = toLower($category))
             
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             WHERE t.relevance >= 0.5
@@ -1168,7 +1200,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
-            WHERE t.name IN $topics
+            WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
               AND rt.relevance >= 0.5
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
               AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
@@ -1200,7 +1232,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (t:Topic)
-            WHERE t.name IN $topics
+            WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
             
             // Find topics that co-occur in documents
             MATCH (t)<-[rt1:RELATES_TO]-(r:Resource)-[rt2:RELATES_TO]->(related:Topic)
@@ -1286,6 +1318,14 @@ class QueryTemplateRegistry:
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
+            // Apply topic filter if provided (combine with organization filter using AND)
+            WITH o, r, effective_date
+            WHERE ($topics IS NULL OR size($topics) = 0)
+              OR EXISTS {
+                  MATCH (r)-[:RELATES_TO]->(t:Topic)
+                  WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
+              }
+            
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             WHERE t.relevance >= 0.5
             
@@ -1338,7 +1378,7 @@ class QueryTemplateRegistry:
             WHERE (
                 ($topics IS NOT NULL AND size($topics) > 0 AND EXISTS {
                     MATCH (r)-[:RELATES_TO]->(t:Topic)
-                    WHERE t.name IN $topics
+                    WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                 }) OR
                 ($organizations IS NOT NULL AND size($organizations) > 0 AND EXISTS {
                     MATCH (r)-[:MENTIONS]->(o:Organization)
@@ -1405,7 +1445,7 @@ class QueryTemplateRegistry:
             cypher="""
             // Find the topics to compare
             MATCH (t:Topic)
-            WHERE t.name IN $topics OR t.topic_id IN $topics
+            WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR t.topic_id = topic)
             
             WITH collect(t) as topics_to_compare
             WHERE size(topics_to_compare) >= 2
@@ -1455,7 +1495,7 @@ class QueryTemplateRegistry:
             cypher="""
             // Find resources with status keywords
             MATCH (t:Topic)
-            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE r.title =~ '(?i).*(status|progress|update|approved|final|draft|ratified|published|released|version).*'
@@ -1489,8 +1529,8 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (t:Topic)
-            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
-            
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
+
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE (r.category IN ['specification', 'whitepaper', 'technical_guide', 'standard']
                    OR r.title =~ '(?i).*(architecture|design|implementation|guide|specification|technical|mechanism|structure).*')
@@ -1525,8 +1565,8 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (t:Topic)
-            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
-            
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
+
             // Find resources about this topic mentioning adoption
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             MATCH (r)-[:MENTIONS]->(o:Organization)
@@ -1616,7 +1656,7 @@ class QueryTemplateRegistry:
             
             // If topics specified, filter by topic connections
             OPTIONAL MATCH (p)-[:CONNECTED_TO]->(t:Topic)
-            WHERE $topics IS NULL OR size($topics) = 0 OR t.name IN $topics
+            WHERE $topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics)
             
             // Get recent resources/events they're mentioned in
             OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
@@ -1655,7 +1695,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (t:Topic)
-            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE (r.category IN ['tutorial', 'guide', 'training', 'documentation']
@@ -1699,7 +1739,7 @@ class QueryTemplateRegistry:
             
             // Filter by topics if specified
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
-            WHERE $topics IS NULL OR size($topics) = 0 OR t.name IN $topics
+            WHERE $topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics)
             
             WITH r, o,
                  collect(DISTINCT t.name)[0..5] as topics
@@ -1729,7 +1769,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (t:Topic)
-            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
             
             // Find resources with critical/concerned stance or issue keywords
             MATCH (r:Resource)-[rt:RELATES_TO]->(t)
@@ -1766,7 +1806,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (t:Topic)
-            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics)
+            WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE r.title =~ '(?i).*(regulation|compliance|certification|requirement|rule|legal|mandate|policy|standard).*'
@@ -1810,13 +1850,14 @@ class QueryTemplateRegistry:
             // 2. Topic-based search if topics provided
             // 3. Fallback to graph-based scoring
             MATCH (r:Resource)
-            WHERE ($query_text IS NULL OR 
-                   toLower(r.title) CONTAINS toLower($query_text) OR 
-                   (r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text)))
+            WHERE (($query_text IS NULL OR 
+                    toLower(r.title) CONTAINS toLower($query_text) OR 
+                    (r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text))) OR
+                   ($topics IS NOT NULL AND size($topics) > 0))
               AND ($topics IS NULL OR size($topics) = 0 OR
                    EXISTS {
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
-                       WHERE t.name IN $topics
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
                    } OR
                    any(topic IN $topics WHERE 
                        toLower(r.title) CONTAINS toLower(topic) OR 
@@ -1854,15 +1895,17 @@ class QueryTemplateRegistry:
                  collect(DISTINCT o.name)[0..3] as orgs,
                  // Text match bonus: higher if query_text found in title vs summary
                  // Bonus for definition/explanation content types
-                 (CASE WHEN $query_text IS NULL THEN 0 WHEN toLower(r.title) CONTAINS toLower($query_text) THEN 15 WHEN r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text) THEN 8 ELSE 0 END) + (CASE WHEN r.category IN ['specification', 'standard', 'whitepaper', 'technical_report'] THEN 5 ELSE 0 END) as text_match_score
+                 (CASE WHEN $query_text IS NULL THEN 0 WHEN toLower(r.title) CONTAINS toLower($query_text) THEN 15 WHEN r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text) THEN 8 ELSE 0 END) + (CASE WHEN r.category IN ['specification', 'standard', 'whitepaper', 'technical_report'] THEN 5 ELSE 0 END) as text_match_score,
+                 // Exact topic term match bonus: prioritize docs that mention the searched topic terms (e.g., "802.11ax" vs just Wi-Fi 6)
+                 reduce(bonus = 0, topic IN $topics | bonus + CASE WHEN toLower(r.title) CONTAINS toLower(topic) THEN 20 WHEN r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower(topic) THEN 10 ELSE 0 END) as topic_term_bonus
             
-            // Hybrid scoring: text match + graph connectivity + recency (with null-safe date handling)
-            WITH r, effective_date, topic_count, org_count, person_count, topics, orgs, text_match_score,
+            // Hybrid scoring: text match + topic term match + graph connectivity + recency (with null-safe date handling)
+            WITH r, effective_date, topic_count, org_count, person_count, topics, orgs, text_match_score, topic_term_bonus,
                  (topic_count * 2 + org_count + person_count) as graph_score,
                  CASE WHEN effective_date >= datetime() - duration({days: 180}) THEN 5 WHEN effective_date >= datetime() - duration({days: 365}) THEN 3 WHEN effective_date >= datetime() - duration({days: 730}) THEN 1 ELSE 0 END as recency_bonus
             
-            // Score = text relevance + graph richness + recency bonus
-            WITH r, topics, orgs, text_match_score, graph_score, recency_bonus, text_match_score + (graph_score * 0.5) + recency_bonus as hybrid_score
+            // Score = exact topic term match + text relevance + graph richness + recency bonus
+            WITH r, topics, orgs, text_match_score, topic_term_bonus, graph_score, recency_bonus, topic_term_bonus + text_match_score + (graph_score * 0.5) + recency_bonus as hybrid_score
             
             ORDER BY hybrid_score DESC, effective_date DESC
             
