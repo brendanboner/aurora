@@ -23,6 +23,7 @@ from src.services.keyword_retriever import get_repo
 from src.services.personalization import decide_personalization, get_user_preferences
 from src.services.llm_client import get_llm_client, call_llm
 from src.services.rollup_generator import RollupGenerator
+from src.services.topic_manager import initialize_topic_manager, get_topic_manager
 from src.prompts.answer_generator import get_answer_generator_messages
 from src.settings import settings
 
@@ -50,6 +51,19 @@ class FastEngine:
         self.template_registry = QueryTemplateRegistry()
         self.fast_cache: Optional[FastCache] = None
         self.rollup_generator = RollupGenerator()
+        
+        # Initialize TopicManager with Neo4j client
+        repo = get_repo()
+        if not get_topic_manager():
+            try:
+                initialize_topic_manager(
+                    neo4j_client=repo.client,
+                    refresh_interval_hours=1,
+                    auto_create_threshold=10
+                )
+                logger.info("Initialized TopicManager with Neo4j client")
+            except Exception as e:
+                logger.error(f"Failed to initialize TopicManager: {e}")
         
         # Will initialize in query() on first call
         self._initialized = False
@@ -530,6 +544,31 @@ class FastEngine:
                 query_time_ms += fallback_time_ms
             else:
                 logger.warning("Fallback also returned zero results")
+        
+        # Cross-datasource fallback: If zero results and workgroups filter was used, retry without workgroups
+        if len(processed_results) == 0 and params.get('workgroups') and len(params['workgroups']) > 0:
+            logger.info(
+                f"Zero results with workgroups filter, expanding to all datasources "
+                f"(route={self._get_route_id_str(plan)}, workgroups={params['workgroups']})"
+            )
+            
+            # Remove workgroups filter for cross-datasource fallback
+            fallback_params = params.copy()
+            fallback_params['workgroups'] = []
+            
+            fallback_start = time.time()
+            fallback_results = repo.client.execute_query(
+                template.cypher,
+                fallback_params
+            )
+            fallback_time_ms = int((time.time() - fallback_start) * 1000)
+            processed_results = template.execute_post_process(fallback_results)
+            
+            if len(processed_results) > 0:
+                logger.info(f"Cross-datasource fallback succeeded: retrieved {len(processed_results)} documents")
+                query_time_ms += fallback_time_ms
+            else:
+                logger.warning("Cross-datasource fallback also returned zero results")
         
         # Check if we got a rollup (shouldn't happen for Neo4j queries now)
         rollup = None
