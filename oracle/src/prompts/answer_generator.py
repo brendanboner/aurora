@@ -90,8 +90,10 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
         url = doc.get("url", "")
         topics = ", ".join(doc.get("topics", [])) or "None"
         orgs = ", ".join(doc.get("organizations", [])) or "None"
+        datasource = doc.get("datasource_id", "Unknown source")
         
         formatted.append(f"""[{i}] **{title}**
+   - Datasource: {datasource}
    - Date: {date}
    - URL: {url}
    - Topics: {topics}
@@ -122,6 +124,10 @@ def get_answer_generator_messages(
     # Format documents
     docs_text = format_documents_for_prompt(documents)
     
+    # Detect if question is asking about workgroups/datasources
+    import re
+    is_workgroup_query = bool(re.search(r'(what|which)\s+(workgroups?|datasources?|groups?|wgs?)\s+(are|is|have|has|discussed|mentioned|talking|working)', question.lower()))
+    
     # Extract graph context
     if graph_context:
         central_topics = ", ".join(graph_context.get("central_topics", [])) or "None identified"
@@ -145,13 +151,19 @@ def get_answer_generator_messages(
         )
     else:
         system_prompt = ANSWER_GENERATOR_SYSTEM
+        
+        # Add workgroup grouping instruction if needed
+        workgroup_instruction = ""
+        if is_workgroup_query:
+            workgroup_instruction = "\n\n**IMPORTANT:** This question asks about which workgroups/datasources discussed a topic. Group your answer by datasource, clearly stating which datasources have relevant content and how many documents from each. For example: 'Topic X was discussed in the WFA Causeway Passpoint workgroup (1 document) and more broadly in the WFA Resource Center (37 documents).'"
+        
         user_content = ANSWER_GENERATOR_USER.format(
             question=question,
             documents=docs_text,
             central_topics=central_topics,
             key_organizations=key_orgs,
             temporal_patterns=temporal
-        )
+        ) + workgroup_instruction
     
     return [
         {"role": "system", "content": system_prompt},

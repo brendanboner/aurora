@@ -138,6 +138,11 @@ class LocalRouter:
         (r"what (workgroups?|wgs?|groups?).*(people|person|members?|contributors?).*(from|at|with)", RouteId.ORGANIZATION_ACTIVITY),
         (r"(people|members?).*(from|at|with).*(associated|involved|participating).*(workgroups?|wgs?)", RouteId.ORGANIZATION_ACTIVITY),
         
+        # === WORKGROUP DISCOVERY BY TOPIC ===
+        # "What workgroups are talking about X?" - find datasources discussing a topic
+        (r"(what|which)\s+(workgroups?|wgs?|groups?|datasources?)\s+(are|is|have been|has been)?\s*(talking|discussing|working|focusing)\s+(about|on)", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"(what|which)\s+(workgroups?|wgs?|groups?)\s+(mentioned|discussed|covered|published about)", RouteId.DOCUMENTS_BY_TOPIC),
+        
         # === WORKGROUP-SPECIFIC ACTIVITY QUERIES (highest priority for workgroup synopsis) ===
         # These patterns match queries asking about activity/discussions in specific workgroups
         (r"what happened in.*?(workgroup|wg|group)", RouteId.RECENT_CONTENT),

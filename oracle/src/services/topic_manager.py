@@ -160,9 +160,13 @@ class TopicManager:
         question_lower = self._normalize(question)
         matched_topics = set()
         
+        logger.debug(f"TopicManager.extract_topics: normalized question = '{question_lower}'")
+        
         # Extract potential definition queries: "What is X?", "Define X", etc.
+        # Stop capture before verbs (talking, discussing, doing) or prepositions (about, with, in)
+        # to avoid capturing "workgroups are talking about X" as a topic
         definition_patterns = [
-            r'what\s+(?:is|are|was|were)\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
+            r'what\s+(?:is|are|was|were)\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\s+(?:talking|discussing|working|doing|saying|about|with|in|for|at|on)|[?,]|$)',
             r'define\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
             r'explain\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
             r'tell\s+me\s+about\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
@@ -175,22 +179,38 @@ class TopicManager:
                 term = match.group(1).strip()
                 if len(term) > 2:  # Avoid very short terms
                     definition_terms.append(term)
+                    logger.debug(f"TopicManager: definition pattern matched term = '{term}'")
+        
+        logger.debug(f"TopicManager: definition_terms = {definition_terms}")
         
         # Match against topic cache
         with self.lock:
             topic_cache = self.topic_cache.copy()
         
+        # Track composite topics that were matched (e.g., "wi-fi halow")
+        matched_composite_topics = set()
+        
         for normalized, variations in topic_cache.items():
-            # Exact match on normalized form
-            if normalized in question_lower:
+            # Match with word boundaries to avoid partial matches
+            # e.g., don't match "or" in "workgroups" or "ar" in "are"
+            # Use regex with \b word boundaries
+            pattern = r'\b' + re.escape(normalized) + r'\b'
+            if re.search(pattern, question_lower):
                 # Return the variation that best matches what appeared in the question
                 # This ensures we use "wi-fi halow" when user asks about it, not "wi-fi certified halow"
                 best_match = variations[0]  # Default to canonical
                 for variation in variations:
-                    if self._normalize(variation) in question_lower:
+                    var_pattern = r'\b' + re.escape(self._normalize(variation)) + r'\b'
+                    if re.search(var_pattern, question_lower):
                         best_match = variation
                         break
+                logger.debug(f"TopicManager: matched topic '{normalized}' -> best_match='{best_match}'")
                 matched_topics.add(best_match)
+                
+                # Track composite topics (contain spaces) for later filtering
+                if ' ' in normalized:
+                    # Store the normalized form AND the best match
+                    matched_composite_topics.add((normalized, best_match))
         
         # Handle definition terms
         unmatched_definition_terms = []
@@ -222,18 +242,35 @@ class TopicManager:
         
         result = list(matched_topics)
         
-        # For definition queries, filter out overly broad topics if more specific ones exist
-        # e.g., if we have both "wi-fi" and "wi-fi halow", only keep "wi-fi halow"
-        if definition_terms and len(result) > 1:
-            # Sort by length (longer = more specific)
-            result_sorted = sorted(result, key=len, reverse=True)
+        # Filter out component topics if composite topics exist
+        # e.g., if we matched "wi-fi" AND "wi-fi halow", remove "wi-fi" and keep only "halow" (which represents the composite)
+        if len(result) > 1 and matched_composite_topics:
+            # Build list of composite topics to keep
+            composite_matches = {best_match for _, best_match in matched_composite_topics}
+            
             filtered = []
-            for topic in result_sorted:
-                # Include if it's not a substring of any already included topic
-                if not any(topic.lower() in included.lower() and topic.lower() != included.lower() 
-                          for included in filtered):
+            for topic in result:
+                # If this topic is the best_match for a composite, keep it
+                if topic in composite_matches:
                     filtered.append(topic)
-            result = filtered
+                    continue
+                
+                # Check if this topic is a component of any composite that was matched
+                is_component = False
+                topic_norm = self._normalize(topic)
+                for composite_norm, composite_match in matched_composite_topics:
+                    # Check if topic is a word in the composite (e.g., "wi-fi" in "wi-fi halow")
+                    composite_words = composite_norm.split()
+                    if topic_norm in composite_words and len(composite_words) > 1:
+                        is_component = True
+                        logger.debug(f"TopicManager: filtering out '{topic}' (component of composite '{composite_norm}')")
+                        break
+                
+                if not is_component:
+                    filtered.append(topic)
+            
+            if filtered:  # Only use filtered if it's not empty
+                result = filtered
         
         if result:
             logger.debug(f"Extracted topics from question: {result}")
