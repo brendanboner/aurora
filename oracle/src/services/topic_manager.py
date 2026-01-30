@@ -183,14 +183,28 @@ class TopicManager:
         for normalized, variations in topic_cache.items():
             # Exact match on normalized form
             if normalized in question_lower:
-                matched_topics.add(variations[0])  # Use canonical name
+                # Return the variation that best matches what appeared in the question
+                # This ensures we use "wi-fi halow" when user asks about it, not "wi-fi certified halow"
+                best_match = variations[0]  # Default to canonical
+                for variation in variations:
+                    if self._normalize(variation) in question_lower:
+                        best_match = variation
+                        break
+                matched_topics.add(best_match)
         
         # Handle definition terms
         unmatched_definition_terms = []
         for term in definition_terms:
             norm_term = self._normalize(term)
             if norm_term in topic_cache:
-                matched_topics.add(topic_cache[norm_term][0])
+                # For definition queries, prefer the exact term asked about if it's an alias
+                variations = topic_cache[norm_term]
+                best_match = variations[0]  # Default to canonical
+                for variation in variations:
+                    if self._normalize(variation) == norm_term:
+                        best_match = variation
+                        break
+                matched_topics.add(best_match)
             else:
                 # Track frequency for auto-creation
                 unmatched_definition_terms.append(term)
@@ -207,6 +221,19 @@ class TopicManager:
                     matched_topics.add(term)
         
         result = list(matched_topics)
+        
+        # For definition queries, filter out overly broad topics if more specific ones exist
+        # e.g., if we have both "wi-fi" and "wi-fi halow", only keep "wi-fi halow"
+        if definition_terms and len(result) > 1:
+            # Sort by length (longer = more specific)
+            result_sorted = sorted(result, key=len, reverse=True)
+            filtered = []
+            for topic in result_sorted:
+                # Include if it's not a substring of any already included topic
+                if not any(topic.lower() in included.lower() and topic.lower() != included.lower() 
+                          for included in filtered):
+                    filtered.append(topic)
+            result = filtered
         
         if result:
             logger.debug(f"Extracted topics from question: {result}")
