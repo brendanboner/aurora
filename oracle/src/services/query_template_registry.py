@@ -748,36 +748,18 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Strategy 1: Find Event nodes with future startTime
+            // Find Event nodes with future start_date
             MATCH (e:Event)
-            WHERE datetime(e.startTime) >= datetime()
-              AND ($start_date IS NULL OR datetime(e.startTime) >= datetime($start_date))
+            WHERE datetime(e.start_date) >= datetime()
+              AND ($start_date IS NULL OR datetime(e.start_date) >= datetime($start_date))
               // Extend "this quarter" to 90 days ahead
-              AND ($end_date IS NULL OR datetime(e.startTime) <= datetime($end_date))
+              AND ($end_date IS NULL OR datetime(e.start_date) <= datetime($end_date))
               // Exclude meetings if conferences specifically requested
-              AND ($exclude_meetings IS NULL OR $exclude_meetings = false OR toLower(coalesce(e.type, '')) NOT IN ['meeting', 'workgroup meeting', 'task group meeting'])
-            
-            // Get related datasource to determine if this is a public event or workgroup meeting
-            OPTIONAL MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
-            WITH e, ds,
-                 // Prioritize events from public datasources (not workgroup-specific)
-                 CASE 
-                     WHEN ds.datasource_id IN ['wfa_resource_page', 'wba_resource_page'] THEN 2
-                     WHEN ds.scraper_type = 'wfa_causeway' THEN 1
-                     ELSE 0
-                 END as datasource_priority
-            
-            // For conference queries (no explicit workgroup), prefer public datasources
-            WITH e, max(datasource_priority) as max_priority
-            WHERE ($workgroups IS NULL OR size($workgroups) = 0 OR max_priority >= 1)
+              AND ($exclude_meetings IS NULL OR $exclude_meetings = false OR NOT toLower(coalesce(e.event_type, '')) IN ['meeting', 'workgroup meeting', 'task group meeting'])
             
             // Optional workgroup filter (only apply if workgroups specified)
             WITH e
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
-                   OR EXISTS {
-                       MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
-                       WHERE wg.id IN $workgroups OR wg.name IN $workgroups
-                   }
                    OR EXISTS {
                        MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
                        WHERE ds.datasource_id IN $workgroups
@@ -787,7 +769,6 @@ class QueryTemplateRegistry:
             WITH e
             WHERE ($topics IS NULL OR size($topics) = 0
                    OR EXISTS {
-                       // Check if event relates to topics directly
                        MATCH (e)-[:RELATES_TO]->(t:Topic)
                        WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
                    }
@@ -796,98 +777,24 @@ class QueryTemplateRegistry:
                        MATCH (r:Resource)-[:MENTIONS]->(e)
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
                        WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
-                         AND (CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END) >= datetime() - duration({days: 180})
                    })
             
-            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
             OPTIONAL MATCH (e)-[:RELATES_TO]->(t:Topic)
-            OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(e)
-            WITH e, wg, t, r,
-                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
-            WHERE r IS NULL OR effective_date >= datetime() - duration({days: 180})
             
-            WITH e, wg,
-                 collect(DISTINCT t.name)[..5] as topics,
-                 collect(DISTINCT r.title)[..3] as mentioning_documents
-            ORDER BY e.startTime ASC
+            WITH e,
+                 collect(DISTINCT t.name)[..5] as topics
+            ORDER BY e.start_date ASC
             
             RETURN 
-                e.id as event_id,
+                e.url_hash as event_id,
                 e.name as title,
-                e.startTime as start_time,
-                e.endTime as end_time,
+                e.start_date as start_time,
+                e.end_date as end_time,
                 e.location as location,
                 e.url as url,
-                e.type as event_type,
-                wg.name as workgroup,
-                topics,
-                mentioning_documents
-            LIMIT $limit
-            
-            UNION
-            
-            // Strategy 2 (Fallback): If no Event nodes found, search for documents about upcoming events
-            // This handles cases where events are mentioned in documents but no Event node exists yet
-            CALL {
-                MATCH (e:Event)
-                WHERE datetime(e.startTime) >= datetime()
-                  AND ($start_date IS NULL OR datetime(e.startTime) >= datetime($start_date))
-                  AND ($end_date IS NULL OR datetime(e.startTime) <= datetime($end_date))
-                RETURN count(e) as event_count
-            }
-            WITH event_count
-            WHERE event_count = 0  // Only use fallback if no Event nodes found
-            
-            // Find recent documents about upcoming events/conferences
-            MATCH (r:Resource)
-            WHERE (toLower(r.title) CONTAINS 'conference' 
-                   OR toLower(r.title) CONTAINS 'summit' 
-                   OR toLower(r.title) CONTAINS 'event'
-                   OR toLower(r.title) CONTAINS 'workshop'
-                   OR toLower(coalesce(r.summary, '')) CONTAINS 'upcoming'
-                   OR toLower(coalesce(r.summary, '')) CONTAINS 'save the date')
-              AND r.category IN ['press release', 'news', 'announcement', 'blog']
-            
-            WITH r, CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
-            
-            // Filter by recent publications (last 90 days)
-            WHERE effective_date >= datetime() - duration({days: 90})
-            
-            // Filter by datasource (workgroups) if specified
-            WITH r, effective_date
-            WHERE $workgroups IS NULL OR size($workgroups) = 0 
-               OR EXISTS {
-                   MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                   WHERE ds.datasource_id IN $workgroups
-               }
-            
-            // Topic filter if specified
-            WITH r, effective_date
-            WHERE $topics IS NULL OR size($topics) = 0
-               OR EXISTS {
-                   MATCH (r)-[:RELATES_TO]->(t:Topic)
-                   WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
-               }
-            
-            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
-            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-            
-            WITH r, effective_date,
-                 collect(DISTINCT t.name)[..5] as topics,
-                 ds.datasource_id as datasource_id
-            ORDER BY effective_date DESC
-            
-            RETURN 
-                r.url_hash as event_id,
-                r.title as title,
-                null as start_time,
-                null as end_time,
-                null as location,
-                r.url as url,
-                'document_mention' as event_type,
+                e.event_type as event_type,
                 null as workgroup,
-                topics,
-                [] as mentioning_documents
+                topics
             LIMIT $limit
             """
         )
