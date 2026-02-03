@@ -224,7 +224,7 @@ async def query(
                     datasource_ids = []
                     for mention in mentions:
                         # Query Neo4j for datasource with matching name or ID
-                        result = await neo4j_client.run_async("""
+                        result = neo4j_client.execute_query("""
                             MATCH (ds:DataSource)
                             WHERE toLower(ds.name) CONTAINS toLower($mention)
                                OR toLower(ds.datasource_id) CONTAINS toLower($mention)

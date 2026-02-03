@@ -410,7 +410,7 @@ class LocalRouter:
         
         # Fallback to generic search instead of None
         logger.debug("No specific pattern matched, using GENERIC_SEARCH fallback")
-        return RouteId.GENERIC_SEARCH, 0.6  # Increased to meet threshold
+        return RouteId.GENERIC_SEARCH, settings.fast_router_confidence_threshold  # Use configured threshold
     
     def _parse_dates(self, question: str) -> Tuple[Optional[date], Optional[date], Optional[int]]:
         """

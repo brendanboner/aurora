@@ -1,5 +1,7 @@
 #!/bin/bash
-cd /Users/bbonner/code/octo/ops/octo-rapid-aurora
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${OCTO_RAPID_AURORA_ROOT:-$SCRIPT_DIR}"
+cd "$PROJECT_ROOT"
 
 echo "=== Clearing Redis cache ==="
 docker compose exec -T redis redis-cli FLUSHALL

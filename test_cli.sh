@@ -29,7 +29,7 @@ QUESTIONS=(
   "What has the Wi-Fi Alliance published about Wi-Fi 7?"
   "What happened recently regarding Wi-Fi 7?"
   "What is new in cybersecurity for wireless networking?"
-  "What workgroups have people form extreme associated with them"
+  "What workgroups have people from extreme associated with them"
   "Give me any idea what was discussed in the last month"
   "Summarise recently published documents related to Wi-Fi 6E"
   "Give an update on regulatory affairs"

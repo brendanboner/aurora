@@ -43,7 +43,7 @@ class RollupScheduler:
             try:
                 await self._run_generation()
             except Exception as e:
-                logger.error(f"Initial rollup generation failed: {e}, will use cached rollups if available", exc_info=True)
+                logger.error(f"Initial rollup generation failed: {e}. Continuing without refreshed rollups", exc_info=True)
                 logger.warning("Service will continue with stale PostgreSQL cache or direct Neo4j queries")
         
         # Start periodic scheduler

@@ -138,7 +138,7 @@ class TopicManager:
                          t.source = 'query_frequency'
             RETURN t.name AS name
             """
-            result = self.neo4j_client.run_query(query, {'name': term})
+            result = self.neo4j_client.execute_query(query, {'name': term})
             
             if result:
                 logger.info(f"Auto-created Topic node for '{term}' (searched {self.search_frequency[term]} times)")
