@@ -172,8 +172,16 @@ class QueryTemplate:
         else:
             params["query_text"] = None
         
-        # Limits
-        params["limit"] = settings.fast_template_max_nodes
+        # Limits - use smaller limit for definition queries to prioritize quality over quantity
+        if hasattr(plan, 'route_id'):
+            route_id_val = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+            if route_id_val == "documents_by_topic":
+                # For definition queries, 20 high-quality documents is better than 100 mediocre ones
+                params["limit"] = 20
+            else:
+                params["limit"] = settings.fast_template_max_nodes
+        else:
+            params["limit"] = settings.fast_template_max_nodes
         
         return params
     
@@ -970,10 +978,10 @@ class QueryTemplateRegistry:
                   AND rt.relevance >= 0.5
                 
                 // Date fallback with validation - handle NULL publish_date
-                WITH r, t, rt.relevance as base_relevance,
+                WITH r, t, rt.relevance as base_relevance, rt.stance as stance,
                      CASE WHEN (r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030) THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
-                RETURN r, effective_date, base_relevance, t.name as topic_name, 'exact' as match_type
+                RETURN r, effective_date, base_relevance, stance, t.name as topic_name, 'exact' as match_type
                 
                 UNION
                 
@@ -998,10 +1006,10 @@ class QueryTemplateRegistry:
                          toLower(coalesce(r.summary, '')) CONTAINS toLower(topic)
                      ]) as topic_name
                 
-                RETURN r, effective_date, 0.5 as base_relevance, topic_name, 'fuzzy' as match_type
+                RETURN r, effective_date, 0.5 as base_relevance, 'mixed' as stance, topic_name, 'fuzzy' as match_type
             }
             
-            WITH r, effective_date, base_relevance, topic_name, match_type
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type
             
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
@@ -1009,46 +1017,62 @@ class QueryTemplateRegistry:
               AND effective_date.year <= 2030
             
             // Count total topics for this resource (specificity calculation)
-            WITH DISTINCT r, effective_date, base_relevance, topic_name, match_type
+            WITH DISTINCT r, effective_date, base_relevance, stance, topic_name, match_type
             MATCH (r)-[:RELATES_TO]->(all_topics:Topic)
-            WITH r, effective_date, base_relevance, topic_name, match_type, count(DISTINCT all_topics) as topic_count
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, count(DISTINCT all_topics) as topic_count
             
-            // Calculate specificity score
-            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count,
+            // Calculate specificity score (fewer topics = more focused)
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count,
                  CASE WHEN topic_count = 1 THEN 1.0 WHEN topic_count = 2 THEN 0.9 WHEN topic_count <= 5 THEN 0.7 ELSE 0.5 END as specificity_score
             
+            // Calculate stance boost (descriptive documents explain topics better)
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score,
+                 CASE toLower(stance)
+                   WHEN 'descriptive' THEN 1.5    // Boost explanatory/definitional content
+                   WHEN 'supportive' THEN 1.2     // Advocacy content
+                   WHEN 'directive' THEN 1.1      // Instructional content
+                   WHEN 'speculative' THEN 0.9    // Forward-looking content
+                   WHEN 'critical' THEN 0.8       // Critical analysis
+                   WHEN 'concerned' THEN 0.8      // Concern-focused
+                   ELSE 1.0                        // Mixed or neutral
+                 END as stance_boost
+            
             // Calculate content type boost
-            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count, specificity_score,
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost,
                  CASE r.category
-                   WHEN 'whitepaper' THEN 1.3
-                   WHEN 'specification' THEN 1.2
-                   WHEN 'technical_report' THEN 1.1
-                   WHEN 'standard' THEN 1.2
-                   WHEN 'draft' THEN 1.0
-                   WHEN 'presentation' THEN 0.8
-                   WHEN 'meeting_minutes' THEN 0.5
-                   WHEN 'email' THEN 0.4
+                   WHEN 'whitepaper' THEN 1.5     // Increased from 1.3 for definition queries
+                   WHEN 'specification' THEN 1.4  // Increased from 1.2
+                   WHEN 'standard' THEN 1.4       // Increased from 1.2
+                   WHEN 'technical_report' THEN 1.2  // Increased from 1.1
+                   WHEN 'press release' THEN 1.1  // Press releases often introduce/explain
+                   WHEN 'blog' THEN 1.0
+                   WHEN 'news' THEN 0.9
+                   WHEN 'draft' THEN 0.9          // Decreased from 1.0
+                   WHEN 'presentation' THEN 0.7   // Decreased from 0.8
+                   WHEN 'meeting_minutes' THEN 0.3  // Decreased from 0.5
+                   WHEN 'email' THEN 0.2          // Decreased from 0.4
                    ELSE 0.8
                  END as content_type_boost
             
-            // Calculate recency score
-            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count, specificity_score, content_type_boost,
+            // Recency score (less important for definitional queries)
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost,
                  CASE WHEN effective_date >= datetime() - duration({days: 180}) THEN 1.2 WHEN effective_date >= datetime() - duration({days: 365}) THEN 1.1 WHEN effective_date >= datetime() - duration({days: 730}) THEN 1.0 ELSE 0.9 END as recency_score
             
             // Apply match type penalty (fuzzy matches rank slightly lower)
-            WITH r, effective_date, base_relevance, topic_name, match_type, topic_count, specificity_score, content_type_boost, recency_score,
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost, recency_score,
                  CASE match_type
                    WHEN 'exact' THEN 1.0
                    WHEN 'fuzzy' THEN 0.8
                    ELSE 0.7
                  END as match_type_penalty
             
-            // Calculate final KG relevance score
-            WITH r, effective_date, topic_name, topic_count, match_type,
-                 (base_relevance * 0.4 * match_type_penalty +
-                  specificity_score * 0.3 +
+            // Calculate final KG relevance score (increased weight for stance and content_type)
+            WITH r, effective_date, stance, topic_name, topic_count, match_type,
+                 (base_relevance * 0.3 * match_type_penalty +
+                  specificity_score * 0.2 +
+                  stance_boost * 0.25 +
                   content_type_boost * 0.2 +
-                  recency_score * 0.1
+                  recency_score * 0.05
                  ) as kg_score
             
             // Normalize kg_score to 0-1 range for consistency

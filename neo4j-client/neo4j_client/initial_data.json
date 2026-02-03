@@ -361,7 +361,7 @@
       "classification": "technology",
       "identifier": "802.11ax",
       "issuer": "Wi-Fi Alliance",
-      "aliases": ["802.11ax", "Wi-Fi 6", "High Efficiency Wireless", "HE", "ax"],
+      "aliases": ["802.11ax", "Wi-Fi 6", "WiFi 6", "wifi 6", "WiFi6", "wifi6", "High Efficiency Wireless", "HE", "ax"],
       "created_by": "system"
     },
     {
@@ -369,7 +369,7 @@
       "classification": "technology",
       "identifier": "802.11be",
       "issuer": "Wi-Fi Alliance",
-      "aliases": ["802.11be", "Wi-Fi 7", "Extremely High Throughput", "EHT", "be"],
+      "aliases": ["802.11be", "Wi-Fi 7", "WiFi 7", "wifi 7", "WiFi7", "wifi7", "Extremely High Throughput", "EHT", "be"],
       "created_by": "system"
     },
     {
@@ -377,8 +377,17 @@
       "classification": "technology",
       "identifier": "Wi-Fi 6E",
       "issuer": "Wi-Fi Alliance",
-      "aliases": ["Wi-Fi 6E", "6E", "Wi-Fi6E", "wifi 6e"],
+      "aliases": ["Wi-Fi 6E", "WiFi 6E", "wifi 6e", "WiFi6E", "wifi6e", "6E", "Wi-Fi6E"],
       "description": "Wi-Fi 6E extends Wi-Fi 6 into the 6 GHz band"
+    },
+    {
+      "name": "Wi-Fi 8",
+      "classification": "technology",
+      "identifier": "802.11bn",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["802.11bn", "Wi-Fi 8", "WiFi 8", "wifi 8", "WiFi8", "wifi8", "bn"],
+      "description": "Wi-Fi 8 (IEEE 802.11bn) is the next generation wireless standard",
+      "created_by": "system"
     },
     {
       "name": "IEEE 802.11",

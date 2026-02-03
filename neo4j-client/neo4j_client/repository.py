@@ -215,12 +215,43 @@ class GraphRepository:
 
         # Prepare query and parameters
         # Set both created_at and last_updated on create, only last_updated on match
-        query = f"""
-        MERGE (n:{label} {{{id_field}: $id_value}})
-        ON CREATE SET n += $properties, n.created_at = datetime(), n.last_updated = datetime()
-        ON MATCH SET n += $properties, n.last_updated = datetime()
-        RETURN n
-        """
+        # Special handling for Topic nodes: merge aliases instead of replacing them
+        if label == "Topic":
+            query = f"""
+            MERGE (n:{label} {{{id_field}: $id_value}})
+            ON CREATE SET n += $properties, n.created_at = datetime(), n.last_updated = datetime()
+            ON MATCH SET 
+                n.name = $properties.name,
+                n.classification = $properties.classification,
+                n.description = coalesce($properties.description, n.description),
+                n.identifier = coalesce($properties.identifier, n.identifier),
+                n.issuer = coalesce($properties.issuer, n.issuer),
+                n.created_by = coalesce(n.created_by, $properties.created_by),
+                n.aliases = CASE 
+                    WHEN $properties.aliases IS NOT NULL AND size($properties.aliases) > 0 
+                    THEN [alias IN (coalesce(n.aliases, []) + $properties.aliases) | toLower(alias)] 
+                    ELSE coalesce(n.aliases, [])
+                END,
+                n.last_updated = datetime()
+            WITH n
+            // Deduplicate aliases (case-insensitive)
+            WITH n, [alias IN n.aliases | toLower(alias)] as lower_aliases
+            WITH n, reduce(unique = [], alias IN lower_aliases | 
+                CASE WHEN NOT toLower(alias) IN [x IN unique | toLower(x)] 
+                THEN unique + [alias] 
+                ELSE unique 
+                END
+            ) as deduped_aliases
+            SET n.aliases = deduped_aliases
+            RETURN n
+            """
+        else:
+            query = f"""
+            MERGE (n:{label} {{{id_field}: $id_value}})
+            ON CREATE SET n += $properties, n.created_at = datetime(), n.last_updated = datetime()
+            ON MATCH SET n += $properties, n.last_updated = datetime()
+            RETURN n
+            """
         
         params = {
             "id_value": node_data[id_field],
