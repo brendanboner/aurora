@@ -807,7 +807,17 @@ class FastEngine:
         documents = self._nodes_to_documents(route_result.nodes)
         
         if not documents:
-            return "I couldn't find any relevant documents to answer your question.", [], []
+            # Provide a more helpful message with suggestions
+            answer = (
+                "I couldn't find any documents in the knowledge base that match your query.\n\n"
+                "**Suggestions:**\n"
+                "• Try rephrasing with different terms\n"
+                "• Check spelling of technical terms or names\n"
+                "• Broaden your search (e.g., remove date filters)\n"
+                "• Ask about related topics or industry trends\n\n"
+                "Our knowledge base covers wireless standards, Wi-Fi technology, and industry news."
+            )
+            return answer, [], []
         
         # Get LLM client
         client = get_llm_client()

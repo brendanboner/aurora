@@ -548,7 +548,7 @@ curl http://localhost:8002/admin/rollups/status
 async def test_rollup_degradation():
     # 1. Fresh generation succeeds
     result = await rollup_generator.generate_all_rollups()
-    assert result['workgroups_processed'] > 0
+    assert result['datasources_processed'] > 0
     
     # 2. If Neo4j fails, use cached rollups
     with mock_neo4j_failure():

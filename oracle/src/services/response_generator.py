@@ -47,12 +47,8 @@ class ResponseGenerator:
             AnswerResult with answer, citations, and confidence
         """
         if not documents:
-            return AnswerResult(
-                answer="I couldn't find any relevant documents to answer your question. Please try rephrasing or broadening your search.",
-                citations=[],
-                confidence_score=0.0,
-                tokens_used=0
-            )
+            # Try to provide a helpful response even without documents
+            return await self._generate_no_documents_response(question, graph_context, intent)
         
         client = get_llm_client()
         
@@ -199,6 +195,93 @@ class ResponseGenerator:
         
         # Ensure in valid range
         return max(0.1, min(total_confidence, 0.95))
+    
+    async def _generate_no_documents_response(
+        self,
+        question: str,
+        graph_context: Optional[GraphContext],
+        intent: QueryIntent
+    ) -> AnswerResult:
+        """Generate a helpful response when no documents are found."""
+        client = get_llm_client()
+        
+        if client is None:
+            # Fallback without LLM
+            answer = (
+                "I couldn't find any documents in our knowledge base that directly address your question.\n\n"
+                "**Suggestions:**\n"
+                "• Try rephrasing your question with different terms\n"
+                "• Broaden your search (e.g., remove specific date ranges)\n"
+                "• Check for typos in organization or technology names\n"
+                "• Try asking about related topics or industry trends\n\n"
+                "Our knowledge base focuses on wireless standards, Wi-Fi technology, and industry news from "
+                "sources like Wi-Fi Alliance, IEEE, and industry organizations."
+            )
+            return AnswerResult(
+                answer=answer,
+                citations=[],
+                confidence_score=0.0,
+                tokens_used=0
+            )
+        
+        # Try to answer using LLM's general knowledge with appropriate caveats
+        try:
+            system_msg = {
+                "role": "system",
+                "content": (
+                    "You are a helpful assistant with expertise in wireless technology, networking standards, and the tech industry. "
+                    "A user asked a question, but no relevant documents were found in the knowledge base (which contains industry news, "
+                    "standards documents, and technical materials from Wi-Fi Alliance, IEEE, and related organizations).\n\n"
+                    "Your task:\n"
+                    "1. Acknowledge that no documents were found in the knowledge base\n"
+                    "2. If you have general knowledge about the topic, provide a brief, helpful answer with appropriate caveats\n"
+                    "3. Suggest how the user might rephrase their query or where else they might find this information\n"
+                    "4. Be honest about limitations - if this is very specific information (like event dates), acknowledge you may not have current data\n"
+                    "5. Keep your response concise (under 200 words)\n\n"
+                    "Be helpful, honest, and direct."
+                ),
+            }
+            
+            user_msg = {
+                "role": "user",
+                "content": f"Question: {question}",
+            }
+            
+            response = await client.chat.completions.create(
+                model=getattr(client, "_deployment_name", "gpt-4o"),
+                messages=[system_msg, user_msg],
+                temperature=0.7,
+                max_tokens=300,
+            )
+            
+            answer = response.choices[0].message.content.strip()
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+            
+            return AnswerResult(
+                answer=answer,
+                citations=[],
+                confidence_score=0.3,  # Low confidence for general knowledge
+                tokens_used=tokens_used
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to generate no-documents response: {e}")
+            # Final fallback
+            answer = (
+                "I couldn't find any documents in our knowledge base to answer your question.\n\n"
+                "**Try:**\n"
+                "• Rephrasing with different keywords\n"
+                "• Checking spelling of technical terms or organization names\n"
+                "• Broadening your search criteria\n"
+                "• Asking about general industry trends instead of specific details\n\n"
+                "For current event information, you may want to check the official websites of relevant organizations directly."
+            )
+            return AnswerResult(
+                answer=answer,
+                citations=[],
+                confidence_score=0.0,
+                tokens_used=0
+            )
     
     def _generate_fallback_answer(
         self,
