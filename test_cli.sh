@@ -4,14 +4,14 @@
 # Tests the CLI against the Oracle service with various query types
 #
 
-set -e  # Exit on error
+set -e # Exit on error
 
 # Configuration
 CLI="./cli/aurora"
-DATASOURCE=""  # Empty = all datasources, or set to "wfa_resource_page,wba_resource_page" etc.
-PERSONALIZE=true  # true = enable personalization (default), false = disable
-VERBOSE=false  # true = show query metadata, false = normal output
-MAX_DOCS=10  # Number of documents to retrieve per query
+DATASOURCE=""    # Empty = all datasources, or set to "wfa_resource_page,wba_resource_page" etc.
+PERSONALIZE=true # true = enable personalization (default), false = disable
+VERBOSE=false    # true = show query metadata, false = normal output
+MAX_DOCS=4       # Number of documents to retrieve per query
 
 # Test questions array
 QUESTIONS=(
@@ -41,17 +41,17 @@ QUESTIONS=(
 # Build CLI command with options
 build_cli_command() {
   local cmd="$CLI"
-  
+
   if [ "$VERBOSE" = true ]; then
     cmd="$cmd -v"
   fi
-  
+
   if [ -n "$DATASOURCE" ]; then
     cmd="$cmd --datasources $DATASOURCE"
   fi
-  
+
   cmd="$cmd --max-documents $MAX_DOCS"
-  
+
   echo "$cmd"
 }
 
@@ -60,14 +60,11 @@ run_test() {
   local num=$1
   local question=$2
   local cmd=$(build_cli_command)
-  
+
   echo ""
-  echo "======================================================================"
   echo "Test $num of ${#QUESTIONS[@]}: $question"
-  echo "======================================================================"
-  
   $cmd "$question"
-  
+
   echo ""
 }
 
@@ -85,26 +82,26 @@ main() {
   echo "Total Questions: ${#QUESTIONS[@]}"
   echo "======================================================================"
   echo ""
-  
+
   # Check if CLI exists
   if [ ! -f "$CLI" ]; then
-    echo "❌ Error: CLI not found at $CLI"
+    echo "Error: CLI not found at $CLI"
     exit 1
   fi
-  
+
   # Make CLI executable
   chmod +x "$CLI"
-  
+
   # Run all tests
   local count=1
   for question in "${QUESTIONS[@]}"; do
     run_test $count "$question"
     count=$((count + 1))
   done
-  
+
   echo ""
   echo "======================================================================"
-  echo "✅ All CLI tests completed: ${#QUESTIONS[@]} questions"
+  echo "All CLI tests completed: ${#QUESTIONS[@]} questions"
   echo "======================================================================"
   echo ""
 }
@@ -112,44 +109,44 @@ main() {
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --datasource)
-      DATASOURCE="$2"
-      shift 2
-      ;;
-    --verbose|-v)
-      VERBOSE=true
-      shift
-      ;;
-    --no-personalize)
-      PERSONALIZE=false
-      shift
-      ;;
-    --max-docs)
-      MAX_DOCS="$2"
-      shift 2
-      ;;
-    --help|-h)
-      echo "Usage: $0 [OPTIONS]"
-      echo ""
-      echo "Options:"
-      echo "  --datasource DS1,DS2   Filter by datasource IDs (default: all)"
-      echo "  --verbose, -v          Show verbose output with metadata"
-      echo "  --no-personalize       Disable personalization"
-      echo "  --max-docs N           Max documents per query (default: 10)"
-      echo "  --help, -h             Show this help message"
-      echo ""
-      echo "Examples:"
-      echo "  $0                                    # Run all tests with defaults"
-      echo "  $0 --verbose                          # Run with verbose output"
-      echo "  $0 --datasource wfa_resource_page     # Test only WFA datasource"
-      echo "  $0 --max-docs 5                       # Limit to 5 documents per query"
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $1"
-      echo "Use --help for usage information"
-      exit 1
-      ;;
+  --datasource)
+    DATASOURCE="$2"
+    shift 2
+    ;;
+  --verbose | -v)
+    VERBOSE=true
+    shift
+    ;;
+  --no-personalize)
+    PERSONALIZE=false
+    shift
+    ;;
+  --max-docs)
+    MAX_DOCS="$2"
+    shift 2
+    ;;
+  --help | -h)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --datasource DS1,DS2   Filter by datasource IDs (default: all)"
+    echo "  --verbose, -v          Show verbose output with metadata"
+    echo "  --no-personalize       Disable personalization"
+    echo "  --max-docs N           Max documents per query (default: 10)"
+    echo "  --help, -h             Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Run all tests with defaults"
+    echo "  $0 --verbose                          # Run with verbose output"
+    echo "  $0 --datasource wfa_resource_page     # Test only WFA datasource"
+    echo "  $0 --max-docs 5                       # Limit to 5 documents per query"
+    exit 0
+    ;;
+  *)
+    echo "Unknown option: $1"
+    echo "Use --help for usage information"
+    exit 1
+    ;;
   esac
 done
 
