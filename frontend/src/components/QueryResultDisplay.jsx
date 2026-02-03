@@ -65,6 +65,30 @@ const getDatasourceName = (doc) => {
 };
 
 /**
+ * Extract YouTube video ID from URL
+ */
+const extractYouTubeVideoId = (url) => {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+};
+
+/**
+ * Check if document is a YouTube video
+ */
+const isYouTubeVideo = (doc) => {
+  return doc.url && (doc.url.includes('youtube.com') || doc.url.includes('youtu.be'));
+};
+
+/**
  * Check if we should show query suggestions (poor results)
  * DISABLED: Post-query suggestions temporarily disabled - uncomment to re-enable
  */
@@ -352,6 +376,23 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
               </div>
             </div>
 
+            {isYouTubeVideo(doc) && (() => {
+              const videoId = extractYouTubeVideoId(doc.url);
+              if (videoId) {
+                return (
+                  <div className="video-thumbnail">
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                      <img 
+                        src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                        alt={doc.title || 'YouTube Video'}
+                        style={{ width: '100%', maxWidth: '320px', borderRadius: '8px', marginTop: '12px' }}
+                      />
+                    </a>
+                  </div>
+                );
+              }
+            })()}
+
             <div className="doc-meta">
               {getDatasourceName(doc) && (
                 <span className="doc-datasource">
@@ -543,6 +584,22 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                         </span>
                       )}
                     </div>
+                    {isYouTubeVideo(doc) && (() => {
+                      const videoId = extractYouTubeVideoId(doc.url);
+                      if (videoId) {
+                        return (
+                          <div className="video-thumbnail-small">
+                            <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                              <img 
+                                src={`https://img.youtube.com/vi/${videoId}/default.jpg`}
+                                alt={doc.title || 'YouTube Video'}
+                                style={{ width: '120px', borderRadius: '4px', marginTop: '8px' }}
+                              />
+                            </a>
+                          </div>
+                        );
+                      }
+                    })()}
                     {doc.excerpt && (
                       <div className="reference-excerpt">"{doc.excerpt}"</div>
                     )}

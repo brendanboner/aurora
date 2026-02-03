@@ -168,6 +168,7 @@ async def call_llm_with_retry(
 def parse_json_from_llm_response(response: str) -> str:
     """
     Extract JSON from LLM response that may be wrapped in markdown code blocks.
+    Also fixes common JSON issues like trailing commas.
     
     Args:
         response: Raw LLM response string
@@ -175,8 +176,17 @@ def parse_json_from_llm_response(response: str) -> str:
     Returns:
         Cleaned JSON string ready for parsing
     """
+    # Extract from markdown code blocks if present
     if "```json" in response:
-        return response.split("```json")[1].split("```")[0].strip()
+        json_str = response.split("```json")[1].split("```")[0].strip()
     elif "```" in response:
-        return response.split("```")[1].split("```")[0].strip()
-    return response.strip()
+        json_str = response.split("```")[1].split("```")[0].strip()
+    else:
+        json_str = response.strip()
+    
+    # Fix trailing commas before closing braces/brackets (Python 3.13+ strict mode)
+    # Replace ,} with } and ,] with ]
+    import re
+    json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+    
+    return json_str

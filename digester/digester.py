@@ -132,6 +132,36 @@ class DocumentDigester:
         
         logger.info("Document Digester initialized")
     
+    def _handle_video_metadata(self, resource_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and format video-specific metadata."""
+        metadata = resource_data.get('metadata', {})
+        
+        # Add video-specific context to extraction
+        video_context = []
+        
+        if metadata.get('channel_name'):
+            video_context.append(f"Channel: {metadata['channel_name']}")
+        
+        if metadata.get('duration_seconds'):
+            duration_min = metadata['duration_seconds'] // 60
+            video_context.append(f"Duration: {duration_min} minutes")
+        
+        if metadata.get('is_segment'):
+            video_context.append(
+                f"Segment {metadata['segment_number']}/{metadata['total_segments']}"
+            )
+        
+        # Add context to title for better extraction
+        enhanced_title = resource_data['title']
+        if video_context:
+            enhanced_title += f" ({', '.join(video_context)})"
+        
+        return {
+            **resource_data,
+            'title': enhanced_title,
+            'video_metadata': metadata
+        }
+    
     async def _ensure_redis_connection(self):
         """Ensure Redis connection is established (test with ping)."""
         if self.redis_client:
@@ -809,6 +839,11 @@ class DocumentDigester:
         
         logger.info(f"Processing resource: {title}")
         await self.update_current_processing(message, "validating")
+        
+        # Handle video-specific processing
+        if resource_data.get('category') == 'video' or resource_data.get('doc_type') == 'video':
+            resource_data = self._handle_video_metadata(resource_data)
+            logger.info(f"Enhanced video metadata for: {resource_data['title']}")
         
         # Validate resource message
         self.validate_resource_message(message)

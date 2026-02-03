@@ -216,24 +216,35 @@ async def query(
                 mention_pattern = r'@(\w+)'
                 mentions = re.findall(mention_pattern, request.question)
                 
+                logger.debug(f"[{query_id}] Found @mentions: {mentions}")
+                
                 if mentions:
                     # Map mention names to datasource_ids
-                    from src.services.neo4j_client import Neo4jClient
-                    neo4j_client = Neo4jClient()
+                    from neo4j_client import Neo4jClient
+                    neo4j_client = Neo4jClient(
+                        uri=settings.neo4j_uri,
+                        user=settings.neo4j_user,
+                        password=settings.neo4j_password
+                    )
                     
                     datasource_ids = []
                     for mention in mentions:
+                        logger.debug(f"[{query_id}] Looking up datasource for mention: {mention}")
                         # Query Neo4j for datasource with matching name or ID
+                        # Try exact match first, then contains
                         result = neo4j_client.execute_query("""
                             MATCH (ds:DataSource)
-                            WHERE toLower(ds.name) CONTAINS toLower($mention)
+                            WHERE toLower(ds.datasource_id) = toLower($mention)
+                               OR toLower(ds.name) CONTAINS toLower($mention)
                                OR toLower(ds.datasource_id) CONTAINS toLower($mention)
-                            RETURN ds.datasource_id
+                            RETURN ds.datasource_id AS datasource_id
                             LIMIT 1
-                        """, mention=mention)
+                        """, parameters={"mention": mention})
                         
-                        if result:
-                            datasource_ids.append(result[0]["ds.datasource_id"])
+                        logger.debug(f"[{query_id}] Query result for '{mention}': {result}")
+                        
+                        if result and len(result) > 0:
+                            datasource_ids.append(result[0]["datasource_id"])
                     
                     if datasource_ids:
                         logger.info(f"[{query_id}] Extracted datasource_ids from @mentions: {datasource_ids}")
@@ -247,6 +258,8 @@ async def query(
                         clean_question = re.sub(mention_pattern, '', request.question).strip()
                         request.question = clean_question
                         logger.info(f"[{query_id}] Cleaned question: {clean_question[:100]}...")
+                    else:
+                        logger.debug(f"[{query_id}] No matching datasources found for mentions: {mentions}")
             
             # Determine which pipeline to use (A/B test)
             use_fast_pipeline = should_use_fast_pipeline(str(request.user_id) if request.user_id else None)

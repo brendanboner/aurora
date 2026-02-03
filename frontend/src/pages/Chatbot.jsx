@@ -26,6 +26,7 @@ const Chatbot = ({ backendStatus }) => {
   const [querySuggestion, setQuerySuggestion] = useState(null); // For pre-query suggestions
   const [pendingQuery, setPendingQuery] = useState(null); // Original query while showing suggestion
   const [pendingDatasourceIds, setPendingDatasourceIds] = useState([]); // Datasources for pending query
+  const [youtubeConfirmation, setYoutubeConfirmation] = useState(null); // For duplicate video confirmation
   const [enhancingMessageIndex, setEnhancingMessageIndex] = useState(null); // Track which message is being enhanced
   const [datasources, setDatasources] = useState([]); // Available datasources for @mention
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -513,6 +514,95 @@ What would you like to know?`;
     setInputValue(pendingQuery || '');
   };
 
+  // Helper function to ingest YouTube video
+  const ingestYouTubeVideo = async (url, forceRedigest = false) => {
+    // Add user message
+    const userMessage = {
+      role: 'user',
+      content: url,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    
+    // Add loading message
+    const loadingMessage = {
+      role: 'assistant',
+      content: forceRedigest ? '🔄 Re-processing YouTube video...' : '🎥 Processing YouTube video...',
+      timestamp: new Date(),
+      isLoading: true,
+    };
+    setMessages((prev) => [...prev, loadingMessage]);
+    setIsLoading(true);
+    
+    try {
+      const response = await fetch('/api/oracle/ingest/youtube', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: url,
+          user_id: user.id,
+          force_redigest: forceRedigest,
+        }),
+      });
+      
+      if (response.status === 409) {
+        // Video already exists
+        const errorData = await response.json();
+        
+        // Remove loading message
+        setMessages((prev) => prev.filter(msg => !msg.isLoading));
+        setIsLoading(false);
+        
+        // Show confirmation dialog
+        setYoutubeConfirmation({
+          url: url,
+          existingTitle: errorData.detail.existing_title,
+          videoId: errorData.detail.video_id,
+        });
+        return;
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail?.message || errorData.detail || 'Failed to process YouTube video');
+      }
+      
+      const result = await response.json();
+      
+      // Remove loading message and add success message
+      setMessages((prev) => {
+        const withoutLoading = prev.filter(msg => !msg.isLoading);
+        return [
+          ...withoutLoading,
+          {
+            role: 'assistant',
+            content: `✅ Successfully ${forceRedigest ? 're-processed' : 'added'} video: **${result.title}**\n\nDuration: ${Math.floor(result.duration_seconds / 60)}:${(result.duration_seconds % 60).toString().padStart(2, '0')}\nSegments created: ${result.segments_created}\n\nYou can now query this video content using @youtube mentions!`,
+            timestamp: new Date(),
+          },
+        ];
+      });
+    } catch (err) {
+      // Remove loading message and add error message
+      setMessages((prev) => {
+        const withoutLoading = prev.filter(msg => !msg.isLoading);
+        return [
+          ...withoutLoading,
+          {
+            role: 'assistant',
+            content: `❌ Failed to process YouTube video: ${err.message}`,
+            timestamp: new Date(),
+            isError: true,
+          },
+        ];
+      });
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || querySuggestion) return;
@@ -529,6 +619,21 @@ What would you like to know?`;
 
     const queryText = inputValue.trim();
     const datasourceIds = selectedDatasources.map(ds => ds.datasource_id);
+    
+    // Check if input is a YouTube URL
+    const youtubePattern = /(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const youtubeMatch = queryText.match(youtubePattern);
+    
+    if (youtubeMatch) {
+      // Handle YouTube URL submission
+      setInputValue('');
+      setError(null);
+      setShowMentionDropdown(false);
+      
+      await ingestYouTubeVideo(queryText, false);
+      return;
+    }
+    
     setInputValue('');
     setError(null);
     setShowMentionDropdown(false);
@@ -804,6 +909,55 @@ What would you like to know?`;
                 }}
               >
                 ✓ Submit Query
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* YouTube Duplicate Confirmation Dialog */}
+      {youtubeConfirmation && (
+        <div className="query-suggestion-overlay">
+          <div className="query-suggestion-dialog">
+            <div className="suggestion-header">
+              <span className="suggestion-icon">🎥</span>
+              <h3>Video Already Processed</h3>
+              <button 
+                className="suggestion-close-btn"
+                onClick={() => setYoutubeConfirmation(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="suggestion-content">
+              <div className="original-query">
+                <label>Existing video:</label>
+                <p><strong>{youtubeConfirmation.existingTitle}</strong></p>
+              </div>
+              <div className="suggestion-issues">
+                <p>This YouTube video has already been processed and is available in the knowledge base. Would you like to re-process it?</p>
+                <p style={{ marginTop: '12px', fontSize: '0.9em', color: '#666' }}>
+                  Re-processing will update the transcript and metadata, which may be useful if the video has been updated or if you want to refresh the content.
+                </p>
+              </div>
+            </div>
+            <div className="suggestion-actions">
+              <button 
+                className="btn btn-secondary"
+                onClick={() => setYoutubeConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary"
+                onClick={async () => {
+                  const url = youtubeConfirmation.url;
+                  setYoutubeConfirmation(null);
+                  await ingestYouTubeVideo(url, true);
+                }}
+              >
+                ✓ Re-process Video
               </button>
             </div>
           </div>
