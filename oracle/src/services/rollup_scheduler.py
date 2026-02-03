@@ -126,7 +126,7 @@ class RollupScheduler:
                 f"{result['daily_generated']} daily, "
                 f"{result['weekly_generated']} weekly, "
                 f"{result['monthly_generated']} monthly rollups for "
-                f"{result['workgroups_processed']} workgroups"
+                f"{result['datasources_processed']} datasources"
             )
             
         except Exception as e:

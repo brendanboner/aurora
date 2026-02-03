@@ -610,7 +610,15 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
         log.error(f"LLM summarisation failed; using fallback: {e}")
         # Return simple fallback instead of recursion to avoid infinite loop
         if not docs:
-            return "No relevant documents found in the knowledge graph."
+            return (
+                "I couldn't find any documents in our knowledge base to answer your question.\n\n"
+                "**Suggestions:**\n"
+                "• Try rephrasing with different keywords\n"
+                "• Check spelling of technical terms or organization names\n"
+                "• Broaden your search criteria\n"
+                "• Ask about related topics or industry trends\n\n"
+                "Our knowledge base focuses on wireless standards, Wi-Fi technology, and industry news."
+            )
         parts = []
         for d in docs[:5]:
             date = _safe_datetime_to_string(d.get("publish_date"))
