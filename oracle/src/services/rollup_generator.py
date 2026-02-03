@@ -46,7 +46,11 @@ class RollupGenerator:
     
     async def generate_all_rollups(self) -> Dict[str, int]:
         """
-        Generate all rollups (daily, weekly, monthly) for active workgroups.
+        Generate all rollups (daily, weekly, monthly) for active datasources.
+        
+        Includes both:
+        - Workgroup-specific rollups (WFA Causeway workgroups)
+        - Organization-level rollups (WFA Resource Center, WBA)
         
         ALL rollups are regenerated daily to keep queries fresh:
         - Daily rollups: Include today's activity
@@ -58,57 +62,57 @@ class RollupGenerator:
                 "daily_generated": int,
                 "weekly_generated": int,
                 "monthly_generated": int,
-                "workgroups_processed": int
+                "datasources_processed": int
             }
         """
         self._ensure_initialized()
         
-        logger.info("Starting rollup generation for all workgroups (daily, weekly, monthly)")
+        logger.info("Starting rollup generation for all datasources (daily, weekly, monthly)")
         
         try:
-            # Get active workgroups from Neo4j
-            workgroups = await self._get_active_workgroups()
-            logger.info(f"Found {len(workgroups)} active workgroups")
+            # Get active datasources from Neo4j (workgroups + org-level sources)
+            datasources = await self._get_active_datasources()
+            logger.info(f"Found {len(datasources)} active datasources")
             
             daily_count = 0
             weekly_count = 0
             monthly_count = 0
             
-            for wg in workgroups:
+            for ds in datasources:
                 try:
                     # Generate daily rollups (last 14 days)
                     # Regenerated daily to include today
                     daily_count += await self._generate_daily_rollups(
-                        wg["id"], 
-                        wg["name"],
+                        ds["id"], 
+                        ds["name"],
                         days_back=settings.fast_rollup_daily_lookback
                     )
                     
                     # Generate weekly rollups (last 4 weeks)
                     # Regenerated daily because "this week" changes every day
                     weekly_count += await self._generate_weekly_rollups(
-                        wg["id"],
-                        wg["name"],
+                        ds["id"],
+                        ds["name"],
                         weeks_back=settings.fast_rollup_weekly_lookback
                     )
                     
                     # Generate monthly rollups (last 3 months)
                     # Regenerated daily because "this month" grows daily
                     monthly_count += await self._generate_monthly_rollups(
-                        wg["id"],
-                        wg["name"],
+                        ds["id"],
+                        ds["name"],
                         months_back=settings.fast_rollup_monthly_lookback
                     )
                     
                 except Exception as e:
-                    logger.error(f"Failed to generate rollups for workgroup {wg['name']}: {e}")
+                    logger.error(f"Failed to generate rollups for datasource {ds['name']}: {e}")
                     continue
             
             result = {
                 "daily_generated": daily_count,
                 "weekly_generated": weekly_count,
                 "monthly_generated": monthly_count,
-                "workgroups_processed": len(workgroups)
+                "datasources_processed": len(datasources)
             }
             
             logger.info(f"Rollup generation complete: {result}")
@@ -118,26 +122,24 @@ class RollupGenerator:
             logger.error(f"Rollup generation failed: {e}", exc_info=True)
             raise
     
-    async def _get_active_workgroups(self) -> List[Dict[str, str]]:
+    async def _get_active_datasources(self) -> List[Dict[str, str]]:
         """
-        Get list of active workgroups from Neo4j.
+        Get list of active datasources from Neo4j.
         
-        WorkGroups are DataSources with:
-        - resource_url containing '/wg/'
-        - scraper_type = 'wfa_causeway' (more types may be added in future)
+        Includes:
+        - Workgroups: DataSources with resource_url containing '/wg/' (WFA Causeway)
+        - Org-level sources: WFA Resource Center, WBA Resources, etc.
         
-        A workgroup is considered active if it has had any activity in the last 90 days.
+        A datasource is considered active if it has had any activity in the last 90 days.
         """
         try:
             repo = get_repo()
             
-            # Query for DataSources that represent workgroups with any documents
-            # Note: publish_date may be NULL for workgroup documents, so we just check for existence
+            # Query for all DataSources with any documents
+            # This includes both workgroups (/wg/) and org-level sources
             query = """
             MATCH (ds:DataSource)
-            WHERE ds.resource_url CONTAINS '/wg/' 
-              AND ds.scraper_type = 'wfa_causeway'
-            AND EXISTS {
+            WHERE EXISTS {
                 MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             }
             RETURN DISTINCT ds.datasource_id as id, ds.name as name
@@ -145,12 +147,12 @@ class RollupGenerator:
             """
             
             result = repo.client.execute_query(query)
-            workgroups = [{"id": record["id"], "name": record["name"]} for record in result]
+            datasources = [{"id": record["id"], "name": record["name"]} for record in result]
             
-            return workgroups
+            return datasources
             
         except Exception as e:
-            logger.error(f"Failed to fetch active workgroups: {e}")
+            logger.error(f"Failed to fetch active datasources: {e}")
             return []
     
     async def _generate_daily_rollups(
@@ -306,7 +308,7 @@ class RollupGenerator:
         try:
             repo = get_repo()
             
-            # Query Neo4j for day's activity from this DataSource (workgroup)
+            # Query Neo4j for day's activity from this DataSource
             # Intelligent date handling:
             # - Events: Use startTime (when event actually happens)
             # - Resources: Use publish_date (when document was published)
@@ -314,7 +316,7 @@ class RollupGenerator:
             query = """
             MATCH (ds:DataSource {datasource_id: $workgroup_id})
             
-            // Get workgroup meeting events on this day (by event start_date)
+            // Get meeting events on this day (by event start_date)
             OPTIONAL MATCH (ds)<-[:INGESTED_FROM]-(e:Event)
             WHERE e.event_type = 'meeting'
               AND e.start_date IS NOT NULL

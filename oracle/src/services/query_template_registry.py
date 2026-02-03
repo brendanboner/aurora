@@ -247,17 +247,9 @@ class QueryTemplateRegistry:
                   CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
               WHERE effective_date >= max_threshold
 
-              // Filter by datasource if specified - validate WFA Causeway workgroups only
-              // OR filter by organization if specified
+              // Filter by organization (WFA, WBA, etc.) - this ensures "Wi-Fi Alliance updates" only returns WFA sources
               WITH r, effective_date, primary_threshold, fallback_threshold, half_limit, requested_days
-              WHERE (($workgroups IS NULL OR size($workgroups) = 0)
-                OR EXISTS {
-                    MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                    WHERE ds.scraper_type = 'wfa_causeway' 
-                      AND ds.resource_url CONTAINS '/wg/'
-                      AND ds.datasource_id IN $workgroups
-                })
-              AND (($organizations IS NULL OR size($organizations) = 0)
+              WHERE ($organizations IS NULL OR size($organizations) = 0
                 OR EXISTS {
                     MATCH (r)-[:MENTIONS|PUBLISHED_BY]->(org:Organization)
                     WHERE org.name IN $organizations
@@ -265,6 +257,12 @@ class QueryTemplateRegistry:
                 OR EXISTS {
                     MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)-[:OPERATED_BY]->(org:Organization)
                     WHERE org.name IN $organizations
+                })
+              // Filter by specific workgroups if requested
+              AND ($workgroups IS NULL OR size($workgroups) = 0
+                OR EXISTS {
+                    MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+                    WHERE ds.datasource_id IN $workgroups
                 })
 
               // Categorize by time window using effective date
