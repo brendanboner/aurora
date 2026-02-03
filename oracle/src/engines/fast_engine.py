@@ -1015,8 +1015,8 @@ class FastEngine:
                     title = event_node.get("title") or event_node.get("name") or "Untitled Event"
                     url = event_node.get("url", "")
                     summary = event_node.get("summary") or event_node.get("description", "")
-                    date = event_node.get("eventDate") or event_node.get("startTime")
-                    category = event_node.get("category") or "event"
+                    date = event_node.get("eventDate") or event_node.get("start_time") or event_node.get("startTime")
+                    category = event_node.get("category") or event_node.get("event_type") or "event"
                     
                     datasource_id = node.get("workgroup_id")
                     source = node.get("workgroup_name")
@@ -1038,11 +1038,11 @@ class FastEngine:
                 title = node.get("title") or node.get("name") or "Untitled"
                 url = node.get("url", "")
                 summary = node.get("summary") or node.get("description", "")
-                date = node.get("date") or node.get("startTime") or node.get("publish_date")
+                date = node.get("date") or node.get("start_time") or node.get("startTime") or node.get("publish_date")
                 
                 # Extract real metadata from Neo4j results
                 datasource_id = node.get("datasource_id")
-                category = node.get("category") or node.get("type")
+                category = node.get("category") or node.get("event_type") or node.get("type")
                 topics = node.get("topics", []) or node.get("all_topic_names", [])
                 organizations = node.get("organizations", []) or node.get("org_names", [])
                 relevance = node.get("relevance_score", 1.0)
