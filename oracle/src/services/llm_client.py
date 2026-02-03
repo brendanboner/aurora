@@ -149,8 +149,8 @@ async def call_llm(
                 if retry_after_ms:
                     wait_seconds = retry_after_ms / 1000.0
                 else:
-                    # Exponential backoff: 1s, 2s, 4s, 8s, etc.
-                    wait_seconds = 2 ** attempt
+                    # Exponential backoff: 1s, 2s, 4s, 8s, etc., capped to avoid excessive waits
+                    wait_seconds = min(2 ** attempt, 60)
                 
                 # Don't retry if we've exhausted attempts
                 if attempt >= max_retries:

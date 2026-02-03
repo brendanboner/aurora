@@ -65,12 +65,20 @@ def _fetchall(query: str, params: tuple = None) -> list[dict]:
 def _get_popular_people(people_list: list[str], limit: int = 10) -> list[str]:
     """Sort people by popularity (follower count) and return top N.
     
+    Popularity is determined from follower counts stored in the
+    ``user_preferences`` table. If the underlying database query fails
+    or returns no popularity data for the given people, this function
+    falls back to returning the first ``limit`` entries from the original
+    ``people_list`` in their existing order.
+    
     Args:
-        people_list: List of people to sort
-        limit: Maximum number to return
+        people_list: List of people to sort.
+        limit: Maximum number of people to return.
         
     Returns:
-        Sorted list of people names, most popular first
+        List of people names ordered by popularity when available; if
+        no popularity data is available or the query fails, returns the
+        first ``limit`` people from the original list.
     """
     if not people_list:
         return []
