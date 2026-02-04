@@ -65,6 +65,35 @@ class YouTubeService:
         r'(\d{1,2}):(\d{2}):(\d{2})\s*[-–]\s*(.+)',  # 1:05:30 - Topic
     ]
     
+    # Event name patterns for extraction from video titles
+    EVENT_PATTERNS = [
+        # "EventName YYYY" - e.g., "Cisco AI Summit 2026"
+        r'([A-Z][A-Za-z0-9\s&-]+?)\s+(20\d{2})(?:\s|$|\||-)' ,
+        # "EventName - Month YYYY" - e.g., "Tech Conference - January 2025"
+        r'([A-Z][A-Za-z0-9\s&-]+?)\s+-\s+([A-Z][a-z]+)\s+(20\d{2})',
+        # "Location YYYY: EventName" - e.g., "Dubai 2025: Wi-Fi Summit"
+        r'([A-Z][A-Za-z\s]+)\s+(20\d{2}):\s*([A-Z][A-Za-z0-9\s&-]+)',
+        # "EventName (YYYY)" - e.g., "AI Conference (2026)"
+        r'([A-Z][A-Za-z0-9\s&-]+?)\s*\((20\d{2})\)',
+    ]
+    
+    # Common event type keywords
+    EVENT_TYPE_KEYWORDS = {
+        'summit': 'summit',
+        'conference': 'conference',
+        'congress': 'conference',
+        'symposium': 'conference',
+        'expo': 'conference',
+        'forum': 'conference',
+        'meeting': 'meeting',
+        'webinar': 'webinar',
+        'workshop': 'workshop',
+        'seminar': 'seminar',
+        'keynote': 'conference',
+        'presentation': 'conference',
+        'live': 'conference',
+    }
+    
     def __init__(self):
         """Initialize YouTube service."""
         self.oembed_url = "https://www.youtube.com/oembed"
@@ -104,6 +133,116 @@ class YouTubeService:
             if match:
                 return match.group(1)
         
+        return None
+    
+    def extract_event_from_title(self, title: str, publish_date: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Extract event information from video title.
+        
+        Args:
+            title: Video title
+            publish_date: Video publish date (ISO format) for validation
+            
+        Returns:
+            Dict with event_name, event_year, event_type, confidence or None
+        """
+        if not title:
+            return None
+        
+        logger.debug(f"Attempting to extract event from title: {title}")
+        
+        # Try each pattern
+        for pattern in self.EVENT_PATTERNS:
+            match = re.search(pattern, title, re.IGNORECASE)
+            if match:
+                groups = match.groups()
+                event_name = None
+                event_year = None
+                
+                # Parse based on pattern structure
+                if len(groups) == 2:  # Pattern 1 or 4: name + year
+                    event_name = groups[0].strip()
+                    event_year = groups[1]
+                    # Include the year in the event name
+                    event_name = f"{event_name} {event_year}"
+                elif len(groups) == 3 and groups[1].isalpha():  # Pattern 2: name + month + year
+                    event_name = f"{groups[0].strip()} - {groups[1]} {groups[2]}"
+                    event_year = groups[2]
+                elif len(groups) == 3:  # Pattern 3: location + year + name
+                    event_name = f"{groups[2].strip()} ({groups[0].strip()})"
+                    event_year = groups[1]
+                
+                if event_name and event_year:
+                    # Validate year is reasonable (2020-2030)
+                    try:
+                        year_int = int(event_year)
+                        if year_int < 2020 or year_int > 2030:
+                            continue
+                    except ValueError:
+                        continue
+                    
+                    # Determine event type from name
+                    event_type = "conference"  # default
+                    name_lower = event_name.lower()
+                    for keyword, etype in self.EVENT_TYPE_KEYWORDS.items():
+                        if keyword in name_lower:
+                            event_type = etype
+                            break
+                    
+                    # Calculate confidence based on year match with publish date
+                    confidence = 0.8  # base confidence
+                    if publish_date:
+                        try:
+                            from dateutil.parser import parse as date_parse
+                            pub_date = date_parse(publish_date)
+                            if pub_date.year == year_int or pub_date.year == year_int - 1:
+                                confidence = 0.95  # High confidence if years match
+                        except:
+                            pass
+                    
+                    logger.info(f"Extracted event: {event_name} ({event_year}) - Type: {event_type}, Confidence: {confidence}")
+                    
+                    return {
+                        "event_name": event_name,
+                        "event_year": event_year,
+                        "event_type": event_type,
+                        "confidence": confidence
+                    }
+        
+        # Fallback: Check for event keywords without year, use publish_date year
+        logger.debug(f"No regex match. Checking fallback with publish_date: {publish_date}")
+        if publish_date:
+            try:
+                from dateutil.parser import parse as date_parse
+                pub_date = date_parse(publish_date)
+                pub_year = str(pub_date.year)
+                
+                logger.debug(f"Trying fallback event extraction with publish year: {pub_year}")
+                
+                # Check if title contains event keywords
+                title_lower = title.lower()
+                for keyword, etype in self.EVENT_TYPE_KEYWORDS.items():
+                    if keyword in title_lower:
+                        # Extract event name before first delimiter (|, :, -)
+                        event_name = re.split(r'\s*[|:\-]\s*', title)[0].strip()
+                        # Add year to event name
+                        event_name_with_year = f"{event_name} {pub_year}"
+                        
+                        logger.info(f"Extracted event from keywords: {event_name_with_year} ({pub_year}) - Type: {etype}, Confidence: 0.7 (inferred from publish date)")
+                        
+                        return {
+                            "event_name": event_name_with_year,
+                            "event_year": pub_year,
+                            "event_type": etype,
+                            "confidence": 0.7  # Lower confidence for inferred events
+                        }
+                logger.debug(f"No event keywords found in title: {title_lower}")
+            except Exception as e:
+                logger.warning(f"Error in fallback event extraction: {e}")
+        else:
+            logger.debug("No publish_date provided for fallback extraction")
+        
+        logger.debug(f"No event pattern matched for title: {title}")
         return None
     
     async def get_video_metadata(self, video_url: str) -> VideoMetadata:
@@ -154,6 +293,7 @@ class YouTubeService:
                             channel_id = channel_match.group(1)
                     
                     # Create metadata object (we'll get transcript info separately)
+                    from datetime import datetime
                     metadata = VideoMetadata(
                         video_id=video_id,
                         url=f"https://www.youtube.com/watch?v={video_id}",
@@ -163,7 +303,7 @@ class YouTubeService:
                         channel_id=channel_id,
                         duration_seconds=0,  # oEmbed doesn't provide duration
                         thumbnail_url=thumbnail_url,
-                        publish_date="",  # oEmbed doesn't provide publish date
+                        publish_date=datetime.utcnow().isoformat(),  # Use current date as fallback
                     )
                     
                     logger.info(f"Retrieved metadata for video: {title}")
