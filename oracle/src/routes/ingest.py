@@ -175,6 +175,31 @@ async def ingest_youtube_video(
         # Create URL hash
         url_hash = hashlib.sha256(metadata.url.encode()).hexdigest()
         
+        # Extract event information from video title
+        event_info = youtube_service.extract_event_from_title(
+            metadata.title,
+            metadata.publish_date
+        )
+        
+        # Prepare base metadata dict
+        base_metadata = {
+            "video_id": metadata.video_id,
+            "channel_name": metadata.channel_name,
+            "channel_id": metadata.channel_id,
+            "duration_seconds": metadata.duration_seconds,
+            "thumbnail_url": metadata.thumbnail_url,
+            "has_transcript": True,
+            "transcript_language": metadata.transcript_language,
+        }
+        
+        # Add event information if detected
+        if event_info:
+            base_metadata["event_name"] = event_info["event_name"]
+            base_metadata["event_year"] = event_info["event_year"]
+            base_metadata["event_type"] = event_info["event_type"]
+            base_metadata["event_confidence"] = event_info["confidence"]
+            logger.info(f"Video associated with event: {event_info['event_name']} ({event_info['event_year']})")
+        
         # Prepare content (transcript with timestamps)
         content = transcript.formatted_with_timestamps
         
@@ -201,13 +226,7 @@ async def ingest_youtube_video(
                         "doc_type": "video",
                         "publish_date": metadata.publish_date or datetime.utcnow().isoformat(),
                         "metadata": {
-                            "video_id": metadata.video_id,
-                            "channel_name": metadata.channel_name,
-                            "channel_id": metadata.channel_id,
-                            "duration_seconds": metadata.duration_seconds,
-                            "thumbnail_url": metadata.thumbnail_url,
-                            "has_transcript": True,
-                            "transcript_language": metadata.transcript_language,
+                            **base_metadata,
                             "has_segments": True,
                             "total_segments": len(segments),
                         }
@@ -236,12 +255,7 @@ async def ingest_youtube_video(
                             "doc_type": "video",
                             "publish_date": metadata.publish_date or datetime.utcnow().isoformat(),
                             "metadata": {
-                                "video_id": metadata.video_id,
-                                "channel_name": metadata.channel_name,
-                                "duration_seconds": metadata.duration_seconds,
-                                "thumbnail_url": metadata.thumbnail_url,
-                                "has_transcript": True,
-                                "transcript_language": metadata.transcript_language,
+                                **base_metadata,
                                 "is_segment": True,
                                 "segment_number": segment.segment_number,
                                 "total_segments": segment.total_segments,
@@ -272,13 +286,7 @@ async def ingest_youtube_video(
                         "doc_type": "video",
                         "publish_date": metadata.publish_date or datetime.utcnow().isoformat(),
                         "metadata": {
-                            "video_id": metadata.video_id,
-                            "channel_name": metadata.channel_name,
-                            "channel_id": metadata.channel_id,
-                            "duration_seconds": metadata.duration_seconds,
-                            "thumbnail_url": metadata.thumbnail_url,
-                            "has_transcript": True,
-                            "transcript_language": metadata.transcript_language,
+                            **base_metadata,
                             "has_segments": False,
                         }
                     }
