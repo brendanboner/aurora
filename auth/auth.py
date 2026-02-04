@@ -44,7 +44,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="Aurora Auth Service", 
     version="1.0.0",
-    max_request_size=1024 * 1024  # 1 MB max request size
+    max_request_size=50 * 1024 * 1024  # 50 MB max request size for file uploads
 )
 
 # Add rate limiter to app state

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './DocumentUpload.css';
 import {
   UploadIcon,
@@ -18,6 +19,8 @@ const SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.xlsx', '.txt', '.md'];
 const MAX_FILE_SIZE_MB = 50;
 
 const DocumentUpload = () => {
+  const navigate = useNavigate();
+  
   // Staged files for upload
   const [stagedFiles, setStagedFiles] = useState([]);
   
@@ -151,6 +154,15 @@ const DocumentUpload = () => {
       setUploadProgress(null);
       
       if (result.total_success > 0) {
+        // If all files uploaded successfully, redirect to My Documents
+        if (result.total_failed === 0) {
+          navigate('/my-documents', { 
+            state: { message: `Successfully uploaded ${result.total_success} document(s)` } 
+          });
+          return;
+        }
+        
+        // Partial success - stay on page and show which succeeded
         setSuccess(`Successfully uploaded ${result.total_success} document(s)`);
         // Clear successfully uploaded files
         const successfulFilenames = result.documents

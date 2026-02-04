@@ -876,7 +876,8 @@ class DocumentDigester:
                 
                 person = Person(
                     person_id=uploaded_by,
-                    name=uploaded_by
+                    name=uploaded_by,
+                    user_uuid=uploaded_by  # Set user_uuid so queries can find uploads by user
                 )
                 
                 # Get resource node from models dict
