@@ -46,3 +46,4 @@ export { default as UploadIcon } from './UploadIcon.jsx';
 export { default as DownloadIcon } from './DownloadIcon.jsx';
 export { default as EditIcon } from './EditIcon.jsx';
 export { default as CloseIcon } from './CloseIcon.jsx';
+export { default as ExternalLinkIcon } from './ExternalLinkIcon.jsx';

@@ -12,6 +12,7 @@ import {
   DocumentIcon,
   UploadIcon,
   DownloadIcon,
+  ExternalLinkIcon,
 } from '../components/icons';
 import DocumentUploadModal from '../components/DocumentUploadModal';
 import { getEventDocuments, getDocumentDownloadUrl } from '../services/api';
@@ -411,32 +412,47 @@ const EventDetail = () => {
             <p className="no-documents">No documents have been uploaded for this event yet.</p>
           ) : (
             <div className="documents-list">
-              {documents.map((doc) => (
-                <div key={doc.url_hash} className="document-item">
-                  <div className="document-info">
-                    <DocumentIcon size={20} />
-                    <div className="document-details">
-                      <span className="document-title">{doc.title || doc.name || 'Untitled Document'}</span>
-                      <span className="document-meta">
-                        {doc.category && <span className="document-category">{doc.category}</span>}
-                        {doc.uploaded_at && (
-                          <span className="document-date">
-                            Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
-                          </span>
-                        )}
-                      </span>
+              {documents.map((doc) => {
+                const isS3Upload = doc.url?.startsWith('s3://');
+                return (
+                  <div key={doc.url_hash} className="document-item">
+                    <div className="document-info">
+                      <DocumentIcon size={20} />
+                      <div className="document-details">
+                        <span className="document-title">{doc.title || doc.name || 'Untitled Document'}</span>
+                        <span className="document-meta">
+                          {doc.category && <span className="document-category">{doc.category}</span>}
+                          {doc.uploaded_at && (
+                            <span className="document-date">
+                              Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
+                            </span>
+                          )}
+                        </span>
+                      </div>
                     </div>
+                    {isS3Upload ? (
+                      <button
+                        className="download-button"
+                        onClick={() => handleDownloadDocument(doc)}
+                        disabled={downloadingDoc === doc.url_hash}
+                      >
+                        <DownloadIcon size={18} />
+                        {downloadingDoc === doc.url_hash ? 'Downloading...' : 'Download'}
+                      </button>
+                    ) : (
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="download-button external-link"
+                      >
+                        <ExternalLinkIcon size={18} />
+                        View
+                      </a>
+                    )}
                   </div>
-                  <button
-                    className="download-button"
-                    onClick={() => handleDownloadDocument(doc)}
-                    disabled={downloadingDoc === doc.url_hash}
-                  >
-                    <DownloadIcon size={18} />
-                    {downloadingDoc === doc.url_hash ? 'Downloading...' : 'Download'}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -445,8 +461,8 @@ const EventDetail = () => {
       {/* Document Upload Modal */}
       {showUploadModal && (
         <DocumentUploadModal
-          eventId={urlHash}
-          eventName={event?.name}
+          isOpen={showUploadModal}
+          preSelectedEvent={urlHash}
           onClose={() => setShowUploadModal(false)}
           onUploadComplete={handleUploadComplete}
         />
