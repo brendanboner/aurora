@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './MyDocuments.css';
 import {
   DocumentIcon,
@@ -26,6 +26,7 @@ import {
 
 const MyDocuments = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   
   // Documents list
   const [documents, setDocuments] = useState([]);
@@ -34,6 +35,7 @@ const MyDocuments = () => {
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [editingDoc, setEditingDoc] = useState(null);
   const [editForm, setEditForm] = useState({ title: '', category: '' });
   const [saving, setSaving] = useState(false);
@@ -53,7 +55,16 @@ const MyDocuments = () => {
   useEffect(() => {
     fetchDocuments();
     fetchCategories();
-  }, []);
+    
+    // Check for success message from upload redirect
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+      // Clear the state so message doesn't show again on refresh
+      window.history.replaceState({}, document.title);
+      // Auto-hide after 5 seconds
+      setTimeout(() => setSuccessMessage(null), 5000);
+    }
+  }, [location.state]);
 
   const fetchDocuments = async () => {
     try {
@@ -297,6 +308,13 @@ const MyDocuments = () => {
           </button>
         </div>
       </div>
+
+      {successMessage && (
+        <div className="success-message">
+          <CheckIcon size={18} />
+          {successMessage}
+        </div>
+      )}
 
       {error && (
         <div className="error-message">

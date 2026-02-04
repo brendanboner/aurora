@@ -80,8 +80,9 @@ async def proxy_request(
     # Remove host header (will be set by httpx)
     headers.pop("host", None)
     
-    # Forward request
-    async with httpx.AsyncClient() as client:
+    # Forward request - use longer timeout for file uploads
+    # Increased from 30s to 120s to handle large document uploads
+    async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             response = await client.request(
                 method=request.method,
@@ -89,7 +90,6 @@ async def proxy_request(
                 headers=headers,
                 content=body,
                 params=request.query_params,
-                timeout=30.0
             )
             
             # Filter response headers - only pass through safe headers
