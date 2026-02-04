@@ -224,6 +224,9 @@
   margin-top: auto;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .attendance-info {
@@ -232,6 +235,18 @@
   gap: 0.5rem;
   font-size: 0.9rem;
   color: var(--muted-foreground);
+}
+
+.document-count {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-badge);
+  font-weight: 500;
 }
 
 .presenter-count {

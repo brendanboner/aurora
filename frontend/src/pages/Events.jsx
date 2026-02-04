@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Events.css';
-import { CalendarIcon, RefreshIcon, CheckIcon, LinkIcon, EyeIcon, EyeOffIcon, MapPinIcon } from '../components/icons';
+import { CalendarIcon, RefreshIcon, CheckIcon, LinkIcon, EyeIcon, EyeOffIcon, MapPinIcon, DocumentIcon } from '../components/icons';
 
 const Events = () => {
   const navigate = useNavigate();
@@ -314,6 +314,12 @@ const Events = () => {
                     </span>
                   )}
                 </div>
+                {event.document_count > 0 && (
+                  <div className="document-count">
+                    <DocumentIcon size={16} />
+                    <span>{event.document_count} docs</span>
+                  </div>
+                )}
               </div>
             </div>
           ))

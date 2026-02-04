@@ -9,7 +9,12 @@ import {
   ChevronLeftIcon,
   MapPinIcon,
   FileTextIcon,
+  DocumentIcon,
+  UploadIcon,
+  DownloadIcon,
 } from '../components/icons';
+import DocumentUploadModal from '../components/DocumentUploadModal';
+import { getEventDocuments, getDocumentDownloadUrl } from '../services/api';
 
 const EventDetail = () => {
   const { urlHash } = useParams();
@@ -17,16 +22,20 @@ const EventDetail = () => {
   
   const [event, setEvent] = useState(null);
   const [attendees, setAttendees] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [showAttendees, setShowAttendees] = useState(false);
   const [availableDatasources, setAvailableDatasources] = useState([]);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [downloadingDoc, setDownloadingDoc] = useState(null);
 
   useEffect(() => {
     fetchFilterOptions();
     fetchEventDetails();
     fetchAttendees();
+    fetchDocuments();
   }, [urlHash]);
 
   const fetchFilterOptions = async () => {
@@ -94,6 +103,35 @@ const EventDetail = () => {
     } catch (err) {
       console.error('Error fetching attendees:', err);
     }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      const docs = await getEventDocuments(urlHash);
+      setDocuments(docs || []);
+    } catch (err) {
+      console.error('Error fetching documents:', err);
+    }
+  };
+
+  const handleDownloadDocument = async (doc) => {
+    try {
+      setDownloadingDoc(doc.url_hash);
+      const downloadUrl = await getDocumentDownloadUrl(doc.url_hash);
+      if (downloadUrl) {
+        window.open(downloadUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error downloading document:', err);
+      alert('Failed to download document: ' + err.message);
+    } finally {
+      setDownloadingDoc(null);
+    }
+  };
+
+  const handleUploadComplete = () => {
+    setShowUploadModal(false);
+    fetchDocuments();
   };
 
   const handleAttendanceToggle = async () => {
@@ -356,7 +394,63 @@ const EventDetail = () => {
             </div>
           )}
         </div>
+
+        {/* Documents Section */}
+        <div className="event-detail-section">
+          <div className="section-header">
+            <h2><DocumentIcon size={24} /> Documents</h2>
+            <button
+              className="upload-button"
+              onClick={() => setShowUploadModal(true)}
+            >
+              <UploadIcon size={18} /> Upload
+            </button>
+          </div>
+
+          {documents.length === 0 ? (
+            <p className="no-documents">No documents have been uploaded for this event yet.</p>
+          ) : (
+            <div className="documents-list">
+              {documents.map((doc) => (
+                <div key={doc.url_hash} className="document-item">
+                  <div className="document-info">
+                    <DocumentIcon size={20} />
+                    <div className="document-details">
+                      <span className="document-title">{doc.title || doc.name || 'Untitled Document'}</span>
+                      <span className="document-meta">
+                        {doc.category && <span className="document-category">{doc.category}</span>}
+                        {doc.uploaded_at && (
+                          <span className="document-date">
+                            Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    className="download-button"
+                    onClick={() => handleDownloadDocument(doc)}
+                    disabled={downloadingDoc === doc.url_hash}
+                  >
+                    <DownloadIcon size={18} />
+                    {downloadingDoc === doc.url_hash ? 'Downloading...' : 'Download'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Document Upload Modal */}
+      {showUploadModal && (
+        <DocumentUploadModal
+          eventId={urlHash}
+          eventName={event?.name}
+          onClose={() => setShowUploadModal(false)}
+          onUploadComplete={handleUploadComplete}
+        />
+      )}
     </div>
   );
 };

@@ -133,9 +133,11 @@ def get_events(
     MATCH (e:Event)
     {where_clause}
     OPTIONAL MATCH (p:Person)-[a:ATTENDING]->(e)
+    OPTIONAL MATCH (r:Resource)-[:RELATES_TO]->(e)
     WITH e, 
          count(DISTINCT p) as attendee_count,
-         count(DISTINCT CASE WHEN a.is_presenting = true THEN p END) as presenter_count
+         count(DISTINCT CASE WHEN a.is_presenting = true THEN p END) as presenter_count,
+         count(DISTINCT r) as document_count
     RETURN e.url_hash as url_hash,
            e.name as name,
            e.event_type as event_type,
@@ -148,7 +150,8 @@ def get_events(
            e.status as status,
            e.datasource_id as datasource_id,
            attendee_count,
-           presenter_count
+           presenter_count,
+           document_count
     ORDER BY e.{sort_by} {sort_order}
     SKIP $offset
     LIMIT $limit

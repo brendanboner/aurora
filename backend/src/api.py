@@ -30,6 +30,7 @@ from src.services.news_service import get_news_service
 from src.routes import admin
 from src.routes import events
 from src.routes import feedback
+from src.routes import documents
 
 # Initialize OpenTelemetry
 tracer, meter = init_telemetry(
@@ -73,6 +74,9 @@ app.include_router(events.router, prefix="")
 
 # Include feedback routes
 app.include_router(feedback.router, prefix="")
+
+# Include documents routes
+app.include_router(documents.router, prefix="")
 
 # Add CORS middleware
 app.add_middleware(

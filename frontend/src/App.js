@@ -22,6 +22,8 @@ import SocialFeed from './pages/SocialFeed';
 import AgentManagement from './pages/AgentManagement';
 import AgentPreferences from './pages/AgentPreferences';
 import DocumentSearch from './pages/DocumentSearch';
+import DocumentUpload from './pages/DocumentUpload';
+import MyDocuments from './pages/MyDocuments';
 import UserGuide from './pages/UserGuide';
 import SubmitFeedback from './pages/SubmitFeedback';
 import { testBackendConnection } from './services/api';
@@ -118,6 +120,18 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                         <Route 
                           path="/documents" 
                           element={<DocumentSearch />} 
+                        />
+                        
+                        {/* Document Upload */}
+                        <Route 
+                          path="/upload" 
+                          element={<DocumentUpload />} 
+                        />
+                        
+                        {/* My Documents */}
+                        <Route 
+                          path="/my-documents" 
+                          element={<MyDocuments />} 
                         />
                         
                         {/* Social Network routes */}

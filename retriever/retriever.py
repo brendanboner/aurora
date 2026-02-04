@@ -10,6 +10,9 @@ Both operations run concurrently without blocking each other.
 
 import asyncio
 import logging
+import hashlib
+import uuid
+import json
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any, List, Type
@@ -21,6 +24,7 @@ from scrapers.base import BaseScraper, Resource
 from config_manager import ConfigManager
 from settings import settings
 from common.auth_middleware import get_user_context, require_role
+from utils.s3_client import S3DocumentStorage, get_content_hash
 
 # Import OpenTelemetry instrumentation
 try:
@@ -109,6 +113,25 @@ class ContentRetrieveResponse(BaseModel):
     total_failed: int
 
 
+class DocumentSubmitResult(BaseModel):
+    """Result for each uploaded document"""
+    original_filename: str
+    resource_id: str
+    s3_key: str
+    status: str  # "queued", "error"
+    error: Optional[str] = None
+
+
+class DocumentBatchSubmitResponse(BaseModel):
+    """Response model for batch document submission"""
+    status: str
+    batch_id: str
+    documents: List[DocumentSubmitResult]
+    total_submitted: int
+    total_success: int
+    total_failed: int
+
+
 class SchedulerStatus(BaseModel):
     """Status of the scheduler and scrapers"""
     scheduler_running: bool
@@ -167,8 +190,22 @@ class RetrieverService:
         1. Runs startup datasources (run_on_startup=true) immediately
         2. Polls every minute for datasources whose cron schedule is due
         3. Detects missed windows (if last_scraped_at < previous scheduled time)
+        
+        In dev mode (APP_ENV=dev), scheduled scrapes are disabled - only manual triggers work.
         """
         poll_interval = getattr(settings, 'scheduler_poll_interval', 60)  # Default: 60 seconds
+        is_dev_mode = getattr(settings, 'app_env', 'prod').lower() == 'dev'
+        
+        if is_dev_mode:
+            logger.info("Scheduler running in DEV MODE - automatic scrapes disabled. Use manual triggers only.")
+            # In dev mode, just keep the scheduler alive but don't run any automatic scrapes
+            while True:
+                try:
+                    await asyncio.sleep(poll_interval)
+                except asyncio.CancelledError:
+                    logger.info("Scheduler cancelled")
+                    break
+            return
         
         logger.info(f"Scheduler started - polling every {poll_interval} seconds for due datasources")
         
@@ -584,6 +621,270 @@ async def submit_file(
         status="not_implemented",
         message="File submission endpoint is not yet implemented. Please use scheduled scraping.",
         resource_id=None
+    )
+
+
+# Supported file extensions for document upload
+SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.xlsx', '.txt', '.md'}
+
+# Content type mapping
+CONTENT_TYPE_MAP = {
+    '.pdf': 'application/pdf',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.txt': 'text/plain',
+    '.md': 'text/markdown'
+}
+
+
+@app.post("/submit/documents", response_model=DocumentBatchSubmitResponse)
+@require_role(["user", "admin", "superadmin"])
+async def submit_documents(
+    files: List[UploadFile] = File(...),
+    titles: str = Form(...),  # JSON array of titles
+    categories: str = Form(...),  # JSON array of categories
+    related_events: Optional[str] = Form(None),  # JSON array of event url_hashes
+    user: dict = Depends(get_user_context)
+):
+    """
+    Submit multiple documents for processing.
+    
+    - Validates file types (PDF, DOCX, PPTX, XLSX, TXT, MD)
+    - Checks for duplicate content (by content hash) and duplicate filenames
+    - Uploads original files to S3 with path: uploads/{user_uuid}/{filename}
+    - Extracts text content using DocumentParser
+    - Publishes to RabbitMQ for digester processing
+    - Links to specified events via ResourceRelatesToEvent relationship
+    
+    Args:
+        files: List of files to upload
+        titles: JSON array of document titles (one per file)
+        categories: JSON array of categories (one per file)
+        related_events: Optional JSON array of event url_hashes to link documents to
+    
+    Returns:
+        Batch submission response with status for each document
+    """
+    from utils.document_parser import DocumentParser
+    from rabbitmq_client import RabbitMQProducer
+    from neo4j_client import Neo4jClient
+    import os
+    
+    user_uuid = user.get('sub') or user.get('user_id')
+    user_email = user.get('email', 'unknown')
+    
+    logger.info(f"Document upload by {user_email}: {len(files)} file(s)")
+    
+    # Parse JSON arrays
+    try:
+        title_list = json.loads(titles)
+        category_list = json.loads(categories)
+        event_list = json.loads(related_events) if related_events else []
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON format: {e}")
+    
+    if len(files) != len(title_list) or len(files) != len(category_list):
+        raise HTTPException(
+            status_code=400, 
+            detail="Number of files must match number of titles and categories"
+        )
+    
+    # Initialize components
+    s3_storage = S3DocumentStorage()
+    doc_parser = DocumentParser()
+    batch_id = str(uuid.uuid4())
+    results = []
+    
+    # Initialize Neo4j client for duplicate checking
+    neo4j_uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
+    neo4j_user = os.getenv("NEO4J_USER", "neo4j")
+    neo4j_password = os.getenv("NEO4J_PASSWORD", "neo4j")
+    neo4j_database = os.getenv("NEO4J_DATABASE", "neo4j")
+    
+    neo4j_client = Neo4jClient(
+        uri=neo4j_uri,
+        user=neo4j_user,
+        password=neo4j_password,
+        database=neo4j_database
+    )
+    neo4j_client.connect()
+    
+    # Process each file
+    for i, (file, title, category) in enumerate(zip(files, title_list, category_list)):
+        original_filename = file.filename or f"document_{i}"
+        
+        # Validate file extension
+        ext = os.path.splitext(original_filename)[1].lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            results.append(DocumentSubmitResult(
+                original_filename=original_filename,
+                resource_id="",
+                s3_key="",
+                status="error",
+                error=f"Unsupported file type: {ext}. Supported: {', '.join(SUPPORTED_EXTENSIONS)}"
+            ))
+            continue
+        
+        try:
+            # Read file content
+            file_content = await file.read()
+            
+            # Check file size
+            max_size = settings.max_upload_size_mb * 1024 * 1024
+            if len(file_content) > max_size:
+                results.append(DocumentSubmitResult(
+                    original_filename=original_filename,
+                    resource_id="",
+                    s3_key="",
+                    status="error",
+                    error=f"File too large. Maximum size: {settings.max_upload_size_mb}MB"
+                ))
+                continue
+            
+            # Calculate content hash for duplicate detection
+            content_hash = get_content_hash(file_content)
+            
+            # Check for duplicate content in Neo4j
+            duplicate_query = """
+            MATCH (r:Resource {content_hash: $content_hash})
+            RETURN r.title as title, r.url_hash as url_hash
+            LIMIT 1
+            """
+            duplicate_results = neo4j_client.execute_query(
+                duplicate_query, 
+                {"content_hash": content_hash}
+            )
+            
+            if duplicate_results:
+                existing_title = duplicate_results[0]["title"]
+                results.append(DocumentSubmitResult(
+                    original_filename=original_filename,
+                    resource_id="",
+                    s3_key="",
+                    status="error",
+                    error=f"Duplicate content: This file has already been uploaded as '{existing_title}'"
+                ))
+                continue
+            
+            # Build S3 key and check for duplicate filename
+            s3_key = f"uploads/{user_uuid}/{original_filename}"
+            s3_url = f"s3://{settings.s3_document_bucket}/{s3_key}"
+            
+            duplicate_key_query = """
+            MATCH (r:Resource {s3_key: $s3_key})
+            RETURN r.title as title
+            LIMIT 1
+            """
+            duplicate_key_results = neo4j_client.execute_query(
+                duplicate_key_query,
+                {"s3_key": s3_key}
+            )
+            
+            if duplicate_key_results:
+                results.append(DocumentSubmitResult(
+                    original_filename=original_filename,
+                    resource_id="",
+                    s3_key="",
+                    status="error",
+                    error=f"You already have a file named '{original_filename}'. Please rename and try again."
+                ))
+                continue
+            
+            # Upload to S3
+            content_type = CONTENT_TYPE_MAP.get(ext, 'application/octet-stream')
+            s3_result = await s3_storage.upload_document(
+                file_content=file_content,
+                original_filename=original_filename,
+                user_uuid=user_uuid,
+                content_type=content_type
+            )
+            
+            # Extract text content
+            try:
+                extracted_content = doc_parser.extract_content(file_content, ext)
+            except Exception as e:
+                logger.warning(f"Content extraction failed for {original_filename}: {e}")
+                extracted_content = ""
+            
+            # Determine doc_type from extension
+            doc_type_map = {
+                '.pdf': 'pdf',
+                '.docx': 'docx',
+                '.pptx': 'pptx',
+                '.xlsx': 'xlsx',
+                '.txt': 'txt',
+                '.md': 'markdown'
+            }
+            doc_type = doc_type_map.get(ext, 'unknown')
+            
+            # Generate resource ID (url_hash)
+            resource_id = hashlib.sha256(s3_url.encode('utf-8')).hexdigest()
+            
+            # Build message for RabbitMQ
+            message = {
+                "message_type": "resource",
+                "resource_data": {
+                    "title": title,
+                    "url": s3_url,
+                    "category": category,
+                    "content": extracted_content,
+                    "publish_date": datetime.utcnow().isoformat(),
+                    "doc_type": doc_type
+                },
+                "datasource_id": "user_upload",
+                "batch_id": batch_id,
+                "scraped_at": datetime.utcnow().isoformat(),
+                "uploaded_by": user_uuid,
+                "related_events": event_list,
+                "s3_bucket": s3_result['s3_bucket'],
+                "s3_key": s3_result['s3_key'],
+                "content_hash": content_hash
+            }
+            
+            # Publish to RabbitMQ
+            with RabbitMQProducer(
+                host=settings.rabbitmq_host,
+                port=settings.rabbitmq_port,
+                user=settings.rabbitmq_user,
+                password=settings.rabbitmq_password,
+                queue=settings.rabbitmq_queue
+            ) as producer:
+                producer._ensure_connected()
+                producer.publish(message)
+            
+            logger.info(f"Queued document for processing: {title} ({original_filename})")
+            
+            results.append(DocumentSubmitResult(
+                original_filename=original_filename,
+                resource_id=resource_id,
+                s3_key=s3_key,
+                status="queued",
+                error=None
+            ))
+            
+        except Exception as e:
+            logger.error(f"Error processing file {original_filename}: {e}", exc_info=True)
+            results.append(DocumentSubmitResult(
+                original_filename=original_filename,
+                resource_id="",
+                s3_key="",
+                status="error",
+                error=str(e)
+            ))
+    
+    # Clean up Neo4j connection
+    neo4j_client.close()
+    
+    success_count = sum(1 for r in results if r.status == "queued")
+    
+    return DocumentBatchSubmitResponse(
+        status="completed" if success_count > 0 else "failed",
+        batch_id=batch_id,
+        documents=results,
+        total_submitted=len(files),
+        total_success=success_count,
+        total_failed=len(files) - success_count
     )
 
 

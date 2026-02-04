@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import logging
 
 from ..services import events_service
+from ..services import documents_service
 
 logger = logging.getLogger(__name__)
 
@@ -197,3 +198,43 @@ async def get_event_filters():
     except Exception as e:
         logger.error(f"Error getting event filters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve filter options")
+
+
+@router.get("/{url_hash}/documents")
+async def get_event_documents(
+    url_hash: str,
+    x_user_id: Optional[str] = Header(None)
+):
+    """
+    Get documents related to an event.
+    
+    Returns list of documents that have been linked to this event,
+    including both automatically associated and user-uploaded documents.
+    """
+    try:
+        documents = documents_service.get_event_documents(url_hash)
+        return {
+            "documents": documents,
+            "count": len(documents)
+        }
+    except Exception as e:
+        logger.error(f"Error getting documents for event {url_hash}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve event documents")
+
+
+@router.get("/{url_hash}/document-count")
+async def get_event_document_count(
+    url_hash: str,
+    x_user_id: Optional[str] = Header(None)
+):
+    """
+    Get count of documents related to an event.
+    
+    This is a lightweight endpoint for displaying document counts on event cards.
+    """
+    try:
+        count = documents_service.get_event_document_count(url_hash)
+        return {"count": count}
+    except Exception as e:
+        logger.error(f"Error getting document count for event {url_hash}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve document count")

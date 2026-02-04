@@ -274,6 +274,12 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
       
+      # S3 Document Storage
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      S3_DOCUMENT_BUCKET: ${S3_DOCUMENT_BUCKET:-aurora-document-uploads}
+      
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
@@ -390,6 +396,16 @@ services:
       WFA_CAUSEWAY_PASSWORD: ${WFA_CAUSEWAY_PASSWORD}
       WBA_USERNAME: ${WBA_USERNAME}
       WBA_PASSWORD: ${WBA_PASSWORD}
+      
+      # S3 Document Storage
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      S3_DOCUMENT_BUCKET: ${S3_DOCUMENT_BUCKET:-aurora-document-uploads}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-50}
+      
+      # Application Environment (dev disables scheduled scrapes)
+      APP_ENV: ${APP_ENV:-prod}
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

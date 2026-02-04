@@ -616,6 +616,17 @@ class Resource(Node):
         None,
         description="Notes about access barriers (e.g., 'requires login', 'paywall', 'registration required')"
     )
+    
+    # S3 Storage fields (for user uploads - null for scraped resources)
+    s3_bucket: Optional[str] = Field(
+        None,
+        description="S3 bucket name where the original file is stored"
+    )
+    
+    s3_key: Optional[str] = Field(
+        None,
+        description="S3 object key path for generating presigned download URLs"
+    )
 
     TRUNCATE = {
         "title": 500

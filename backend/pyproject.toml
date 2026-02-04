@@ -20,6 +20,7 @@ dependencies = [
     "redis",
     "python-dateutil",
     "requests",
+    "boto3>=1.28.0",
     # OpenTelemetry
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",

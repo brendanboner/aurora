@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     # Event Sanitization Configuration
     sanitize_events: bool = True  # Enable/disable sensitive info sanitization
     sanitization_replacement_text: str = "[Meeting access details removed for privacy. Please view the source link for access details.]"
+    
+    # AWS S3 Configuration for document uploads
+    aws_region: str = "us-east-1"
+    s3_document_bucket: str = "aurora-document-uploads"
+    max_upload_size_mb: int = 50
+    
+    # Application Environment
+    # 'dev' = development mode (scheduled scrapes disabled, manual only)
+    # 'prod' = production mode (scheduled scrapes enabled)
+    app_env: str = "prod"
 
 
 settings = Settings()
