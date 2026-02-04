@@ -243,7 +243,7 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           left: 0;
           right: 0;
           bottom: 0;
-          background-color: rgba(0, 0, 0, 0.5);
+          background-color: rgba(0, 0, 0, 0.7);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -251,14 +251,16 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
         }
 
         .upload-modal {
-          background: white;
-          border-radius: 12px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-card, 12px);
           width: 90%;
           max-width: 600px;
           max-height: 80vh;
           overflow: hidden;
           display: flex;
           flex-direction: column;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
 
         .modal-header {
@@ -266,7 +268,7 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           align-items: center;
           justify-content: space-between;
           padding: 16px 20px;
-          border-bottom: 1px solid #e2e8f0;
+          border-bottom: 1px solid var(--border);
         }
 
         .modal-header h2 {
@@ -275,6 +277,7 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           gap: 8px;
           font-size: 18px;
           margin: 0;
+          color: var(--foreground);
         }
 
         .modal-close {
@@ -282,7 +285,12 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           border: none;
           font-size: 24px;
           cursor: pointer;
-          color: #94a3b8;
+          color: var(--muted-foreground);
+          transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+          color: var(--foreground);
         }
 
         .modal-body {
@@ -296,37 +304,44 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           align-items: center;
           gap: 8px;
           padding: 10px 14px;
-          background-color: #fff5f5;
-          color: #c53030;
-          border-radius: 6px;
+          background-color: rgba(237, 95, 86, 0.1);
+          color: var(--destructive);
+          border: 1px solid var(--destructive);
+          border-radius: var(--radius, 6px);
           font-size: 13px;
           margin-bottom: 16px;
         }
 
         .modal-drop-zone {
-          border: 2px dashed #cbd5e0;
-          border-radius: 8px;
+          border: 2px dashed var(--border);
+          border-radius: var(--radius, 8px);
           padding: 32px 20px;
           text-align: center;
           cursor: pointer;
           position: relative;
           transition: all 0.2s ease;
+          background: var(--background);
         }
 
         .modal-drop-zone:hover,
         .modal-drop-zone.active {
-          border-color: #4f46e5;
-          background-color: #eef2ff;
+          border-color: var(--primary);
+          background-color: rgba(137, 129, 229, 0.1);
         }
 
         .modal-drop-zone svg {
-          color: #94a3b8;
+          color: var(--muted-foreground);
+        }
+
+        .modal-drop-zone:hover svg,
+        .modal-drop-zone.active svg {
+          color: var(--primary);
         }
 
         .modal-drop-zone p {
           margin: 8px 0 0;
           font-size: 14px;
-          color: #64748b;
+          color: var(--muted-foreground);
         }
 
         .modal-drop-zone .file-input {
@@ -347,13 +362,15 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
         }
 
         .modal-file-item {
-          background: #f8fafc;
-          border-radius: 6px;
+          background: var(--background);
+          border: 1px solid var(--border);
+          border-radius: var(--radius, 6px);
           padding: 12px;
         }
 
         .modal-file-item.has-error {
-          background: #fff5f5;
+          background: rgba(237, 95, 86, 0.1);
+          border-color: var(--destructive);
         }
 
         .modal-file-header {
@@ -363,13 +380,14 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
         }
 
         .modal-file-header svg {
-          color: #4f46e5;
+          color: var(--primary);
         }
 
         .modal-file-header .filename {
           flex: 1;
           font-size: 13px;
           font-weight: 500;
+          color: var(--foreground);
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -380,16 +398,17 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           border: none;
           padding: 4px;
           cursor: pointer;
-          color: #94a3b8;
+          color: var(--muted-foreground);
+          transition: color 0.2s;
         }
 
         .modal-file-header button:hover {
-          color: #dc2626;
+          color: var(--destructive);
         }
 
         .file-error-text {
           font-size: 12px;
-          color: #dc2626;
+          color: var(--destructive);
           margin-top: 4px;
         }
 
@@ -402,16 +421,24 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
         .modal-file-form input,
         .modal-file-form select {
           flex: 1;
-          padding: 6px 10px;
-          border: 1px solid #e2e8f0;
-          border-radius: 4px;
+          padding: 8px 10px;
+          border: 1px solid var(--border);
+          border-radius: var(--radius, 4px);
           font-size: 13px;
+          background: var(--background);
+          color: var(--foreground);
         }
 
         .modal-file-form input:focus,
         .modal-file-form select:focus {
           outline: none;
-          border-color: #4f46e5;
+          border-color: var(--primary);
+          box-shadow: 0 0 0 2px rgba(137, 129, 229, 0.2);
+        }
+
+        .modal-file-form select option {
+          background: var(--card);
+          color: var(--foreground);
         }
 
         .modal-footer {
@@ -419,7 +446,7 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           justify-content: flex-end;
           gap: 8px;
           padding: 16px 20px;
-          border-top: 1px solid #e2e8f0;
+          border-top: 1px solid var(--border);
         }
 
         .modal-btn {
@@ -427,35 +454,36 @@ const DocumentUploadModal = ({ isOpen, onClose, preSelectedEvent, onUploadComple
           align-items: center;
           gap: 6px;
           padding: 8px 16px;
-          border-radius: 6px;
+          border-radius: var(--radius, 6px);
           font-size: 14px;
           font-weight: 500;
           cursor: pointer;
           border: none;
+          transition: all 0.2s;
         }
 
         .modal-btn.primary {
-          background-color: #4f46e5;
-          color: white;
+          background-color: var(--primary);
+          color: var(--primary-foreground);
         }
 
         .modal-btn.primary:hover:not(:disabled) {
-          background-color: #4338ca;
+          opacity: 0.9;
         }
 
         .modal-btn.primary:disabled {
-          background-color: #c7d2fe;
+          opacity: 0.5;
           cursor: not-allowed;
         }
 
         .modal-btn.secondary {
-          background-color: white;
-          color: #475569;
-          border: 1px solid #e2e8f0;
+          background-color: transparent;
+          color: var(--foreground);
+          border: 1px solid var(--border);
         }
 
         .modal-btn.secondary:hover:not(:disabled) {
-          background-color: #f8fafc;
+          background-color: var(--background);
         }
 
         .spinning {

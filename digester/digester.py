@@ -415,10 +415,11 @@ class DocumentDigester:
         elif not (isinstance(scraped_at, (int, float)) and scraped_at > 0):
             raise ValueError("Field 'scraped_at' must be a valid Unix timestamp (positive integer or float) or ISO string.")
 
-        # url must be a valid URL string (http, https, or file protocols)
-        url_pattern = re.compile(r'^(https?|file)://[^\s]+$')
+        # url must be a valid URL string (http, https, file, or s3 protocols)
+        # Note: S3 URLs may contain spaces in filenames
+        url_pattern = re.compile(r'^(https?|file|s3)://.+$')
         if not isinstance(resource_data["url"], str) or not url_pattern.match(resource_data["url"]):
-            raise ValueError("Field 'url' must be a valid URL string (http, https, or file protocol).")
+            raise ValueError("Field 'url' must be a valid URL string (http, https, file, or s3 protocol).")
 
         # uploaded_by is optional; if present, must be a non-empty string
         if "uploaded_by" in message:
@@ -868,39 +869,40 @@ class DocumentDigester:
         # Wrap Neo4j operation in thread
         stats = await asyncio.to_thread(self.graph_repository.insert_entities, models)
 
-        # # Create UPLOADED_BY relationship if uploaded_by field is present
+        # Create UPLOADED_BY relationship if uploaded_by field is present
         uploaded_by = message.get("uploaded_by")
         if uploaded_by:
             try:
                 logger.info(f"Creating UPLOADED_BY relationship for user {uploaded_by}...")
                 
-                person = Person(
-                    person_id=uploaded_by,
-                    name=uploaded_by,
-                    user_uuid=uploaded_by  # Set user_uuid so queries can find uploads by user
-                )
-                
                 # Get resource node from models dict
                 resource_node = models["nodes"].get("resource")
                 
                 if resource_node:
-                    uploaded_by_rel = ResourceUploadedByPerson(
-                        source=resource_node,
-                        target=person,
-                        uploaded_at=datetime.now().isoformat()
+                    # Find the existing Person node by user_uuid
+                    find_person_query = """
+                    MATCH (p:Person {user_uuid: $user_uuid})
+                    RETURN p.person_id as person_id
+                    LIMIT 1
+                    """
+                    person_results = self.graph_repository.client.execute_query(
+                        find_person_query, 
+                        {"user_uuid": uploaded_by}
                     )
                     
-                    upload_models = [person, uploaded_by_rel]
-                    # Wrap deduplication in thread
-                    deduped_upload = await asyncio.to_thread(
-                        self.deduplicator.deduplicate_nodes, upload_models
-                    )
-                    # Wrap insert in thread
-                    upload_stats = await asyncio.to_thread(
-                        self.graph_repository.insert_entities, deduped_upload
-                    )
-                    
-                    logger.info(f"Created UPLOADED_BY relationship: {upload_stats}")
+                    if person_results:
+                        person_id = person_results[0]["person_id"]
+                        
+                        uploaded_by_rel = ResourceUploadedByPerson(
+                            source_id=resource_node.url_hash,
+                            target_id=person_id,
+                            uploaded_at=datetime.now().isoformat()
+                        )
+                        
+                        await asyncio.to_thread(self.graph_repository.create_relationship, uploaded_by_rel)
+                        logger.info(f"Created UPLOADED_BY relationship for user {uploaded_by}")
+                    else:
+                        logger.warning(f"Person node not found for user_uuid {uploaded_by}, skipping UPLOADED_BY relationship")
                 else:
                     logger.error("Resource node not found in models, cannot create UPLOADED_BY relationship")
                     

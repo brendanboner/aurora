@@ -450,6 +450,7 @@
   font-size: 0.85rem;
   transition: all 0.2s;
   flex-shrink: 0;
+  text-decoration: none;
 }
 
 .download-button:hover:not(:disabled) {
@@ -461,6 +462,17 @@
 .download-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.download-button.external-link {
+  background: transparent;
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.download-button.external-link:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 /* Responsive */
