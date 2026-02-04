@@ -440,6 +440,90 @@ export const submitFeedback = async (feedbackText, category) => {
   return response.data;
 };
 
+// ==================== Document Upload ====================
+
+/**
+ * Upload documents to the retriever service.
+ * @param {FormData} formData - Form data with files, titles, categories, and related_events
+ */
+export const uploadDocuments = async (formData) => {
+  const response = await apiClient.post('/retriever/submit/documents', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+/**
+ * Get documents uploaded by the current user.
+ */
+export const getUserUploads = async (limit = 50, offset = 0) => {
+  const response = await apiClient.get(`/backend/documents/user-uploads?limit=${limit}&offset=${offset}`);
+  return response.data;
+};
+
+/**
+ * Get available document categories for uploads.
+ */
+export const getDocumentCategories = async () => {
+  const response = await apiClient.get('/backend/documents/categories');
+  return response.data;
+};
+
+/**
+ * Get a presigned S3 URL for downloading a document.
+ * @param {string} urlHash - Document url_hash
+ */
+export const getDocumentDownloadUrl = async (urlHash) => {
+  const response = await apiClient.get(`/backend/documents/${urlHash}/download`);
+  return response.data.download_url;
+};
+
+/**
+ * Get documents related to an event.
+ * @param {string} urlHash - Event url_hash
+ */
+export const getEventDocuments = async (urlHash) => {
+  const response = await apiClient.get(`/backend/events/${urlHash}/documents`);
+  return response.data.documents || [];
+};
+
+/**
+ * Get count of documents related to an event.
+ * @param {string} urlHash - Event url_hash
+ */
+export const getEventDocumentCount = async (urlHash) => {
+  const response = await apiClient.get(`/backend/events/${urlHash}/document-count`);
+  return response.data.count;
+};
+
+/**
+ * Update a document's metadata (title, category).
+ * @param {string} urlHash - Document url_hash
+ * @param {object} updates - Fields to update (title, category)
+ */
+export const updateDocument = async (urlHash, updates) => {
+  const response = await apiClient.patch(`/backend/documents/${urlHash}`, updates);
+  return response.data;
+};
+
+/**
+ * Delete a document.
+ * @param {string} urlHash - Document url_hash
+ */
+export const deleteDocument = async (urlHash) => {
+  const response = await apiClient.delete(`/backend/documents/${urlHash}`);
+  return response.data;
+};
+
+/**
+ * Get events related to a document.
+ * @param {string} urlHash - Document url_hash
+ */
+export const getDocumentEvents = async (urlHash) => {
+  const response = await apiClient.get(`/backend/documents/${urlHash}/events`);
+  return response.data.events;
+};
+
 export const getMyFeedback = async (limit = 50) => {
   const response = await apiClient.get(`/backend/feedback/my-feedback?limit=${limit}`);
   return response.data;

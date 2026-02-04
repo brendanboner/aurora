@@ -42,3 +42,7 @@ export { default as FeedbackIcon } from './FeedbackIcon.jsx';
 export { default as MapPinIcon } from './MapPinIcon.jsx';
 export { default as FileTextIcon } from './FileTextIcon.jsx';
 export { default as AlertCircleIcon } from './AlertCircleIcon.jsx';
+export { default as UploadIcon } from './UploadIcon.jsx';
+export { default as DownloadIcon } from './DownloadIcon.jsx';
+export { default as EditIcon } from './EditIcon.jsx';
+export { default as CloseIcon } from './CloseIcon.jsx';

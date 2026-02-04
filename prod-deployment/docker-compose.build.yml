@@ -269,6 +269,10 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
       
+      # S3 Document Storage (uses IAM role, no access keys needed)
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_DOCUMENT_BUCKET: ${S3_DOCUMENT_BUCKET:-aurora-document-uploads}
+      
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
@@ -330,6 +334,10 @@ services:
       WFA_CAUSEWAY_BASE_URL: ${WFA_CAUSEWAY_BASE_URL:-https://groups.wi-fi.org/}
       WFA_CAUSEWAY_USERNAME: ${WFA_CAUSEWAY_USERNAME}
       WFA_CAUSEWAY_PASSWORD: ${WFA_CAUSEWAY_PASSWORD}
+      
+      # S3 Document Storage (uses IAM role, no access keys needed)
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_DOCUMENT_BUCKET: ${S3_DOCUMENT_BUCKET:-aurora-document-uploads}
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

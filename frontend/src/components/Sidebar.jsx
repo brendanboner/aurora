@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon, FeedbackIcon, AlertCircleIcon, ToolIcon } from '../components/icons';
+import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon, FeedbackIcon, AlertCircleIcon, ToolIcon, FileTextIcon } from '../components/icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
@@ -70,6 +70,16 @@ const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
           >
             <span className="sidebar-icon"><CalendarIcon /></span>
             {isOpen && <span className="sidebar-label">Events</span>}
+          </Link>
+
+          {/* My Documents */}
+          <Link 
+            to="/my-documents" 
+            className={`sidebar-item ${isActive('/my-documents') ? 'active' : ''}`}
+            title="My Documents"
+          >
+            <span className="sidebar-icon"><FileTextIcon /></span>
+            {isOpen && <span className="sidebar-label">My Documents</span>}
           </Link>
 
           {/* Profile Menu with expandable submenu */}

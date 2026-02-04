@@ -25,7 +25,7 @@ from services.event_associator import EventAssociator
 from utils.model_builder import build_models, build_event_model, BuiltModelsDict
 from neo4j_client import Neo4jClient, GraphRepository, NodeDeduplicator
 
-from neo4j_client.models import Person, ResourceUploadedByPerson
+from neo4j_client.models import Person, ResourceUploadedByPerson, ResourceRelatesToEvent
 import redis.asyncio as redis
 import json
 
@@ -905,6 +905,29 @@ class DocumentDigester:
                     
             except Exception as e:
                 logger.error(f"Failed to create UPLOADED_BY relationship: {e}", exc_info=True)
+
+        # Create RELATES_TO relationships for user-specified event associations
+        related_events = message.get("related_events", [])
+        if related_events and resource_node:
+            logger.info(f"Creating event associations for {len(related_events)} event(s)...")
+            for event_url_hash in related_events:
+                try:
+                    event_rel = ResourceRelatesToEvent(
+                        source_id=resource_node.url_hash,
+                        target_id=event_url_hash,
+                        confidence=0.9,  # High confidence for user-specified associations
+                        evidence="User uploaded document for this event",
+                        context_type="material"
+                    )
+                    
+                    # Insert the relationship
+                    await asyncio.to_thread(
+                        self.graph_repository.create_relationship, event_rel
+                    )
+                    logger.info(f"Created RELATES_TO relationship: Resource {resource_node.url_hash[:8]}... -> Event {event_url_hash[:8]}...")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to create event relationship to {event_url_hash}: {e}")
 
         logger.info(f"Successfully processed resource: {title}")
         logger.info(f"Insert stats: {stats}")
