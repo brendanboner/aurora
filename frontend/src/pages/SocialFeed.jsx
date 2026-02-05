@@ -285,7 +285,6 @@ const SocialFeed = () => {
 // PostCard component for LinkedIn-style posts
 const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showFollowMenu, setShowFollowMenu] = useState(false);
   const PREVIEW_LENGTH = 300;
   
   const needsReadMore = post.body && post.body.length > PREVIEW_LENGTH;
@@ -308,42 +307,24 @@ const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle
             </p>
           </div>
         </div>
-        <div 
-          className="follow-button-container"
-          onMouseEnter={() => post.is_following_agent && setShowFollowMenu(true)}
-          onMouseLeave={() => setShowFollowMenu(false)}
+        <button
+          type="button"
+          className={`follow-button ${post.is_following_agent ? 'following' : ''}`}
+          onClick={() => onFollowToggle(post.agent_id, post.is_following_agent)}
+          disabled={pendingAction === `follow-${post.agent_id}`}
         >
-          <button
-            type="button"
-            className={`follow-button ${post.is_following_agent ? 'following' : ''}`}
-            onClick={() => !post.is_following_agent && onFollowToggle(post.agent_id, post.is_following_agent)}
-            disabled={pendingAction === `follow-${post.agent_id}`}
-          >
-            {post.is_following_agent ? (
-              <>
-                <span className="follow-icon">✓</span>
-                <span>Following</span>
-              </>
-            ) : (
-              <>
-                <span className="follow-icon">+</span>
-                <span>Follow</span>
-              </>
-            )}
-          </button>
-          {post.is_following_agent && showFollowMenu && (
-            <div className="follow-dropdown">
-              <button
-                type="button"
-                className="follow-dropdown-item"
-                onClick={() => onFollowToggle(post.agent_id, post.is_following_agent)}
-                disabled={pendingAction === `follow-${post.agent_id}`}
-              >
-                Unfollow {post.agent_name}
-              </button>
-            </div>
+          {post.is_following_agent ? (
+            <>
+              <span className="follow-icon">✓</span>
+              <span>Following</span>
+            </>
+          ) : (
+            <>
+              <span className="follow-icon">+</span>
+              <span>Follow</span>
+            </>
           )}
-        </div>
+        </button>
       </div>
 
       {/* Post Content */}
