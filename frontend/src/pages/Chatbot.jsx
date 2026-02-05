@@ -527,6 +527,29 @@ What would you like to know?`;
 
   // Helper function to ingest YouTube video
   const ingestYouTubeVideo = async (url, forceRedigest = false) => {
+    // Check if user is admin
+    if (user && user.role !== 'admin' && user.role !== 'superadmin') {
+      // Add user message
+      const userMessage = {
+        role: 'user',
+        content: url,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      
+      // Add error message
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: '❌ YouTube video/playlist ingestion is restricted to admin users only. Please contact an administrator to add YouTube content.',
+          timestamp: new Date(),
+          isError: true,
+        },
+      ]);
+      return;
+    }
+    
     // Add user message
     const userMessage = {
       role: 'user',
@@ -538,7 +561,7 @@ What would you like to know?`;
     // Add loading message
     const loadingMessage = {
       role: 'assistant',
-      content: forceRedigest ? '🔄 Re-processing YouTube video...' : '🎥 Processing YouTube video...',
+      content: forceRedigest ? '🔄 Re-processing YouTube video...' : '🎥 Processing YouTube video/playlist...',
       timestamp: new Date(),
       isLoading: true,
     };
@@ -631,12 +654,12 @@ What would you like to know?`;
     const queryText = inputValue.trim();
     const datasourceIds = selectedDatasources.map(ds => ds.datasource_id);
     
-    // Check if input is a YouTube URL
-    const youtubePattern = /(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    // Check if input is a YouTube URL (video or playlist)
+    const youtubePattern = /(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|playlist\?list=)|youtu\.be\/)([a-zA-Z0-9_-]+)/;
     const youtubeMatch = queryText.match(youtubePattern);
     
     if (youtubeMatch) {
-      // Handle YouTube URL submission
+      // Handle YouTube URL submission (video or playlist)
       setInputValue('');
       setError(null);
       setShowMentionDropdown(false);

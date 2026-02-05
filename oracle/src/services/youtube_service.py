@@ -136,6 +136,123 @@ class YouTubeService:
         
         return None
     
+    @staticmethod
+    def extract_playlist_id(url: str) -> Optional[str]:
+        """
+        Extract playlist ID from YouTube URL.
+        
+        Supports:
+        - https://www.youtube.com/playlist?list=PLAYLIST_ID
+        - https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID
+        
+        Args:
+            url: YouTube URL
+            
+        Returns:
+            Playlist ID or None if not a playlist URL
+        """
+        pattern = r'[?&]list=([a-zA-Z0-9_-]+)'
+        match = re.search(pattern, url)
+        if match:
+            playlist_id = match.group(1)
+            # Filter out special playlist IDs that aren't real playlists
+            if not playlist_id.startswith(('WL', 'LL', 'RD')):
+                return playlist_id
+        return None
+    
+    async def get_playlist_videos(self, playlist_id: str, max_videos: int = 50) -> List[str]:
+        """
+        Get all video IDs from a YouTube playlist.
+        
+        Args:
+            playlist_id: YouTube playlist ID
+            max_videos: Maximum number of videos to retrieve (default: 50)
+            
+        Returns:
+            List of video IDs
+            
+        Raises:
+            ValueError: If playlist cannot be accessed or is invalid
+        """
+        try:
+            # Use yt-dlp approach: scrape playlist page
+            playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    playlist_url,
+                    headers=self.headers,
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as response:
+                    if response.status != 200:
+                        raise ValueError(f"Could not access playlist: HTTP {response.status}")
+                    
+                    html = await response.text()
+                    
+                    # Extract video IDs from ytInitialData
+                    video_ids = []
+                    
+                    # Look for ytInitialData in the page
+                    initial_data_match = re.search(
+                        r'var ytInitialData = ({.+?});',
+                        html,
+                        re.DOTALL
+                    )
+                    
+                    if initial_data_match:
+                        try:
+                            initial_data = json.loads(initial_data_match.group(1))
+                            
+                            # Navigate through the JSON structure to find video IDs
+                            contents = initial_data.get('contents', {})
+                            tab_renderer = contents.get('twoColumnBrowseResultsRenderer', {}).get('tabs', [])
+                            
+                            for tab in tab_renderer:
+                                tab_content = tab.get('tabRenderer', {}).get('content', {})
+                                section_contents = tab_content.get('sectionListRenderer', {}).get('contents', [])
+                                
+                                for section in section_contents:
+                                    item_section = section.get('itemSectionRenderer', {}).get('contents', [])
+                                    
+                                    for item in item_section:
+                                        playlist_renderer = item.get('playlistVideoListRenderer', {})
+                                        videos = playlist_renderer.get('contents', [])
+                                        
+                                        for video in videos:
+                                            video_renderer = video.get('playlistVideoRenderer', {})
+                                            video_id = video_renderer.get('videoId')
+                                            
+                                            if video_id and video_id not in video_ids:
+                                                video_ids.append(video_id)
+                                                
+                                                if len(video_ids) >= max_videos:
+                                                    break
+                                        
+                                        if len(video_ids) >= max_videos:
+                                            break
+                            
+                        except (json.JSONDecodeError, KeyError, AttributeError) as e:
+                            logger.warning(f"Could not parse playlist data: {e}")
+                    
+                    # Fallback: regex search for video IDs
+                    if not video_ids:
+                        video_id_pattern = r'"videoId":"([a-zA-Z0-9_-]{11})"'
+                        matches = re.findall(video_id_pattern, html)
+                        video_ids = list(dict.fromkeys(matches))[:max_videos]  # Remove duplicates, limit
+                    
+                    if not video_ids:
+                        raise ValueError("No videos found in playlist or playlist is empty")
+                    
+                    logger.info(f"Found {len(video_ids)} videos in playlist {playlist_id}")
+                    return video_ids
+                    
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error accessing playlist: {e}")
+            raise ValueError(f"Could not access playlist: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error getting playlist videos: {e}", exc_info=True)
+            raise ValueError(f"Failed to get playlist videos: {str(e)}")
+    
     def extract_event_from_title(self, title: str, publish_date: str = None) -> Optional[Dict[str, Any]]:
         """
         Extract event information from video title.
