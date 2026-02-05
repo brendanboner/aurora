@@ -565,7 +565,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
         {referencesToShow.length > 0 && (
           <div className="references-section">
             <div className="references-header">
-              <strong>References ({referencesToShow.length})</strong>
+              <strong>References (Cited in Answer)</strong>
             </div>
 
             {/* Cited Documents */}
@@ -607,6 +607,46 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                 </div>
               ))}
             </div>
+            
+            {/* Additional Context Documents (non-cited but relevant) */}
+            {message.documents && message.documents.length > referencesToShow.length && (
+              <div className="additional-context-section">
+                <details>
+                  <summary className="additional-context-header">
+                    <strong>Additional Context</strong>
+                    <span className="additional-count">
+                      ({message.documents.length - referencesToShow.length} more documents)
+                    </span>
+                  </summary>
+                  <div className="additional-documents">
+                    {message.documents
+                      .filter(doc => !referencesToShow.find(ref => ref.url === doc.url))
+                      .slice(0, 5)
+                      .map((doc, i) => (
+                        <div key={i} className="reference-item additional">
+                          <div className="reference-content">
+                            <div className="reference-title-row">
+                              <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                                {doc.title || 'Untitled'}
+                              </a>
+                              {getDatasourceName(doc) && (
+                                <span className="reference-datasource">
+                                  {getDatasourceName(doc)}
+                                </span>
+                              )}
+                            </div>
+                            {doc.summary && (
+                              <div className="reference-summary">
+                                {doc.summary.slice(0, 150)}...
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </details>
+              </div>
+            )}
           </div>
         )}
 

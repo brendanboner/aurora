@@ -180,6 +180,14 @@ class Settings(BaseSettings):
     fast_confidence_threshold: float = 0.6  # Min confidence to return fast result
     fast_operation_timeout: float = 30.0  # Max total time for fast pipeline (seconds)
     
+    # Rate Limiting: YouTube Transcript API
+    youtube_transcript_max_requests: int = 60  # Max transcript requests per time window
+    youtube_transcript_time_window: int = 3600  # Time window in seconds (1 hour)
+    
+    # Rate Limiting: RabbitMQ Publishing
+    rabbitmq_max_requests: int = 20  # Max RabbitMQ publish operations per time window
+    rabbitmq_time_window: int = 10  # Time window in seconds (10 seconds)
+    
     @property
     def postgres_dsn(self) -> str:
         """Generate PostgreSQL connection string."""

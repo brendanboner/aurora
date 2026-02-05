@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.1
     llm_rate_limit_retries: int = 3  # Max retries when hitting rate limits
     
+    # LLM Rate Limiting (Proactive)
+    llm_rate_limit_enabled: bool = True  # Enable proactive rate limiting
+    llm_max_requests_per_minute: int = 60  # RPM quota (requests per minute)
+    llm_max_tokens_per_minute: int = 10000  # TPM quota (tokens per minute)
+    
     # Content Chunking
     max_chunk_size: int = 8000
     chunk_overlap: int = 500

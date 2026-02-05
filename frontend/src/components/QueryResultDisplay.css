@@ -708,6 +708,61 @@
   font-weight: 500;
 }
 
+/* Additional Context Section */
+.additional-context-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+}
+
+.additional-context-header {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: rgba(137, 129, 229, 0.05);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  transition: background-color 0.2s ease;
+  user-select: none;
+}
+
+.additional-context-header:hover {
+  background-color: rgba(137, 129, 229, 0.1);
+}
+
+.additional-count {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.additional-documents {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reference-item.additional {
+  opacity: 0.85;
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+}
+
+.reference-item.additional:hover {
+  opacity: 1;
+  border-left-color: var(--primary);
+}
+
+.reference-summary {
+  margin-top: 4px;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
 /* Badges (shared with existing styles) */
 .badge {
   display: inline-block;

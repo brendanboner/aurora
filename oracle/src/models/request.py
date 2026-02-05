@@ -81,6 +81,10 @@ class QueryOptions(BaseModel):
         default=PersonalizeMode.AUTO, 
         description="Personalization mode: 'off' (generic), 'on' (always personalize), 'auto' (system decides)"
     )
+    pipeline_override: Optional[Literal["fast", "baseline"]] = Field(
+        default=None,
+        description="Override A/B test pipeline selection: 'fast' or 'baseline'. None = use A/B test (default)"
+    )
 
 
 class QueryRequest(BaseModel):

@@ -232,6 +232,7 @@ export const sendOracleQuery = async (userId, question, options = {}) => {
       datasource_ids: options.datasourceIds || null,
       recency_boost: options.recencyBoost !== false,
       personalize: options.personalize || 'auto', // 'off', 'on', or 'auto'
+      pipeline_override: options.pipelineOverride || null, // 'fast', 'baseline', or null for A/B test
     },
   };
   

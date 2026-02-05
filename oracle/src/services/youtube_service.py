@@ -13,6 +13,7 @@ from youtube_transcript_api._errors import (
     NoTranscriptFound,
     VideoUnavailable,
 )
+from src.services.rate_limiter import get_youtube_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -209,8 +210,86 @@ class YouTubeService:
                         "confidence": confidence
                     }
         
-        # Fallback: Check for event keywords without year, use publish_date year
-        logger.debug(f"No regex match. Checking fallback with publish_date: {publish_date}")
+        # No pattern match found
+        logger.debug(f"No event pattern matched for title: {title}")
+        return None
+    
+    def extract_event_date_from_description(self, description: str, title: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Extract event date from video description (e.g., "Streamed live on Feb 4, 2026").
+        
+        This captures the actual event date for livestreams/premieres, which is more
+        accurate than the video upload date.
+        
+        Args:
+            description: Video description text
+            title: Optional video title for additional context
+            
+        Returns:
+            Dict with event_date (ISO format), date_type, and confidence or None
+        """
+        if not description:
+            return None
+        
+        # Patterns for livestream/premiere dates
+        # Examples:
+        # - "Streamed live on Feb 4, 2026"
+        # - "Premiered Feb 4, 2026" 
+        # - "Live on February 4, 2026"
+        # - "Streamed live on 4 Feb 2026"
+        date_patterns = [
+            r'Streamed live on ([A-Za-z]+\s+\d{1,2},?\s+\d{4})',
+            r'Premiered on ([A-Za-z]+\s+\d{1,2},?\s+\d{4})',
+            r'Live on ([A-Za-z]+\s+\d{1,2},?\s+\d{4})',
+            r'Streamed live on (\d{1,2}\s+[A-Za-z]+\s+\d{4})',
+            r'Premiered (\d{1,2}\s+[A-Za-z]+\s+\d{4})',
+        ]
+        
+        for pattern in date_patterns:
+            match = re.search(pattern, description, re.IGNORECASE)
+            if match:
+                date_str = match.group(1)
+                
+                try:
+                    from dateutil.parser import parse as date_parse
+                    event_date = date_parse(date_str)
+                    
+                    # Validate year is reasonable (2020-2030)
+                    if event_date.year < 2020 or event_date.year > 2030:
+                        continue
+                    
+                    # Determine date type from pattern
+                    date_type = "livestream" if "stream" in pattern.lower() else "premiere"
+                    
+                    logger.info(
+                        f"Extracted {date_type} date from description: {event_date.date()} "
+                        f"(pattern: {pattern})"
+                    )
+                    
+                    return {
+                        "event_date": event_date.isoformat(),
+                        "date_type": date_type,
+                        "confidence": 0.95  # High confidence for explicit date mentions
+                    }
+                except Exception as e:
+                    logger.debug(f"Failed to parse date '{date_str}': {e}")
+                    continue
+        
+        logger.debug("No event date pattern found in description")
+        return None
+    
+    def _extract_fallback_event(self, title: str, publish_date: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Fallback event extraction: Check for event keywords without year, use publish_date year.
+        
+        Args:
+            title: Video title
+            publish_date: Video publish date for year inference
+            
+        Returns:
+            Dict with event info or None
+        """
+        logger.debug(f"Trying fallback event extraction with publish_date: {publish_date}")
         if publish_date:
             try:
                 from dateutil.parser import parse as date_parse
@@ -388,6 +467,10 @@ class YouTubeService:
             VideoTranscript object or None if transcript not available
         """
         try:
+            # Rate limit transcript fetching to avoid overwhelming the API
+            rate_limiter = get_youtube_rate_limiter()
+            await rate_limiter.acquire_transcript()
+            
             # Instantiate the API
             ytt_api = YouTubeTranscriptApi()
             

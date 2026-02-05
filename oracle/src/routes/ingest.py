@@ -6,10 +6,12 @@ from typing import Optional
 import logging
 import hashlib
 import json
+import asyncio
 from datetime import datetime
 
 from common.auth_middleware import get_user_context, require_user_context
 from src.services.youtube_service import YouTubeService
+from src.services.rate_limiter import get_youtube_rate_limiter
 from src.settings import settings
 
 router = APIRouter(tags=["ingest"])
@@ -206,6 +208,9 @@ async def ingest_youtube_video(
         # If we have segments, publish each segment separately
         messages_published = 0
         
+        # Get rate limiter for controlled RabbitMQ publishing
+        rate_limiter = get_youtube_rate_limiter()
+        
         # Use context manager for RabbitMQ connection
         with RabbitMQProducer(**rabbitmq_config, logger_instance=logger) as producer:
             if segments:
@@ -233,11 +238,13 @@ async def ingest_youtube_video(
                     }
                 }
                 
+                # Rate limit before publishing
+                await rate_limiter.acquire_rabbitmq()
                 producer.publish(parent_message)
                 messages_published += 1
                 
-                # Publish each segment
-                for segment in segments:
+                # Publish each segment with rate limiting
+                for i, segment in enumerate(segments, 1):
                     segment_url = f"{metadata.url}&t={segment.timestamp_start}s"
                     segment_url_hash = hashlib.sha256(segment_url.encode()).hexdigest()
                     
@@ -267,8 +274,14 @@ async def ingest_youtube_video(
                         }
                     }
                     
+                    # Rate limit before publishing each segment
+                    await rate_limiter.acquire_rabbitmq()
                     producer.publish(segment_message)
                     messages_published += 1
+                    
+                    logger.debug(
+                        f"Published segment {i}/{len(segments)} for video {video_id}"
+                    )
             
             else:
                 # Single video (no segments)
@@ -292,6 +305,8 @@ async def ingest_youtube_video(
                     }
                 }
                 
+                # Rate limit before publishing
+                await rate_limiter.acquire_rabbitmq()
                 producer.publish(message)
                 messages_published = 1
         

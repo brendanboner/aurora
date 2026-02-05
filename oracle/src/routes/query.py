@@ -261,14 +261,25 @@ async def query(
                     else:
                         logger.debug(f"[{query_id}] No matching datasources found for mentions: {mentions}")
             
-            # Determine which pipeline to use (A/B test)
-            use_fast_pipeline = should_use_fast_pipeline(str(request.user_id) if request.user_id else None)
+            # Determine which pipeline to use (A/B test or user override)
+            options = request.options
+            pipeline_override = getattr(options, 'pipeline_override', None) if options else None
+            use_fast_pipeline = should_use_fast_pipeline(
+                str(request.user_id) if request.user_id else None,
+                pipeline_override=pipeline_override
+            )
             pipeline_name = "fast" if use_fast_pipeline else "baseline"
             
             span.set_attribute("oracle.pipeline", pipeline_name)
             span.set_attribute("oracle.ab_test_enabled", settings.fast_pipeline_enabled)
+            if pipeline_override:
+                span.set_attribute("oracle.pipeline_override_used", True)
+                span.set_attribute("oracle.pipeline_override_value", pipeline_override)
             
-            logger.info(f"[{query_id}] Using {pipeline_name} pipeline (A/B test)")
+            logger.info(
+                f"[{query_id}] Using {pipeline_name} pipeline "
+                f"({'override' if pipeline_override else 'A/B test'})"
+            )
             
             # Shadow mode: run fast pipeline but return baseline
             if settings.fast_pipeline_shadow_mode and not use_fast_pipeline:

@@ -25,6 +25,13 @@ except ImportError:
     def create_llm_span_manually(*args, **kwargs):
         yield None
 
+try:
+    from common.llm_rate_limiter import get_llm_rate_limiter
+except ImportError:
+    # Fallback if common module unavailable
+    logger.warning("LLM rate limiter not available, rate limiting disabled")
+    get_llm_rate_limiter = None
+
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -107,6 +114,17 @@ async def call_llm_with_retry(
     
     client = get_llm_client()
     last_exception: Optional[Exception] = None
+    
+    # Proactive rate limiting (if enabled)
+    if settings.llm_rate_limit_enabled and get_llm_rate_limiter is not None:
+        rate_limiter = get_llm_rate_limiter(
+            max_requests_per_minute=settings.llm_max_requests_per_minute,
+            max_tokens_per_minute=settings.llm_max_tokens_per_minute
+        )
+        # Estimate token usage: rough approximation based on message content + max_tokens
+        estimated_input_tokens = sum(len(msg.get('content', '')) // 4 for msg in messages)
+        estimated_tokens = estimated_input_tokens + max_tokens
+        await rate_limiter.acquire(estimated_tokens)
     
     for attempt in range(max_retries + 1):  # +1 for initial attempt
         try:

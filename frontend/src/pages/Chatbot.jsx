@@ -23,6 +23,10 @@ const Chatbot = ({ backendStatus }) => {
     const saved = localStorage.getItem('personalizeMode');
     return saved && ['off', 'on', 'auto'].includes(saved) ? saved : 'auto';
   });
+  const [pipelineMode, setPipelineModeState] = useState(() => {
+    const saved = localStorage.getItem('pipelineMode');
+    return saved && ['system', 'fast', 'baseline'].includes(saved) ? saved : 'system';
+  });
   const [querySuggestion, setQuerySuggestion] = useState(null); // For pre-query suggestions
   const [pendingQuery, setPendingQuery] = useState(null); // Original query while showing suggestion
   const [pendingDatasourceIds, setPendingDatasourceIds] = useState([]); // Datasources for pending query
@@ -48,6 +52,12 @@ const Chatbot = ({ backendStatus }) => {
   const setPersonalizeMode = (mode) => {
     setPersonalizeModeState(mode);
     localStorage.setItem('personalizeMode', mode);
+  };
+
+  // Wrapper to persist pipelineMode to localStorage
+  const setPipelineMode = (mode) => {
+    setPipelineModeState(mode);
+    localStorage.setItem('pipelineMode', mode);
   };
 
   const scrollToBottom = () => {
@@ -302,6 +312,7 @@ What would you like to know?`;
         includeGraphContext: true,
         datasourceIds: datasourceIds.length > 0 ? datasourceIds : null,
         personalize: personalizeMode,
+        pipelineOverride: pipelineMode === 'system' ? null : pipelineMode,
       });
 
       // Map Oracle response format to our message format
@@ -699,6 +710,21 @@ What would you like to know?`;
     <div className="chatbot-container">
       <div className="chat-header">
         <div className="chat-header-content">
+          <div className="chat-header-left">
+            {user && (
+              <select
+                className="pipeline-mode-dropdown"
+                value={pipelineMode}
+                onChange={(e) => setPipelineMode(e.target.value)}
+                disabled={isLoading}
+                title="Engine: Fast uses instant templates, Baseline uses comprehensive LLM synthesis, System auto-selects"
+              >
+                <option value="system">Engine: System (A/B)</option>
+                <option value="fast">Engine: Fast</option>
+                <option value="baseline">Engine: Baseline</option>
+              </select>
+            )}
+          </div>
           <div className="chat-header-actions">
             {user && (
               <select
