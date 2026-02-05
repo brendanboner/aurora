@@ -137,6 +137,57 @@ class Settings(BaseSettings):
     query_history_retention_days: int = 30  # How long to keep history
     query_history_max_response_size: int = 50000  # Max chars to store per response
     
+    # Fast Pipeline (A/B Testing)
+    fast_pipeline_enabled: bool = True  # Enable fast retrieval pipeline
+    fast_pipeline_rollout_percentage: int = 100  # 0-100: percentage of users in fast pipeline
+    fast_pipeline_shadow_mode: bool = False  # Run fast pipeline in shadow mode (log only, return baseline)
+    
+    # Fast Pipeline: Routing
+    fast_router_confidence_threshold: float = 0.6  # Min confidence to use local router (else LLM fallback)
+    fast_router_llm_fallback_enabled: bool = True  # Enable LLM router as fallback
+    fast_router_max_entities: int = 10  # Max entities to resolve per query
+    
+    # Fast Pipeline: Cypher Templates
+    fast_template_max_nodes: int = 100  # Max nodes returned per template query
+    fast_template_timeout: float = 5.0  # Timeout for template execution (seconds)
+    fast_template_version: str = "1.0.0"  # Template version for cache invalidation
+    
+    # Fast Pipeline: Rollups (PostgreSQL)
+    fast_rollup_enabled: bool = True  # Enable rollup generation and retrieval
+    fast_rollup_generation_enabled: bool = True  # Enable nightly rollup generation job
+    fast_rollup_generation_cron: str = "0 2 * * *"  # 2 AM daily; scheduler currently uses only the hour component
+    fast_rollup_daily_lookback: int = 14  # Generate daily rollups for last N days
+    fast_rollup_weekly_lookback: int = 4  # Generate weekly rollups for last N weeks
+    fast_rollup_monthly_lookback: int = 3  # Generate monthly rollups for last N months
+    fast_rollup_prewarm_on_ingest: bool = True  # Invalidate/rebuild rollups on document ingest
+    
+    # Fast Pipeline: Caching
+    fast_cache_plan_ttl: int = 86400  # 24 hours - route plan cache
+    fast_cache_result_ttl: int = 3600  # 1 hour - retrieval result cache
+    fast_cache_answer_ttl: int = 3600  # 1 hour - final answer cache
+    fast_cache_prewarm_enabled: bool = True  # Enable cache prewarming
+    fast_cache_prewarm_mode: str = "autonomous"  # "provided" or "autonomous"
+    fast_cache_prewarm_patterns_file: str = "/app/config/prewarm_patterns.json"
+    
+    # Fast Pipeline: Deep Dive
+    fast_deep_dive_enabled: bool = True  # Enable deep dive retrieval
+    fast_deep_dive_trigger_threshold: float = 0.7  # Trigger deep dive if confidence < threshold
+    fast_deep_dive_max_snippets: int = 10  # Max document snippets to retrieve
+    fast_deep_dive_token_budget: int = 7500  # Max tokens for deep dive context
+    
+    # Fast Pipeline: Fallback & Safety
+    fast_fallback_to_baseline: bool = True  # Fall back to baseline on error
+    fast_confidence_threshold: float = 0.6  # Min confidence to return fast result
+    fast_operation_timeout: float = 30.0  # Max total time for fast pipeline (seconds)
+    
+    # Rate Limiting: YouTube Transcript API
+    youtube_transcript_max_requests: int = 60  # Max transcript requests per time window
+    youtube_transcript_time_window: int = 3600  # Time window in seconds (1 hour)
+    
+    # Rate Limiting: RabbitMQ Publishing
+    rabbitmq_max_requests: int = 20  # Max RabbitMQ publish operations per time window
+    rabbitmq_time_window: int = 10  # Time window in seconds (10 seconds)
+    
     @property
     def postgres_dsn(self) -> str:
         """Generate PostgreSQL connection string."""

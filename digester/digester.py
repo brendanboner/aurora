@@ -132,6 +132,49 @@ class DocumentDigester:
         
         logger.info("Document Digester initialized")
     
+    def _handle_video_metadata(self, resource_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and format video-specific metadata."""
+        metadata = resource_data.get('metadata', {})
+        
+        # Debug: Log event metadata presence
+        if metadata.get('event_name'):
+            logger.info(f"📅 Found event metadata: {metadata.get('event_name')} ({metadata.get('event_year')}) - confidence: {metadata.get('event_confidence')}")
+        else:
+            logger.debug(f"No event metadata in video metadata keys: {list(metadata.keys())}")
+        
+        # Add video-specific context to extraction
+        video_context = []
+        
+        if metadata.get('channel_name'):
+            video_context.append(f"Channel: {metadata['channel_name']}")
+        
+        if metadata.get('duration_seconds'):
+            duration_min = metadata['duration_seconds'] // 60
+            video_context.append(f"Duration: {duration_min} minutes")
+        
+        if metadata.get('is_segment'):
+            video_context.append(
+                f"Segment {metadata['segment_number']}/{metadata['total_segments']}"
+            )
+        
+        # Add event context if available
+        if metadata.get('event_name'):
+            event_desc = f"Event: {metadata['event_name']}"
+            if metadata.get('event_year'):
+                event_desc += f" {metadata['event_year']}"
+            video_context.append(event_desc)
+        
+        # Add context to title for better extraction
+        enhanced_title = resource_data['title']
+        if video_context:
+            enhanced_title += f" ({', '.join(video_context)})"
+        
+        return {
+            **resource_data,
+            'title': enhanced_title,
+            'video_metadata': metadata
+        }
+    
     async def _ensure_redis_connection(self):
         """Ensure Redis connection is established (test with ping)."""
         if self.redis_client:
@@ -810,6 +853,11 @@ class DocumentDigester:
         logger.info(f"Processing resource: {title}")
         await self.update_current_processing(message, "validating")
         
+        # Handle video-specific processing
+        if resource_data.get('category') == 'video' or resource_data.get('doc_type') == 'video':
+            resource_data = self._handle_video_metadata(resource_data)
+            logger.info(f"Enhanced video metadata for: {resource_data['title']}")
+        
         # Validate resource message
         self.validate_resource_message(message)
 
@@ -843,21 +891,86 @@ class DocumentDigester:
         models: BuiltModelsDict = build_models(metadata)
 
         logger.info("Attempt to relate resource to event if applicable...")
-        # Add event relationship if document title contains a date
+        # Add event relationship if document title contains a date OR if video has event metadata
         resource_node = models["nodes"]["resource"]
+        video_metadata = resource_data.get('video_metadata', {})
+        
         if resource_node:
-            try:
-                event_relationship = await self.event_associator.get_event_relationship(
-                    resource_url_hash=resource_node.url_hash,
-                    resource_title=title,
-                    resource_summary=metadata.get("nodes", {}).get("resource", {}).get("summary", ""),
-                    datasource_id=message.get("datasource_id", "")
-                )
-                if event_relationship:
+            # Check for event metadata from YouTube video
+            if video_metadata.get('event_name') and video_metadata.get('event_year'):
+                try:
+                    logger.info(f"Creating/linking event from video metadata: {video_metadata['event_name']}")
+                    
+                    # Create Event node from video metadata
+                    from datetime import datetime as dt
+                    from neo4j_client.models import Event, ResourceRelatesToEvent
+                    
+                    event_name = video_metadata['event_name']
+                    event_year = int(video_metadata['event_year'])
+                    event_type = video_metadata.get('event_type', 'conference')
+                    
+                    # Create event URL from name (for stable ID)
+                    event_url_base = event_name.lower().replace(' ', '-').replace('&', 'and')
+                    event_url = f"https://event.placeholder/{event_url_base}-{event_year}"
+                    
+                    # Estimate start date from year (use video publish date if available, otherwise Jan 1)
+                    start_date = None
+                    if resource_data.get('publish_date'):
+                        try:
+                            from dateutil.parser import parse as date_parse
+                            start_date = date_parse(resource_data['publish_date'])
+                        except:
+                            pass
+                    
+                    if not start_date:
+                        start_date = dt(event_year, 1, 1)
+                    
+                    # Create Event node
+                    event_node = Event(
+                        name=event_name,
+                        event_type=event_type,
+                        start_date=start_date,
+                        url=event_url,
+                        description=f"Event detected from video: {resource_data.get('title', '')}",
+                        datasource_id=message.get("datasource_id", "youtube"),
+                        scraped_at=dt.now(),
+                        status="completed" if event_year < dt.now().year else "scheduled"
+                    )
+                    
+                    # Create relationship
+                    confidence = video_metadata.get('event_confidence', 0.9)
+                    event_relationship = ResourceRelatesToEvent(
+                        source_id=resource_node.url_hash,
+                        target_id=event_node.url_hash,
+                        confidence=confidence,
+                        evidence=f"Video title: {resource_data.get('title', '')}",
+                        context_type="material"  # Video is material FROM the event
+                    )
+                    
+                    # Add event node and relationship to models
+                    models["nodes"]["events"] = models["nodes"].get("events", [])
+                    models["nodes"]["events"].append(event_node)
                     models["relationships"].append(event_relationship)
-                    logger.info(f"Added event relationship to models")
-            except Exception as e:
-                logger.warning(f"Failed to get event relationship: {e}")
+                    
+                    logger.info(f"Added event node '{event_name}' and relationship (confidence: {confidence})")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to create event from video metadata: {e}")
+            
+            # Fall back to date-based event association for non-video resources
+            else:
+                try:
+                    event_relationship = await self.event_associator.get_event_relationship(
+                        resource_url_hash=resource_node.url_hash,
+                        resource_title=title,
+                        resource_summary=metadata.get("nodes", {}).get("resource", {}).get("summary", ""),
+                        datasource_id=message.get("datasource_id", "")
+                    )
+                    if event_relationship:
+                        models["relationships"].append(event_relationship)
+                        logger.info(f"Added event relationship to models")
+                except Exception as e:
+                    logger.warning(f"Failed to get event relationship: {e}")
 
         logger.info("Deduping nodes...")
         # Deduplicate and replace models dict with deduplicated version

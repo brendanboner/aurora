@@ -168,10 +168,15 @@ class AgentScheduler:
             logger.info("Attempting to generate post for agent %s with topics: %s, orgs: %s", 
                        agent.name, event.topics or agent.expertise_topics, 
                        event.organisations or agent.expertise_organisations)
+            
+            # Determine perspective based on day of week for variety
+            perspective = self._select_perspective(agent, now)
+            
             payload = self._generation_service.generate_post_payload(
                 agent,
                 topics=event.topics or agent.expertise_topics,
                 organisations=event.organisations or agent.expertise_organisations,
+                perspective=perspective,
             )
             if not payload:
                 logger.info("Agent %s generation returned no content - check Neo4j data and LLM connectivity", agent.name)
@@ -301,6 +306,42 @@ class AgentScheduler:
                    agent.importance_threshold, threshold, meets_threshold)
         
         return meets_threshold
+    
+    def _select_perspective(self, agent: CreatorAgent, now: datetime) -> Optional[str]:
+        """
+        Select perspective for content discovery to add variety.
+        
+        Rotates perspectives based on day of week:
+        - Monday: "events" (week planning)
+        - Tuesday/Thursday: "trends" (analysis)
+        - Wednesday/Friday: None (default cadence-based)
+        - Weekend: "decisions" (recaps)
+        """
+        weekday = now.weekday()  # 0=Monday, 6=Sunday
+        
+        # Only vary perspectives for weekly+ cadences
+        if agent.posting_cadence in {"per-event", "daily", "daily-digest"}:
+            return None  # Use default cadence routing
+        
+        perspective_map = {
+            0: "events",      # Monday - upcoming events
+            1: "trends",      # Tuesday - topic trends
+            2: None,          # Wednesday - default
+            3: "trends",      # Thursday - topic trends
+            4: None,          # Friday - default
+            5: "decisions",   # Saturday - recent decisions
+            6: "decisions",   # Sunday - recent decisions
+        }
+        
+        perspective = perspective_map.get(weekday)
+        if perspective:
+            logger.info(
+                "Agent %s using perspective '%s' for %s",
+                agent.name,
+                perspective,
+                now.strftime("%A"),
+            )
+        return perspective
 
     def _normalise_cadence(self, cadence: Optional[str]) -> str:
         if not cadence:

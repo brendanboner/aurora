@@ -1,0 +1,386 @@
+"""
+TopicManager: Dynamic topic extraction and management for Aurora query system.
+
+This module provides intelligent topic detection by:
+1. Loading existing topics from Neo4j knowledge graph
+2. Auto-creating Topic nodes for frequently searched terms
+3. Supporting aliases and fuzzy matching
+4. Refreshing topic cache periodically
+
+Replaces hardcoded topic keywords with dynamic graph-based approach.
+"""
+
+import logging
+import re
+from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import List, Set, Dict, Optional
+from threading import Lock
+
+logger = logging.getLogger(__name__)
+
+
+class TopicManager:
+    """
+    Manages dynamic topic extraction from Neo4j knowledge graph.
+    
+    Features:
+    - Loads topics and aliases from Neo4j
+    - Tracks search frequency for rare terms
+    - Auto-creates Topic nodes after threshold (10 searches)
+    - Hourly cache refresh
+    - Thread-safe operations
+    """
+    
+    def __init__(self, neo4j_client, refresh_interval_hours: int = 1, auto_create_threshold: int = 10, min_search_count: int = 2):
+        """
+        Initialize TopicManager.
+        
+        Args:
+            neo4j_client: Neo4j client for graph queries
+            refresh_interval_hours: How often to reload topics from graph
+            auto_create_threshold: Number of searches before auto-creating topic
+            min_search_count: Minimum search count for a topic to be considered "common" (filters out random topics)
+        """
+        self.neo4j_client = neo4j_client
+        self.refresh_interval = timedelta(hours=refresh_interval_hours)
+        self.auto_create_threshold = auto_create_threshold
+        self.min_search_count = min_search_count
+        
+        # Topic cache: {normalized_name: [original_name, alias1, alias2, ...]}
+        self.topic_cache: Dict[str, List[str]] = {}
+        self.last_refresh: Optional[datetime] = None
+        
+        # Search frequency tracking for auto-creation
+        self.search_frequency: Dict[str, int] = defaultdict(int)
+        
+        # Thread safety
+        self.lock = Lock()
+        
+        # Initial load
+        self._refresh_topics()
+    
+    def _normalize(self, text: str) -> str:
+        """Normalize text for matching: lowercase, strip, collapse spaces."""
+        return re.sub(r'\s+', ' ', text.lower().strip())
+    
+    def _refresh_topics(self) -> None:
+        """Load all topics and aliases from Neo4j, filtering out low-frequency random topics."""
+        try:
+            query = """
+            MATCH (t:Topic)
+            RETURN t.name AS name, t.aliases AS aliases, t.search_count AS search_count
+            """
+            results = self.neo4j_client.execute_query(query)
+            
+            new_cache = {}
+            filtered_count = 0
+            for record in results:
+                name = record.get('name')
+                if not name:
+                    continue
+                
+                # Filter out "random" topics with low search counts
+                # (unless they have no search_count set, meaning they're manually curated)
+                search_count = record.get('search_count', 0)
+                if search_count is not None and search_count > 0 and search_count < self.min_search_count:
+                    filtered_count += 1
+                    continue
+                
+                # Store original name + all aliases
+                variations = [name]
+                aliases = record.get('aliases', [])
+                if aliases and isinstance(aliases, list):
+                    variations.extend(aliases)
+                
+                # Index by normalized form
+                normalized = self._normalize(name)
+                new_cache[normalized] = variations
+                
+                # Also index aliases
+                for alias in aliases:
+                    if alias:
+                        norm_alias = self._normalize(alias)
+                        if norm_alias not in new_cache:
+                            new_cache[norm_alias] = variations
+            
+            with self.lock:
+                self.topic_cache = new_cache
+                self.last_refresh = datetime.utcnow()
+            
+            if filtered_count > 0:
+                logger.debug(f"Filtered out {filtered_count} low-frequency topics (search_count < {self.min_search_count})")
+            
+            logger.info(f"Loaded {len(new_cache)} topics from Neo4j")
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh topics from Neo4j: {e}")
+            # Keep existing cache on error
+    
+    def _should_refresh(self) -> bool:
+        """Check if cache needs refresh."""
+        if not self.last_refresh:
+            return True
+        return datetime.utcnow() - self.last_refresh > self.refresh_interval
+    
+    def _auto_create_topic(self, term: str) -> None:
+        """
+        Auto-create Topic node in Neo4j for frequently searched terms.
+        
+        Args:
+            term: The term to create as a Topic node
+        """
+        try:
+            query = """
+            MERGE (t:Topic {name: $name})
+            ON CREATE SET t.created_at = datetime(),
+                         t.auto_created = true,
+                         t.source = 'query_frequency'
+            RETURN t.name AS name
+            """
+            result = self.neo4j_client.execute_query(query, {'name': term})
+            
+            if result:
+                logger.info(f"Auto-created Topic node for '{term}' (searched {self.search_frequency[term]} times)")
+                # Add to cache immediately
+                normalized = self._normalize(term)
+                with self.lock:
+                    self.topic_cache[normalized] = [term]
+            
+        except Exception as e:
+            logger.error(f"Failed to auto-create topic '{term}': {e}")
+    
+    def extract_topics(self, question: str) -> List[str]:
+        """
+        Extract topics from question text.
+        
+        Strategy:
+        1. Check if cache needs refresh
+        2. Match against known topics (exact and fuzzy)
+        3. Track frequency of unmatched terms
+        4. Auto-create topics for frequent terms
+        
+        Args:
+            question: User's question text
+        
+        Returns:
+            List of matched topic names
+        """
+        # Refresh cache if needed
+        if self._should_refresh():
+            self._refresh_topics()
+        
+        question_lower = self._normalize(question)
+        matched_topics = set()
+        
+        logger.debug(f"TopicManager.extract_topics: normalized question = '{question_lower}'")
+        
+        # Skip definition extraction for temporal/action queries
+        skip_keywords = ['latest', 'recent', 'new', 'updates', 'changed', 'published', 'coming up']
+        if any(keyword in question_lower for keyword in skip_keywords):
+            logger.debug(f"TopicManager: skipping definition patterns (temporal/action query)")
+            definition_terms = []
+        else:
+            # Extract potential definition queries: "What is X?", "Define X", etc.
+            # Stop capture before verbs (talking, discussing, doing) or prepositions (about, with, in)
+            # to avoid capturing "workgroups are talking about X" as a topic
+            # Skip queries with "latest", "updates", "changed" - these are temporal/action queries, not topic definitions
+            definition_patterns = [
+                r'what\s+(?:is|are|was|were)\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\s+(?:talking|discussing|working|doing|saying|about|with|in|for|at|on)|[?,]|$)',
+                r'define\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
+                r'explain\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
+                r'tell\s+me\s+about\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
+            ]
+            
+            definition_terms = []
+            for pattern in definition_patterns:
+                matches = re.finditer(pattern, question_lower)
+                for match in matches:
+                    term = match.group(1).strip()
+                    if len(term) > 2:  # Avoid very short terms
+                        definition_terms.append(term)
+                        logger.debug(f"TopicManager: definition pattern matched term = '{term}'")
+        
+        logger.debug(f"TopicManager: definition_terms = {definition_terms}")
+        
+        # Match against topic cache
+        with self.lock:
+            topic_cache = self.topic_cache.copy()
+        
+        # Track composite topics that were matched (e.g., "wi-fi halow")
+        matched_composite_topics = set()
+        
+        for normalized, variations in topic_cache.items():
+            # Match with word boundaries to avoid partial matches
+            # Special handling for:
+            # - Alphanumeric terms (5G, 6G, Wi-Fi 6E) - use lookahead/lookbehind
+            # - Technical terms with dots (802.11ax) - escape dots
+            
+            # Build regex pattern based on topic characteristics
+            if '.' in normalized:
+                # For terms like \"802.11ax\", use word boundaries with escaped dots
+                pattern = r'\b' + re.escape(normalized) + r'\b'
+            elif re.match(r'^\d+[a-z]+$', normalized) or re.match(r'^[a-z]+\d+[a-z]*$', normalized):
+                # Alphanumeric like \"5g\" or \"wifi6e\" - use negative lookahead/lookbehind
+                pattern = r'(?<!\w)' + re.escape(normalized) + r'(?!\w)'
+            else:
+                # Standard word boundary matching
+                pattern = r'\b' + re.escape(normalized) + r'\b'
+            
+            if re.search(pattern, question_lower):
+                # Return the variation that best matches what appeared in the question
+                # This ensures we use "wi-fi halow" when user asks about it, not "wi-fi certified halow"
+                best_match = variations[0]  # Default to canonical
+                for variation in variations:
+                    var_normalized = self._normalize(variation)
+                    # Apply same pattern logic for variation matching
+                    if '.' in var_normalized:
+                        var_pattern = r'\b' + re.escape(var_normalized) + r'\b'
+                    elif re.match(r'^\d+[a-z]+$', var_normalized) or re.match(r'^[a-z]+\d+[a-z]*$', var_normalized):
+                        var_pattern = r'(?<!\w)' + re.escape(var_normalized) + r'(?!\w)'
+                    else:
+                        var_pattern = r'\b' + re.escape(var_normalized) + r'\b'
+                    
+                    if re.search(var_pattern, question_lower):
+                        best_match = variation
+                        break
+                logger.debug(f"TopicManager: matched topic '{normalized}' -> best_match='{best_match}'")
+                matched_topics.add(best_match)
+                
+                # Track composite topics (contain spaces) for later filtering
+                if ' ' in normalized:
+                    # Store the normalized form AND the best match
+                    matched_composite_topics.add((normalized, best_match))
+        
+        # Handle definition terms
+        unmatched_definition_terms = []
+        for term in definition_terms:
+            norm_term = self._normalize(term)
+            if norm_term in topic_cache:
+                # For definition queries, prefer the exact term asked about if it's an alias
+                variations = topic_cache[norm_term]
+                best_match = variations[0]  # Default to canonical
+                for variation in variations:
+                    if self._normalize(variation) == norm_term:
+                        best_match = variation
+                        break
+                matched_topics.add(best_match)
+            else:
+                # Track frequency for auto-creation
+                unmatched_definition_terms.append(term)
+                self.search_frequency[term] += 1
+                
+                # Auto-create if threshold reached
+                if self.search_frequency[term] >= self.auto_create_threshold:
+                    self._auto_create_topic(term)
+                    matched_topics.add(term)
+                    # Reset counter
+                    del self.search_frequency[term]
+                else:
+                    # Include in topics list for fuzzy search fallback
+                    matched_topics.add(term)
+        
+        result = list(matched_topics)
+        
+        # Filter out component topics if composite topics exist
+        # e.g., if we matched "wi-fi" AND "wi-fi halow", remove "wi-fi" and keep only "halow" (which represents the composite)
+        if len(result) > 1 and matched_composite_topics:
+            # Build list of composite topics to keep
+            composite_matches = {best_match for _, best_match in matched_composite_topics}
+            
+            filtered = []
+            for topic in result:
+                # If this topic is the best_match for a composite, keep it
+                if topic in composite_matches:
+                    filtered.append(topic)
+                    continue
+                
+                # Check if this topic is a component of any composite that was matched
+                is_component = False
+                topic_norm = self._normalize(topic)
+                for composite_norm, composite_match in matched_composite_topics:
+                    # Check if topic is a word in the composite (e.g., "wi-fi" in "wi-fi halow")
+                    composite_words = composite_norm.split()
+                    if topic_norm in composite_words and len(composite_words) > 1:
+                        is_component = True
+                        logger.debug(f"TopicManager: filtering out '{topic}' (component of composite '{composite_norm}')")
+                        break
+                
+                if not is_component:
+                    filtered.append(topic)
+            
+            if filtered:  # Only use filtered if it's not empty
+                result = filtered
+        
+        if result:
+            logger.debug(f"Extracted topics from question: {result}")
+        else:
+            logger.debug(f"No topics extracted from question: {question[:100]}")
+        
+        return result
+    
+    def get_topic_variations(self, topic: str) -> List[str]:
+        """
+        Get all known variations (aliases) for a topic.
+        
+        Args:
+            topic: Topic name to lookup
+        
+        Returns:
+            List of all variations including original name
+        """
+        normalized = self._normalize(topic)
+        with self.lock:
+            return self.topic_cache.get(normalized, [topic])
+    
+    def force_refresh(self) -> None:
+        """Force immediate refresh of topic cache."""
+        self._refresh_topics()
+    
+    def get_cache_stats(self) -> Dict:
+        """Get statistics about topic cache."""
+        with self.lock:
+            return {
+                'total_topics': len(self.topic_cache),
+                'last_refresh': self.last_refresh.isoformat() if self.last_refresh else None,
+                'pending_auto_create': len(self.search_frequency),
+                'top_pending': sorted(
+                    [(term, count) for term, count in self.search_frequency.items()],
+                    key=lambda x: x[1],
+                    reverse=True
+                )[:10]
+            }
+
+
+# Singleton instance
+_topic_manager_instance: Optional[TopicManager] = None
+_instance_lock = Lock()
+
+
+def initialize_topic_manager(neo4j_client, **kwargs) -> TopicManager:
+    """
+    Initialize the global TopicManager instance.
+    
+    Args:
+        neo4j_client: Neo4j client for graph queries
+        **kwargs: Additional arguments for TopicManager
+    
+    Returns:
+        Initialized TopicManager instance
+    """
+    global _topic_manager_instance
+    
+    with _instance_lock:
+        if _topic_manager_instance is None:
+            _topic_manager_instance = TopicManager(neo4j_client, **kwargs)
+        return _topic_manager_instance
+
+
+def get_topic_manager() -> Optional[TopicManager]:
+    """
+    Get the global TopicManager instance.
+    
+    Returns:
+        TopicManager instance if initialized, None otherwise
+    """
+    return _topic_manager_instance

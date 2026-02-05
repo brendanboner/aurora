@@ -227,11 +227,32 @@ class KeywordRetriever:
         filters: dict,
         keywords: list[str]
     ) -> float:
-        """Calculate a relevance score for a document."""
+        """
+        Calculate a relevance score for a document.
+        
+        Enhanced scoring for video segments with event + entity co-occurrence.
+        """
         score = 0.5  # Base score
         
         title = (props.get("title") or "").lower()
         summary = (props.get("summary") or "").lower()
+        category = props.get("category", "").lower()
+        
+        # Track matches for co-occurrence bonus
+        has_event_match = False
+        has_org_match = False
+        has_person_match = False
+        
+        # Boost for event matches (NEW - highest priority for video queries)
+        events = filters.get("events") or []
+        for event in events:
+            event_lower = event.lower()
+            if event_lower in title:
+                score += 0.5  # Strong boost for event in title
+                has_event_match = True
+            elif event_lower in summary:
+                score += 0.3  # Moderate boost for event in summary
+                has_event_match = True
         
         # Boost for topic matches
         for topic in (filters.get("topics") or []):
@@ -242,10 +263,23 @@ class KeywordRetriever:
         
         # Boost for organization matches
         for org in (filters.get("organizations") or []):
-            if org.lower() in title:
-                score += 0.1
-            elif org.lower() in summary:
-                score += 0.05
+            org_lower = org.lower()
+            if org_lower in title:
+                score += 0.5  # Increased from 0.1
+                has_org_match = True
+            elif org_lower in summary:
+                score += 0.3  # Increased from 0.05
+                has_org_match = True
+        
+        # Boost for people matches
+        for person in (filters.get("people") or []):
+            person_lower = person.lower()
+            if person_lower in title:
+                score += 0.4  # Increased from 0.0
+                has_person_match = True
+            elif person_lower in summary:
+                score += 0.2  # Increased from 0.0
+                has_person_match = True
         
         # Boost for keyword matches
         for keyword in keywords:
@@ -253,6 +287,17 @@ class KeywordRetriever:
                 score += 0.05
             elif keyword.lower() in summary:
                 score += 0.02
+        
+        # Co-occurrence bonus: When multiple query entities match same document
+        # This prevents cross-video contamination
+        co_occurrence_count = sum([has_event_match, has_org_match, has_person_match])
+        if co_occurrence_count >= 2:
+            score += 0.3 * co_occurrence_count  # 0.6 for all three, 0.3 for two
+            logger.debug(f"Co-occurrence bonus (+{0.3 * co_occurrence_count}): event={has_event_match}, org={has_org_match}, person={has_person_match}")
+        
+        # Video segment bonus: prefer specific segments over parent videos
+        if category == "video" and "segment" in title.lower():
+            score += 0.1
         
         # Cap at 1.0
         return min(score, 1.0)
@@ -264,13 +309,22 @@ class KeywordRetriever:
         title = (props.get("title") or "").lower()
         summary = (props.get("summary") or "").lower()
         
+        # Event matches (highest priority)
+        for event in (filters.get("events") or []):
+            if event.lower() in title or event.lower() in summary:
+                reasons.append(f"Event: {event}")
+        
         for topic in (filters.get("topics") or []):
             if topic.lower() in title or topic.lower() in summary:
-                reasons.append(f"Matches topic: {topic}")
+                reasons.append(f"Topic: {topic}")
         
         for org in (filters.get("organizations") or []):
             if org.lower() in title or org.lower() in summary:
-                reasons.append(f"Mentions organization: {org}")
+                reasons.append(f"Organization: {org}")
+        
+        for person in (filters.get("people") or []):
+            if person.lower() in title or person.lower() in summary:
+                reasons.append(f"Person: {person}")
         
         if not reasons:
             reasons.append("Matched by recency")

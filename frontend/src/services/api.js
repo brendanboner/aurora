@@ -232,6 +232,7 @@ export const sendOracleQuery = async (userId, question, options = {}) => {
       datasource_ids: options.datasourceIds || null,
       recency_boost: options.recencyBoost !== false,
       personalize: options.personalize || 'auto', // 'off', 'on', or 'auto'
+      pipeline_override: options.pipelineOverride || null, // 'fast', 'baseline', or null for A/B test
     },
   };
   
@@ -291,6 +292,12 @@ export const submitOracleFeedback = async (queryId, feedback, options = {}) => {
   };
   
   const response = await apiClient.post('/oracle/feedback', payload);
+  return response.data;
+};
+
+// Oracle Settings - Get Oracle service configuration (fast pipeline, etc.)
+export const getOracleSettings = async () => {
+  const response = await apiClient.get('/oracle/admin/config/query-settings');
   return response.data;
 };
 

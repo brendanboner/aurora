@@ -7,8 +7,9 @@ COPY common ./common
 
 # Copy local client libraries and install
 COPY neo4j-client ./neo4j-client
+COPY rabbitmq-client ./rabbitmq-client
 RUN pip install --no-cache-dir --upgrade pip && \
-	pip install --no-cache-dir ./neo4j-client
+	pip install --no-cache-dir ./neo4j-client ./rabbitmq-client
 
 # Copy oracle service and install as editable package
 COPY oracle ./oracle

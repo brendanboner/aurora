@@ -1348,6 +1348,15 @@ class PersonAttendingEvent(Relationship):
     )
 
 
+class VideoSegmentOf(Relationship):
+    """Relationship between a video segment and its parent video."""
+    _type: ClassVar[str] = "VIDEO_SEGMENT_OF"
+    
+    segment_number: int = Field(..., description="Segment number (1-indexed)")
+    timestamp_start: int = Field(..., description="Start timestamp in seconds")
+    timestamp_end: Optional[int] = Field(default=None, description="End timestamp in seconds, None for last segment")
+
+
 def slugify(text: str) -> str:
     """
     Convert text to a URL-friendly slug.

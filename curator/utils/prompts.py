@@ -273,7 +273,9 @@ Guidelines:
    - Names should be established, widely-recognized terms (not invented jargon)
    - Classifications should match the taxonomy: technology, standard, certification, regulation, framework, protocol, domain, field, etc.
    - Identifiers only when there's an official designation
-   - Aliases should include common abbreviations and alternative phrasings
+   - Aliases should include common abbreviations, alternative phrasings, and spelling variations
+   - **For Wi-Fi topics**: Always include variations like "WiFi", "wifi", "Wi-Fi", "Wifi" in aliases
+   - **For numbered versions** (e.g., Wi-Fi 7): Include all spacing/hyphenation variations: "Wi-Fi 7", "WiFi 7", "wifi 7", "Wi-Fi7", "WiFi7", "wifi7"
 
 You must respond with valid JSON only, no additional text or explanations.
 """
@@ -316,7 +318,7 @@ Cluster needs a general topic:
       "classification": "technology",
       "identifier": "IEEE 802.11",
       "issuer": "IEEE",
-      "aliases": ["WiFi", "Wireless Fidelity", "802.11"],
+      "aliases": ["WiFi Standards", "wifi standards", "Wi-Fi", "WiFi", "wifi", "Wireless Fidelity", "802.11"],
       "reasoning": "Cluster contains specific Wi-Fi versions (6, 6E, 7) but lacks an umbrella Wi-Fi topic",
       "would_encompass": ["wi-fi-6", "wi-fi-6e", "wi-fi-7"]
     }}

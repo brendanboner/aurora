@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback } from '../services/api';
+import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, SparkleIcon } from '../components/icons';
 import Icon from '../components/Icon';
@@ -23,14 +23,20 @@ const Chatbot = ({ backendStatus }) => {
     const saved = localStorage.getItem('personalizeMode');
     return saved && ['off', 'on', 'auto'].includes(saved) ? saved : 'auto';
   });
+  const [pipelineMode, setPipelineModeState] = useState(() => {
+    const saved = localStorage.getItem('pipelineMode');
+    return saved && ['system', 'fast', 'baseline'].includes(saved) ? saved : 'system';
+  });
   const [querySuggestion, setQuerySuggestion] = useState(null); // For pre-query suggestions
   const [pendingQuery, setPendingQuery] = useState(null); // Original query while showing suggestion
   const [pendingDatasourceIds, setPendingDatasourceIds] = useState([]); // Datasources for pending query
+  const [youtubeConfirmation, setYoutubeConfirmation] = useState(null); // For duplicate video confirmation
   const [enhancingMessageIndex, setEnhancingMessageIndex] = useState(null); // Track which message is being enhanced
   const [datasources, setDatasources] = useState([]); // Available datasources for @mention
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionSearchText, setMentionSearchText] = useState('');
   const [selectedDatasources, setSelectedDatasources] = useState([]); // Selected @mentions
+  const [fastPipelineEnabled, setFastPipelineEnabled] = useState(false); // Track if fast pipeline is enabled
   const messagesEndRef = useRef(null);
   const messageRefs = useRef({}); // Refs for each message element
   const skipNextScroll = useRef(false); // Flag to skip auto-scroll on toggle
@@ -48,11 +54,17 @@ const Chatbot = ({ backendStatus }) => {
     localStorage.setItem('personalizeMode', mode);
   };
 
+  // Wrapper to persist pipelineMode to localStorage
+  const setPipelineMode = (mode) => {
+    setPipelineModeState(mode);
+    localStorage.setItem('pipelineMode', mode);
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Load datasources on mount for @mention autocomplete
+  // Load datasources and Oracle settings on mount
   useEffect(() => {
     const loadDatasources = async () => {
       try {
@@ -62,7 +74,20 @@ const Chatbot = ({ backendStatus }) => {
         console.warn('Failed to load datasources:', err);
       }
     };
+    
+    const loadOracleSettings = async () => {
+      try {
+        const settings = await getOracleSettings();
+        setFastPipelineEnabled(settings.fast_pipeline_enabled || false);
+      } catch (err) {
+        console.warn('Failed to load Oracle settings:', err);
+        // Default to false if we can't fetch settings
+        setFastPipelineEnabled(false);
+      }
+    };
+    
     loadDatasources();
+    loadOracleSettings();
   }, []);
 
   useEffect(() => {
@@ -287,10 +312,11 @@ What would you like to know?`;
         includeGraphContext: true,
         datasourceIds: datasourceIds.length > 0 ? datasourceIds : null,
         personalize: personalizeMode,
+        pipelineOverride: pipelineMode === 'system' ? null : pipelineMode,
       });
 
       // Map Oracle response format to our message format
-      // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score, personalization_applied }
+      // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score, personalization_applied, pipeline }
       const assistantMessage = {
         role: 'assistant',
         content: response.answer || (queryMode === 'retrieval' ? 'Here are the relevant documents:' : 'No answer was generated.'),
@@ -298,6 +324,7 @@ What would you like to know?`;
         queryId: response.query_id, // Store for feedback
         responseMode: response.mode, // 'retrieval' or 'answer'
         personalizationApplied: response.personalization_applied || false,
+        pipeline: response.pipeline || null, // 'fast' or 'baseline' - track which pipeline was used
         citations: response.citations || [],
         documents: response.documents?.map(doc => ({
           title: doc.title,
@@ -498,6 +525,118 @@ What would you like to know?`;
     setInputValue(pendingQuery || '');
   };
 
+  // Helper function to ingest YouTube video
+  const ingestYouTubeVideo = async (url, forceRedigest = false) => {
+    // Check if user is admin
+    if (user && user.role !== 'admin' && user.role !== 'superadmin') {
+      // Add user message
+      const userMessage = {
+        role: 'user',
+        content: url,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      
+      // Add error message
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: '❌ YouTube video/playlist ingestion is restricted to admin users only. Please contact an administrator to add YouTube content.',
+          timestamp: new Date(),
+          isError: true,
+        },
+      ]);
+      return;
+    }
+    
+    // Add user message
+    const userMessage = {
+      role: 'user',
+      content: url,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    
+    // Add loading message
+    const loadingMessage = {
+      role: 'assistant',
+      content: forceRedigest ? '🔄 Re-processing YouTube video...' : '🎥 Processing YouTube video/playlist...',
+      timestamp: new Date(),
+      isLoading: true,
+    };
+    setMessages((prev) => [...prev, loadingMessage]);
+    setIsLoading(true);
+    
+    try {
+      const response = await fetch('/api/oracle/ingest/youtube', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: url,
+          user_id: user.id,
+          force_redigest: forceRedigest,
+        }),
+      });
+      
+      if (response.status === 409) {
+        // Video already exists
+        const errorData = await response.json();
+        
+        // Remove loading message
+        setMessages((prev) => prev.filter(msg => !msg.isLoading));
+        setIsLoading(false);
+        
+        // Show confirmation dialog
+        setYoutubeConfirmation({
+          url: url,
+          existingTitle: errorData.detail.existing_title,
+          videoId: errorData.detail.video_id,
+        });
+        return;
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail?.message || errorData.detail || 'Failed to process YouTube video');
+      }
+      
+      const result = await response.json();
+      
+      // Remove loading message and add success message
+      setMessages((prev) => {
+        const withoutLoading = prev.filter(msg => !msg.isLoading);
+        return [
+          ...withoutLoading,
+          {
+            role: 'assistant',
+            content: `✅ Successfully ${forceRedigest ? 're-processed' : 'added'} video: **${result.title}**\n\nDuration: ${Math.floor(result.duration_seconds / 60)}:${(result.duration_seconds % 60).toString().padStart(2, '0')}\nSegments created: ${result.segments_created}\n\nYou can now query this video content using @youtube mentions!`,
+            timestamp: new Date(),
+          },
+        ];
+      });
+    } catch (err) {
+      // Remove loading message and add error message
+      setMessages((prev) => {
+        const withoutLoading = prev.filter(msg => !msg.isLoading);
+        return [
+          ...withoutLoading,
+          {
+            role: 'assistant',
+            content: `❌ Failed to process YouTube video: ${err.message}`,
+            timestamp: new Date(),
+            isError: true,
+          },
+        ];
+      });
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || querySuggestion) return;
@@ -514,9 +653,30 @@ What would you like to know?`;
 
     const queryText = inputValue.trim();
     const datasourceIds = selectedDatasources.map(ds => ds.datasource_id);
+    
+    // Check if input is a YouTube URL (video or playlist)
+    const youtubePattern = /(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|playlist\?list=)|youtu\.be\/)([a-zA-Z0-9_-]+)/;
+    const youtubeMatch = queryText.match(youtubePattern);
+    
+    if (youtubeMatch) {
+      // Handle YouTube URL submission (video or playlist)
+      setInputValue('');
+      setError(null);
+      setShowMentionDropdown(false);
+      
+      await ingestYouTubeVideo(queryText, false);
+      return;
+    }
+    
     setInputValue('');
     setError(null);
     setShowMentionDropdown(false);
+
+    // Skip query analysis if fast pipeline is enabled
+    if (fastPipelineEnabled) {
+      executeQuery(queryText, datasourceIds);
+      return;
+    }
 
     try {
       // First, analyze the query for quality
@@ -573,6 +733,21 @@ What would you like to know?`;
     <div className="chatbot-container">
       <div className="chat-header">
         <div className="chat-header-content">
+          <div className="chat-header-left">
+            {user && (
+              <select
+                className="pipeline-mode-dropdown"
+                value={pipelineMode}
+                onChange={(e) => setPipelineMode(e.target.value)}
+                disabled={isLoading}
+                title="Engine: Fast uses instant templates, Baseline uses comprehensive LLM synthesis, System auto-selects"
+              >
+                <option value="system">Engine: System (A/B)</option>
+                <option value="fast">Engine: Fast</option>
+                <option value="baseline">Engine: Baseline</option>
+              </select>
+            )}
+          </div>
           <div className="chat-header-actions">
             {user && (
               <select
@@ -783,6 +958,55 @@ What would you like to know?`;
                 }}
               >
                 ✓ Submit Query
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* YouTube Duplicate Confirmation Dialog */}
+      {youtubeConfirmation && (
+        <div className="query-suggestion-overlay">
+          <div className="query-suggestion-dialog">
+            <div className="suggestion-header">
+              <span className="suggestion-icon">🎥</span>
+              <h3>Video Already Processed</h3>
+              <button 
+                className="suggestion-close-btn"
+                onClick={() => setYoutubeConfirmation(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="suggestion-content">
+              <div className="original-query">
+                <label>Existing video:</label>
+                <p><strong>{youtubeConfirmation.existingTitle}</strong></p>
+              </div>
+              <div className="suggestion-issues">
+                <p>This YouTube video has already been processed and is available in the knowledge base. Would you like to re-process it?</p>
+                <p style={{ marginTop: '12px', fontSize: '0.9em', color: '#666' }}>
+                  Re-processing will update the transcript and metadata, which may be useful if the video has been updated or if you want to refresh the content.
+                </p>
+              </div>
+            </div>
+            <div className="suggestion-actions">
+              <button 
+                className="btn btn-secondary"
+                onClick={() => setYoutubeConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary"
+                onClick={async () => {
+                  const url = youtubeConfirmation.url;
+                  setYoutubeConfirmation(null);
+                  await ingestYouTubeVideo(url, true);
+                }}
+              >
+                ✓ Re-process Video
               </button>
             </div>
           </div>

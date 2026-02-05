@@ -65,6 +65,30 @@ const getDatasourceName = (doc) => {
 };
 
 /**
+ * Extract YouTube video ID from URL
+ */
+const extractYouTubeVideoId = (url) => {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+};
+
+/**
+ * Check if document is a YouTube video
+ */
+const isYouTubeVideo = (doc) => {
+  return doc.url && (doc.url.includes('youtube.com') || doc.url.includes('youtu.be'));
+};
+
+/**
  * Check if we should show query suggestions (poor results)
  * DISABLED: Post-query suggestions temporarily disabled - uncomment to re-enable
  */
@@ -352,6 +376,23 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
               </div>
             </div>
 
+            {isYouTubeVideo(doc) && (() => {
+              const videoId = extractYouTubeVideoId(doc.url);
+              if (videoId) {
+                return (
+                  <div className="video-thumbnail">
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                      <img 
+                        src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                        alt={doc.title || 'YouTube Video'}
+                        style={{ width: '100%', maxWidth: '320px', borderRadius: '8px', marginTop: '12px' }}
+                      />
+                    </a>
+                  </div>
+                );
+              }
+            })()}
+
             <div className="doc-meta">
               {getDatasourceName(doc) && (
                 <span className="doc-datasource">
@@ -524,7 +565,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
         {referencesToShow.length > 0 && (
           <div className="references-section">
             <div className="references-header">
-              <strong>References ({referencesToShow.length})</strong>
+              <strong>References (Cited in Answer)</strong>
             </div>
 
             {/* Cited Documents */}
@@ -543,6 +584,22 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                         </span>
                       )}
                     </div>
+                    {isYouTubeVideo(doc) && (() => {
+                      const videoId = extractYouTubeVideoId(doc.url);
+                      if (videoId) {
+                        return (
+                          <div className="video-thumbnail-small">
+                            <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                              <img 
+                                src={`https://img.youtube.com/vi/${videoId}/default.jpg`}
+                                alt={doc.title || 'YouTube Video'}
+                                style={{ width: '120px', borderRadius: '4px', marginTop: '8px' }}
+                              />
+                            </a>
+                          </div>
+                        );
+                      }
+                    })()}
                     {doc.excerpt && (
                       <div className="reference-excerpt">"{doc.excerpt}"</div>
                     )}
@@ -550,6 +607,46 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                 </div>
               ))}
             </div>
+            
+            {/* Additional Context Documents (non-cited but relevant) */}
+            {message.documents && message.documents.length > referencesToShow.length && (
+              <div className="additional-context-section">
+                <details>
+                  <summary className="additional-context-header">
+                    <strong>Additional Context</strong>
+                    <span className="additional-count">
+                      ({message.documents.length - referencesToShow.length} more documents)
+                    </span>
+                  </summary>
+                  <div className="additional-documents">
+                    {message.documents
+                      .filter(doc => !referencesToShow.find(ref => ref.url === doc.url))
+                      .slice(0, 5)
+                      .map((doc, i) => (
+                        <div key={i} className="reference-item additional">
+                          <div className="reference-content">
+                            <div className="reference-title-row">
+                              <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                                {doc.title || 'Untitled'}
+                              </a>
+                              {getDatasourceName(doc) && (
+                                <span className="reference-datasource">
+                                  {getDatasourceName(doc)}
+                                </span>
+                              )}
+                            </div>
+                            {doc.summary && (
+                              <div className="reference-summary">
+                                {doc.summary.slice(0, 150)}...
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </details>
+              </div>
+            )}
           </div>
         )}
 

@@ -1,6 +1,7 @@
 """Content generation orchestration for CreatorAgents."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +12,7 @@ from ..models.agent import CreatorAgent
 from ..models.post import PostSource
 from ..neo4j_context import get_context_gateway
 from ..settings import get_settings
+from .oracle_client import OracleAgentClient
 from .prompt_builder import PromptBuilder
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,8 @@ class GenerationService:
         self._context = get_context_gateway()
         self._settings = get_settings()
         self._prompt_builder = PromptBuilder()
+        self._oracle_client = OracleAgentClient()
+        self._use_oracle = getattr(self._settings, 'use_oracle_for_discovery', True)
 
     def build_prompt(self, agent: CreatorAgent, context_payload: Dict[str, Any]) -> Dict[str, str]:
         """Legacy method for backward compatibility. Use PromptBuilder instead."""
@@ -37,45 +41,81 @@ class GenerationService:
         agent: CreatorAgent,
         topics: Optional[List[str]] = None,
         organisations: Optional[List[str]] = None,
+        perspective: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Generate a post with full context including agent history and user feedback.
         
-        Uses quality-based selection instead of hard limits:
-        - Requests more candidates (limit=30) to ensure quality pool
-        - Filters by relevance score and diversity
-        - Returns 3-8 high-quality articles for focused posts
+        Now uses Oracle service for content discovery with:
+        - Pre-computed rollups for performance
+        - Automatic deduplication via used content tracking
+        - Relevance scoring optimized for agents
+        - Cadence-based routing (daily/weekly/monthly)
         """
         topic_scope = topics or agent.expertise_topics
         organisation_scope = organisations or agent.expertise_organisations
 
         # Determine time window from agent's cadence or use system default
-        window_days = agent.cadence_window_days if agent.cadence_window_days else self._settings.temporal_window_days_default
+        cadence_days = agent.cadence_window_days if agent.cadence_window_days else self._settings.temporal_window_days_default
         
-        # Minimum relevance score: stricter for focused agents, looser for exploratory
-        # discovery_tolerance: 0.0 (strict) -> 0.5 min_score, 1.0 (exploratory) -> 0.2 min_score
-        min_relevance = 0.5 - (agent.discovery_tolerance * 0.3)
+        # Fetch previously used content IDs for deduplication
+        used_content_ids = self._fetch_used_content_ids(agent.id, lookback_days=cadence_days * 2)
         
-        # Fetch events with quality thresholds (request more to ensure quality pool)
-        logger.info("Fetching events for agent %s: topics=%s, orgs=%s, window_days=%d", 
-                   agent.name, topic_scope, organisation_scope, window_days)
-        events = self._context.fetch_recent_events(
-            topic_scope, 
-            organisation_scope, 
-            limit=30,  # Request more candidates
-            window_days=window_days,
-            min_relevance_score=min_relevance,
-        )
-        logger.info("Found %d events for agent %s", len(events), agent.name)
-        
-        # Fetch documents with quality thresholds
-        documents = self._context.fetch_recent_documents(
-            organisation_scope, 
-            limit=30,  # Request more candidates
-            window_days=window_days,
-            min_relevance_score=min_relevance,
-        )
-        logger.info("Found %d documents for agent %s", len(documents), agent.name)
+        # Try Oracle-based discovery first
+        if self._use_oracle:
+            try:
+                logger.info(
+                    "Using Oracle discovery for agent %s: topics=%s, orgs=%s, cadence=%d days, excluding %d IDs",
+                    agent.name,
+                    topic_scope,
+                    organisation_scope,
+                    cadence_days,
+                    len(used_content_ids),
+                )
+                
+                # Call Oracle async method from sync context
+                oracle_result = asyncio.run(
+                    self._oracle_client.discover_content(
+                        agent_id=agent.id,
+                        agent_name=agent.name,
+                        topics=topic_scope,
+                        organizations=organisation_scope,
+                        cadence_days=cadence_days,
+                        last_content_ids=used_content_ids,
+                        perspective=perspective,
+                        limit=30,
+                    )
+                )
+                
+                logger.info(
+                    "Oracle discovery for agent %s: route=%s, items=%d, rollup=%s, excluded=%d",
+                    agent.name,
+                    oracle_result.get("route_used"),
+                    len(oracle_result.get("content_items", [])),
+                    oracle_result.get("rollup_used"),
+                    oracle_result.get("excluded_count", 0),
+                )
+                
+                # Transform Oracle content items to events/documents format
+                events, documents = self._transform_oracle_content(oracle_result.get("content_items", []))
+                
+            except Exception as e:
+                logger.warning("Oracle discovery failed for agent %s: %s - falling back to Neo4j", agent.name, e)
+                # Fall through to Neo4j fallback
+                events, documents = self._fetch_from_neo4j(
+                    agent,
+                    topic_scope,
+                    organisation_scope,
+                    cadence_days,
+                )
+        else:
+            # Direct Neo4j access (legacy path)
+            events, documents = self._fetch_from_neo4j(
+                agent,
+                topic_scope,
+                organisation_scope,
+                cadence_days,
+            )
 
         if not events and not documents:
             logger.info("No context available for agent %s (topics: %s, orgs: %s, window: %d days)", 
@@ -172,6 +212,38 @@ class GenerationService:
             ]
         except Exception as e:
             logger.warning("Failed to fetch recent posts for agent %d: %s", agent_id, e)
+            return []
+    
+    def _fetch_used_content_ids(self, agent_id: int, lookback_days: int = 30) -> List[str]:
+        """Extract content IDs from agent's recent posts for deduplication."""
+        try:
+            from .. import db
+            
+            # Get source_identifiers from post_source for this agent's recent posts
+            rows = db.fetch_all(
+                """
+                SELECT DISTINCT ps.source_identifier
+                FROM post_source ps
+                JOIN post p ON p.id = ps.post_id
+                WHERE p.agent_id = %s
+                  AND p.created_at >= NOW() - INTERVAL '%s days'
+                  AND ps.source_identifier IS NOT NULL
+                ORDER BY ps.source_identifier
+                """,
+                (agent_id, lookback_days),
+            )
+            
+            content_ids = [row["source_identifier"] for row in rows]
+            logger.info(
+                "Agent %d has used %d content IDs in last %d days",
+                agent_id,
+                len(content_ids),
+                lookback_days,
+            )
+            return content_ids
+            
+        except Exception as e:
+            logger.warning("Failed to fetch used content IDs for agent %d: %s", agent_id, e)
             return []
     
     def _apply_diversity_filter(
@@ -320,6 +392,104 @@ class GenerationService:
         except Exception as e:
             logger.warning("Failed to fetch all recent posts: %s", e)
             return []
+    
+    def _transform_oracle_content(self, content_items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Transform Oracle content items into events and documents format.
+        
+        Oracle returns unified content with:
+        - id, title, summary, publish_date, url, category
+        - topics, organizations, events, people
+        - relevance_score
+        
+        We split into events (has events array) and documents (publications/decisions).
+        """
+        events = []
+        documents = []
+        
+        for item in content_items:
+            # Check if this is event-related content
+            has_events = item.get("events") and len(item.get("events", [])) > 0
+            
+            # Base structure
+            transformed = {
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "summary": item.get("summary", ""),
+                "url": item.get("url"),
+                "publish_date": item.get("publish_date"),
+                "topics": item.get("topics", []),
+                "organizations": item.get("organizations", []),
+                "relevance_score": item.get("relevance_score", 0.0),
+                "category": item.get("category"),
+            }
+            
+            if has_events:
+                # Event-related content
+                transformed["events"] = item.get("events", [])
+                transformed["people"] = item.get("people", [])
+                events.append(transformed)
+            else:
+                # Document content (publications, decisions, etc.)
+                transformed["authors"] = item.get("people", [])  # People as authors
+                documents.append(transformed)
+        
+        logger.info(
+            "Transformed Oracle content: %d events, %d documents from %d items",
+            len(events),
+            len(documents),
+            len(content_items),
+        )
+        
+        return events, documents
+    
+    def _fetch_from_neo4j(
+        self,
+        agent: CreatorAgent,
+        topics: List[str],
+        organisations: List[str],
+        window_days: int,
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Fallback to direct Neo4j queries (legacy path).
+        
+        Used when Oracle service is unavailable or disabled.
+        """
+        # Minimum relevance score based on agent tolerance
+        min_relevance = 0.5 - (agent.discovery_tolerance * 0.3)
+        
+        logger.info(
+            "Using Neo4j fallback for agent %s: topics=%s, orgs=%s, window=%d days",
+            agent.name,
+            topics,
+            organisations,
+            window_days,
+        )
+        
+        # Fetch events
+        events = self._context.fetch_recent_events(
+            topics,
+            organisations,
+            limit=30,
+            window_days=window_days,
+            min_relevance_score=min_relevance,
+        )
+        
+        # Fetch documents
+        documents = self._context.fetch_recent_documents(
+            organisations,
+            limit=30,
+            window_days=window_days,
+            min_relevance_score=min_relevance,
+        )
+        
+        logger.info(
+            "Neo4j fallback results: %d events, %d documents",
+            len(events),
+            len(documents),
+        )
+        
+        return events, documents
 
     def _aggregate_user_reactions(self, recent_posts: List[Dict[str, Any]]) -> Optional[Dict[str, int]]:
         """Aggregate like/dislike counts from recent posts."""
@@ -358,6 +528,11 @@ class GenerationService:
         events: List[Dict[str, Any]],
         documents: List[Dict[str, Any]],
     ) -> List[PostSource]:
+        """
+        Extract sources from LLM response or context.
+        
+        Now uses content 'id' as source_identifier for proper deduplication tracking.
+        """
         sources: List[PostSource] = []
         if raw_sources:
             for raw in raw_sources:
@@ -368,35 +543,39 @@ class GenerationService:
         if sources:
             return sources
 
+        # Extract from events - use 'id' as identifier for tracking
         for event in events:
+            content_id = event.get("id")
             url = event.get("url")
             title = event.get("title")
-            if url:
+            if content_id or url:
                 sources.append(
                     PostSource(
                         source_kind="event",
-                        source_identifier=url,
+                        source_identifier=content_id or url,  # Prefer ID for tracking
                         url=url,
                         title=title,
                     )
                 )
-            if len(sources) >= 2:
+            if len(sources) >= 5:  # Increase limit to capture more sources
                 break
         if sources:
             return sources
 
+        # Extract from documents - use 'id' as identifier for tracking
         for doc in documents:
+            content_id = doc.get("id")
             url = doc.get("url")
             title = doc.get("title")
-            if url:
+            if content_id or url:
                 sources.append(
                     PostSource(
                         source_kind="document",
-                        source_identifier=url,
+                        source_identifier=content_id or url,  # Prefer ID for tracking
                         url=url,
                         title=title,
                     )
                 )
-            if len(sources) >= 2:
+            if len(sources) >= 5:  # Increase limit to capture more sources
                 break
         return sources

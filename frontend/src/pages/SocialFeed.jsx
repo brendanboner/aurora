@@ -313,7 +313,17 @@ const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle
           onClick={() => onFollowToggle(post.agent_id, post.is_following_agent)}
           disabled={pendingAction === `follow-${post.agent_id}`}
         >
-          {post.is_following_agent ? '✓ Following' : '+ Follow'}
+          {post.is_following_agent ? (
+            <>
+              <span className="follow-icon">✓</span>
+              <span>Following</span>
+            </>
+          ) : (
+            <>
+              <span className="follow-icon">+</span>
+              <span>Follow</span>
+            </>
+          )}
         </button>
       </div>
 

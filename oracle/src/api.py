@@ -11,7 +11,11 @@ from src.routes.query import router as query_router
 from src.routes.history import router as history_router
 from src.routes.documents import router as documents_router
 from src.routes.metrics import router as metrics_router
+from src.routes.admin import router as admin_router
+from src.routes.agent import router as agent_router
+from src.routes.ingest import router as ingest_router
 from src.services.query_history import get_query_history_service
+from src.services.rollup_scheduler import RollupScheduler
 from src.settings import settings
 
 # Configure logging
@@ -49,12 +53,18 @@ app = FastAPI(
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app)
 
+# Global scheduler instance
+rollup_scheduler = RollupScheduler()
+
 # Include routers
 app.include_router(health_router)
 app.include_router(query_router)
 app.include_router(history_router)
 app.include_router(documents_router)
 app.include_router(metrics_router)
+app.include_router(admin_router)
+app.include_router(agent_router)
+app.include_router(ingest_router)
 
 
 @app.on_event("startup")
@@ -64,6 +74,30 @@ async def startup():
     logger.info(f"Neo4j URI: {settings.neo4j_uri}")
     logger.info(f"LLM configured: {bool(settings.azure_openai_api_key and settings.azure_openai_deployment)}")
     
+    # Load persisted configuration from database
+    try:
+        from src.services.config_persistence import initialize_config_from_db
+        logger.info("Loading persisted configuration from database...")
+        initialize_config_from_db()
+        logger.info("✓ Configuration loaded from database")
+    except Exception as e:
+        logger.error(f"Failed to load persisted config: {e}", exc_info=True)
+        logger.warning("Continuing with environment variable defaults")
+    
+    # Initialize fast pipeline database schema (PostgreSQL)
+    if settings.fast_pipeline_enabled:
+        try:
+            from src.models.db_models import init_db
+            logger.info("Initializing fast pipeline database schema...")
+            init_db(settings.postgres_dsn)
+            logger.info("✓ Fast pipeline database schema ready")
+        except Exception as e:
+            logger.error(f"Failed to initialize fast pipeline database: {e}", exc_info=True)
+            if settings.fast_fallback_to_baseline:
+                logger.warning("Fast pipeline database init failed, will fallback to baseline on errors")
+            else:
+                logger.error("Fast pipeline enabled but database init failed - service may have issues")
+    
     # Initialize query history storage
     if settings.query_history_enabled:
         query_history = get_query_history_service()
@@ -72,12 +106,29 @@ async def startup():
             logger.info("Query history storage initialized")
         else:
             logger.warning("Query history storage failed to initialize")
+    
+    # Start rollup generation scheduler
+    if settings.fast_pipeline_enabled and settings.fast_rollup_generation_enabled:
+        try:
+            logger.info("Starting rollup generation scheduler...")
+            await rollup_scheduler.start()
+            logger.info("✓ Rollup scheduler started")
+        except Exception as e:
+            logger.error(f"Failed to start rollup scheduler: {e}", exc_info=True)
 
 
 @app.on_event("shutdown")
 async def shutdown():
     """Cleanup on shutdown."""
     logger.info("Oracle Service shutting down...")
+    
+    # Stop rollup scheduler
+    if settings.fast_pipeline_enabled and settings.fast_rollup_generation_enabled:
+        try:
+            await rollup_scheduler.shutdown()
+            logger.info("✓ Rollup scheduler stopped")
+        except Exception as e:
+            logger.error(f"Error stopping rollup scheduler: {e}", exc_info=True)
 
 
 # Root endpoint for basic connectivity check

@@ -20,6 +20,7 @@ dependencies = [
     "tiktoken",
     "aiohttp",
     "numpy",
+    "youtube-transcript-api>=0.6.0",
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     # OpenTelemetry
@@ -34,6 +35,7 @@ dependencies = [
 
 [tool.uv.sources]
 neo4j-client = { workspace = true }
+rabbitmq-client = { workspace = true }
 
 [tool.setuptools.packages.find]
 where = ["."]

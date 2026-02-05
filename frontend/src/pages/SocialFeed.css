@@ -240,6 +240,9 @@
 }
 
 .follow-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--linkedin-blue);
   background: transparent;
   color: var(--linkedin-blue);
@@ -249,19 +252,33 @@
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
+  min-width: 100px;
+  justify-content: center;
 }
 
-.follow-button:hover:not(:disabled) {
+.follow-button .follow-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.follow-button:hover:not(:disabled):not(.following) {
   background: rgba(10, 102, 194, 0.08);
 }
 
 .follow-button.following {
-  background: var(--linkedin-blue);
-  color: white;
+  background: transparent;
+  border-color: var(--linkedin-border);
+  color: var(--linkedin-text-muted);
 }
 
 .follow-button.following:hover:not(:disabled) {
-  background: var(--linkedin-blue-hover);
+  background: rgba(220, 53, 69, 0.1);
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.follow-button.following:hover:not(:disabled) .follow-icon::before {
+  content: '✕';
 }
 
 .follow-button:disabled {

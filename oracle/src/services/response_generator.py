@@ -47,12 +47,8 @@ class ResponseGenerator:
             AnswerResult with answer, citations, and confidence
         """
         if not documents:
-            return AnswerResult(
-                answer="I couldn't find any relevant documents to answer your question. Please try rephrasing or broadening your search.",
-                citations=[],
-                confidence_score=0.0,
-                tokens_used=0
-            )
+            # Try to provide a helpful response even without documents
+            return await self._generate_no_documents_response(question, graph_context, intent)
         
         client = get_llm_client()
         
@@ -93,7 +89,7 @@ class ResponseGenerator:
             )
             
             # Extract citations from answer
-            citations = self._extract_citations(response.content, documents)
+            citations, cited_indices = self._extract_citations(response.content, documents)
             
             # Calculate confidence based on citations and document relevance
             confidence = self._calculate_confidence(response.content, documents, citations)
@@ -113,9 +109,14 @@ class ResponseGenerator:
         self,
         answer: str,
         documents: list[Document]
-    ) -> list[Citation]:
-        """Extract citation references from the answer."""
+    ) -> tuple[list[Citation], set[int]]:
+        """Extract citation references from the answer.
+        
+        Returns:
+            Tuple of (citations list, set of cited document indices)
+        """
         citations = []
+        cited_indices = set()
         
         # Find all citation markers like [1], [2], etc.
         citation_pattern = r'\[(\d+)\]'
@@ -132,6 +133,7 @@ class ResponseGenerator:
         # Map to documents
         for idx in unique_citations:
             if 1 <= idx <= len(documents):
+                cited_indices.add(idx - 1)  # Store 0-based index
                 doc = documents[idx - 1]
                 
                 # Extract a relevant excerpt (first 200 chars of summary)
@@ -148,7 +150,46 @@ class ResponseGenerator:
                     excerpt=excerpt
                 ))
         
-        return citations
+        return citations, cited_indices
+    
+    def filter_documents_by_citations(
+        self,
+        documents: list[Document],
+        cited_indices: set[int],
+        max_cited: int = 10,
+        max_additional: int = 5
+    ) -> tuple[list[Document], list[Document]]:
+        """
+        Separate documents into cited and additional context groups.
+        
+        Args:
+            documents: All retrieved documents
+            cited_indices: Set of 0-based indices for cited documents
+            max_cited: Maximum cited documents to return
+            max_additional: Maximum additional context documents
+            
+        Returns:
+            Tuple of (cited_documents, additional_documents)
+        """
+        cited_docs = []
+        additional_docs = []
+        
+        for i, doc in enumerate(documents):
+            if i in cited_indices:
+                cited_docs.append(doc)
+            else:
+                additional_docs.append(doc)
+        
+        # Limit counts
+        cited_docs = cited_docs[:max_cited]
+        additional_docs = additional_docs[:max_additional]
+        
+        logger.info(
+            f"Filtered documents: {len(cited_docs)} cited, "
+            f"{len(additional_docs)} additional context"
+        )
+        
+        return cited_docs, additional_docs
     
     def _calculate_confidence(
         self,
@@ -199,6 +240,93 @@ class ResponseGenerator:
         
         # Ensure in valid range
         return max(0.1, min(total_confidence, 0.95))
+    
+    async def _generate_no_documents_response(
+        self,
+        question: str,
+        graph_context: Optional[GraphContext],
+        intent: QueryIntent
+    ) -> AnswerResult:
+        """Generate a helpful response when no documents are found."""
+        client = get_llm_client()
+        
+        if client is None:
+            # Fallback without LLM
+            answer = (
+                "I couldn't find any documents in our knowledge base that directly address your question.\n\n"
+                "**Suggestions:**\n"
+                "• Try rephrasing your question with different terms\n"
+                "• Broaden your search (e.g., remove specific date ranges)\n"
+                "• Check for typos in organization or technology names\n"
+                "• Try asking about related topics or industry trends\n\n"
+                "Our knowledge base focuses on wireless standards, Wi-Fi technology, and industry news from "
+                "sources like Wi-Fi Alliance, IEEE, and industry organizations."
+            )
+            return AnswerResult(
+                answer=answer,
+                citations=[],
+                confidence_score=0.0,
+                tokens_used=0
+            )
+        
+        # Try to answer using LLM's general knowledge with appropriate caveats
+        try:
+            system_msg = {
+                "role": "system",
+                "content": (
+                    "You are a helpful assistant with expertise in wireless technology, networking standards, and the tech industry. "
+                    "A user asked a question, but no relevant documents were found in the knowledge base (which contains industry news, "
+                    "standards documents, and technical materials from Wi-Fi Alliance, IEEE, and related organizations).\n\n"
+                    "Your task:\n"
+                    "1. Acknowledge that no documents were found in the knowledge base\n"
+                    "2. If you have general knowledge about the topic, provide a brief, helpful answer with appropriate caveats\n"
+                    "3. Suggest how the user might rephrase their query or where else they might find this information\n"
+                    "4. Be honest about limitations - if this is very specific information (like event dates), acknowledge you may not have current data\n"
+                    "5. Keep your response concise (under 200 words)\n\n"
+                    "Be helpful, honest, and direct."
+                ),
+            }
+            
+            user_msg = {
+                "role": "user",
+                "content": f"Question: {question}",
+            }
+            
+            response = await client.chat.completions.create(
+                model=getattr(client, "_deployment_name", "gpt-4o"),
+                messages=[system_msg, user_msg],
+                temperature=0.7,
+                max_tokens=300,
+            )
+            
+            answer = response.choices[0].message.content.strip()
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+            
+            return AnswerResult(
+                answer=answer,
+                citations=[],
+                confidence_score=0.3,  # Low confidence for general knowledge
+                tokens_used=tokens_used
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to generate no-documents response: {e}")
+            # Final fallback
+            answer = (
+                "I couldn't find any documents in our knowledge base to answer your question.\n\n"
+                "**Try:**\n"
+                "• Rephrasing with different keywords\n"
+                "• Checking spelling of technical terms or organization names\n"
+                "• Broadening your search criteria\n"
+                "• Asking about general industry trends instead of specific details\n\n"
+                "For current event information, you may want to check the official websites of relevant organizations directly."
+            )
+            return AnswerResult(
+                answer=answer,
+                citations=[],
+                confidence_score=0.0,
+                tokens_used=0
+            )
     
     def _generate_fallback_answer(
         self,

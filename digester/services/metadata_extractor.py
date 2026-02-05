@@ -187,18 +187,36 @@ class MetadataExtractor:
         
         # Compute SHA-256 hash of the full content for deduplication/identity
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-
+        
+        # Check if this is a parent video (has segments)
+        metadata = resource_data.get("metadata", {})
+        is_parent_video = metadata.get("has_segments", False)
+        
+        # For parent videos, use much larger chunks to reduce LLM calls
+        # (parent metadata is mostly for overview, segments have the details)
+        original_chunk_size = self.max_chunk_size
+        if is_parent_video:
+            self.max_chunk_size = 32000  # 4x larger for parent videos
+            logger.info(f"Using larger chunks for parent video (32K chars)")
         
         # Chunk content
         chunks = self.chunk_content(content)
         logger.info(f"Processing {len(chunks)} chunks for: {resource_data.get('title', 'Unknown')}")
         
-        # Extract metadata from each chunk in parallel (async gather)
-        logger.info(f"Extracting metadata from {len(chunks)} chunk(s) in parallel...")
-        chunks_metadata = await asyncio.gather(*[
-            self.extract_from_chunk(resource_data, chunk)
-            for chunk in chunks
-        ])
+        # Extract metadata from each chunk sequentially to avoid rate limits
+        # (Previously used asyncio.gather which fired all requests at once)
+        logger.info(f"Extracting metadata from {len(chunks)} chunk(s) sequentially...")
+        chunks_metadata = []
+        for i, chunk in enumerate(chunks, 1):
+            logger.debug(f"Processing chunk {i}/{len(chunks)}")
+            chunk_meta = await self.extract_from_chunk(resource_data, chunk)
+            chunks_metadata.append(chunk_meta)
+            # Small delay between chunks to respect rate limits
+            if i < len(chunks):
+                await asyncio.sleep(0.5)  # 500ms between requests = max 2 req/s
+        
+        # Restore original chunk size
+        self.max_chunk_size = original_chunk_size
         
         # Merge metadata from all chunks
         logger.info("Merging metadata from all chunks")

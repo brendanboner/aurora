@@ -48,6 +48,9 @@ from src.services.query_analyzer import analyze_query as analyze_query_impl
 from src.services.cache import OracleCache, hash_options
 from src.services.query_history import get_query_history_service
 from src.services.personalization import decide_personalization, get_user_preferences
+from src.services.ab_test import should_use_fast_pipeline
+from src.engines.baseline_engine import BaselineEngine
+from src.engines.fast_engine import FastEngine
 from src.metrics import record_query_metrics, record_enhance_metrics, record_feedback_metrics
 from src.routes.metrics import record_query, record_personalization, record_feedback, ACTIVE_QUERIES
 from src.settings import settings
@@ -58,13 +61,17 @@ logger = logging.getLogger(__name__)
 # Get tracer for enhanced spans
 tracer = trace.get_tracer(__name__)
 
-# Initialize services
+# Initialize services (legacy - for backward compatibility)
 query_router = QueryRouter()
 query_parser = QueryParser()
 keyword_retriever = KeywordRetriever()
 hybrid_search = HybridSearch()
 context_builder = ContextBuilder()
 response_generator = ResponseGenerator()
+
+# Initialize answer engines
+baseline_engine = BaselineEngine()
+fast_engine = FastEngine()
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -200,12 +207,207 @@ async def query(
         span.set_attribute("oracle.user_id", str(request.user_id) if request.user_id else "anonymous")
         
         try:
-            logger.info(f"Processing query for user={request.user_id}: {request.question[:100]}...")
+            logger.info(f"[{query_id}] Processing query for user={request.user_id}: {request.question[:100]}...")
             
-            # Apply default options if not provided
-            options = request.options or {}
-            max_documents = getattr(options, 'max_documents', settings.default_max_documents) if options else settings.default_max_documents
-            include_graph_context = getattr(options, 'include_graph_context', True) if options else True
+            # Extract @mentions from query text if datasource_ids not provided
+            # Example: "@broadcast what happened?" -> datasource_ids=["wfa_causeway_broadcasttg"]
+            if not request.options or not request.options.datasource_ids:
+                import re
+                mention_pattern = r'@(\w+)'
+                mentions = re.findall(mention_pattern, request.question)
+                
+                logger.debug(f"[{query_id}] Found @mentions: {mentions}")
+                
+                if mentions:
+                    # Map mention names to datasource_ids
+                    from neo4j_client import Neo4jClient
+                    neo4j_client = Neo4jClient(
+                        uri=settings.neo4j_uri,
+                        user=settings.neo4j_user,
+                        password=settings.neo4j_password
+                    )
+                    
+                    datasource_ids = []
+                    for mention in mentions:
+                        logger.debug(f"[{query_id}] Looking up datasource for mention: {mention}")
+                        # Query Neo4j for datasource with matching name or ID
+                        # Try exact match first, then contains
+                        result = neo4j_client.execute_query("""
+                            MATCH (ds:DataSource)
+                            WHERE toLower(ds.datasource_id) = toLower($mention)
+                               OR toLower(ds.name) CONTAINS toLower($mention)
+                               OR toLower(ds.datasource_id) CONTAINS toLower($mention)
+                            RETURN ds.datasource_id AS datasource_id
+                            LIMIT 1
+                        """, parameters={"mention": mention})
+                        
+                        logger.debug(f"[{query_id}] Query result for '{mention}': {result}")
+                        
+                        if result and len(result) > 0:
+                            datasource_ids.append(result[0]["datasource_id"])
+                    
+                    if datasource_ids:
+                        logger.info(f"[{query_id}] Extracted datasource_ids from @mentions: {datasource_ids}")
+                        # Create or update options with datasource_ids
+                        if not request.options:
+                            from src.models.request import QueryOptions
+                            request.options = QueryOptions()
+                        request.options.datasource_ids = datasource_ids
+                        
+                        # Remove @mentions from question text
+                        clean_question = re.sub(mention_pattern, '', request.question).strip()
+                        request.question = clean_question
+                        logger.info(f"[{query_id}] Cleaned question: {clean_question[:100]}...")
+                    else:
+                        logger.debug(f"[{query_id}] No matching datasources found for mentions: {mentions}")
+            
+            # Determine which pipeline to use (A/B test or user override)
+            options = request.options
+            pipeline_override = getattr(options, 'pipeline_override', None) if options else None
+            use_fast_pipeline = should_use_fast_pipeline(
+                str(request.user_id) if request.user_id else None,
+                pipeline_override=pipeline_override
+            )
+            pipeline_name = "fast" if use_fast_pipeline else "baseline"
+            
+            span.set_attribute("oracle.pipeline", pipeline_name)
+            span.set_attribute("oracle.ab_test_enabled", settings.fast_pipeline_enabled)
+            if pipeline_override:
+                span.set_attribute("oracle.pipeline_override_used", True)
+                span.set_attribute("oracle.pipeline_override_value", pipeline_override)
+            
+            logger.info(
+                f"[{query_id}] Using {pipeline_name} pipeline "
+                f"({'override' if pipeline_override else 'A/B test'})"
+            )
+            
+            # Shadow mode: run fast pipeline but return baseline
+            if settings.fast_pipeline_shadow_mode and not use_fast_pipeline:
+                logger.info(f"[{query_id}] Shadow mode: running fast pipeline in background")
+                # TODO: Implement async shadow execution
+                pass
+            
+            # Select engine
+            if use_fast_pipeline:
+                engine = fast_engine
+                
+                # Try fast engine with fallback to baseline
+                try:
+                    response = await engine.query(request, user, span, query_id)
+                    
+                    # Set pipeline field to indicate fast pipeline was used
+                    response.pipeline = "fast"
+                    
+                    # Record successful fast pipeline execution
+                    processing_time_ms = response.metadata.processing_time_ms
+                    
+                    logger.info(
+                        f"[{query_id}] Fast pipeline success: {processing_time_ms}ms, "
+                        f"route={response.metadata.strategies_used[0] if response.metadata.strategies_used else 'unknown'}"
+                    )
+                    
+                    span.set_attribute("oracle.fast_success", True)
+                    
+                    # Record metrics
+                    record_query_metrics(
+                        intent=response.metadata.intent.value,
+                        mode=response.mode,
+                        documents_count=len(response.documents),
+                        confidence_score=response.confidence_score if response.confidence_score else None,
+                        latency_ms=processing_time_ms,
+                        cache_hit=False,  # Cache hit info not exposed in metadata
+                        has_suggestions=len(response.suggestions) > 0,
+                        strategies_used=response.metadata.strategies_used,
+                    )
+                    
+                    # Store query history
+                    if settings.query_history_enabled:
+                        try:
+                            history_service = get_query_history_service()
+                            await history_service.save_query(
+                                query_id=query_id,
+                                user_id=str(request.user_id) if request.user_id else None,
+                                question=request.question,
+                                mode=response.mode,
+                                response=response.model_dump(),
+                                intent=response.metadata.intent.value if response.metadata else None,
+                                intent_confidence=response.metadata.intent_confidence if response.metadata else None,
+                                processing_time_ms=response.metadata.processing_time_ms if response.metadata else None,
+                                cache_hit=False,
+                                strategies_used=response.metadata.strategies_used if response.metadata else []
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to store query history: {e}")
+                    
+                    return response
+                    
+                except Exception as e:
+                    # Fast pipeline failed, fallback to baseline
+                    if settings.fast_fallback_to_baseline:
+                        logger.warning(
+                            f"[{query_id}] Fast pipeline failed, falling back to baseline: {e}"
+                        )
+                        span.set_attribute("oracle.fast_success", False)
+                        span.set_attribute("oracle.fast_fallback_reason", str(e))
+                        
+                        # Switch to baseline engine
+                        engine = baseline_engine
+                        use_fast_pipeline = False
+                        pipeline_name = "baseline"
+                    else:
+                        # Re-raise if fallback disabled
+                        raise
+            else:
+                engine = baseline_engine
+            
+            # Execute engine (baseline or fallback)
+            response = await engine.query(request, user, span, query_id)
+            
+            # Set pipeline field to indicate which pipeline was used
+            response.pipeline = pipeline_name
+            
+            # Record metrics
+            processing_time_ms = response.metadata.processing_time_ms
+            
+            record_query_metrics(
+                intent=response.metadata.intent.value,
+                mode=response.mode,
+                documents_count=len(response.documents),
+                confidence_score=response.confidence_score if response.confidence_score else None,
+                latency_ms=processing_time_ms,
+                cache_hit=False,  # Cache hit info not exposed in metadata
+                has_suggestions=len(response.suggestions) > 0,
+                strategies_used=response.metadata.strategies_used,
+            )
+            
+            # Store query history
+            if settings.query_history_enabled:
+                try:
+                    history_service = get_query_history_service()
+                    await history_service.save_query(
+                        query_id=query_id,
+                        user_id=str(request.user_id) if request.user_id else None,
+                        question=request.question,
+                        mode=response.mode,
+                        response=response.model_dump(),
+                        intent=response.metadata.intent.value if response.metadata else None,
+                        intent_confidence=response.metadata.intent_confidence if response.metadata else None,
+                        processing_time_ms=response.metadata.processing_time_ms if response.metadata else None,
+                        cache_hit=False,
+                        strategies_used=response.metadata.strategies_used if response.metadata else []
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to store query history: {e}")
+            
+            return response
+            
+            # OLD PIPELINE CODE BELOW (kept for reference, not executed)
+            # =====================================================
+            if False:  # Unreachable code - old pipeline preserved
+                # Apply default options if not provided
+                options = request.options or {}
+                max_documents = getattr(options, 'max_documents', settings.default_max_documents) if options else settings.default_max_documents
+                include_graph_context = getattr(options, 'include_graph_context', True) if options else True
             
             # Get personalization mode early to determine cache eligibility
             personalize_mode = getattr(options, 'personalize', PersonalizeMode.AUTO) if options else PersonalizeMode.AUTO

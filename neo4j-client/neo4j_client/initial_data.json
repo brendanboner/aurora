@@ -4,34 +4,70 @@
       "org_id": "wfa",
       "name": "Wi-Fi Alliance",
       "org_type": "alliance",
-      "homepage_url": "https://www.wi-fi.org/"
+      "homepage_url": "https://www.wi-fi.org/",
+      "aliases": ["WFA", "Wi-Fi Alliance", "WiFi Alliance"]
     },
     {
       "org_id": "wba",
       "name": "Wireless Broadband Alliance",
       "org_type": "alliance",
-      "homepage_url": "https://wballiance.com/"
+      "homepage_url": "https://wballiance.com/",
+      "aliases": ["WBA", "Wireless Broadband Alliance"]
     },
     {
       "org_id": "ieee",
       "name": "IEEE",
       "org_type": "standards body",
-      "homepage_url": "https://www.ieee.org/"
+      "homepage_url": "https://www.ieee.org/",
+      "aliases": ["IEEE"]
     },
     {
       "org_id": "ietf",
       "name": "IETF",
       "org_type": "standards body",
-      "homepage_url": "https://www.ietf.org/"
+      "homepage_url": "https://www.ietf.org/",
+      "aliases": ["IETF"]
     },
     {
       "org_id": "3gpp",
       "name": "3GPP",
       "org_type": "standards body",
-      "homepage_url": "https://www.3gpp.org/"
+      "homepage_url": "https://www.3gpp.org/",
+      "aliases": ["3GPP"]
+    },
+    {
+      "org_id": "extreme",
+      "name": "Extreme Networks",
+      "org_type": "vendor",
+      "homepage_url": "https://www.extremenetworks.com/",
+      "aliases": ["Extreme", "Extreme Networks", "extremenetworks", "extreme networks"]
     }
   ],
   "data_sources": [
+    {
+      "datasource_id": "youtube",
+      "name": "YouTube Videos",
+      "org_id": null,
+      "source_type": "user_submitted",
+      "fetch_url": null,
+      "has_events": false,
+      "scraper_type": null,
+      "resource_url": null,
+      "scrape_schedule": null,
+      "run_on_startup": false,
+      "check_content_hash": true,
+      "publish_weight": 1.0,
+      "update_weight": 0.8,
+      "event_weight": 0.5,
+      "temporal_extraction_days": 90,
+      "scraper_delay": 0,
+      "max_resources": -1,
+      "max_redirects": 0,
+      "discovery_mode": null,
+      "consecutive_duplicates_limit": 0,
+      "full_refresh_schedule": null,
+      "description": "User-submitted YouTube videos with transcripts"
+    },
     {
       "datasource_id": "wfa_resource_page",
       "name": "Wi-Fi Alliance Resource Center",
@@ -341,6 +377,171 @@
       "discovery_mode": "incremental",
       "consecutive_duplicates_limit": 5,
       "full_refresh_schedule": "0 3 * * 0"
+    }
+  ],
+  "topics": [
+    {
+      "name": "Wi-Fi 6",
+      "classification": "technology",
+      "identifier": "802.11ax",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["802.11ax", "Wi-Fi 6", "WiFi 6", "wifi 6", "WiFi6", "wifi6", "High Efficiency Wireless", "HE", "ax"],
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi 7",
+      "classification": "technology",
+      "identifier": "802.11be",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["802.11be", "Wi-Fi 7", "WiFi 7", "wifi 7", "WiFi7", "wifi7", "Extremely High Throughput", "EHT", "be"],
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi 6E",
+      "classification": "technology",
+      "identifier": "Wi-Fi 6E",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["Wi-Fi 6E", "WiFi 6E", "wifi 6e", "WiFi6E", "wifi6e", "6E", "Wi-Fi6E"],
+      "description": "Wi-Fi 6E extends Wi-Fi 6 into the 6 GHz band"
+    },
+    {
+      "name": "Wi-Fi 8",
+      "classification": "technology",
+      "identifier": "802.11bn",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["802.11bn", "Wi-Fi 8", "WiFi 8", "wifi 8", "WiFi8", "wifi8", "bn"],
+      "description": "Wi-Fi 8 (IEEE 802.11bn) is the next generation wireless standard",
+      "created_by": "system"
+    },
+    {
+      "name": "IEEE 802.11",
+      "classification": "technology",
+      "identifier": "IEEE 802.11",
+      "issuer": "IEEE",
+      "aliases": ["IEEE 802.11", "802.11", "802.11 standards", "IEEE 802.11 standards", "Wi-Fi standards"],
+      "description": "IEEE 802.11 family of wireless networking standards",
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi",
+      "classification": "technology",
+      "identifier": "Wi-Fi",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["Wi-Fi", "WiFi", "wifi", "wireless fidelity", "WLAN", "802.11"],
+      "description": "Wireless local area networking technology",
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi Certifications",
+      "classification": "program",
+      "identifier": "wi-fi-certifications",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["Wi-Fi Certifications", "Wi-Fi Certification", "Wi-Fi Certified", "certification program", "Wi-Fi Alliance certification"],
+      "created_by": "system"
+    },
+    {
+      "name": "IoT",
+      "classification": "technology",
+      "identifier": "iot",
+      "issuer": null,
+      "aliases": ["IoT", "Internet of Things", "internet of things devices", "IoT devices", "IoT sensors"],
+      "created_by": "system"
+    },
+    {
+      "name": "6 GHz Spectrum",
+      "classification": "spectrum",
+      "identifier": "6-ghz-spectrum",
+      "issuer": "FCC",
+      "aliases": ["6 GHz", "6 GHz band", "6 GHz spectrum", "6 gigahertz", "upper 6 GHz", "6 GHz unlicensed spectrum"],
+      "created_by": "system"
+    },
+    {
+      "name": "Passpoint",
+      "classification": "technology",
+      "identifier": "passpoint",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["Passpoint", "Hotspot 2.0", "HS2.0", "Wi-Fi Certified Passpoint"],
+      "created_by": "system"
+    },
+    {
+      "name": "WPA3",
+      "classification": "security",
+      "identifier": "wpa3",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["WPA3", "Wi-Fi Protected Access 3", "WPA3 Enterprise", "WPA3 Personal", "Wi-Fi Certified WPA3"],
+      "created_by": "system"
+    },
+    {
+      "name": "Open Roaming",
+      "classification": "technology",
+      "identifier": "open-roaming",
+      "issuer": "Wireless Broadband Alliance",
+      "aliases": ["Open Roaming", "OpenRoaming", "WBA OpenRoaming"],
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi HaLow",
+      "classification": "technology",
+      "identifier": "802.11ah",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["Wi-Fi HaLow", "HaLow", "802.11ah", "IEEE 802.11ah", "Wi-Fi Certified HaLow", "sub-1 GHz Wi-Fi"],
+      "created_by": "system"
+    },
+    {
+      "name": "Wi-Fi EasyMesh",
+      "classification": "technology",
+      "identifier": "easymesh",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["EasyMesh", "Wi-Fi EasyMesh", "Wi-Fi Certified EasyMesh", "Wi-Fi mesh"],
+      "created_by": "system"
+    },
+    {
+      "name": "Multi-Link Operation",
+      "classification": "technology",
+      "identifier": "mlo",
+      "issuer": "IEEE",
+      "aliases": ["MLO", "Multi-Link Operation", "multi-link operations"],
+      "created_by": "system"
+    },
+    {
+      "name": "Extended Reality",
+      "classification": "technology",
+      "identifier": "xr",
+      "issuer": null,
+      "aliases": ["XR", "Extended Reality", "AR", "VR", "augmented reality", "virtual reality", "mixed reality"],
+      "created_by": "system"
+    },
+    {
+      "name": "Cybersecurity",
+      "classification": "topic",
+      "identifier": "cybersecurity",
+      "issuer": null,
+      "aliases": ["cybersecurity", "cyber security", "network security", "wireless security", "Wi-Fi security"],
+      "created_by": "system"
+    },
+    {
+      "name": "5G",
+      "classification": "technology",
+      "identifier": "5G",
+      "issuer": "3GPP",
+      "aliases": ["5G", "fifth generation", "5th generation", "fifth-generation", "mobile networks"],
+      "created_by": "system"
+    },
+    {
+      "name": "regulatory affairs",
+      "classification": "topic",
+      "identifier": "regulatory",
+      "issuer": "Wi-Fi Alliance",
+      "aliases": ["regulatory affairs", "regulatory", "regulation", "compliance"],
+      "created_by": "system"
+    },
+    {
+      "name": "RSPG",
+      "classification": "organization",
+      "identifier": "RSPG",
+      "issuer": "European Commission",
+      "aliases": ["RSPG", "Radio Spectrum Policy Group"],
+      "created_by": "system"
     }
   ]
 }
