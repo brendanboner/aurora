@@ -621,7 +621,8 @@ class GraphRepository:
                 "resource": 0,
                 "topics": 0,
                 "people": 0,
-                "organizations": 0
+                "organizations": 0,
+                "events": 0
             },
             "relationships_created": 0,
             "success": False
@@ -655,6 +656,13 @@ class GraphRepository:
                     self.create_node(org)
                     stats["nodes_created"]["organizations"] += 1
             
+            # Insert event nodes
+            if nodes.get("events"):
+                self.logger.debug(f"Inserting {len(nodes['events'])} event nodes...")
+                for event in nodes["events"]:
+                    self.create_node(event)
+                    stats["nodes_created"]["events"] += 1
+            
             # Insert relationships
             if relationships:
                 self.logger.debug(f"Inserting {len(relationships)} relationships...")
@@ -669,7 +677,8 @@ class GraphRepository:
                 f"Nodes: {stats['nodes_created']['resource']} resource, "
                 f"{stats['nodes_created']['topics']} topics, "
                 f"{stats['nodes_created']['people']} people, "
-                f"{stats['nodes_created']['organizations']} organizations. "
+                f"{stats['nodes_created']['organizations']} organizations, "
+                f"{stats['nodes_created']['events']} events. "
                 f"Relationships: {stats['relationships_created']}"
             )
             

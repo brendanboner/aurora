@@ -89,7 +89,7 @@ class ResponseGenerator:
             )
             
             # Extract citations from answer
-            citations = self._extract_citations(response.content, documents)
+            citations, cited_indices = self._extract_citations(response.content, documents)
             
             # Calculate confidence based on citations and document relevance
             confidence = self._calculate_confidence(response.content, documents, citations)
@@ -109,9 +109,14 @@ class ResponseGenerator:
         self,
         answer: str,
         documents: list[Document]
-    ) -> list[Citation]:
-        """Extract citation references from the answer."""
+    ) -> tuple[list[Citation], set[int]]:
+        """Extract citation references from the answer.
+        
+        Returns:
+            Tuple of (citations list, set of cited document indices)
+        """
         citations = []
+        cited_indices = set()
         
         # Find all citation markers like [1], [2], etc.
         citation_pattern = r'\[(\d+)\]'
@@ -128,6 +133,7 @@ class ResponseGenerator:
         # Map to documents
         for idx in unique_citations:
             if 1 <= idx <= len(documents):
+                cited_indices.add(idx - 1)  # Store 0-based index
                 doc = documents[idx - 1]
                 
                 # Extract a relevant excerpt (first 200 chars of summary)
@@ -144,7 +150,46 @@ class ResponseGenerator:
                     excerpt=excerpt
                 ))
         
-        return citations
+        return citations, cited_indices
+    
+    def filter_documents_by_citations(
+        self,
+        documents: list[Document],
+        cited_indices: set[int],
+        max_cited: int = 10,
+        max_additional: int = 5
+    ) -> tuple[list[Document], list[Document]]:
+        """
+        Separate documents into cited and additional context groups.
+        
+        Args:
+            documents: All retrieved documents
+            cited_indices: Set of 0-based indices for cited documents
+            max_cited: Maximum cited documents to return
+            max_additional: Maximum additional context documents
+            
+        Returns:
+            Tuple of (cited_documents, additional_documents)
+        """
+        cited_docs = []
+        additional_docs = []
+        
+        for i, doc in enumerate(documents):
+            if i in cited_indices:
+                cited_docs.append(doc)
+            else:
+                additional_docs.append(doc)
+        
+        # Limit counts
+        cited_docs = cited_docs[:max_cited]
+        additional_docs = additional_docs[:max_additional]
+        
+        logger.info(
+            f"Filtered documents: {len(cited_docs)} cited, "
+            f"{len(additional_docs)} additional context"
+        )
+        
+        return cited_docs, additional_docs
     
     def _calculate_confidence(
         self,
