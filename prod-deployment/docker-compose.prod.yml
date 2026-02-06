@@ -625,6 +625,10 @@ services:
       # Retrieval timeout (prod has more data, needs longer timeout)
       RETRIEVAL_TIMEOUT: 30.0
       
+      # YouTube Proxy (optional - for bypassing cloud provider IP blocks)
+      YOUTUBE_PROXY_HTTP: ${YOUTUBE_PROXY_HTTP:-}
+      YOUTUBE_PROXY_HTTPS: ${YOUTUBE_PROXY_HTTPS:-}
+      
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
