@@ -60,7 +60,11 @@ class LocalRouter:
         (r"who is\s+[A-Z][\w\s\-]+\??$", RouteId.PERSON_PROFILE),
         (r"who('s| is)\s+(dr\.?|prof\.?|mr\.?|ms\.?|mrs\.?)\s+[\w\s\-]+", RouteId.PERSON_PROFILE),
         
-        # "who said/mentioned" (person quotes/contributions)
+        # "who spoke/presented at [EVENT]" (conference/event speaker queries - more specific than WHO_SAID_WHAT)
+        (r"who (spoke|presented|talked|spoke\s+at|presented\s+at)\s+(at|in|during)\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"(speakers?|presenters?|panelists?|keynotes?)\s+(at|for|in)\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        
+        # "who said/mentioned" (person quotes/contributions - general pattern)
         (r"who (said|mentioned|talked about|discussed|presented|announced)\s+", RouteId.WHO_SAID_WHAT),
         (r"who (is )?talking (about|regarding|on)\s+", RouteId.WHO_SAID_WHAT),
         (r"did (anyone|someone|anybody) (say|mention|discuss|present|announce)\s+", RouteId.WHO_SAID_WHAT),
