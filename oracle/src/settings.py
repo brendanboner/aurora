@@ -188,6 +188,13 @@ class Settings(BaseSettings):
     rabbitmq_max_requests: int = 20  # Max RabbitMQ publish operations per time window
     rabbitmq_time_window: int = 10  # Time window in seconds (10 seconds)
     
+    # YouTube Proxy Configuration (optional)
+    # Use a proxy to bypass YouTube IP blocking for cloud providers (AWS, GCP, Azure)
+    # Format: http://username:password@proxy.example.com:3128 or http://proxy.example.com:3128
+    # Leave empty to disable proxy usage
+    youtube_proxy_http: str = ""  # HTTP proxy URL
+    youtube_proxy_https: str = ""  # HTTPS proxy URL
+    
     @property
     def postgres_dsn(self) -> str:
         """Generate PostgreSQL connection string."""

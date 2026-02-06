@@ -348,6 +348,10 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:-user}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-password}
       
+      # YouTube Proxy (optional - for bypassing cloud provider IP blocks)
+      YOUTUBE_PROXY_HTTP: ${YOUTUBE_PROXY_HTTP:-}
+      YOUTUBE_PROXY_HTTPS: ${YOUTUBE_PROXY_HTTPS:-}
+      
       # Fast Pipeline
       FAST_PIPELINE_ENABLED: ${FAST_PIPELINE_ENABLED:-true}
       FAST_ROLLUP_GENERATION_ENABLED: ${FAST_ROLLUP_GENERATION_ENABLED:-true}
