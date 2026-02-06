@@ -976,6 +976,50 @@ class DocumentDigester:
         # Deduplicate and replace models dict with deduplicated version
         models = await asyncio.to_thread(self.deduplicator.deduplicate_nodes, models)
 
+        # Ensure DataSource node exists before inserting entities
+        datasource_id = message.get("datasource_id")
+        if datasource_id:
+            try:
+                from neo4j_client.models import DataSource
+                
+                # Check if DataSource node exists, create if not
+                check_query = """
+                MATCH (ds:DataSource {datasource_id: $datasource_id})
+                RETURN ds.datasource_id as id
+                LIMIT 1
+                """
+                existing = self.graph_repository.client.execute_query(
+                    check_query,
+                    {"datasource_id": datasource_id}
+                )
+                
+                if not existing:
+                    logger.info(f"Creating DataSource node for {datasource_id}...")
+                    
+                    # Determine source type and name based on datasource_id
+                    if datasource_id == "youtube":
+                        source_type = "api"
+                        name = "YouTube"
+                    else:
+                        # For WFA workgroups or other sources
+                        source_type = "api"
+                        name = datasource_id.replace("_", " ").title()
+                    
+                    datasource_node = DataSource(
+                        datasource_id=datasource_id,
+                        name=name,
+                        source_type=source_type,
+                        description=f"Automatically created datasource for {datasource_id}"
+                    )
+                    
+                    await asyncio.to_thread(self.graph_repository.create_node, datasource_node)
+                    logger.info(f"Created DataSource node: {datasource_id}")
+                else:
+                    logger.debug(f"DataSource node already exists: {datasource_id}")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to ensure DataSource node exists: {e}", exc_info=True)
+
         logger.info("Inserting entities into knowledge graph...")
         await self.update_current_processing(message, "inserting into graph")
         
