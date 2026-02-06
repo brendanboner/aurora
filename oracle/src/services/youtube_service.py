@@ -13,6 +13,7 @@ from youtube_transcript_api._errors import (
     NoTranscriptFound,
     VideoUnavailable,
 )
+from youtube_transcript_api.proxies import GenericProxyConfig
 from src.services.rate_limiter import get_youtube_rate_limiter
 from src.settings import settings
 
@@ -590,17 +591,16 @@ class YouTubeService:
             await rate_limiter.acquire_transcript()
             
             # Configure proxy if provided (for bypassing YouTube IP blocks on cloud providers)
-            proxies = None
+            proxy_config = None
             if settings.youtube_proxy_http or settings.youtube_proxy_https:
-                proxies = {}
-                if settings.youtube_proxy_http:
-                    proxies['http'] = settings.youtube_proxy_http
-                if settings.youtube_proxy_https:
-                    proxies['https'] = settings.youtube_proxy_https
-                logger.info(f"Using YouTube transcript proxy: {proxies.get('https') or proxies.get('http')}")
+                proxy_config = GenericProxyConfig(
+                    http_url=settings.youtube_proxy_http if settings.youtube_proxy_http else None,
+                    https_url=settings.youtube_proxy_https if settings.youtube_proxy_https else None
+                )
+                logger.info(f"Using YouTube transcript proxy: {settings.youtube_proxy_https or settings.youtube_proxy_http}")
             
             # Instantiate the API with optional proxy
-            ytt_api = YouTubeTranscriptApi(proxies=proxies)
+            ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
             
             # Try to fetch transcript with language preferences
             fetched_transcript = None
