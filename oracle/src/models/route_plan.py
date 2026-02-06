@@ -61,6 +61,7 @@ class RouteId(str, Enum):
     # People & Contributors
     WHO_SAID_WHAT = "who_said_what"
     PERSON_ACTIVITY = "person_activity"
+    PERSON_AT_EVENT = "person_at_event"  # Person speaking/presenting at specific event
     PERSON_CONTRIBUTIONS = "person_contributions"
     EXPERT_FINDER = "expert_finder"
     COLLABORATION_NETWORK = "collaboration_network"

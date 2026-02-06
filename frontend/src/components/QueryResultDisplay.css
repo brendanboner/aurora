@@ -256,10 +256,12 @@
 
 .answer-content {
   background-color: var(--card);
-  padding: 16px;
+  padding: 10px;
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
-  line-height: 1.6;
+  line-height: 1.8;
+  font-size: 15px;
+  color: var(--foreground);
 }
 
 /* Enhanced Answer Content Styling - purple accent on the answer box only */
@@ -269,26 +271,18 @@
   box-shadow: 0 0 16px rgba(139, 92, 246, 0.1);
 }
 
-.answer-content p {
-  margin: 0 0 16px 0;
-}
-
-.answer-content p:last-child {
-  margin-bottom: 0;
-}
-
 /* Improved list styling */
 .answer-content ul,
 .answer-content ol {
-  margin: 0 0 16px 0;
-  padding-left: 24px;
-  font-size: var(--text-base);
+  margin: 0 0 20px 0;
+  padding-left: 28px;
+  font-size: 15px;
 }
 
 .answer-content li {
-  margin: 8px 0;
-  line-height: 1.6;
-  font-size: var(--text-base);
+  margin: 10px 0;
+  line-height: 1.8;
+  font-size: 15px;
 }
 
 .answer-content ul li {
@@ -299,13 +293,18 @@
   list-style-type: decimal;
 }
 
+/* Add visual separation between list items */
+.answer-content li + li {
+  margin-top: 12px;
+}
+
 /* Nested lists */
 .answer-content ul ul,
 .answer-content ol ol,
 .answer-content ul ol,
 .answer-content ol ul {
-  margin: 8px 0;
-  padding-left: 20px;
+  margin: 12px 0;
+  padding-left: 24px;
 }
 
 /* Headings in answer content */
@@ -315,8 +314,10 @@
 .answer-content h4,
 .answer-content h5,
 .answer-content h6 {
-  margin: 24px 0 12px 0;
+  margin: 28px 0 16px 0;
   line-height: 1.4;
+  font-weight: 600;
+  color: var(--foreground);
 }
 
 .answer-content h1:first-child,
@@ -328,45 +329,81 @@
   margin-top: 0;
 }
 
+.answer-content h2 {
+  font-size: 1.5em;
+  padding-bottom: 8px;
+  border-bottom: 2px solid rgba(137, 129, 229, 0.2);
+}
+
+.answer-content h3 {
+  font-size: 1.25em;
+}
+
 /* Code blocks and inline code */
 .answer-content code {
   background-color: rgba(110, 118, 129, 0.1);
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: 3px 6px;
+  border-radius: 4px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.9em;
+  color: var(--primary);
+  border: 1px solid rgba(137, 129, 229, 0.2);
 }
 
 .answer-content pre {
   background-color: rgba(110, 118, 129, 0.1);
-  padding: 12px;
+  padding: 16px;
   border-radius: var(--radius);
   overflow-x: auto;
-  margin: 16px 0;
+  margin: 20px 0;
+  border: 1px solid var(--border);
 }
 
 .answer-content pre code {
   background-color: transparent;
   padding: 0;
+  border: none;
 }
 
 /* Blockquotes */
 .answer-content blockquote {
   border-left: 4px solid var(--primary);
-  padding-left: 16px;
-  margin: 16px 0;
+  padding-left: 20px;
+  margin: 20px 0;
   font-style: italic;
   color: var(--muted-foreground);
+  background-color: rgba(137, 129, 229, 0.05);
+  padding: 16px 20px;
+  border-radius: 4px;
 }
 
 .answer-content a {
   color: var(--primary);
   text-decoration: none;
   border-bottom: 1px solid rgba(137, 129, 229, 0.3);
+  transition: all 0.2s ease;
 }
 
 .answer-content a:hover {
   border-bottom-color: var(--primary);
+  color: #7c6fd6;
+}
+
+/* Strong emphasis */
+.answer-content strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* Citation references inline [1], [2], etc - make them quieter */
+.answer-content .citation-ref {
+  font-size: 0.75em;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  vertical-align: super;
+  line-height: 0;
+  margin: 0 1px;
 }
 
 /* Answer Stats Row - Confidence and Stats on one line above answer */
@@ -441,19 +478,25 @@
 /* References Section */
 /* References Section */
 .references-section {
-  background-color: rgba(137, 129, 229, 0.05);
-  border: 1px solid rgba(137, 129, 229, 0.2);
-  border-radius: var(--radius-button);
-  padding: 12px;
+  margin-top: 24px;
+  background-color: rgba(137, 129, 229, 0.03);
+  border: 1px solid rgba(137, 129, 229, 0.15);
+  border-radius: var(--radius-card);
+  padding: 20px;
 }
 
 .references-header {
-  margin-bottom: 8px;
-  font-size: var(--text-sm);
+  margin-bottom: 16px;
+  font-size: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid rgba(137, 129, 229, 0.2);
 }
 
 .references-header strong {
   color: var(--primary);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .subsection-label {
@@ -470,72 +513,94 @@
 .cited-references {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
 }
 
 .reference-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px;
-  border-radius: var(--radius);
-  background-color: rgba(39, 174, 96, 0.05);
+  gap: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.reference-item:hover {
+  border-color: rgba(137, 129, 229, 0.4);
+  box-shadow: 0 2px 8px rgba(137, 129, 229, 0.1);
+  transform: translateY(-1px);
 }
 
 .citation-marker {
   font-weight: 700;
   color: var(--primary);
-  font-size: var(--text-sm);
-  min-width: 24px;
+  font-size: 13px;
+  min-width: 32px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(137, 129, 229, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(137, 129, 229, 0.2);
 }
 
 .reference-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .reference-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .reference-content a {
   color: var(--primary);
   text-decoration: none;
-  font-size: var(--text-sm);
+  font-size: 14px;
   font-weight: 500;
+  line-height: 1.5;
+  transition: color 0.2s ease;
 }
 
 .reference-content a:hover {
   text-decoration: underline;
+  color: #7c6fd6;
 }
 
 .reference-datasource {
-  font-size: var(--text-xs);
+  font-size: 11px;
   color: var(--muted-foreground);
-  background-color: rgba(137, 129, 229, 0.1);
-  padding: 2px 8px;
-  border-radius: 10px;
+  background-color: rgba(137, 129, 229, 0.15);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 .reference-excerpt {
-  font-size: var(--text-xs);
+  font-size: 13px;
   color: var(--muted-foreground);
   font-style: italic;
-  line-height: 1.5;
+  line-height: 1.6;
+  padding: 8px 0;
 }
 
 .relevance-small {
-  font-size: var(--text-xs);
-  color: var(--muted-foreground);
-  background-color: rgba(137, 129, 229, 0.1);
-  padding: 2px 6px;
-  border-radius: 8px;
+  font-size: 11px;
+  color: var(--primary);
+  background-color: rgba(137, 129, 229, 0.12);
+  padding: 3px 8px;
+  border-radius: 10px;
   margin-left: 8px;
+  font-weight: 600;
 }
 
 .other-references .reference-content {
@@ -544,10 +609,11 @@
 }
 
 .more-references {
-  font-size: var(--text-xs);
+  font-size: 12px;
   color: var(--muted-foreground);
-  padding: 8px 0;
+  padding: 12px 0 4px 0;
   font-style: italic;
+  text-align: center;
 }
 
 /* ============================================ */
