@@ -555,7 +555,45 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
         {/* The Answer */}
         {hasAnswer && (
           <div className={`answer-content ${isShowingEnhanced ? 'enhanced' : ''}`}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm]}
+              components={{
+                // Custom paragraph rendering with citation styling
+                p: ({children}) => {
+                  // Process children to style citation markers like [1], [2], etc.
+                  const styledChildren = React.Children.map(children, (child) => {
+                    if (typeof child === 'string') {
+                      // Replace citation markers with styled spans
+                      const parts = child.split(/(\[\d+\])/g);
+                      return parts.map((part, idx) => {
+                        if (/^\[\d+\]$/.test(part)) {
+                          return <span key={idx} className="citation-ref">{part}</span>;
+                        }
+                        return part;
+                      });
+                    }
+                    return child;
+                  });
+                  return <p style={{ margin: '0 0 10px 0' }}>{styledChildren}</p>;
+                },
+                // Ensure lists items also get citation styling
+                li: ({children}) => {
+                  const styledChildren = React.Children.map(children, (child) => {
+                    if (typeof child === 'string') {
+                      const parts = child.split(/(\[\d+\])/g);
+                      return parts.map((part, idx) => {
+                        if (/^\[\d+\]$/.test(part)) {
+                          return <span key={idx} className="citation-ref">{part}</span>;
+                        }
+                        return part;
+                      });
+                    }
+                    return child;
+                  });
+                  return <li>{styledChildren}</li>;
+                }
+              }}
+            >
               {message.content}
             </ReactMarkdown>
           </div>

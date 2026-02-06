@@ -64,6 +64,16 @@ class LocalRouter:
         (r"who (spoke|presented|talked|spoke\s+at|presented\s+at)\s+(at|in|during)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(speakers?|presenters?|panelists?|keynotes?)\s+(at|for|in)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         
+        # "what was discussed/happened at [EVENT]" (event content queries - broader than workgroup/meeting patterns)
+        # This catches: "what was discussed at cisco ai summit", "what happened at the live session"
+        (r"what (was|is)\s+(discussed|covered|presented|talked about|shown|shared|announced|said)\s+at\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"what (happened|occurred|took place)\s+at\s+(?!the\s+(last|latest|recent|previous)\s+(meeting|call|session))", RouteId.DOCUMENTS_BY_TOPIC),
+        
+        # "what did [PERSON] discuss/say at [EVENT]" (person + event combination - must come before general person activity)
+        (r"what (did|does)\s+[\w\s\-]+\s+(discuss|say|present|talk about|cover|announce)\s+at\s+", RouteId.PERSON_AT_EVENT),
+        (r"[\w\s\-]+('s)?\s+(presentation|talk|keynote|session|discussion)\s+at\s+", RouteId.PERSON_AT_EVENT),
+        (r"did\s+[\w\s\-]+\s+(speak|present|talk)\s+at\s+", RouteId.PERSON_AT_EVENT),
+        
         # "who said/mentioned" (person quotes/contributions - general pattern)
         (r"who (said|mentioned|talked about|discussed|presented|announced)\s+", RouteId.WHO_SAID_WHAT),
         (r"who (is )?talking (about|regarding|on)\s+", RouteId.WHO_SAID_WHAT),

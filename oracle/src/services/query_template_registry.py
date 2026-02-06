@@ -17,6 +17,7 @@ using their ingestion timestamp (created_at) or scrape timestamp (scraped_at).
 """
 
 import logging
+import re
 from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime, date
 
@@ -88,16 +89,34 @@ class QueryTemplate:
                 query_lower = plan.raw_query.lower().strip()
                 extracted_term = None
                 
-                if query_lower.startswith("what is "):
-                    extracted_term = plan.raw_query[8:].strip().rstrip("?")
-                elif query_lower.startswith("what's "):
-                    extracted_term = plan.raw_query[7:].strip().rstrip("?")
-                elif query_lower.startswith("what are "):
-                    extracted_term = plan.raw_query[9:].strip().rstrip("?")
-                elif "tell me about " in query_lower:
-                    extracted_term = plan.raw_query.split("tell me about ", 1)[1].strip().rstrip("?")
-                elif "explain " in query_lower:
-                    extracted_term = plan.raw_query.split("explain ", 1)[1].strip().rstrip("?")
+                # Event-related queries: extract event name
+                # "who spoke at [EVENT]" or "what was discussed at [EVENT]"
+                event_patterns = [
+                    r'who\s+(?:spoke|presented|talked)\s+at\s+(?:the\s+)?(.+?)(?:\s+\d{4})?$',
+                    r'what\s+(?:was|is)\s+(?:discussed|covered|presented|talked about|shown|shared)\s+at\s+(?:the\s+)?(.+?)(?:\s+\d{4})?$',
+                    r'what\s+(?:happened|occurred|took place)\s+at\s+(?:the\s+)?(.+?)(?:\s+\d{4})?$',
+                    r'(?:speakers?|presenters?)\s+at\s+(?:the\s+)?(.+?)(?:\s+\d{4})?$',
+                ]
+                
+                for pattern in event_patterns:
+                    match = re.search(pattern, query_lower, re.IGNORECASE)
+                    if match:
+                        extracted_term = match.group(1).strip()
+                        logger.info(f"Extracted event name from query: '{extracted_term}'")
+                        break
+                
+                # Definition queries: "what is X"
+                if not extracted_term:
+                    if query_lower.startswith("what is "):
+                        extracted_term = plan.raw_query[8:].strip().rstrip("?")
+                    elif query_lower.startswith("what's "):
+                        extracted_term = plan.raw_query[7:].strip().rstrip("?")
+                    elif query_lower.startswith("what are "):
+                        extracted_term = plan.raw_query[9:].strip().rstrip("?")
+                    elif "tell me about " in query_lower:
+                        extracted_term = plan.raw_query.split("tell me about ", 1)[1].strip().rstrip("?")
+                    elif "explain " in query_lower:
+                        extracted_term = plan.raw_query.split("explain ", 1)[1].strip().rstrip("?")
                 
                 if extracted_term:
                     # Remove leading articles
@@ -110,12 +129,49 @@ class QueryTemplate:
                         extracted_term = extracted_term[4:].strip()
                     
                     # Strip trailing punctuation
-                    import re
                     extracted_term = re.sub(r'[.,;:!?]+$', '', extracted_term).strip()
                     
                     # Use extracted term as fallback topic
                     params["topics"] = [extracted_term]
                     logger.info(f"Extracted topic from 'what is' query: {extracted_term}")
+            
+            # For PERSON_AT_EVENT, extract event name and person from query
+            if route_id_val == "person_at_event" and plan.raw_query:
+                query_lower = plan.raw_query.lower().strip()
+                
+                # Patterns: "what did [PERSON] discuss at [EVENT]", "[PERSON]'s talk at [EVENT]"
+                person_event_patterns = [
+                    r'what (did|does)\s+(.+?)\s+(discuss|say|present|talk about|cover|announce)\s+at\s+(?:the\s+)?(.+?)(?:\s+\d{4})?$',
+                    r'(.+?)(?:\'s|s)\s+(?:presentation|talk|keynote|session|discussion)\s+at\s+(?:the\s+)?(.+?)(?:\s+\d{4})?$',
+                    r'did\s+(.+?)\s+(speak|present|talk)\s+at\s+(?:the\s+)?(.+?)(?:\s+\d{4})?$',
+                ]
+                
+                for pattern in person_event_patterns:
+                    match = re.search(pattern, query_lower, re.IGNORECASE)
+                    if match:
+                        groups = match.groups()
+                        # Extract person (first capture that's not a verb)
+                        person_name = None
+                        event_name = None
+                        
+                        if len(groups) >= 4 and pattern.startswith(r'what'):
+                            # Pattern 1: "what did [PERSON] [VERB] at [EVENT]"
+                            person_name = groups[1].strip()
+                            event_name = groups[3].strip()
+                        elif "'s" in pattern or "s)" in pattern:
+                            # Pattern 2: "[PERSON]'s [TYPE] at [EVENT]"
+                            person_name = groups[0].strip()
+                            event_name = groups[1].strip()
+                        elif len(groups) >= 3:
+                            # Pattern 3: "did [PERSON] [VERB] at [EVENT]"
+                            person_name = groups[0].strip()
+                            event_name = groups[2].strip()
+                        
+                        if person_name and event_name:
+                            params["people"] = [person_name]
+                            params["event_name"] = event_name
+                            logger.info(f"Extracted person '{person_name}' and event '{event_name}' from query")
+                            break
         
         # Content exclusion (for agent deduplication)
         # Extract from raw_query if it contains exclusion markers
@@ -163,7 +219,6 @@ class QueryTemplate:
                     
                     # Strip trailing punctuation (but keep hyphens and underscores in middle)
                     # This handles "sticky client?" -> "sticky client"
-                    import re
                     extracted_term = re.sub(r'[.,;:!?]+$', '', extracted_term).strip()
                 
                 params["query_text"] = extracted_term if extracted_term else None
@@ -984,12 +1039,18 @@ class QueryTemplateRegistry:
                 UNION
                 
                 // Fallback: fuzzy text search in title/summary if no exact topic matches
+                // For event queries (long topic strings), require full phrase match in title
+                // For short topics, allow partial matches
                 MATCH (r:Resource)
                 WHERE (
-                    // Check if any topic keywords appear in title or summary
+                    // For event names (>10 chars), require presence in title for high relevance
+                    // For short topics, allow title or summary matches
                     any(topic IN $topics WHERE 
-                        toLower(r.title) CONTAINS toLower(topic) OR 
-                        toLower(coalesce(r.summary, '')) CONTAINS toLower(topic)
+                        (size(topic) > 10 AND toLower(r.title) CONTAINS toLower(topic)) OR
+                        (size(topic) <= 10 AND (
+                            toLower(r.title) CONTAINS toLower(topic) OR 
+                            toLower(coalesce(r.summary, '')) CONTAINS toLower(topic)
+                        ))
                     )
                 )
                 
@@ -997,14 +1058,19 @@ class QueryTemplateRegistry:
                 WITH r,
                      CASE WHEN (r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030) THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
-                // Get the first matching topic for metadata
+                // Get the first matching topic for metadata and calculate match quality
                 WITH r, effective_date,
                      head([topic IN $topics WHERE 
                          toLower(r.title) CONTAINS toLower(topic) OR 
                          toLower(coalesce(r.summary, '')) CONTAINS toLower(topic)
-                     ]) as topic_name
+                     ]) as topic_name,
+                     // Give higher base relevance if event name (long topic) appears in title
+                     CASE WHEN any(topic IN $topics WHERE size(topic) > 10 AND toLower(r.title) CONTAINS toLower(topic)) THEN 0.7
+                          WHEN any(topic IN $topics WHERE toLower(r.title) CONTAINS toLower(topic)) THEN 0.5
+                          ELSE 0.3
+                     END as fuzzy_relevance
                 
-                RETURN r, effective_date, 0.5 as base_relevance, 'mixed' as stance, topic_name, 'fuzzy' as match_type
+                RETURN r, effective_date, fuzzy_relevance as base_relevance, 'mixed' as stance, topic_name, 'fuzzy' as match_type
             }
             
             WITH r, effective_date, base_relevance, stance, topic_name, match_type
@@ -1035,14 +1101,22 @@ class QueryTemplateRegistry:
                    ELSE 1.0                        // Mixed or neutral
                  END as stance_boost
             
-            // Calculate content type boost
+            // Calculate title match boost (for event queries)
             WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost,
+                 CASE 
+                   WHEN size($topics) = 1 AND size($topics[0]) > 10 AND toLower(r.title) CONTAINS toLower($topics[0]) THEN 2.0
+                   ELSE 1.0
+                 END as title_match_boost
+            
+            // Calculate content type boost
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, title_match_boost,
                  CASE r.category
                    WHEN 'whitepaper' THEN 1.5     // Increased from 1.3 for definition queries
                    WHEN 'specification' THEN 1.4  // Increased from 1.2
                    WHEN 'standard' THEN 1.4       // Increased from 1.2
                    WHEN 'technical_report' THEN 1.2  // Increased from 1.1
                    WHEN 'press release' THEN 1.1  // Press releases often introduce/explain
+                   WHEN 'video' THEN 1.5          // Boost video content for events
                    WHEN 'blog' THEN 1.0
                    WHEN 'news' THEN 0.9
                    WHEN 'draft' THEN 0.9          // Decreased from 1.0
@@ -1053,23 +1127,24 @@ class QueryTemplateRegistry:
                  END as content_type_boost
             
             // Recency score (less important for definitional queries)
-            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost,
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost, title_match_boost,
                  CASE WHEN effective_date >= datetime() - duration({days: 180}) THEN 1.2 WHEN effective_date >= datetime() - duration({days: 365}) THEN 1.1 WHEN effective_date >= datetime() - duration({days: 730}) THEN 1.0 ELSE 0.9 END as recency_score
             
             // Apply match type penalty (fuzzy matches rank slightly lower)
-            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost, recency_score,
+            WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost, recency_score, title_match_boost,
                  CASE match_type
                    WHEN 'exact' THEN 1.0
                    WHEN 'fuzzy' THEN 0.8
                    ELSE 0.7
                  END as match_type_penalty
             
-            // Calculate final KG relevance score (increased weight for stance and content_type)
-            WITH r, effective_date, stance, topic_name, topic_count, match_type,
-                 (base_relevance * 0.3 * match_type_penalty +
-                  specificity_score * 0.2 +
-                  stance_boost * 0.25 +
-                  content_type_boost * 0.2 +
+            // Calculate final KG relevance score (increased weight for title match and content_type)
+            WITH r, effective_date, stance, topic_name, topic_count, match_type, base_relevance, match_type_penalty, specificity_score, stance_boost, content_type_boost, title_match_boost, recency_score,
+                 (base_relevance * 0.25 * match_type_penalty +
+                  specificity_score * 0.15 +
+                  stance_boost * 0.2 +
+                  content_type_boost * 0.15 +
+                  title_match_boost * 0.2 +
                   recency_score * 0.05
                  ) as kg_score
             
@@ -1077,7 +1152,17 @@ class QueryTemplateRegistry:
             WITH r, effective_date, topic_name, topic_count, match_type, kg_score,
                  kg_score / 2.0 as normalized_kg_score
             
-            ORDER BY normalized_kg_score DESC, effective_date DESC
+            // Extract segment number or URL timestamp for secondary sorting of video series
+            WITH r, effective_date, topic_name, topic_count, match_type, normalized_kg_score,
+                 CASE 
+                   WHEN r.category = 'video' AND r.url CONTAINS 't=' THEN 
+                     toInteger(replace(split(split(r.url, 't=')[1], '&')[0], 's', ''))
+                   WHEN r.title =~ '.*Segment \\d+.*' THEN 
+                     toInteger(replace(replace(split(r.title, 'Segment ')[1], '(', ''), ' ', ''))
+                   ELSE 999999
+                 END as segment_order
+            
+            ORDER BY normalized_kg_score DESC, segment_order ASC, effective_date DESC
             
             // Get additional metadata: datasource, topics, organizations
             OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
@@ -1184,6 +1269,63 @@ class QueryTemplateRegistry:
                 r.publish_date as date,
                 r.url as url,
                 topics
+            LIMIT $limit
+            """
+        )
+        
+        # PERSON_AT_EVENT - what did a person discuss/present at a specific event
+        self.templates[RouteId.PERSON_AT_EVENT] = QueryTemplate(
+            route_id=RouteId.PERSON_AT_EVENT,
+            description="Get person's contributions at a specific event",
+            param_schema={
+                "people": "list[str]",
+                "event_name": "str",
+                "limit": "int"
+            },
+            cypher="""
+            // Find resources matching the event name and mentioning the person
+            MATCH (r:Resource)-[:MENTIONS]->(p:Person)
+            WHERE toLower(r.title) CONTAINS toLower($event_name)
+              AND any(person IN $people WHERE toLower(p.name) CONTAINS toLower(person) OR toLower(person) CONTAINS toLower(p.name))
+            
+            // Date fallback with validation
+            WITH r, p,
+                 CASE WHEN (r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030) THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+            
+            // Extract segment number or URL timestamp for secondary sorting of video series
+            WITH r, p, effective_date,
+                 CASE 
+                   WHEN r.category = 'video' AND r.url CONTAINS 't=' THEN 
+                     toInteger(replace(split(split(r.url, 't=')[1], '&')[0], 's', ''))
+                   WHEN r.title =~ '.*Segment \\d+.*' THEN 
+                     toInteger(replace(replace(split(r.title, 'Segment ')[1], '(', ''), ' ', ''))
+                   ELSE 999999
+                 END as segment_order
+            
+            // Get topics and other metadata
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+            OPTIONAL MATCH (r)-[:MENTIONS]->(org:Organization)
+            
+            WITH r, p, effective_date, segment_order,
+                 ds.datasource_id as datasource_id,
+                 collect(DISTINCT t.name)[..10] as topic_names,
+                 collect(DISTINCT org.name)[..5] as org_names
+            
+            ORDER BY segment_order ASC, effective_date DESC
+            
+            RETURN 
+                r.url_hash as document_id,
+                r.title as title,
+                coalesce(r.summary, '') as summary,
+                r.url as url,
+                effective_date as publish_date,
+                r.category as category,
+                datasource_id,
+                topic_names as topics,
+                org_names as organizations,
+                collect(DISTINCT p.name) as mentioned_people,
+                1.0 as relevance_score
             LIMIT $limit
             """
         )
