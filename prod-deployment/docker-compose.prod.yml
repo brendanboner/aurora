@@ -613,6 +613,12 @@ services:
       # Retriever service (for enhanced answers)
       RETRIEVER_SERVICE_URL: http://retriever:8000
       
+      # RabbitMQ (for YouTube video ingestion)
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      
       # Azure OpenAI
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
