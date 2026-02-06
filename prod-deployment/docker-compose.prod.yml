@@ -421,6 +421,10 @@ services:
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-500}
       MAX_MESSAGE_RETRIES: ${MAX_MESSAGE_RETRIES:-3}
       
+      # YouTube Proxy (optional - for bypassing cloud provider IP blocks)
+      YOUTUBE_PROXY_HTTP: ${YOUTUBE_PROXY_HTTP:-}
+      YOUTUBE_PROXY_HTTPS: ${YOUTUBE_PROXY_HTTPS:-}
+      
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
