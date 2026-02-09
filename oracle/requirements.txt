@@ -12,6 +12,7 @@ aiohttp
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 youtube-transcript-api>=0.6.0
+yt-dlp>=2023.10.0
 
 # Testing
 pytest>=7.0.0

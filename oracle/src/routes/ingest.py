@@ -311,8 +311,11 @@ async def _process_single_video(
     # Get rate limiter for controlled RabbitMQ publishing
     rate_limiter = get_youtube_rate_limiter()
     
-    # Use context manager for RabbitMQ connection
-    with RabbitMQProducer(**rabbitmq_config, logger_instance=logger) as producer:
+    # Create producer and connect - wrap blocking operations in thread
+    producer = RabbitMQProducer(**rabbitmq_config, logger_instance=logger)
+    await asyncio.to_thread(producer.connect)
+    
+    try:
         if segments:
             logger.info(f"Creating {len(segments)} segments for video {video_id}")
             
@@ -340,7 +343,7 @@ async def _process_single_video(
             
             # Rate limit before publishing
             await rate_limiter.acquire_rabbitmq()
-            producer.publish(parent_message)
+            await asyncio.to_thread(producer.publish, parent_message)
             messages_published += 1
             
             # Publish each segment with rate limiting
@@ -376,7 +379,7 @@ async def _process_single_video(
                 
                 # Rate limit before publishing each segment
                 await rate_limiter.acquire_rabbitmq()
-                producer.publish(segment_message)
+                await asyncio.to_thread(producer.publish, segment_message)
                 messages_published += 1
                 
                 logger.debug(
@@ -407,8 +410,12 @@ async def _process_single_video(
             
             # Rate limit before publishing
             await rate_limiter.acquire_rabbitmq()
-            producer.publish(message)
+            await asyncio.to_thread(producer.publish, message)
             messages_published = 1
+    
+    finally:
+        # Ensure producer is properly closed
+        await asyncio.to_thread(producer.close)
     
     logger.info(f"Published {messages_published} messages for video {video_id}")
     
