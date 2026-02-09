@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 import aiohttp
 import json
+import asyncio
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 from youtube_transcript_api._errors import (
@@ -14,6 +15,7 @@ from youtube_transcript_api._errors import (
     VideoUnavailable,
 )
 from youtube_transcript_api.proxies import GenericProxyConfig
+import yt_dlp
 from src.services.rate_limiter import get_youtube_rate_limiter
 from src.settings import settings
 
@@ -177,79 +179,48 @@ class YouTubeService:
             ValueError: If playlist cannot be accessed or is invalid
         """
         try:
-            # Use yt-dlp approach: scrape playlist page
             playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
             
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    playlist_url,
-                    headers=self.headers,
-                    timeout=aiohttp.ClientTimeout(total=15)
-                ) as response:
-                    if response.status != 200:
-                        raise ValueError(f"Could not access playlist: HTTP {response.status}")
+            # Configure yt-dlp options
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': True,  # Don't download, just extract info
+                'playlistend': max_videos,  # Limit number of videos
+                'ignoreerrors': True,  # Skip unavailable videos
+            }
+            
+            # Run yt-dlp in a thread to avoid blocking
+            def extract_playlist():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(playlist_url, download=False)
+                    if not info:
+                        raise ValueError("Could not extract playlist information")
                     
-                    html = await response.text()
-                    
-                    # Extract video IDs from ytInitialData
-                    video_ids = []
-                    
-                    # Look for ytInitialData in the page
-                    initial_data_match = re.search(
-                        r'var ytInitialData = ({.+?});',
-                        html,
-                        re.DOTALL
-                    )
-                    
-                    if initial_data_match:
-                        try:
-                            initial_data = json.loads(initial_data_match.group(1))
-                            
-                            # Navigate through the JSON structure to find video IDs
-                            contents = initial_data.get('contents', {})
-                            tab_renderer = contents.get('twoColumnBrowseResultsRenderer', {}).get('tabs', [])
-                            
-                            for tab in tab_renderer:
-                                tab_content = tab.get('tabRenderer', {}).get('content', {})
-                                section_contents = tab_content.get('sectionListRenderer', {}).get('contents', [])
-                                
-                                for section in section_contents:
-                                    item_section = section.get('itemSectionRenderer', {}).get('contents', [])
-                                    
-                                    for item in item_section:
-                                        playlist_renderer = item.get('playlistVideoListRenderer', {})
-                                        videos = playlist_renderer.get('contents', [])
-                                        
-                                        for video in videos:
-                                            video_renderer = video.get('playlistVideoRenderer', {})
-                                            video_id = video_renderer.get('videoId')
-                                            
-                                            if video_id and video_id not in video_ids:
-                                                video_ids.append(video_id)
-                                                
-                                                if len(video_ids) >= max_videos:
-                                                    break
-                                        
-                                        if len(video_ids) >= max_videos:
-                                            break
-                            
-                        except (json.JSONDecodeError, KeyError, AttributeError) as e:
-                            logger.warning(f"Could not parse playlist data: {e}")
-                    
-                    # Fallback: regex search for video IDs
-                    if not video_ids:
-                        video_id_pattern = r'"videoId":"([a-zA-Z0-9_-]{11})"'
-                        matches = re.findall(video_id_pattern, html)
-                        video_ids = list(dict.fromkeys(matches))[:max_videos]  # Remove duplicates, limit
-                    
-                    if not video_ids:
+                    entries = info.get('entries', [])
+                    if not entries:
                         raise ValueError("No videos found in playlist or playlist is empty")
                     
-                    logger.info(f"Found {len(video_ids)} videos in playlist {playlist_id}")
-                    return video_ids
+                    # Extract video IDs, filtering out None values (unavailable videos)
+                    video_ids = []
+                    for entry in entries:
+                        if entry and entry.get('id'):
+                            video_ids.append(entry['id'])
+                            if len(video_ids) >= max_videos:
+                                break
                     
-        except aiohttp.ClientError as e:
-            logger.error(f"Network error accessing playlist: {e}")
+                    return video_ids
+            
+            video_ids = await asyncio.to_thread(extract_playlist)
+            
+            if not video_ids:
+                raise ValueError("No videos found in playlist or playlist is empty")
+            
+            logger.info(f"Found {len(video_ids)} videos in playlist {playlist_id}")
+            return video_ids
+                    
+        except yt_dlp.utils.DownloadError as e:
+            logger.error(f"yt-dlp error accessing playlist: {e}")
             raise ValueError(f"Could not access playlist: {str(e)}")
         except Exception as e:
             logger.error(f"Error getting playlist videos: {e}", exc_info=True)
