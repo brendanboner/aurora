@@ -190,6 +190,12 @@ class YouTubeService:
                 'ignoreerrors': True,  # Skip unavailable videos
             }
             
+            # Configure proxy if provided (for bypassing YouTube IP blocks on cloud providers)
+            if settings.youtube_proxy_http or settings.youtube_proxy_https:
+                proxy_url = settings.youtube_proxy_https or settings.youtube_proxy_http
+                ydl_opts['proxy'] = proxy_url
+                logger.info(f"Using YouTube playlist proxy: {proxy_url}")
+            
             # Run yt-dlp in a thread to avoid blocking
             def extract_playlist():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
