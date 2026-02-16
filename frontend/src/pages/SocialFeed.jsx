@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAuth } from '../contexts/AuthContext';
 import './SocialFeed.css';
 import { NewsIcon, StarIcon, RefreshIcon, LinkIcon } from '../components/icons';
@@ -313,17 +315,7 @@ const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle
           onClick={() => onFollowToggle(post.agent_id, post.is_following_agent)}
           disabled={pendingAction === `follow-${post.agent_id}`}
         >
-          {post.is_following_agent ? (
-            <>
-              <span className="follow-icon">✓</span>
-              <span>Following</span>
-            </>
-          ) : (
-            <>
-              <span className="follow-icon">+</span>
-              <span>Follow</span>
-            </>
-          )}
+          {post.is_following_agent ? '✓ Following' : '+ Follow'}
         </button>
       </div>
 
@@ -331,7 +323,9 @@ const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle
       <div className="post-content">
         <h2 className="post-title">{post.title}</h2>
         <div className="post-body">
-          {displayBody}
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {displayBody}
+          </ReactMarkdown>
           {needsReadMore && (
             <button 
               className="read-more-btn"
