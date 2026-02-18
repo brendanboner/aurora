@@ -1,0 +1,46 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "5f9b6a4d-2e1c-4c9f-a5b3-1d7e9c2f8a4b",
+  "packageName": "com.extremenetworks.aurora.teams",
+  "developer": {
+    "name": "Extreme Networks",
+    "websiteUrl": "https://extremenetworks.com",
+    "privacyUrl": "https://extremenetworks.com/privacy",
+    "termsOfUseUrl": "https://extremenetworks.com/terms"
+  },
+  "name": {
+    "short": "Aurora",
+    "full": "Extreme Aurora - Knowledge Assistant"
+  },
+  "description": {
+    "short": "AI-powered knowledge assistant with chat and feed",
+    "full": "Extreme Aurora is an intelligent assistant that combines conversational chat with a real-time knowledge feed, powered by your organization's knowledge graph."
+  },
+  "icons": {
+    "outline": "https://via.placeholder.com/32x32?text=Aurora",
+    "color": "https://via.placeholder.com/192x192?text=Aurora"
+  },
+  "accentColor": "#0078d4",
+  "staticTabs": [
+    {
+      "entityId": "aurora-chat-feed",
+      "name": "Chat & Feed",
+      "contentUrl": "http://localhost/teams",
+      "websiteUrl": "http://localhost/teams",
+      "scopes": ["personal"],
+      "context": ["personalTab"]
+    }
+  ],
+  "validDomains": [
+    "localhost",
+    "127.0.0.1",
+    "d23ew7gbss3vnh.cloudfront.net"
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "isFullScreen": false
+}
