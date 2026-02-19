@@ -2,7 +2,8 @@
 
 import logging
 import io
-from typing import Optional
+from typing import Optional, Dict
+from .xlsx_optimizer import XLSXOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -15,38 +16,92 @@ class DocumentParser:
     - PDF (.pdf)
     - Word Documents (.docx)
     - PowerPoint (.pptx)
-    - Excel (.xlsx)
+    - Excel (.xlsx) - with intelligent optimization for attendance sheets
     - Plain Text (.txt)
     - Markdown (.md)
     """
     
-    def parse(self, content: bytes, filename: str) -> str:
+    def __init__(self, optimize_xlsx: bool = True, enable_delta_detection: bool = True):
+        """
+        Initialize document parser.
+        
+        Args:
+            optimize_xlsx: Enable smart XLSX processing (reduces token usage)
+            enable_delta_detection: Enable delta detection for similar documents
+        """
+        self.optimize_xlsx = optimize_xlsx
+        self.xlsx_optimizer = XLSXOptimizer(enable_delta_detection=enable_delta_detection) if optimize_xlsx else None
+    
+    def extract_content(self, content: bytes, extension: str, url: Optional[str] = None) -> str:
+        """
+        Extract text content from a document (legacy method for backwards compatibility).
+        
+        Args:
+            content: Raw file bytes
+            extension: File extension (with or without dot)
+            url: Optional source URL (for delta detection)
+            
+        Returns:
+            Extracted text content as string
+        """
+        try:
+            # Normalize extension
+            ext = extension.lstrip('.')
+            filename = f"document.{ext}"
+            
+            # Use parse method and extract text
+            result = self.parse(content, filename, url)
+            
+            # For XLSX with summary, prefer summary for LLM context
+            if result.get('is_attendance') and result.get('summary'):
+                logger.info(f"Using optimized summary for attendance XLSX (token reduction)")
+                return result['summary']
+            
+            return result.get('text', '')
+        except Exception as e:
+            logger.error(f"Error in extract_content for {extension}: {e}", exc_info=True)
+            # Return empty string rather than raising, to prevent redelivery loops
+            return ""
+    
+    def parse(self, content: bytes, filename: str, url: Optional[str] = None) -> Dict[str, any]:
         """
         Extract text content from a document.
         
         Args:
             content: Raw file bytes
             filename: Original filename (used to determine format)
+            url: Optional source URL (for delta detection)
             
         Returns:
-            Extracted text content
+            Dict with 'text' and optional 'metadata', 'summary', 'delta'
         """
         ext = filename.lower().split('.')[-1] if '.' in filename else ''
         
         try:
             if ext == 'pdf':
-                return self._parse_pdf(content)
+                text = self._parse_pdf(content)
+                return {'text': text, 'metadata': {'type': 'pdf'}}
             elif ext == 'docx':
-                return self._parse_docx(content)
+                text = self._parse_docx(content)
+                return {'text': text, 'metadata': {'type': 'docx'}}
             elif ext == 'pptx':
-                return self._parse_pptx(content)
+                text = self._parse_pptx(content)
+                return {'text': text, 'metadata': {'type': 'pptx'}}
             elif ext == 'xlsx':
-                return self._parse_xlsx(content)
+                if self.optimize_xlsx:
+                    # Use optimized XLSX processing
+                    return self.xlsx_optimizer.parse_smart(content, filename, url)
+                else:
+                    # Fallback to standard extraction
+                    text = self._parse_xlsx(content)
+                    return {'text': text, 'metadata': {'type': 'xlsx'}}
             elif ext in ('txt', 'md'):
-                return self._parse_text(content)
+                text = self._parse_text(content)
+                return {'text': text, 'metadata': {'type': ext}}
             else:
                 logger.warning(f"Unknown file extension: {ext}, treating as text")
-                return self._parse_text(content)
+                text = self._parse_text(content)
+                return {'text': text, 'metadata': {'type': 'unknown'}}
         except Exception as e:
             logger.error(f"Error parsing {filename}: {e}")
             raise ValueError(f"Failed to parse document: {e}")

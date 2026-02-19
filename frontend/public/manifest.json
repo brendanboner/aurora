@@ -11,10 +11,12 @@
     "termsOfUseUrl": "https://extremenetworks.com/terms"
   },
   "name": {
-    "short": "Aurora"
+    "short": "Aurora",
+    "full": "Extreme Aurora - Knowledge Assistant"
   },
   "description": {
-    "short": "AI-powered knowledge assistant"
+    "short": "AI-powered knowledge assistant with chat and feed",
+    "full": "Extreme Aurora is an intelligent assistant that combines conversational chat with a real-time knowledge feed, powered by your organization's knowledge graph."
   },
   "icons": {
     "outline": "icon-outline.png",
@@ -26,9 +28,9 @@
       "entityId": "aurora-chat-feed",
       "name": "Chat & Feed",
       "contentUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams",
-      "scopes": [
-        "team"
-      ]
+      "websiteUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams",
+      "scopes": ["team"],
+      "context": ["teamTab"]
     }
   ],
   "validDomains": [
@@ -36,5 +38,6 @@
   ],
   "permissions": [
     "identity"
-  ]
+  ],
+  "isFullScreen": false
 }
