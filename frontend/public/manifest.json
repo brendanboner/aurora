@@ -29,8 +29,8 @@
       "name": "Chat & Feed",
       "contentUrl": "http://localhost/teams",
       "websiteUrl": "http://localhost/teams",
-      "scopes": ["personal"],
-      "context": ["personalTab"]
+      "scopes": ["team"],
+      "context": ["teamTab"]
     }
   ],
   "validDomains": [
@@ -39,8 +39,7 @@
     "d23ew7gbss3vnh.cloudfront.net"
   ],
   "permissions": [
-    "identity",
-    "messageTeamMembers"
+    "identity"
   ],
   "isFullScreen": false
 }

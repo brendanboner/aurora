@@ -1,5 +1,6 @@
 /**
  * Teams Tab Styles
+ * ALL selectors are namespaced under .teams-tab to prevent bleeding into main chat
  * Responsive layout: Chat + Feed side-by-side on desktop, stacked on mobile
  */
 
@@ -22,7 +23,7 @@
 }
 
 /* Connection Status Indicator */
-.connection-status {
+.teams-tab .connection-status {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -34,30 +35,30 @@
   height: 32px;
 }
 
-.connection-status.connected {
+.teams-tab .connection-status.connected {
   background-color: #deeff8;
   color: #107c10;
 }
 
-.connection-status.disconnected {
+.teams-tab .connection-status.disconnected {
   background-color: #fef3cd;
   color: #ffb900;
 }
 
-.status-dot {
+.teams-tab .status-dot {
   display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background-color: currentColor;
-  animation: pulse 2s infinite;
+  animation: teams-pulse 2s infinite;
 }
 
-.connection-status.disconnected .status-dot {
+.teams-tab .connection-status.disconnected .status-dot {
   animation: none;
 }
 
-@keyframes pulse {
+@keyframes teams-pulse {
   0%, 100% {
     opacity: 1;
   }
@@ -67,7 +68,7 @@
 }
 
 /* Main Container */
-.teams-tab-container {
+.teams-tab .teams-tab-container {
   display: flex;
   flex: 1;
   gap: 0;
@@ -76,8 +77,8 @@
 }
 
 /* Section Base Styles */
-.chat-section,
-.feed-section {
+.teams-tab .chat-section,
+.teams-tab .feed-section {
   display: flex;
   flex-direction: column;
   border-right: 1px solid #e1dfdd;
@@ -85,17 +86,17 @@
   min-height: 0;
 }
 
-.feed-section {
+.teams-tab .feed-section {
   border-right: none;
   flex: 1;
 }
 
-.chat-section {
+.teams-tab .chat-section {
   flex: 1;
 }
 
 /* Section Header */
-.section-header {
+.teams-tab .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -105,7 +106,7 @@
   flex-shrink: 0;
 }
 
-.section-header h2 {
+.teams-tab .section-header h2 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -115,7 +116,7 @@
   gap: 8px;
 }
 
-.unread-badge {
+.teams-tab .unread-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -129,13 +130,13 @@
   font-weight: 700;
 }
 
-.backend-status,
-.refresh-button {
+.teams-tab .backend-status,
+.teams-tab .refresh-button {
   font-size: 14px;
   cursor: pointer;
 }
 
-.refresh-button {
+.teams-tab .refresh-button {
   background: none;
   border: none;
   color: #0078d4;
@@ -146,12 +147,12 @@
   transition: all 0.2s ease;
 }
 
-.refresh-button:hover {
+.teams-tab .refresh-button:hover {
   background-color: #e7e5e4;
 }
 
 /* Messages List */
-.messages-list {
+.teams-tab .messages-list {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -161,24 +162,24 @@
   gap: 8px;
 }
 
-.messages-list::-webkit-scrollbar {
+.teams-tab .messages-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.messages-list::-webkit-scrollbar-track {
+.teams-tab .messages-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.messages-list::-webkit-scrollbar-thumb {
+.teams-tab .messages-list::-webkit-scrollbar-thumb {
   background: #d2d0ce;
   border-radius: 4px;
 }
 
-.messages-list::-webkit-scrollbar-thumb:hover {
+.teams-tab .messages-list::-webkit-scrollbar-thumb:hover {
   background: #c8c6c4;
 }
 
-.empty-state {
+.teams-tab .empty-state {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -188,13 +189,13 @@
   padding: 16px;
 }
 
-.empty-state p {
+.teams-tab .empty-state p {
   margin: 0;
   font-size: 14px;
 }
 
 /* Message Styles */
-.message {
+.teams-tab .message {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -205,21 +206,21 @@
   line-height: 1.5;
 }
 
-.message.message-user {
+.teams-tab .message.message-user {
   align-self: flex-end;
   background-color: #0078d4;
   color: #fff;
   max-width: 85%;
 }
 
-.message.message-assistant {
+.teams-tab .message.message-assistant {
   align-self: flex-start;
   background-color: #f3f2f1;
   color: #333;
   max-width: 85%;
 }
 
-.message.message-system {
+.teams-tab .message.message-system {
   align-self: center;
   background-color: #fff4ce;
   color: #333;
@@ -227,33 +228,33 @@
   border: 1px solid #ffb900;
 }
 
-.message-header {
+.teams-tab .message-header {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
 }
 
-.message-author {
+.teams-tab .message-author {
   font-weight: 600;
 }
 
-.message-time {
+.teams-tab .message-time {
   font-size: 11px;
   opacity: 0.7;
 }
 
-.message.message-user .message-author,
-.message.message-user .message-time {
+.teams-tab .message.message-user .message-author,
+.teams-tab .message.message-user .message-time {
   color: rgba(255, 255, 255, 0.8);
 }
 
-.message-content {
+.teams-tab .message-content {
   word-break: break-word;
   white-space: pre-wrap;
 }
 
-.message-sources {
+.teams-tab .message-sources {
   font-size: 11px;
   opacity: 0.7;
   margin-top: 4px;
@@ -262,7 +263,7 @@
 }
 
 /* Chat Input Form */
-.chat-input-form {
+.teams-tab .chat-input-form {
   display: flex;
   gap: 8px;
   padding: 12px;
@@ -271,7 +272,7 @@
   flex-shrink: 0;
 }
 
-.chat-input {
+.teams-tab .chat-input {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid #d2d0ce;
@@ -282,18 +283,18 @@
   transition: all 0.2s ease;
 }
 
-.chat-input:focus {
+.teams-tab .chat-input:focus {
   border-color: #0078d4;
   box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
 }
 
-.chat-input:disabled {
+.teams-tab .chat-input:disabled {
   background-color: #f3f2f1;
   color: #999;
   cursor: not-allowed;
 }
 
-.send-button {
+.teams-tab .send-button {
   padding: 8px 16px;
   background-color: #0078d4;
   color: #fff;
@@ -306,22 +307,22 @@
   flex-shrink: 0;
 }
 
-.send-button:hover:not(:disabled) {
+.teams-tab .send-button:hover:not(:disabled) {
   background-color: #106ebe;
 }
 
-.send-button:active:not(:disabled) {
+.teams-tab .send-button:active:not(:disabled) {
   background-color: #0b57a4;
 }
 
-.send-button:disabled {
+.teams-tab .send-button:disabled {
   background-color: #d2d0ce;
   color: #999;
   cursor: not-allowed;
 }
 
 /* Feed Section */
-.feed-list {
+.teams-tab .feed-list {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -331,24 +332,24 @@
   gap: 12px;
 }
 
-.feed-list::-webkit-scrollbar {
+.teams-tab .feed-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.feed-list::-webkit-scrollbar-track {
+.teams-tab .feed-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.feed-list::-webkit-scrollbar-thumb {
+.teams-tab .feed-list::-webkit-scrollbar-thumb {
   background: #d2d0ce;
   border-radius: 4px;
 }
 
-.feed-list::-webkit-scrollbar-thumb:hover {
+.teams-tab .feed-list::-webkit-scrollbar-thumb:hover {
   background: #c8c6c4;
 }
 
-.feed-item {
+.teams-tab .feed-item {
   padding: 12px;
   background-color: #f3f2f1;
   border: 1px solid #d2d0ce;
@@ -359,29 +360,29 @@
   transition: all 0.2s ease;
 }
 
-.feed-item:hover {
+.teams-tab .feed-item:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-color: #d2d0ce;
 }
 
-.feed-item-header {
+.teams-tab .feed-item-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.feed-author {
+.teams-tab .feed-author {
   font-weight: 600;
   font-size: 13px;
   color: #333;
 }
 
-.feed-time {
+.teams-tab .feed-time {
   font-size: 12px;
   color: #999;
 }
 
-.feed-title {
+.teams-tab .feed-title {
   font-weight: 600;
   font-size: 14px;
   color: #333;
@@ -389,7 +390,7 @@
   line-height: 1.4;
 }
 
-.feed-content {
+.teams-tab .feed-content {
   font-size: 13px;
   line-height: 1.5;
   color: #333;
@@ -398,33 +399,33 @@
 }
 
 /* Markdown rendering styles for feed content */
-.feed-content p {
+.teams-tab .feed-content p {
   margin: 8px 0;
   line-height: 1.5;
 }
 
-.feed-content a {
+.teams-tab .feed-content a {
   color: #0078d4;
   text-decoration: none;
   cursor: pointer;
 }
 
-.feed-content a:hover {
+.teams-tab .feed-content a:hover {
   text-decoration: underline;
 }
 
-.feed-content strong,
-.feed-content b {
+.teams-tab .feed-content strong,
+.teams-tab .feed-content b {
   font-weight: 600;
   color: #333;
 }
 
-.feed-content em,
-.feed-content i {
+.teams-tab .feed-content em,
+.teams-tab .feed-content i {
   font-style: italic;
 }
 
-.feed-content code {
+.teams-tab .feed-content code {
   background-color: #f3f2f1;
   padding: 2px 4px;
   border-radius: 2px;
@@ -432,30 +433,30 @@
   font-size: 12px;
 }
 
-.feed-content ul,
-.feed-content ol {
+.teams-tab .feed-content ul,
+.teams-tab .feed-content ol {
   margin: 8px 0;
   padding-left: 20px;
 }
 
-.feed-content li {
+.teams-tab .feed-content li {
   margin: 4px 0;
 }
 
-.feed-content blockquote {
+.teams-tab .feed-content blockquote {
   border-left: 3px solid #d2d0ce;
   padding-left: 12px;
   margin: 8px 0;
   color: #666;
 }
 
-.feed-actions {
+.teams-tab .feed-actions {
   display: flex;
   gap: 12px;
   margin-top: 4px;
 }
 
-.feed-action {
+.teams-tab .feed-action {
   padding: 4px 8px;
   background-color: transparent;
   border: 1px solid #e1dfdd;
@@ -467,12 +468,12 @@
   white-space: nowrap;
 }
 
-.feed-action:hover {
+.teams-tab .feed-action:hover {
   background-color: #f3f2f1;
   border-color: #d2d0ce;
 }
 
-.feed-action.liked {
+.teams-tab .feed-action.liked {
   background-color: #e7f6ff;
   border-color: #0078d4;
   color: #106ebe;
@@ -480,69 +481,69 @@
 
 /* Mobile Responsive */
 @media (max-width: 1024px) {
-  .teams-tab-container {
+  .teams-tab .teams-tab-container {
     flex-direction: column;
   }
 
-  .chat-section,
-  .feed-section {
+  .teams-tab .chat-section,
+  .teams-tab .feed-section {
     flex: 1;
     border-right: none;
     border-bottom: 1px solid #e1dfdd;
     min-height: 300px;
   }
 
-  .feed-section {
+  .teams-tab .feed-section {
     border-bottom: none;
   }
 }
 
 @media (max-width: 768px) {
-  .teams-tab-container {
+  .teams-tab .teams-tab-container {
     flex-direction: column;
   }
 
-  .chat-section,
-  .feed-section {
+  .teams-tab .chat-section,
+  .teams-tab .feed-section {
     min-height: 400px;
   }
 
-  .message.message-user,
-  .message.message-assistant,
-  .message.message-system {
+  .teams-tab .message.message-user,
+  .teams-tab .message.message-assistant,
+  .teams-tab .message.message-system {
     max-width: 95%;
   }
 
-  .section-header h2 {
+  .teams-tab .section-header h2 {
     font-size: 14px;
   }
 
-  .chat-input {
+  .teams-tab .chat-input {
     font-size: 16px; /* Prevents zoom on iOS */
   }
 }
 
 @media (max-width: 480px) {
-  .chat-section,
-  .feed-section {
+  .teams-tab .chat-section,
+  .teams-tab .feed-section {
     min-height: 300px;
   }
 
-  .chat-input-form {
+  .teams-tab .chat-input-form {
     padding: 8px;
     gap: 6px;
   }
 
-  .chat-input,
-  .send-button {
+  .teams-tab .chat-input,
+  .teams-tab .send-button {
     font-size: 14px;
   }
 
-  .message-header {
+  .teams-tab .message-header {
     font-size: 11px;
   }
 
-  .message-content {
+  .teams-tab .message-content {
     font-size: 13px;
   }
 }
