@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "5f9b6a4d-2e1c-4c9f-a5b3-1d7e9c2f8a4b",
+  "packageName": "com.extremenetworks.aurora.teams",
+  "developer": {
+    "name": "Extreme Networks",
+    "websiteUrl": "https://extremenetworks.com",
+    "privacyUrl": "https://extremenetworks.com/privacy",
+    "termsOfUseUrl": "https://extremenetworks.com/terms"
+  },
+  "name": {
+    "short": "Aurora"
+  },
+  "description": {
+    "short": "AI-powered knowledge assistant"
+  },
+  "icons": {
+    "outline": "icon-outline.png",
+    "color": "icon-color.png"
+  },
+  "accentColor": "#0078d4",
+  "staticTabs": [
+    {
+      "entityId": "aurora-chat-feed",
+      "name": "Chat & Feed",
+      "contentUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams",
+      "scopes": [
+        "team"
+      ]
+    }
+  ],
+  "validDomains": [
+    "d23ew7gbss3vnh.cloudfront.net"
+  ],
+  "permissions": [
+    "identity"
+  ]
+}
