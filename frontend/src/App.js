@@ -27,10 +27,14 @@ import DocumentUpload from './pages/DocumentUpload';
 import MyDocuments from './pages/MyDocuments';
 import UserGuide from './pages/UserGuide';
 import SubmitFeedback from './pages/SubmitFeedback';
+import TeamsTab from './pages/TeamsTab';
 import { testBackendConnection } from './services/api';
 
 // Pages that should have no padding in the page-container
 const NO_PADDING_ROUTES = ['/documents'];
+
+// Routes that should not have header/sidebar (full-screen pages)
+const FULL_SCREEN_ROUTES = ['/teams'];
 
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
@@ -82,11 +86,22 @@ function App() {
 function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
   const location = useLocation();
   const noPadding = NO_PADDING_ROUTES.includes(location.pathname);
+  const isFullScreen = FULL_SCREEN_ROUTES.includes(location.pathname);
 
   return (
     <div className="App">
       <Routes>
-        {/* All routes are protected - unauthenticated users redirect to Cognito */}
+        {/* Teams Tab - Full screen, no header/sidebar */}
+        <Route
+          path="/teams"
+          element={
+            <ProtectedRoute>
+              <TeamsTab backendStatus={backendStatus} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* All other routes are protected - unauthenticated users redirect to Cognito */}
         <Route
           path="/*"
           element={
