@@ -19,23 +19,21 @@
     "full": "Extreme Aurora is an intelligent assistant that combines conversational chat with a real-time knowledge feed, powered by your organization's knowledge graph."
   },
   "icons": {
-    "outline": "https://via.placeholder.com/32x32?text=Aurora",
-    "color": "https://via.placeholder.com/192x192?text=Aurora"
+    "outline": "icon-outline.png",
+    "color": "icon-color.png"
   },
   "accentColor": "#0078d4",
   "staticTabs": [
     {
       "entityId": "aurora-chat-feed",
       "name": "Chat & Feed",
-      "contentUrl": "http://localhost/teams",
-      "websiteUrl": "http://localhost/teams",
+      "contentUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams",
+      "websiteUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams",
       "scopes": ["team"],
       "context": ["teamTab"]
     }
   ],
   "validDomains": [
-    "localhost",
-    "127.0.0.1",
     "d23ew7gbss3vnh.cloudfront.net"
   ],
   "permissions": [
