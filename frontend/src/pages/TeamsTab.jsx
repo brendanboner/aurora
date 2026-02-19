@@ -242,7 +242,11 @@ export const TeamsTab = ({ backendStatus = 'connected' }) => {
                       {new Date(msg.timestamp).toLocaleTimeString()}
                     </time>
                   </div>
-                  <div className="message-content">{msg.content}</div>
+                  <div className="message-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
                   {msg.metadata?.sources && (
                     <div className="message-sources">
                       Sources: {msg.metadata.sources.join(', ')}
