@@ -316,6 +316,22 @@ async def get_current_user(request: Request):
     return response
 
 
+@app.api_route("/teams/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def teams_placeholder(request: Request, path: str):
+    """
+    Placeholder endpoint for Microsoft Teams bot.
+    Returns 503 since teams-agent is not deployed in production.
+    This prevents nginx 403 errors and provides a proper HTTP response.
+    """
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Teams bot service is not currently deployed",
+            "path": f"/teams/{path}"
+        }
+    )
+
+
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy_to_services(request: Request, path: str):
     """
