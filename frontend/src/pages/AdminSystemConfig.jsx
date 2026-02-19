@@ -1,15 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './AdminSystemConfig.css';
 
 const AdminSystemConfig = () => {
   const [configurations, setConfigurations] = useState([]);
+  const [scraperStatus, setScraperStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editingConfig, setEditingConfig] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [hoveredFolder, setHoveredFolder] = useState(null);
+  const [folderPosition, setFolderPosition] = useState({ x: 0, y: 0 });
+  const [hoveredUrl, setHoveredUrl] = useState(null);
+  const [urlPosition, setUrlPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     fetchConfigurations();
+    fetchScraperStatus();
+    
+    // Poll for status updates every 5 seconds
+    const interval = setInterval(() => {
+      fetchScraperStatus();
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const fetchConfigurations = async () => {
@@ -28,6 +41,19 @@ const AdminSystemConfig = () => {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchScraperStatus = async () => {
+    try {
+      const response = await fetch('/api/retriever/status');
+      if (!response.ok) {
+        throw new Error('Failed to fetch scraper status');
+      }
+      const data = await response.json();
+      setScraperStatus(data);
+    } catch (err) {
+      console.error('Error fetching scraper status:', err);
     }
   };
 
@@ -75,6 +101,56 @@ const AdminSystemConfig = () => {
     }
   };
 
+  const handleTriggerScraper = async (datasourceId, datasourceName) => {
+    try {
+      const response = await fetch(`/api/retriever/scrape/datasource/${datasourceId}`, {
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error('Failed to trigger scraper');
+      const data = await response.json();
+      if (data.status === 'started') {
+        alert(`✅ Scraper started for ${datasourceName || datasourceId}`);
+        // Refresh status immediately
+        fetchScraperStatus();
+      } else {
+        alert(`⚠️ ${data.message}`);
+      }
+    } catch (err) {
+      alert('❌ Error triggering scraper: ' + err.message);
+    }
+  };
+
+  const isScraperRunning = (datasourceId) => {
+    if (!scraperStatus || !scraperStatus.active_scrapes) return false;
+    // Check if this datasource is in active scrapes
+    // This is a simplified check - we'd need the backend to provide more detail
+    return scraperStatus.active_scrapes > 0;
+  };
+
+  const handleShowFolders = (config, event) => {
+    if (config.folders && config.folders.length > 0) {
+      setHoveredFolder(config);
+      const rect = event.target.getBoundingClientRect();
+      setFolderPosition({ x: rect.left, y: rect.bottom + 5 });
+    }
+  };
+
+  const handleHideFolders = () => {
+    setHoveredFolder(null);
+  };
+
+  const handleShowUrl = (url, event) => {
+    if (url) {
+      setHoveredUrl(url);
+      const rect = event.target.getBoundingClientRect();
+      setUrlPosition({ x: rect.left, y: rect.bottom + 5 });
+    }
+  };
+
+  const handleHideUrl = () => {
+    setHoveredUrl(null);
+  };
+
   const handlePurgeQueue = async () => {
     if (!window.confirm('⚠️ WARNING: This will delete ALL pending documents in the queue!\n\nAre you sure you want to purge the queue?')) return;
     
@@ -87,23 +163,6 @@ const AdminSystemConfig = () => {
       alert(`✅ Successfully purged ${data.messages_purged} messages from the queue`);
     } catch (err) {
       alert('❌ Error purging queue: ' + err.message);
-    }
-  };
-
-  const handleTriggerScraper = async (datasourceId, datasourceName) => {
-    try {
-      const response = await fetch(`/api/retriever/scrape/datasource/${datasourceId}`, {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to trigger scraper');
-      const data = await response.json();
-      if (data.status === 'started') {
-        alert(`✅ Scraper started for ${datasourceName || datasourceId}`);
-      } else {
-        alert(`⚠️ ${data.message}`);
-      }
-    } catch (err) {
-      alert('❌ Error triggering scraper: ' + err.message);
     }
   };
 
@@ -155,174 +214,204 @@ const AdminSystemConfig = () => {
   return (
     <div className="admin-system-config">
       <div className="config-header">
-        <h2>System Configuration</h2>
+        <div>
+          <h2>Scraper Management</h2>
+          <div className="status-badges">
+            {scraperStatus && (
+              <>
+                <span className="status-badge">
+                  <span className={`status-indicator ${scraperStatus.active_scrapes > 0 ? 'active' : ''}`}></span>
+                  {scraperStatus.active_scrapes} Active
+                </span>
+                <span className="status-badge">
+                  <span className="status-indicator total"></span>
+                  {scraperStatus.total_datasources || configurations.length} Total
+                </span>
+                <span className="status-badge">
+                  <span className="status-indicator today"></span>
+                  {scraperStatus.total_scrapes_today || 0} Today
+                </span>
+              </>
+            )}
+          </div>
+        </div>
         <div className="header-actions">
           <button className="btn-scrape-all" onClick={handleScrapeAllSources}>
-            Scrape All Sources
+            ▶ Scrape All
           </button>
           <button className="btn-purge" onClick={handlePurgeQueue}>
-            Purge Queue
+            🗑 Purge Queue
           </button>
           <button className="btn-create" onClick={() => setShowCreateForm(true)}>
-            + New Configuration
+            + New Scraper
           </button>
         </div>
       </div>
 
       {showCreateForm && (
-        <ConfigForm
-          onSubmit={handleCreate}
-          onCancel={() => setShowCreateForm(false)}
-        />
+        <div className="modal-overlay" onClick={() => setShowCreateForm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <ConfigForm
+              onSubmit={handleCreate}
+              onCancel={() => setShowCreateForm(false)}
+            />
+          </div>
+        </div>
       )}
 
-      <div className="config-list">
+      {editingConfig && (
+        <div className="modal-overlay" onClick={() => setEditingConfig(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <ConfigForm
+              config={configurations.find(c => c.datasource_id === editingConfig)}
+              onSubmit={(data) => handleUpdate(editingConfig, data)}
+              onCancel={() => setEditingConfig(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {hoveredFolder && (
+        <div 
+          className="folder-modal"
+          style={{ 
+            left: `${folderPosition.x}px`, 
+            top: `${folderPosition.y}px` 
+          }}
+        >
+          <div className="folder-modal-header">Allowed Folders</div>
+          <ul className="folder-modal-list">
+            {hoveredFolder.folders.map((folder, idx) => (
+              <li key={idx}>{folder}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {hoveredUrl && (
+        <div 
+          className="url-modal"
+          style={{ 
+            left: `${urlPosition.x}px`, 
+            top: `${urlPosition.y}px` 
+          }}
+        >
+          <div className="url-modal-header">Resource URL</div>
+          <div className="url-modal-content">{hoveredUrl}</div>
+        </div>
+      )}
+
+      <div className="scrapers-table-container">
         {configurations.length === 0 ? (
-          <p className="no-configs">No configurations found. Create your first configuration above.</p>
+          <p className="no-configs">No scrapers configured. Create your first scraper above.</p>
         ) : (
-          configurations.map((config) => (
-            <div key={config.datasource_id} className="config-card">
-              {editingConfig === config.datasource_id ? (
-                <ConfigForm
-                  config={config}
-                  onSubmit={(data) => handleUpdate(config.datasource_id, data)}
-                  onCancel={() => setEditingConfig(null)}
-                />
-              ) : (
-                <ConfigDisplay
-                  config={config}
-                  onEdit={() => setEditingConfig(config.datasource_id)}
-                  onDelete={() => handleDelete(config.datasource_id)}
-                  onTriggerScraper={() => handleTriggerScraper(config.datasource_id, config.name)}
-                />
-              )}
-            </div>
-          ))
+          <table className="scrapers-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Auto Start</th>
+                <th>Last Run</th>
+                <th>Info</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {configurations.map((config) => {
+                const hasScraperType = !!config.scraper_type;
+                const isCausewayDatasource = config.scraper_type === 'wfa_causeway';
+                const hasFolders = isCausewayDatasource && config.folders && config.folders.length > 0;
+                const running = isScraperRunning(config.datasource_id);
+                
+                return (
+                  <tr key={config.datasource_id} className={running ? 'running' : ''}>
+                    <td className="name-cell">
+                      <div className="name-wrapper">
+                        <span className="config-name">{config.name}</span>
+                        <span className="config-id">{config.datasource_id}</span>
+                      </div>
+                    </td>
+                    <td>
+                      {config.scraper_type ? (
+                        <span 
+                          className={`type-badge ${config.scraper_type} ${config.resource_url ? 'has-url' : ''}`}
+                          onMouseEnter={(e) => config.resource_url && handleShowUrl(config.resource_url, e)}
+                          onMouseLeave={handleHideUrl}
+                          title={config.resource_url ? 'Hover to see URL' : ''}
+                        >
+                          {config.scraper_type}
+                        </span>
+                      ) : (
+                        <em className="no-type">Manual</em>
+                      )}
+                    </td>
+                    <td className="center-cell">
+                      {config.run_on_startup ? (
+                        <span className="auto-yes">✓</span>
+                      ) : (
+                        <span className="auto-no">—</span>
+                      )}
+                    </td>
+                    <td className="last-run-cell">
+                      {config.last_scraped_at ? (
+                        <span className="last-run-time">
+                          {new Date(config.last_scraped_at).toLocaleString()}
+                        </span>
+                      ) : (
+                        <em className="never-run">Never</em>
+                      )}
+                    </td>
+                    <td className="center-cell">
+                      {hasFolders && (
+                        <button
+                          className="btn-info"
+                          onMouseEnter={(e) => handleShowFolders(config, e)}
+                          onMouseLeave={handleHideFolders}
+                          title="View allowed folders"
+                        >
+                          ⓘ
+                        </button>
+                      )}
+                    </td>
+                    <td className="actions-cell">
+                      <div className="action-buttons">
+                        {hasScraperType && (
+                          <button
+                            className={`btn-action ${running ? 'btn-stop' : 'btn-run'}`}
+                            onClick={() => handleTriggerScraper(config.datasource_id, config.name)}
+                            title={running ? 'Stop scraper' : 'Run scraper'}
+                            disabled={running}
+                          >
+                            {running ? '⏸ Stop' : '▶ Run'}
+                          </button>
+                        )}
+                        <button
+                          className="btn-action btn-edit"
+                          onClick={() => setEditingConfig(config.datasource_id)}
+                          title="Edit configuration"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className="btn-action btn-delete"
+                          onClick={() => handleDelete(config.datasource_id)}
+                          title="Delete configuration"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
   );
 };
 
-const ConfigDisplay = ({ config, onEdit, onDelete, onTriggerScraper }) => {
-  // Check if this is a Causeway datasource
-  const isCausewayDatasource = config.scraper_type === 'wfa_causeway';
-  const hasScraperType = !!config.scraper_type;
-  
-  return (
-    <div className="config-display">
-      <div className="config-header-row">
-        <h3>{config.datasource_id}</h3>
-        <div className="config-actions">
-          {hasScraperType && (
-            <button className="btn-run" onClick={onTriggerScraper} title="Run scraper now">
-            Run
-            </button>
-          )}
-          <button className="btn-edit" onClick={onEdit}>Edit</button>
-          <button className="btn-delete" onClick={onDelete}>Delete</button>
-        </div>
-      </div>
-      
-      <div className="config-details">
-        <div className="config-row">
-          <span className="label">Name:</span>
-          <span className="value">{config.name}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Scraper Type:</span>
-          <span className="value">{config.scraper_type || <em>None (manual only)</em>}</span>
-        </div>
-        {config.resource_url && (
-          <div className="config-row">
-            <span className="label">Resource URL:</span>
-            <span className="value">{config.resource_url}</span>
-          </div>
-        )}
-        <div className="config-row">
-          <span className="label">Schedule:</span>
-          <span className="value">
-            {config.scrape_schedule ? (
-              <code>{config.scrape_schedule}</code>
-            ) : (
-              <em>Manual only</em>
-            )}
-          </span>
-        </div>
-        <div className="config-row">
-          <span className="label">Run on Startup:</span>
-          <span className="value">{config.run_on_startup ? 'Yes' : 'No'}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Check Content Hash:</span>
-          <span className="value">{config.check_content_hash ? 'Yes' : 'No'}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Publish Weight:</span>
-          <span className="value">{config.publish_weight?.toFixed(2) ?? '1.00'}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Update Weight:</span>
-          <span className="value">{config.update_weight?.toFixed(2) ?? '0.80'}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Event Weight:</span>
-          <span className="value">{config.event_weight?.toFixed(2) ?? '0.90'}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Scraper Delay:</span>
-          <span className="value">{config.scraper_delay?.toFixed(2) ?? '0.50'}s</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Max Resources:</span>
-          <span className="value">{config.max_resources ?? 150}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Max Redirects:</span>
-          <span className="value">{config.max_redirects ?? 10}</span>
-        </div>
-        <div className="config-row">
-          <span className="label">Discovery Mode:</span>
-          <span className="value">
-            {config.discovery_mode === 'date_based' ? 'Date-based (Causeway)' : 'Incremental (URL check)'}
-          </span>
-        </div>
-        {config.discovery_mode === 'incremental' && (
-          <div className="config-row">
-            <span className="label">Consecutive Duplicates Limit:</span>
-            <span className="value">
-              {config.consecutive_duplicates_limit === 0 ? <em>Disabled</em> : config.consecutive_duplicates_limit ?? 5}
-            </span>
-          </div>
-        )}
-        {config.discovery_mode === 'incremental' && config.full_refresh_schedule && (
-          <div className="config-row">
-            <span className="label">Full Refresh Schedule:</span>
-            <span className="value"><code>{config.full_refresh_schedule}</code></span>
-          </div>
-        )}
-        {isCausewayDatasource && config.folders && config.folders.length > 0 && (
-          <div className="config-row">
-            <span className="label">Allowed Folders:</span>
-            <span className="value">
-              <ul className="folder-list">
-                {config.folders.map((folder, idx) => (
-                  <li key={idx}>{folder}</li>
-                ))}
-              </ul>
-            </span>
-          </div>
-        )}
-        {config.last_scraped_at && (
-          <div className="config-row">
-            <span className="label">Last Scraped:</span>
-            <span className="value">{new Date(config.last_scraped_at).toLocaleString()}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 const ConfigForm = ({ config, onSubmit, onCancel }) => {
   const [formData, setFormData] = useState({
@@ -407,289 +496,298 @@ const ConfigForm = ({ config, onSubmit, onCancel }) => {
 
   return (
     <form className="config-form" onSubmit={handleSubmit}>
-      <div className="form-group">
-        <label htmlFor="datasource_id">Datasource ID:</label>
-        <input
-          type="text"
-          id="datasource_id"
-          name="datasource_id"
-          value={formData.datasource_id}
-          onChange={handleChange}
-          required
-          disabled={!!config}
-          placeholder="e.g., wfa_causeway_wifi7mtg"
-        />
-        <small className="form-hint">Unique identifier for this datasource configuration</small>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="name">Display Name:</label>
-        <input
-          type="text"
-          id="name"
-          name="name"
-          value={formData.name}
-          onChange={handleChange}
-          required
-          placeholder="e.g., Wi-Fi 7 MTG"
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="scraper_type">Scraper Type:</label>
-        <select
-          id="scraper_type"
-          name="scraper_type"
-          value={formData.scraper_type}
-          onChange={handleChange}
-        >
-          <option value="">None (manual only)</option>
-          <option value="wfa">WFA Public (wi-fi.org)</option>
-          <option value="wfa_causeway">WFA Causeway (authenticated)</option>
-        </select>
-        <small className="form-hint">Select the scraper to use for this datasource</small>
-      </div>
-
-      {formData.scraper_type && (
-        <div className="form-group">
-          <label htmlFor="resource_url">Resource URL Path:</label>
-          <input
-            type="text"
-            id="resource_url"
-            name="resource_url"
-            value={formData.resource_url}
-            onChange={handleChange}
-            placeholder={formData.scraper_type === 'wfa_causeway' ? 'e.g., /wg/WiFi7MTG/document' : 'e.g., /resource-center'}
-          />
-          <small className="form-hint">URL path to scrape (appended to base URL)</small>
-        </div>
-      )}
-
-      <div className="form-group">
-        <label htmlFor="scrape_schedule">Scrape Schedule (Cron):</label>
-        <input
-          type="text"
-          id="scrape_schedule"
-          name="scrape_schedule"
-          value={formData.scrape_schedule}
-          onChange={handleChange}
-          placeholder="e.g., 0 2 * * *"
-        />
-        <small className="form-hint">
-          Cron expression: minute hour day month weekday. Examples: "0 2 * * *" (2 AM daily), "0 */6 * * *" (every 6 hours). Leave empty for manual only.
-        </small>
-      </div>
-
-      <div className="form-group checkbox-group">
-        <label htmlFor="run_on_startup">
-          <input
-            type="checkbox"
-            id="run_on_startup"
-            name="run_on_startup"
-            checked={formData.run_on_startup}
-            onChange={handleChange}
-          />
-          Run on Startup
-        </label>
-        <small className="form-hint">Run immediately when retriever service starts</small>
-      </div>
-
-      <div className="form-group checkbox-group">
-        <label htmlFor="check_content_hash">
-          <input
-            type="checkbox"
-            id="check_content_hash"
-            name="check_content_hash"
-            checked={formData.check_content_hash}
-            onChange={handleChange}
-          />
-          Check Content Hash
-        </label>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="publish_weight">Publish Weight (0.0 - 1.0):</label>
-        <input
-          type="number"
-          id="publish_weight"
-          name="publish_weight"
-          value={formData.publish_weight}
-          onChange={handleChange}
-          min="0"
-          max="1"
-          step="0.1"
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="update_weight">Update Weight (0.0 - 1.0):</label>
-        <input
-          type="number"
-          id="update_weight"
-          name="update_weight"
-          value={formData.update_weight}
-          onChange={handleChange}
-          min="0"
-          max="1"
-          step="0.1"
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="event_weight">Event Weight (0.0 - 1.0):</label>
-        <input
-          type="number"
-          id="event_weight"
-          name="event_weight"
-          value={formData.event_weight}
-          onChange={handleChange}
-          min="0"
-          max="1"
-          step="0.1"
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="scraper_delay">Scraper Delay (seconds):</label>
-        <input
-          type="number"
-          id="scraper_delay"
-          name="scraper_delay"
-          value={formData.scraper_delay}
-          onChange={handleChange}
-          min="0"
-          max="10"
-          step="0.1"
-          required
-        />
-        <small className="form-hint">Time to wait between requests (e.g., 0.5 for public sites, 1.0 for authenticated)</small>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="max_resources">Max Resources per Scrape:</label>
-        <input
-          type="number"
-          id="max_resources"
-          name="max_resources"
-          value={formData.max_resources}
-          onChange={handleChange}
-          min="-1"
-          step="1"
-          required
-        />
-        <small className="form-hint">Maximum resources to scrape per run (-1 for unlimited)</small>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="max_redirects">Max Redirects:</label>
-        <input
-          type="number"
-          id="max_redirects"
-          name="max_redirects"
-          value={formData.max_redirects}
-          onChange={handleChange}
-          min="1"
-          max="50"
-          step="1"
-          required
-        />
-        <small className="form-hint">Maximum number of redirects to follow when resolving URLs</small>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="discovery_mode">Discovery Mode:</label>
-        <select
-          id="discovery_mode"
-          name="discovery_mode"
-          value={formData.discovery_mode}
-          onChange={handleChange}
-        >
-          <option value="incremental">Incremental (URL check)</option>
-          <option value="date_based">Date-based (modification dates)</option>
-        </select>
-        <small className="form-hint">
-          Incremental: stops after consecutive duplicate URLs. Date-based: uses folder/document mod dates (for Causeway).
-        </small>
-      </div>
-
-      {formData.discovery_mode === 'incremental' && (
-        <div className="form-group">
-          <label htmlFor="consecutive_duplicates_limit">Consecutive Duplicates Limit:</label>
-          <input
-            type="number"
-            id="consecutive_duplicates_limit"
-            name="consecutive_duplicates_limit"
-            value={formData.consecutive_duplicates_limit}
-            onChange={handleChange}
-            min="0"
-            step="1"
-          />
-          <small className="form-hint">
-            Stop pagination after this many consecutive duplicate URLs (0 = disabled, scrape all pages)
-          </small>
-        </div>
-      )}
-
-      {formData.discovery_mode === 'incremental' && (
-        <div className="form-group">
-          <label htmlFor="full_refresh_schedule">Full Refresh Schedule (Cron):</label>
-          <input
-            type="text"
-            id="full_refresh_schedule"
-            name="full_refresh_schedule"
-            value={formData.full_refresh_schedule}
-            onChange={handleChange}
-            placeholder="e.g., 0 2 * * 0"
-          />
-          <small className="form-hint">
-            Cron expression for periodic full refresh (ignores optimization, scrapes everything). Example: "0 2 * * 0" (Sunday 2 AM). Leave empty to disable.
-          </small>
-        </div>
-      )}
+      <h3 className="form-title">{config ? 'Edit Scraper Configuration' : 'Create New Scraper'}</h3>
       
-      {isCausewayDatasource && (
+      <div className="form-grid">
         <div className="form-group">
-          <label>Allowed Folders:</label>
-          <small className="form-hint">
-            Leave empty to scrape all folders. Add folder paths to restrict scraping.
-          </small>
-          <div className="folder-input-group">
+          <label htmlFor="datasource_id">Datasource ID:</label>
+          <input
+            type="text"
+            id="datasource_id"
+            name="datasource_id"
+            value={formData.datasource_id}
+            onChange={handleChange}
+            required
+            disabled={!!config}
+            placeholder="e.g., wfa_causeway_wifi7mtg"
+          />
+          <small className="form-hint">Unique identifier for this datasource configuration</small>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="name">Display Name:</label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            required
+            placeholder="e.g., Wi-Fi 7 MTG"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="scraper_type">Scraper Type:</label>
+          <select
+            id="scraper_type"
+            name="scraper_type"
+            value={formData.scraper_type}
+            onChange={handleChange}
+          >
+            <option value="">None (manual only)</option>
+            <option value="wfa">WFA Public (wi-fi.org)</option>
+            <option value="wfa_causeway">WFA Causeway (authenticated)</option>
+          </select>
+          <small className="form-hint">Select the scraper to use for this datasource</small>
+        </div>
+
+        {formData.scraper_type && (
+          <div className="form-group">
+            <label htmlFor="resource_url">Resource URL Path:</label>
             <input
               type="text"
-              value={folderInput}
-              onChange={(e) => setFolderInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddFolder())}
-              placeholder="e.g., Meeting Notes or Specs/Draft"
+              id="resource_url"
+              name="resource_url"
+              value={formData.resource_url}
+              onChange={handleChange}
+              placeholder={formData.scraper_type === 'wfa_causeway' ? 'e.g., /wg/WiFi7MTG/document' : 'e.g., /resource-center'}
             />
-            <button type="button" onClick={handleAddFolder} className="btn-add-folder">
-              Add
-            </button>
+            <small className="form-hint">URL path to scrape (appended to base URL)</small>
           </div>
-          {formData.folders.length > 0 && (
-            <ul className="folder-list-edit">
-              {formData.folders.map((folder, idx) => (
-                <li key={idx}>
-                  {folder}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveFolder(idx)}
-                    className="btn-remove-folder"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
+        )}
+
+        <div className="form-group">
+          <label htmlFor="scrape_schedule">Scrape Schedule (Cron):</label>
+          <input
+            type="text"
+            id="scrape_schedule"
+            name="scrape_schedule"
+            value={formData.scrape_schedule}
+            onChange={handleChange}
+            placeholder="e.g., 0 2 * * *"
+          />
+          <small className="form-hint">
+            Cron expression: minute hour day month weekday. Examples: "0 2 * * *" (2 AM daily), "0 */6 * * *" (every 6 hours). Leave empty for manual only.
+          </small>
+        </div>
+
+        <div className="form-group checkbox-group">
+          <label htmlFor="run_on_startup">
+            <input
+              type="checkbox"
+              id="run_on_startup"
+              name="run_on_startup"
+              checked={formData.run_on_startup}
+              onChange={handleChange}
+            />
+            Run on Startup
+          </label>
+          <small className="form-hint">Run immediately when retriever service starts</small>
+        </div>
+      </div>
+
+      <details className="advanced-section">
+        <summary>Advanced Settings</summary>
+        <div className="form-grid">
+          <div className="form-group checkbox-group">
+            <label htmlFor="check_content_hash">
+              <input
+                type="checkbox"
+                id="check_content_hash"
+                name="check_content_hash"
+                checked={formData.check_content_hash}
+                onChange={handleChange}
+              />
+              Check Content Hash
+            </label>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="publish_weight">Publish Weight (0.0 - 1.0):</label>
+            <input
+              type="number"
+              id="publish_weight"
+              name="publish_weight"
+              value={formData.publish_weight}
+              onChange={handleChange}
+              min="0"
+              max="1"
+              step="0.1"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="update_weight">Update Weight (0.0 - 1.0):</label>
+            <input
+              type="number"
+              id="update_weight"
+              name="update_weight"
+              value={formData.update_weight}
+              onChange={handleChange}
+              min="0"
+              max="1"
+              step="0.1"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="event_weight">Event Weight (0.0 - 1.0):</label>
+            <input
+              type="number"
+              id="event_weight"
+              name="event_weight"
+              value={formData.event_weight}
+              onChange={handleChange}
+              min="0"
+              max="1"
+              step="0.1"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="scraper_delay">Scraper Delay (seconds):</label>
+            <input
+              type="number"
+              id="scraper_delay"
+              name="scraper_delay"
+              value={formData.scraper_delay}
+              onChange={handleChange}
+              min="0"
+              max="10"
+              step="0.1"
+              required
+            />
+            <small className="form-hint">Time to wait between requests (e.g., 0.5 for public sites, 1.0 for authenticated)</small>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="max_resources">Max Resources per Scrape:</label>
+            <input
+              type="number"
+              id="max_resources"
+              name="max_resources"
+              value={formData.max_resources}
+              onChange={handleChange}
+              min="-1"
+              step="1"
+              required
+            />
+            <small className="form-hint">Maximum resources to scrape per run (-1 for unlimited)</small>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="max_redirects">Max Redirects:</label>
+            <input
+              type="number"
+              id="max_redirects"
+              name="max_redirects"
+              value={formData.max_redirects}
+              onChange={handleChange}
+              min="1"
+              max="50"
+              step="1"
+              required
+            />
+            <small className="form-hint">Maximum number of redirects to follow when resolving URLs</small>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="discovery_mode">Discovery Mode:</label>
+            <select
+              id="discovery_mode"
+              name="discovery_mode"
+              value={formData.discovery_mode}
+              onChange={handleChange}
+            >
+              <option value="incremental">Incremental (URL check)</option>
+              <option value="date_based">Date-based (modification dates)</option>
+            </select>
+            <small className="form-hint">
+              Incremental: stops after consecutive duplicate URLs. Date-based: uses folder/document mod dates (for Causeway).
+            </small>
+          </div>
+
+          {formData.discovery_mode === 'incremental' && (
+            <>
+              <div className="form-group">
+                <label htmlFor="consecutive_duplicates_limit">Consecutive Duplicates Limit:</label>
+                <input
+                  type="number"
+                  id="consecutive_duplicates_limit"
+                  name="consecutive_duplicates_limit"
+                  value={formData.consecutive_duplicates_limit}
+                  onChange={handleChange}
+                  min="0"
+                  step="1"
+                />
+                <small className="form-hint">
+                  Stop pagination after this many consecutive duplicate URLs (0 = disabled, scrape all pages)
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="full_refresh_schedule">Full Refresh Schedule (Cron):</label>
+                <input
+                  type="text"
+                  id="full_refresh_schedule"
+                  name="full_refresh_schedule"
+                  value={formData.full_refresh_schedule}
+                  onChange={handleChange}
+                  placeholder="e.g., 0 2 * * 0"
+                />
+                <small className="form-hint">
+                  Cron expression for periodic full refresh (ignores optimization, scrapes everything). Example: "0 2 * * 0" (Sunday 2 AM). Leave empty to disable.
+                </small>
+              </div>
+            </>
+          )}
+          
+          {isCausewayDatasource && (
+            <div className="form-group form-group-full">
+              <label>Allowed Folders:</label>
+              <small className="form-hint">
+                Leave empty to scrape all folders. Add folder paths to restrict scraping.
+              </small>
+              <div className="folder-input-group">
+                <input
+                  type="text"
+                  value={folderInput}
+                  onChange={(e) => setFolderInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddFolder())}
+                  placeholder="e.g., Meeting Notes or Specs/Draft"
+                />
+                <button type="button" onClick={handleAddFolder} className="btn-add-folder">
+                  Add
+                </button>
+              </div>
+              {formData.folders.length > 0 && (
+                <ul className="folder-list-edit">
+                  {formData.folders.map((folder, idx) => (
+                    <li key={idx}>
+                      {folder}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFolder(idx)}
+                        className="btn-remove-folder"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </details>
 
       <div className="form-actions">
         <button type="submit" className="btn-submit">
-          {config ? 'Update' : 'Create'}
+          {config ? 'Save Changes' : 'Create Scraper'}
         </button>
         <button type="button" className="btn-cancel" onClick={onCancel}>
           Cancel
