@@ -6,16 +6,18 @@ import { gsap } from 'gsap';
 
 interface GraphCanvasProps {
   data: GraphData;
-  selectedNodes: Set<number>;
+  selectedNodes: Set<number | string>;
   onNodeClick: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void; // Optional double-click handler
   onNodeHover: (node: GraphNode | null) => void;
-  highlightNodes: Set<number>;
+  highlightNodes: Set<number | string>;
   highlightLinks: Set<string>;
   directLinks: Set<string>; // Direct links between entity nodes for special animation
-  nodeDistances: Map<number, number>; // Distance from selected entities
-  nodeConnectionCount: Map<number, number>; // How many entities connect through this node
+  nodeDistances: Map<number | string, number>; // Distance from selected entities
+  nodeConnectionCount: Map<number | string, number>; // How many entities connect through this node
   hiddenNodeTypes: Set<string>;
+  nodeSize?: number; // 0 to 100% size adjustment
+  linkSize?: number; // 0 to 100% size adjustment
 }
 
 // Node color mapping by type
@@ -27,6 +29,85 @@ const NODE_COLORS: Record<string, string> = {
   Person: '#E74C3C',        // Red
   DataSource: '#95A5A6',    // Gray
   Default: '#34495E',       // Dark gray
+};
+
+// ==============================================================================
+// VISUAL CONSTANTS - Adjust these to tune the graph appearance
+// ==============================================================================
+
+// Node Size Multipliers (base size = 4)
+const NODE_SIZE = {
+  BASE: 3,
+  ENTITY: 2.0,           // Entity nodes (distance 0) - largest and prominent
+  HOP_1_MULTI: 1.5,      // 1-hop with multiple connections - 60% of entity
+  HOP_1_SINGLE: 1.0,     // 1-hop with single connection - 50% of entity
+  HOP_2: 0.8,            // 2-hop - 33% of entity size (much smaller)
+  HOP_3_PLUS: 0.75,       // 3+ hops - 27% of entity size (very small)
+  SELECTED: 2.0,         // Selected but not highlighted
+  IMPORTANCE_MIN: 0.3,   // Minimum importance factor (reduced for more size variation)
+  IMPORTANCE_MAX: 0.7,   // Maximum importance boost
+};
+
+// Node Color Brightness (for highlighting)
+const NODE_BRIGHTNESS = {
+  ENTITY: 1.0,           // Entity nodes - full brightness
+  HOP_1: 0.75,           // 1-hop - 75% brightness
+  HOP_2: 0.5,            // 2-hop - 50% brightness
+  HOP_3_PLUS: 0.4,       // 3+ hops - 40% brightness
+  MULTI_CONNECTION_BOOST: 0.25,  // Bonus for nodes with multiple connections
+  DIMMED: 0.2,           // Non-highlighted nodes when filtering
+};
+
+// Node Glow Effects
+const NODE_GLOW = {
+  SIZE_MULTIPLIER: 1.1,  // Glow sphere size relative to node
+  OPACITY_BASE: 0.1,     // Base glow opacity for highlighted nodes
+  OPACITY_MAX: 0.4,      // Max glow opacity for entity pulsing
+  OPACITY_NORMAL: 0.2,   // Normal glow opacity for non-entity highlighted nodes
+  PULSE_DURATION: 2.0,   // Entity pulse animation duration (seconds)
+  PULSE_DURATION_NORMAL: 1.0,  // Normal glow pulse duration (seconds)
+  ENTITY_OPACITY_MIN: 0.85,    // Min opacity for entity node pulse
+};
+
+// Link Visual Properties
+const LINK_STYLE = {
+  BASE_WIDTH: 0.5,
+  WIDTH_DIRECT: 1.0,     // Direct entity-to-entity links
+  WIDTH_HIGHLIGHTED: 1.5, // Highlighted links
+  OPACITY_DIRECT: 1.0,   // Direct entity-to-entity links
+  OPACITY_HOP_0: 1.0,    // Entity links
+  OPACITY_HOP_1: 0.75,   // 1-hop links
+  OPACITY_HOP_2: 0.60,   // 2-hop links
+  OPACITY_HOP_3_PLUS: 0.65, // 3+ hop links
+  OPACITY_DIMMED: 0.10,  // Non-highlighted when filtering
+  OPACITY_NORMAL: 0.4,   // Normal state
+};
+
+// Link Colors
+const LINK_COLORS = {
+  DIRECT: '#00D9FF',     // Bright cyan for direct entity-to-entity connections
+  HIGHLIGHTED: '#cada92ff', // Bright orange for highlighted connections
+  DIMMED: '#5a6a7bff',     // Dimmed when filtering
+  NORMAL: '#9babacff',     // Normal gray
+};
+
+// Link Particles (synapse effect)
+const LINK_PARTICLES = {
+  COUNT_DIRECT: 8,       // Particle count for direct links
+  COUNT_HIGHLIGHTED: 4,  // Particle count for highlighted links
+  COUNT_NORMAL: 0,       // No particles for normal links
+  WIDTH_DIRECT: 3,       // Particle size for direct links
+  WIDTH_NORMAL: 2,       // Particle size for highlighted links
+  SPEED_DIRECT: 0.01,    // Particle speed for direct links
+  SPEED_NORMAL: 0.006,   // Particle speed for highlighted links
+};
+
+// Camera
+const CAMERA = {
+  INITIAL_DISTANCE: 1000,
+  MIN_DISTANCE: 300,
+  MAX_DISTANCE: 800,
+  TRANSITION_DURATION: 1000, // milliseconds
 };
 
 const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
@@ -42,6 +123,8 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     nodeDistances,
     nodeConnectionCount,
     hiddenNodeTypes,
+    nodeSize = 100,
+    linkSize = 100,
   },
   forwardedRef
 ) => {
@@ -78,24 +161,19 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
       let g = parseInt(hex.substring(2, 4), 16);
       let b = parseInt(hex.substring(4, 6), 16);
       
-      // Calculate brightness based on distance:
-      // Entity (distance 0) = 100%
-      // 1-hop (distance 1) = 75%
-      // 2-hop (distance 2) = 50%
-      let brightnessFactor = 1.0;
+      // Calculate brightness based on distance
+      let brightnessFactor = NODE_BRIGHTNESS.HOP_3_PLUS;
       if (distance === 0) {
-        brightnessFactor = 1.0; // Entity: full brightness
+        brightnessFactor = NODE_BRIGHTNESS.ENTITY;
       } else if (distance === 1) {
-        brightnessFactor = 0.75; // 1-hop: 75%
+        brightnessFactor = NODE_BRIGHTNESS.HOP_1;
       } else if (distance === 2) {
-        brightnessFactor = 0.5; // 2-hop: 50%
-      } else {
-        brightnessFactor = 0.4; // 3+ hops: 40%
+        brightnessFactor = NODE_BRIGHTNESS.HOP_2;
       }
       
-      // Connection boost: multiple connections = brighter (+25%)
+      // Connection boost: multiple connections = brighter
       if (connections > 1) {
-        brightnessFactor = Math.min(1.0, brightnessFactor + 0.25);
+        brightnessFactor = Math.min(1.0, brightnessFactor + NODE_BRIGHTNESS.MULTI_CONNECTION_BOOST);
       }
       
       r = Math.round(r * brightnessFactor);
@@ -110,12 +188,13 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
       return baseColor;
     }
     
-    // Dim non-highlighted nodes when something is highlighted (10% brightness)
+    // Dim non-highlighted nodes when something is highlighted
     if (highlightNodes.size > 0) {
       const hex = baseColor.replace('#', '');
-      const r = Math.round(parseInt(hex.substring(0, 2), 16) * 0.1);
-      const g = Math.round(parseInt(hex.substring(2, 4), 16) * 0.1);
-      const b = Math.round(parseInt(hex.substring(4, 6), 16) * 0.1);
+      let r = Math.round(parseInt(hex.substring(0, 2), 16) * NODE_BRIGHTNESS.DIMMED);
+      let g = Math.round(parseInt(hex.substring(2, 4), 16) * NODE_BRIGHTNESS.DIMMED);
+      let b = Math.round(parseInt(hex.substring(4, 6), 16) * NODE_BRIGHTNESS.DIMMED);
+      
       return `rgb(${r}, ${g}, ${b})`;
     }
     
@@ -123,56 +202,49 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
   }, [selectedNodes, highlightNodes, nodeDistances, nodeConnectionCount]);
 
   const getNodeSize = useCallback((node: GraphNode) => {
-    const baseSize = 4;
     const importance = node.properties?.importance || 0.5;
     const distance = nodeDistances.get(node.id);
     const connections = nodeConnectionCount.get(node.id) || 0;
+    const sizeMultiplier = nodeSize / 100; // Convert 0-100% to 0-1 multiplier
+    
+    // Importance factor: scale between MIN and MAX based on actual importance
+    const importanceFactor = NODE_SIZE.IMPORTANCE_MIN + (importance * (NODE_SIZE.IMPORTANCE_MAX - NODE_SIZE.IMPORTANCE_MIN));
     
     // If node is an entity (distance 0) - make it the largest
     if (distance === 0) {
-      return baseSize * 2.5 * (0.5 + importance); // 250% of base - largest
+      return NODE_SIZE.BASE * NODE_SIZE.ENTITY * importanceFactor * sizeMultiplier;
     }
     
     // If node is highlighted (connected to entities)
     if (highlightNodes.has(node.id) && distance !== undefined) {
-      // Size based on distance and connection strength
-      let sizeMultiplier = 1.0;
+      let distanceMultiplier = NODE_SIZE.HOP_3_PLUS;
       
       if (distance === 1) {
-        // 1-hop: size based on number of connections (strength indicator)
-        // Strong connections (multiple entities) get 90-95% of entity size
-        // Weaker connections get 80-90%
-        if (connections > 1) {
-          sizeMultiplier = 2.3; // ~95% of entity size
-        } else {
-          sizeMultiplier = 2.0; // ~85% of entity size
-        }
+        // 1-hop: size based on number of connections and importance
+        distanceMultiplier = connections > 1 ? NODE_SIZE.HOP_1_MULTI : NODE_SIZE.HOP_1_SINGLE;
       } else if (distance === 2) {
-        // 2-hop: 70-75% of entity size
-        sizeMultiplier = 1.7;
-      } else if (distance === 3) {
-        // 3+ hops: 60% of entity size
-        sizeMultiplier = 1.5;
+        distanceMultiplier = NODE_SIZE.HOP_2;
       }
       
-      return baseSize * sizeMultiplier * (0.5 + importance);
+      // Apply both distance multiplier and importance
+      return NODE_SIZE.BASE * distanceMultiplier * importanceFactor * sizeMultiplier;
     }
     
     // Selected but not highlighted - slightly larger than default
     if (selectedNodes.has(node.id)) {
-      return baseSize * 1.3 * (0.5 + importance);
+      return NODE_SIZE.BASE * NODE_SIZE.SELECTED * importanceFactor * sizeMultiplier;
     }
     
-    // Default size
-    return baseSize * (0.5 + importance);
-  }, [selectedNodes, highlightNodes, nodeDistances, nodeConnectionCount]);
+    // Default size - small
+    return NODE_SIZE.BASE * 0.8 * importanceFactor * sizeMultiplier;
+  }, [selectedNodes, highlightNodes, nodeDistances, nodeConnectionCount, nodeSize]);
 
   // Custom node object with glow effect
   const nodeThreeObject = useCallback((node: GraphNode) => {
     const isHighlighted = selectedNodes.has(node.id) || highlightNodes.has(node.id);
     const isEntity = nodeDistances.get(node.id) === 0; // Entity nodes have distance 0
     const color = getNodeColor(node);
-    const size = getNodeSize(node);
+    const size = getNodeSize(node); // This already includes sizeMultiplier
     
     const geometry = new THREE.SphereGeometry(size, 16, 16);
     const material = new THREE.MeshLambertMaterial({
@@ -183,45 +255,35 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     
     const mesh = new THREE.Mesh(geometry, material);
     
-    // Add glow for highlighted nodes
-    if (isHighlighted) {
-      const glowGeometry = new THREE.SphereGeometry(size * 1.5, 16, 16);
+    // Add glow ONLY for entity nodes (selected/searched topics)
+    // Glow size scales with the node size (which already includes sizeMultiplier)
+    if (isEntity) {
+      const glowGeometry = new THREE.SphereGeometry(size * NODE_GLOW.SIZE_MULTIPLIER, 16, 16);
       const glowMaterial = new THREE.MeshBasicMaterial({
         color: color,
         transparent: true,
-        opacity: 0.2,
+        opacity: NODE_GLOW.OPACITY_BASE,
       });
       const glow = new THREE.Mesh(glowGeometry, glowMaterial);
       mesh.add(glow);
       
-      // Special pulsing animation for entity nodes (distance 0)
-      if (isEntity) {
-        gsap.to(glowMaterial, {
-          opacity: 0.5,
-          duration: 1.5,
-          repeat: -1,
-          yoyo: true,
-          ease: 'sine.inOut',
-        });
-        
-        // Also pulse the main material slightly for extra emphasis
-        gsap.to(material, {
-          opacity: 0.85,
-          duration: 1.5,
-          repeat: -1,
-          yoyo: true,
-          ease: 'sine.inOut',
-        });
-      } else {
-        // Normal glow for non-entity highlighted nodes
-        gsap.to(glowMaterial, {
-          opacity: 0.3,
-          duration: 1.0,
-          repeat: -1,
-          yoyo: true,
-          ease: 'sine.inOut',
-        });
-      }
+      // Pulsing animation for entity nodes
+      gsap.to(glowMaterial, {
+        opacity: NODE_GLOW.OPACITY_MAX,
+        duration: NODE_GLOW.PULSE_DURATION,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
+      
+      // Also pulse the main material slightly for extra emphasis
+      gsap.to(material, {
+        opacity: NODE_GLOW.ENTITY_OPACITY_MIN,
+        duration: NODE_GLOW.PULSE_DURATION,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
     }
     
     return mesh;
@@ -233,70 +295,75 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     
     // Direct entity-to-entity links get bright cyan - always bright
     if (directLinks.has(linkId)) {
-      return '#00D9FF'; // Bright cyan for direct connections
+      return LINK_COLORS.DIRECT;
     }
     
-    // If links are highlighted, use consistent bright golden color
+    // If links are highlighted, use consistent bright color
     // Brightness is controlled by opacity in getLinkOpacity, not color darkness
     if (highlightLinks.has(linkId)) {
-      // Use bright golden/orange color - keep it constant, let opacity handle brightness
-      return '#FFA500'; // Bright orange (constant brightness)
+      return LINK_COLORS.HIGHLIGHTED;
     }
     
     if (highlightLinks.size > 0) {
-      return '#2C3E50'; // Dimmed
+      return LINK_COLORS.DIMMED;
     }
     
-    return '#7F8C8D'; // Normal gray
+    return LINK_COLORS.NORMAL;
   }, [highlightLinks, directLinks]);
 
   const getLinkWidth = useCallback((link: GraphLink) => {
     const linkId = `${typeof link.source === 'object' ? link.source.id : link.source}-${typeof link.target === 'object' ? link.target.id : link.target}`;
-    const confidence = link.properties?.confidence || 0.5;
-    const importance = link.properties?.importance || 0.5;
+    const confidence = link.properties?.confidence || 0.3;
+    const importance = link.properties?.importance || 0.3;
+    const sizeMultiplier = linkSize / 100; // Convert 0-100% to 0-1 multiplier
     
-    const baseWidth = 0.5;
-    const weight = (confidence + importance) / 2;
+    // Weight ranges from 0.2 to 1.0 for more dramatic variation
+    const weight = Math.max(0.2, (confidence + importance) / 2);
     
-    // Direct entity-to-entity links are moderately thicker
+    // Direct entity-to-entity links are thickest
     if (directLinks.has(linkId)) {
-      return baseWidth * 2.5 * weight;
+      return LINK_STYLE.BASE_WIDTH * LINK_STYLE.WIDTH_DIRECT * weight * sizeMultiplier;
     }
     
-    // Highlighted links only slightly thicker - brightness comes from opacity and color
+    // Highlighted links scale with importance
     if (highlightLinks.has(linkId)) {
-      return baseWidth * 1.5 * weight;
+      return LINK_STYLE.BASE_WIDTH * LINK_STYLE.WIDTH_HIGHLIGHTED * weight * sizeMultiplier;
     }
     
-    return baseWidth * weight;
-  }, [highlightLinks, directLinks]);
+    // Normal links are thinner and scale with importance
+    return LINK_STYLE.BASE_WIDTH * 0.8 * weight * sizeMultiplier;
+  }, [highlightLinks, directLinks, linkSize]);
 
   const getLinkOpacity = useCallback((link: GraphLink) => {
     const linkId = `${typeof link.source === 'object' ? link.source.id : link.source}-${typeof link.target === 'object' ? link.target.id : link.target}`;
+    const sizeMultiplier = linkSize / 100; // Convert 0-100% to 0-1 multiplier
+    
+    let baseOpacity = LINK_STYLE.OPACITY_NORMAL;
     
     // Direct entity-to-entity links are most visible
     if (directLinks.has(linkId)) {
-      return 1.0;
+      baseOpacity = LINK_STYLE.OPACITY_DIRECT;
     }
-    
     // Highlighted links vary opacity by distance for true brightness effect
-    if (highlightLinks.has(linkId)) {
+    else if (highlightLinks.has(linkId)) {
       const targetId = typeof link.target === 'object' ? link.target.id : link.target;
       const distance = nodeDistances.get(targetId) || 0;
       
       // Distance-based opacity - higher values for better visibility
-      if (distance === 0) return 1.0;      // Entity: fully opaque
-      if (distance === 1) return 0.95;     // 1-hop: 95% (very bright)
-      if (distance === 2) return 0.85;     // 2-hop: 85% (bright)
-      return 0.7;                          // 3+ hops: 70%
+      if (distance === 0) baseOpacity = LINK_STYLE.OPACITY_HOP_0;
+      else if (distance === 1) baseOpacity = LINK_STYLE.OPACITY_HOP_1;
+      else if (distance === 2) baseOpacity = LINK_STYLE.OPACITY_HOP_2;
+      else baseOpacity = LINK_STYLE.OPACITY_HOP_3_PLUS;
+    }
+    else if (highlightLinks.size > 0) {
+      baseOpacity = LINK_STYLE.OPACITY_DIMMED;
     }
     
-    if (highlightLinks.size > 0) {
-      return 0.08;  // Very dim when not highlighted
-    }
+    // Apply size multiplier to opacity
+    const adjustedOpacity = Math.max(0, Math.min(1, baseOpacity * sizeMultiplier));
     
-    return 0.4;
-  }, [highlightLinks, directLinks, nodeDistances]);
+    return adjustedOpacity;
+  }, [highlightLinks, directLinks, nodeDistances, linkSize]);
 
   // Handle node click
   const handleNodeClick = useCallback((node: GraphNode) => {
@@ -309,7 +376,7 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
       const currentDist = Math.hypot(camera.position.x, camera.position.y, camera.position.z);
       
       // Use current distance or default if too close/far
-      const targetDist = Math.max(300, Math.min(currentDist, 800));
+      const targetDist = Math.max(CAMERA.MIN_DISTANCE, Math.min(currentDist, CAMERA.MAX_DISTANCE));
       
       // Calculate direction from node to camera
       const nodePos = new THREE.Vector3(node.x, node.y, node.z);
@@ -321,7 +388,7 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
       fgRef.current.cameraPosition(
         { x: camPos.x, y: camPos.y, z: camPos.z },
         { x: node.x, y: node.y, z: node.z },
-        1000
+        CAMERA.TRANSITION_DURATION
       );
     }
   }, [onNodeClick]);
@@ -366,27 +433,27 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     const linkId = `${typeof link.source === 'object' ? link.source.id : link.source}-${typeof link.target === 'object' ? link.target.id : link.target}`;
     // Direct entity-to-entity links get more particles
     if (directLinks.has(linkId)) {
-      return 8; // More particles for direct connections
+      return LINK_PARTICLES.COUNT_DIRECT;
     }
-    return highlightLinks.has(linkId) ? 4 : 0;
+    return highlightLinks.has(linkId) ? LINK_PARTICLES.COUNT_HIGHLIGHTED : LINK_PARTICLES.COUNT_NORMAL;
   }, [highlightLinks, directLinks]);
 
   const linkDirectionalParticleWidth = useCallback((link: GraphLink) => {
     const linkId = `${typeof link.source === 'object' ? link.source.id : link.source}-${typeof link.target === 'object' ? link.target.id : link.target}`;
     // Direct links have larger particles
     if (directLinks.has(linkId)) {
-      return 3;
+      return LINK_PARTICLES.WIDTH_DIRECT;
     }
-    return 2;
+    return LINK_PARTICLES.WIDTH_NORMAL;
   }, [directLinks]);
 
   const linkDirectionalParticleSpeed = useCallback((link: GraphLink) => {
     const linkId = `${typeof link.source === 'object' ? link.source.id : link.source}-${typeof link.target === 'object' ? link.target.id : link.target}`;
     // Direct links have faster particles
     if (directLinks.has(linkId)) {
-      return 0.01;
+      return LINK_PARTICLES.SPEED_DIRECT;
     }
-    return 0.006;
+    return LINK_PARTICLES.SPEED_NORMAL;
   }, [directLinks]);
 
   // Setup camera and controls
@@ -395,7 +462,7 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
       const fg = fgRef.current;
       
       // Set initial camera position
-      fg.cameraPosition({ z: 1000 });
+      fg.cameraPosition({ z: CAMERA.INITIAL_DISTANCE });
       
       // Add ambient light for better visibility
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -473,6 +540,8 @@ export default React.memo(GraphCanvas, (prevProps, nextProps) => {
     prevProps.directLinks === nextProps.directLinks &&
     prevProps.nodeDistances === nextProps.nodeDistances &&
     prevProps.nodeConnectionCount === nextProps.nodeConnectionCount &&
-    prevProps.hiddenNodeTypes === nextProps.hiddenNodeTypes
+    prevProps.hiddenNodeTypes === nextProps.hiddenNodeTypes &&
+    prevProps.nodeSize === nextProps.nodeSize &&
+    prevProps.linkSize === nextProps.linkSize
   );
 });

@@ -22,21 +22,21 @@ function AppContent() {
   const graphRef = useRef<any>(null);
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [stats, setStats] = useState<GraphStats | null>(null);
-  const [selectedNodes, setSelectedNodes] = useState<Set<number>>(new Set());
+  const [selectedNodes, setSelectedNodes] = useState<Set<number | string>>(new Set());
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEntities, setSelectedEntities] = useState<Entity[]>([]);
-  const [highlightNodes, setHighlightNodes] = useState<Set<number>>(new Set());
+  const [highlightNodes, setHighlightNodes] = useState<Set<number | string>>(new Set());
   const [highlightLinks, setHighlightLinks] = useState<Set<string>>(new Set());
   const [directLinks, setDirectLinks] = useState<Set<string>>(new Set()); // Direct links between entity nodes
-  const [nodeDistances, setNodeDistances] = useState<Map<number, number>>(new Map()); // Distance from selected entities
-  const [nodeConnectionCount, setNodeConnectionCount] = useState<Map<number, number>>(new Map()); // How many entities connect through this node
+  const [nodeDistances, setNodeDistances] = useState<Map<number | string, number>>(new Map()); // Distance from selected entities
+  const [nodeConnectionCount, setNodeConnectionCount] = useState<Map<number | string, number>>(new Map()); // How many entities connect through this node
   
   // Separate state for entity search highlights (primary) vs node exploration (secondary)
-  const [entityHighlightNodes, setEntityHighlightNodes] = useState<Set<number>>(new Set());
+  const [entityHighlightNodes, setEntityHighlightNodes] = useState<Set<number | string>>(new Set());
   const [entityHighlightLinks, setEntityHighlightLinks] = useState<Set<string>>(new Set());
   const [entityDirectLinks, setEntityDirectLinks] = useState<Set<string>>(new Set());
-  const [entityNodeDistances, setEntityNodeDistances] = useState<Map<number, number>>(new Map());
-  const [entityNodeConnectionCount, setEntityNodeConnectionCount] = useState<Map<number, number>>(new Map());
+  const [entityNodeDistances, setEntityNodeDistances] = useState<Map<number | string, number>>(new Map());
+  const [entityNodeConnectionCount, setEntityNodeConnectionCount] = useState<Map<number | string, number>>(new Map());
   const [isNodeExplorationMode, setIsNodeExplorationMode] = useState(false);
   const [currentHops, setCurrentHops] = useState<number>(0);
   const [isLoadingHops, setIsLoadingHops] = useState(false);
@@ -51,6 +51,8 @@ function AppContent() {
   const [panelMode, setPanelMode] = useState<'stats' | 'legend' | 'off'>('stats');
   const [hiddenNodeTypes, setHiddenNodeTypes] = useState<Set<string>>(new Set(['IngestionBatch'])); // Hide IngestionBatch by default
   const [showNavHelper, setShowNavHelper] = useState(false);
+  const [nodeSize, setNodeSize] = useState<number>(100); // 0 to 100%
+  const [linkSize, setLinkSize] = useState<number>(100); // 0 to 100%
 
   // Load initial graph data and stats
   useEffect(() => {
@@ -247,7 +249,7 @@ function AppContent() {
       // Transform results to graph data
       const nodes: GraphNode[] = [];
       const links: any[] = [];
-      const nodeMap = new Map<number, GraphNode>();
+      const nodeMap = new Map<number | string, GraphNode>();
 
       // Extract nodes and relationships from results
       result.results.forEach((record: any) => {
@@ -351,11 +353,11 @@ function AppContent() {
           });
 
           // Build adjacency for BFS distance calculation
-          const adjacency = new Map<number, number[]>();
+          const adjacency = new Map<number | string, (number | string)[]>();
           if (neighborhood.links && Array.isArray(neighborhood.links)) {
             neighborhood.links.forEach(link => {
-              const src = typeof link.source === 'number' ? link.source : link.source.id;
-              const tgt = typeof link.target === 'number' ? link.target : link.target.id;
+              const src = typeof link.source === 'object' ? link.source.id : link.source;
+              const tgt = typeof link.target === 'object' ? link.target.id : link.target;
               if (!adjacency.has(src)) adjacency.set(src, []);
               if (!adjacency.has(tgt)) adjacency.set(tgt, []);
               adjacency.get(src)!.push(tgt);
@@ -396,7 +398,7 @@ function AppContent() {
       
       if (subgraph.nodes.length > 0) {
         // Find which nodes in the subgraph match our selected entities
-        const entityNodeIds = new Set<number>();
+        const entityNodeIds = new Set<number | string>();
         for (const entity of entities) {
           const matchingNode = subgraph.nodes.find(
             n => n.label.toLowerCase() === entity.type.toLowerCase() &&
@@ -411,11 +413,11 @@ function AppContent() {
         }
 
         // Build a graph to find paths between entity nodes
-        const adjacency = new Map<number, number[]>();
+        const adjacency = new Map<number | string, (number | string)[]>();
         if (subgraph.links && Array.isArray(subgraph.links)) {
           subgraph.links.forEach(link => {
-            const src = typeof link.source === 'number' ? link.source : link.source.id;
-            const tgt = typeof link.target === 'number' ? link.target : link.target.id;
+            const src = typeof link.source === 'object' ? link.source.id : link.source;
+            const tgt = typeof link.target === 'object' ? link.target.id : link.target;
             if (!adjacency.has(src)) adjacency.set(src, []);
             if (!adjacency.has(tgt)) adjacency.set(tgt, []);
             adjacency.get(src)!.push(tgt);
@@ -435,8 +437,8 @@ function AppContent() {
         }
 
         // Calculate distances from each entity node and count connections
-        const allDistances = new Map<number, number>();
-        const connectionCounts = new Map<number, number>();
+        const allDistances = new Map<number | string, number>();
+        const connectionCounts = new Map<number | string, number>();
         
         entityNodeIds.forEach(entityNodeId => {
           const distances = calculateDistances(entityNodeId, adjacency);
@@ -456,7 +458,7 @@ function AppContent() {
         setEntityNodeConnectionCount(connectionCounts);
 
         // Find nodes and links on paths between entity nodes
-        const pathNodes = new Set<number>(entityNodeIds);
+        const pathNodes = new Set<number | string>(entityNodeIds);
         const pathLinks = new Set<string>();
         const directEntityLinks = new Set<string>(); // Track direct entity-to-entity links
         
@@ -585,9 +587,9 @@ function AppContent() {
   }, []);
 
   // Helper function to calculate distances from a start node using BFS
-  const calculateDistances = (start: number, adjacency: Map<number, number[]>): Map<number, number> => {
-    const distances = new Map<number, number>();
-    const queue: [number, number][] = [[start, 0]];
+  const calculateDistances = (start: number | string, adjacency: Map<number | string, (number | string)[]>): Map<number | string, number> => {
+    const distances = new Map<number | string, number>();
+    const queue: [number | string, number][] = [[start, 0]];
     distances.set(start, 0);
 
     while (queue.length > 0) {
@@ -606,9 +608,9 @@ function AppContent() {
   };
 
   // Helper function to find shortest path using BFS
-  const findShortestPath = (start: number, end: number, adjacency: Map<number, number[]>): number[] | null => {
-    const queue: [number, number[]][] = [[start, [start]]];
-    const visited = new Set<number>([start]);
+  const findShortestPath = (start: number | string, end: number | string, adjacency: Map<number | string, (number | string)[]>): (number | string)[] | null => {
+    const queue: [number | string, (number | string)[]][] = [[start, [start]]];
+    const visited = new Set<number | string>([start]);
 
     while (queue.length > 0) {
       const [current, path] = queue.shift()!;
@@ -726,53 +728,10 @@ function AppContent() {
   }, [selectedEntities, updateHighlightedConnections]);
 
   // Handle entity click to center and flash the node
-  const handleEntityClick = useCallback(async (entity: Entity) => {
-    try {
-      const searchResults = await graphApi.searchNodes(entity.name, 10);
-      const matchingResults = searchResults.filter(
-        node => node.label.toLowerCase() === entity.type.toLowerCase()
-      );
-      
-      if (matchingResults.length > 0 && graphRef.current) {
-        // Find the actual node in graphData with coordinates
-        const nodeInGraph = graphData.nodes.find(n => n.id === matchingResults[0].id);
-        
-        if (nodeInGraph && nodeInGraph.x !== undefined && nodeInGraph.y !== undefined && nodeInGraph.z !== undefined) {
-          // Get current camera to maintain distance
-          const camera = graphRef.current.camera();
-          const currentDist = Math.hypot(
-            camera.position.x - nodeInGraph.x,
-            camera.position.y - nodeInGraph.y,
-            camera.position.z - nodeInGraph.z
-          );
-          
-          // Use reasonable default if camera is too close or far
-          const targetDist = Math.max(400, Math.min(currentDist, 800));
-          
-          // Calculate camera position to look at node from current angle
-          const direction = new THREE.Vector3(
-            camera.position.x - nodeInGraph.x,
-            camera.position.y - nodeInGraph.y,
-            camera.position.z - nodeInGraph.z
-          ).normalize();
-          
-          const camPos = {
-            x: nodeInGraph.x + direction.x * targetDist,
-            y: nodeInGraph.y + direction.y * targetDist,
-            z: nodeInGraph.z + direction.z * targetDist
-          };
-          
-          graphRef.current.cameraPosition(
-            camPos,
-            { x: nodeInGraph.x, y: nodeInGraph.y, z: nodeInGraph.z },
-            1000
-          );
-        }
-      }
-    } catch (err) {
-      console.error('Failed to find and center entity:', err);
-    }
-  }, [graphData]);
+  const handleEntityClick = useCallback(async (_entity: Entity) => {
+    // Just select the entity, camera will be handled by handleEntityMouseUp
+    // This prevents competing camera movements
+  }, []);
 
   // Handle entity highlight from hover - disabled, only used for mouse down/up
   const handleEntityHighlight = useCallback(async () => {
@@ -788,7 +747,7 @@ function AppContent() {
       );
       
       if (matchingResults.length > 0) {
-        const entityNodeId = matchingResults[0].id;
+        const entityNodeId = matchingResults[0].id; // This is now a string (elementId)
         
         // Fetch 2-hop neighborhood
         const neighborhoodData = await graphApi.getNeighborhood(entityNodeId, 2, 500);
@@ -818,10 +777,10 @@ function AppContent() {
         });
         
         // Build adjacency map for distance calculation
-        const adjacency = new Map<number, number[]>();
+        const adjacency = new Map<number | string, (number | string)[]>();
         neighborhoodData.links.forEach(link => {
-          const src = typeof link.source === 'number' ? link.source : link.source.id;
-          const tgt = typeof link.target === 'number' ? link.target : link.target.id;
+          const src = typeof link.source === 'object' ? link.source.id : link.source;
+          const tgt = typeof link.target === 'object' ? link.target.id : link.target;
           if (!adjacency.has(src)) adjacency.set(src, []);
           if (!adjacency.has(tgt)) adjacency.set(tgt, []);
           adjacency.get(src)!.push(tgt);
@@ -832,7 +791,7 @@ function AppContent() {
         const distances = calculateDistances(entityNodeId, adjacency);
         
         // Filter to only 0, 1, 2 hop nodes
-        const filteredDistances = new Map<number, number>();
+        const filteredDistances = new Map<number | string, number>();
         distances.forEach((dist, nodeId) => {
           if (dist <= 2) {
             filteredDistances.set(nodeId, dist);
@@ -849,8 +808,8 @@ function AppContent() {
         // Highlight links between these nodes
         const linksToHighlight = new Set<string>();
         neighborhoodData.links.forEach(link => {
-          const src = typeof link.source === 'number' ? link.source : link.source.id;
-          const tgt = typeof link.target === 'number' ? link.target : link.target.id;
+          const src = typeof link.source === 'object' ? link.source.id : link.source;
+          const tgt = typeof link.target === 'object' ? link.target.id : link.target;
           if (nodesToHighlight.has(src) && nodesToHighlight.has(tgt)) {
             linksToHighlight.add(`${src}-${tgt}`);
             linksToHighlight.add(`${tgt}-${src}`);
@@ -877,8 +836,10 @@ function AppContent() {
         const nodeInGraph = graphData.nodes.find(n => n.id === entityNodeId);
         
         if (nodeInGraph && nodeInGraph.x !== undefined) {
-          // Wait a bit for the graph to update positions
+          // Wait for graph positions to stabilize after data update
           setTimeout(() => {
+            if (!graphRef.current) return;
+            
             // Find all highlighted nodes with valid positions
             const highlightedNodeObjects = graphData.nodes.filter(n => 
               highlightNodes.has(n.id) && 
@@ -888,7 +849,7 @@ function AppContent() {
               !isNaN(n.x) && !isNaN(n.y) && !isNaN(n.z)
             );
             
-            if (highlightedNodeObjects.length > 0 && graphRef.current) {
+            if (highlightedNodeObjects.length > 0) {
               // Calculate center and extent of highlighted nodes
               let sumX = 0, sumY = 0, sumZ = 0;
               highlightedNodeObjects.forEach(node => {
@@ -985,7 +946,7 @@ function AppContent() {
   }, []);
 
   // Handle hop selection for current node (boost on top of entity highlights)
-  const handleHopSelection = useCallback(async (nodeId: number, hops: number) => {
+  const handleHopSelection = useCallback(async (nodeId: number | string, hops: number) => {
     if (hops === 0) {
       // Reset to entity highlights only
       setIsNodeExplorationMode(false);
@@ -1001,7 +962,9 @@ function AppContent() {
     setIsLoadingHops(true);
     setCurrentHops(hops);
     try {
-      const neighborhoodData = await graphApi.getNeighborhood(nodeId, hops, 300);
+      // Convert nodeId to string if it's a number (for backwards compatibility)
+      const nodeIdStr = typeof nodeId === 'number' ? String(nodeId) : nodeId;
+      const neighborhoodData = await graphApi.getNeighborhood(nodeIdStr, hops, 300);
       
       // Merge with graph data
       setGraphData(prevData => {
@@ -1028,11 +991,11 @@ function AppContent() {
       });
       
       // Build adjacency for distance calculation
-      const adjacency = new Map<number, number[]>();
+      const adjacency = new Map<number | string, (number | string)[]>();
       if (neighborhoodData.links && Array.isArray(neighborhoodData.links)) {
         neighborhoodData.links.forEach(link => {
-          const src = typeof link.source === 'number' ? link.source : link.source.id;
-          const tgt = typeof link.target === 'number' ? link.target : link.target.id;
+          const src = typeof link.source === 'object' ? link.source.id : link.source;
+          const tgt = typeof link.target === 'object' ? link.target.id : link.target;
           if (!adjacency.has(src)) adjacency.set(src, []);
           if (!adjacency.has(tgt)) adjacency.set(tgt, []);
           adjacency.get(src)!.push(tgt);
@@ -1042,7 +1005,7 @@ function AppContent() {
 
       // Calculate distances from selected node
       const distances = calculateDistances(nodeId, adjacency);
-      const filteredDistances = new Map<number, number>();
+      const filteredDistances = new Map<number | string, number>();
       distances.forEach((dist, nId) => {
         if (dist <= hops) {
           filteredDistances.set(nId, dist);
@@ -1057,8 +1020,8 @@ function AppContent() {
       const linksToHighlight = new Set<string>();
       if (neighborhoodData.links && Array.isArray(neighborhoodData.links)) {
         neighborhoodData.links.forEach(link => {
-          const src = typeof link.source === 'number' ? link.source : link.source.id;
-          const tgt = typeof link.target === 'number' ? link.target : link.target.id;
+          const src = typeof link.source === 'object' ? link.source.id : link.source;
+          const tgt = typeof link.target === 'object' ? link.target.id : link.target;
           if (nodesToHighlight.has(src) && nodesToHighlight.has(tgt)) {
             linksToHighlight.add(`${src}-${tgt}`);
             linksToHighlight.add(`${tgt}-${src}`);
@@ -1083,7 +1046,7 @@ function AppContent() {
   }, [entityHighlightNodes, entityHighlightLinks, entityDirectLinks, entityNodeDistances, entityNodeConnectionCount, graphData]);
 
   // Explore node neighborhood
-  const handleExploreNeighborhood = useCallback(async (nodeId: number, hops: number) => {
+  const handleExploreNeighborhood = useCallback(async (nodeId: number | string, hops: number) => {
     setIsLoading(true);
     try {
       const neighborhoodData = await graphApi.getNeighborhood(nodeId, hops, 200);
@@ -1106,31 +1069,68 @@ function AppContent() {
 
   // Handle node right-click (double-click alternative): center and explore neighborhood
   const handleNodeDoubleClick = useCallback(async (node: GraphNode) => {
-    // Center camera on node with appropriate zoom for neighborhood
-    if (graphRef.current && node.x !== undefined && node.y !== undefined && node.z !== undefined) {
-      const camera = graphRef.current.camera();
-      const direction = new THREE.Vector3(
-        camera.position.x - node.x,
-        camera.position.y - node.y,
-        camera.position.z - node.z
-      ).normalize();
-      
-      const distance = 600; // Larger distance to see neighborhood
-      
-      graphRef.current.cameraPosition(
-        {
-          x: node.x + direction.x * distance,
-          y: node.y + direction.y * distance,
-          z: node.z + direction.z * distance,
-        },
-        { x: node.x, y: node.y, z: node.z },
-        1000
-      );
-    }
+    // Select the node
+    setSelectedNode(node);
+    setSelectedNodes(new Set([node.id]));
     
-    // Explore 2-hop neighborhood
+    // Explore 2-hop neighborhood first (loads data)
     await handleExploreNeighborhood(node.id, 2);
-  }, [handleExploreNeighborhood]);
+    
+    // Wait for graph to update, then center camera on node and its neighborhood
+    setTimeout(() => {
+      if (!graphRef.current || node.x === undefined || node.y === undefined || node.z === undefined) return;
+      
+      // Find all highlighted nodes
+      const highlightedNodeObjects = graphData.nodes.filter(n => 
+        highlightNodes.has(n.id) && 
+        n.x !== undefined && 
+        n.y !== undefined && 
+        n.z !== undefined &&
+        !isNaN(n.x) && !isNaN(n.y) && !isNaN(n.z)
+      );
+      
+      if (highlightedNodeObjects.length > 1) {
+        // Calculate center of neighborhood
+        let sumX = 0, sumY = 0, sumZ = 0;
+        highlightedNodeObjects.forEach(n => {
+          sumX += n.x!;
+          sumY += n.y!;
+          sumZ += n.z!;
+        });
+        const centerX = sumX / highlightedNodeObjects.length;
+        const centerY = sumY / highlightedNodeObjects.length;
+        const centerZ = sumZ / highlightedNodeObjects.length;
+        
+        // Calculate max distance to fit all nodes
+        let maxDist = 0;
+        highlightedNodeObjects.forEach(n => {
+          const dist = Math.sqrt(
+            Math.pow(n.x! - centerX, 2) +
+            Math.pow(n.y! - centerY, 2) +
+            Math.pow(n.z! - centerZ, 2)
+          );
+          maxDist = Math.max(maxDist, dist);
+        });
+        
+        // Zoom out to adequate distance to see entire neighborhood
+        const distance = Math.max(500, maxDist * 2.5);
+        
+        graphRef.current.cameraPosition(
+          { x: centerX, y: centerY, z: centerZ + distance },
+          { x: centerX, y: centerY, z: centerZ },
+          1500 // Smooth 1.5s transition
+        );
+      } else {
+        // Just center on the node
+        const distance = 600;
+        graphRef.current.cameraPosition(
+          { x: node.x, y: node.y, z: node.z + distance },
+          { x: node.x, y: node.y, z: node.z },
+          1500
+        );
+      }
+    }, 300); // Wait for neighborhood data to load and positions to update
+  }, [handleExploreNeighborhood, graphData, highlightNodes]);
 
   // Navigation helper functions
   const handleZoomToFit = useCallback(() => {
@@ -1430,6 +1430,8 @@ function AppContent() {
             nodeDistances={nodeDistances}
             nodeConnectionCount={nodeConnectionCount}
             hiddenNodeTypes={hiddenNodeTypes}
+            nodeSize={nodeSize}
+            linkSize={linkSize}
           />
         )}
       </div>
@@ -1781,7 +1783,7 @@ function AppContent() {
               borderBottom: '1px solid rgba(255,255,255,0.1)',
             }}>
               <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>
-                🧭 Navigation
+                🧭 Controls
               </span>
               <button
                 onClick={() => setShowNavHelper(false)}
@@ -1805,23 +1807,23 @@ function AppContent() {
               </button>
             </div>
 
-            {/* Navigation buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Navigation buttons - Icons only in one row */}
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
               <button
                 onClick={handleZoomOut}
                 style={{
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   background: 'rgba(255,255,255,0.1)',
                   color: 'white',
                   border: '1px solid rgba(255,255,255,0.2)',
                   borderRadius: '6px',
                   cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: '500',
+                  fontSize: '16px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  justifyContent: 'center',
                   transition: 'all 0.2s',
+                  flex: 1,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
@@ -1829,26 +1831,26 @@ function AppContent() {
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
                 }}
+                title="Zoom Out"
               >
-                <span>🔍−</span>
-                <span>Zoom Out</span>
+                🔍−
               </button>
 
               <button
                 onClick={handleZoomToFit}
                 style={{
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   background: 'rgba(25,118,210,0.3)',
                   color: 'white',
                   border: '1px solid rgba(25,118,210,0.6)',
                   borderRadius: '6px',
                   cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: '500',
+                  fontSize: '16px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  justifyContent: 'center',
                   transition: 'all 0.2s',
+                  flex: 1,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'rgba(25,118,210,0.5)';
@@ -1856,27 +1858,27 @@ function AppContent() {
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'rgba(25,118,210,0.3)';
                 }}
+                title="Zoom to Full Graph"
               >
-                <span>🌐</span>
-                <span>Zoom to Full</span>
+                🌐
               </button>
 
               <button
                 onClick={handleZoomToCluster}
                 disabled={highlightNodes.size === 0}
                 style={{
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   background: highlightNodes.size > 0 ? 'rgba(244,67,54,0.3)' : 'rgba(100,100,100,0.2)',
                   color: highlightNodes.size > 0 ? 'white' : '#666',
                   border: `1px solid ${highlightNodes.size > 0 ? 'rgba(244,67,54,0.6)' : 'rgba(100,100,100,0.4)'}`,
                   borderRadius: '6px',
                   cursor: highlightNodes.size > 0 ? 'pointer' : 'not-allowed',
-                  fontSize: '13px',
-                  fontWeight: '500',
+                  fontSize: '16px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  justifyContent: 'center',
                   transition: 'all 0.2s',
+                  flex: 1,
                 }}
                 onMouseEnter={(e) => {
                   if (highlightNodes.size > 0) {
@@ -1888,26 +1890,26 @@ function AppContent() {
                     e.currentTarget.style.background = 'rgba(244,67,54,0.3)';
                   }
                 }}
+                title="Zoom to Cluster"
               >
-                <span>🎯</span>
-                <span>Zoom to Cluster</span>
+                🎯
               </button>
 
               <button
                 onClick={handleZoomIn}
                 style={{
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   background: 'rgba(255,255,255,0.1)',
                   color: 'white',
                   border: '1px solid rgba(255,255,255,0.2)',
                   borderRadius: '6px',
                   cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: '500',
+                  fontSize: '16px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  justifyContent: 'center',
                   transition: 'all 0.2s',
+                  flex: 1,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
@@ -1915,10 +1917,77 @@ function AppContent() {
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
                 }}
+                title="Zoom In"
               >
-                <span>🔍+</span>
-                <span>Zoom In</span>
+                🔍+
               </button>
+            </div>
+
+            {/* Size Controls - No title */}
+            <div style={{
+              paddingTop: '12px',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              
+              {/* Node Size Slider */}
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '6px',
+                }}>
+                  <span style={{ fontSize: '11px', color: '#ccc' }}>Nodes</span>
+                  <span style={{ 
+                    fontSize: '11px', 
+                    color: '#4CAF50',
+                    fontWeight: '600',
+                  }}>
+                    {nodeSize}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={nodeSize}
+                  onChange={(e) => setNodeSize(parseInt(e.target.value))}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                  }}
+                />
+              </div>
+
+              {/* Link Size Slider */}
+              <div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '6px',
+                }}>
+                  <span style={{ fontSize: '11px', color: '#ccc' }}>Links</span>
+                  <span style={{ 
+                    fontSize: '11px', 
+                    color: '#4CAF50',
+                    fontWeight: '600',
+                  }}>
+                    {linkSize}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={linkSize}
+                  onChange={(e) => setLinkSize(parseInt(e.target.value))}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                  }}
+                />
+              </div>
             </div>
 
             {/* Keyboard shortcuts info */}
@@ -1933,7 +2002,7 @@ function AppContent() {
                 marginBottom: '8px',
                 fontWeight: '600',
               }}>
-                ⌨️ Keyboard Shortcuts
+                ⌨️ Shortcuts
               </div>
               <div style={{
                 display: 'flex',

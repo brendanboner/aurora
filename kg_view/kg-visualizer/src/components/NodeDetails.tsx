@@ -5,8 +5,8 @@ interface NodeDetailsProps {
   node: GraphNode | null;
   onClose: () => void;
   onToggle?: () => void;
-  onExploreNeighborhood: (nodeId: number, hops: number) => void;
-  onHopSelection?: (nodeId: number, hops: number) => void;
+  onExploreNeighborhood: (nodeId: number | string, hops: number) => void;
+  onHopSelection?: (nodeId: number | string, hops: number) => void;
   currentHops?: number;
   isLoadingHops?: boolean;
 }

@@ -133,27 +133,27 @@ class Neo4jService:
         MATCH (n)
         {node_filter}
         WITH n
-        ORDER BY n.importance DESC, n.name ASC, id(n) ASC
+        ORDER BY n.importance DESC, n.name ASC, elementId(n) ASC
         SKIP $skip
         LIMIT $limit
         MATCH (n)-[r]->(m)
-        WHERE id(m) >= id(n)
+        WHERE elementId(m) >= elementId(n)
         RETURN 
             collect(DISTINCT {{
-                id: id(n),
+                id: elementId(n),
                 label: labels(n)[0],
                 name: COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id),
                 properties: properties(n)
             }}) + 
             collect(DISTINCT {{
-                id: id(m),
+                id: elementId(m),
                 label: labels(m)[0],
                 name: COALESCE(m.name, m.title, m.topic_id, m.org_id, m.person_id, m.source_id),
                 properties: properties(m)
             }}) as nodes,
             collect({{
-                source: id(n),
-                target: id(m),
+                source: elementId(n),
+                target: elementId(m),
                 type: type(r),
                 properties: properties(r)
             }}) as links
@@ -260,7 +260,7 @@ class Neo4jService:
     
     def get_node_neighborhood(
         self, 
-        node_id: int, 
+        node_id: str,  # Changed to str to support elementId format
         hops: int = 2,
         limit: int = 100
     ) -> Dict[str, Any]:
@@ -268,7 +268,7 @@ class Neo4jService:
         Get neighborhood of a node up to k hops away
         
         Args:
-            node_id: Internal Neo4j node ID
+            node_id: Neo4j elementId string (format: '4:uuid:internal_id')
             hops: Number of hops to traverse
             limit: Maximum nodes to return
             
@@ -277,25 +277,25 @@ class Neo4jService:
         """
         query = f"""
         MATCH path = (start)-[*1..{hops}]-(connected)
-        WHERE id(start) = $node_id
+        WHERE elementId(start) = $node_id
         WITH start, connected, relationships(path) as rels
         LIMIT $limit
         RETURN 
             collect(DISTINCT {{
-                id: id(start),
+                id: elementId(start),
                 label: labels(start)[0],
                 name: COALESCE(start.name, start.title, start.topic_id, start.org_id),
                 properties: properties(start)
             }}) +
             collect(DISTINCT {{
-                id: id(connected),
+                id: elementId(connected),
                 label: labels(connected)[0],
                 name: COALESCE(connected.name, connected.title, connected.topic_id, connected.org_id),
                 properties: properties(connected)
             }}) as nodes,
             [rel IN rels | {{
-                source: id(startNode(rel)),
-                target: id(endNode(rel)),
+                source: elementId(startNode(rel)),
+                target: elementId(endNode(rel)),
                 type: type(rel),
                 properties: properties(rel)
             }}] as links
@@ -342,7 +342,7 @@ class Neo4jService:
            OR toLower(n.summary) CONTAINS toLower($search)
            OR any(alias IN COALESCE(n.aliases, []) WHERE toLower(alias) CONTAINS toLower($search))
         RETURN 
-            id(n) as id,
+            elementId(n) as id,
             labels(n)[0] as label,
             COALESCE(n.name, n.title, n.topic_id, n.org_id) as name,
             properties(n) as properties
@@ -404,7 +404,7 @@ class Neo4jService:
         UNWIND paths as p
         UNWIND nodes(p) as node
         WITH collect(DISTINCT {{
-            id: id(node),
+            id: elementId(node),
             label: labels(node)[0],
             name: COALESCE(node.name, node.title, node.topic_id, node.org_id, node.person_id),
             properties: properties(node)
@@ -413,8 +413,8 @@ class Neo4jService:
         UNWIND paths as p2
         UNWIND relationships(p2) as rel
         WITH allNodes, collect(DISTINCT {{
-            source: id(startNode(rel)),
-            target: id(endNode(rel)),
+            source: elementId(startNode(rel)),
+            target: elementId(endNode(rel)),
             type: type(rel),
             properties: properties(rel)
         }}) as allLinks

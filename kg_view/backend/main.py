@@ -176,7 +176,7 @@ async def autocomplete_all(
 # Node neighborhood
 @app.get("/api/graph/neighborhood/{node_id}")
 async def get_node_neighborhood(
-    node_id: int,
+    node_id: str,  # Changed to str to support Neo4j elementId format
     hops: int = Query(default=2, ge=1, le=3, description="Number of hops"),
     limit: int = Query(default=100, le=500)
 ):

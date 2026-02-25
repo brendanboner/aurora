@@ -75,11 +75,13 @@ export const graphApi = {
 
   // Get node neighborhood
   getNeighborhood: async (
-    nodeId: number,
+    nodeId: number | string,  // Support both number and string (elementId format)
     hops: number = 2,
     limit: number = 100
   ): Promise<GraphData> => {
-    const response = await api.get<GraphData>(`/api/graph/neighborhood/${nodeId}`, {
+    // URL encode the nodeId to handle special characters in elementId format
+    const encodedNodeId = encodeURIComponent(String(nodeId));
+    const response = await api.get<GraphData>(`/api/graph/neighborhood/${encodedNodeId}`, {
       params: { hops, limit },
     });
     return response.data;

@@ -1,5 +1,5 @@
 export interface GraphNode {
-  id: number;
+  id: number | string;  // Support both number and string (Neo4j elementId format)
   label: string;
   name: string;
   properties: Record<string, any>;
@@ -12,8 +12,8 @@ export interface GraphNode {
 }
 
 export interface GraphLink {
-  source: number | GraphNode;
-  target: number | GraphNode;
+  source: number | string | GraphNode;  // Support elementId strings
+  target: number | string | GraphNode;
   type: string;
   properties: Record<string, any>;
 }
@@ -54,7 +54,7 @@ export interface QueryTransformResult {
 }
 
 export interface SearchResult {
-  id: number;
+  id: number | string;  // Support Neo4j elementId format
   label: string;
   name: string;
   properties: Record<string, any>;
