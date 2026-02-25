@@ -31,7 +31,11 @@ include ../Makefile.common
 test:
 	@echo "$(CYAN)Testing nginx configuration...$(NC)"
 	@echo "$(GREEN)→ Validating nginx.cloudfront.conf syntax...$(NC)"
-	@docker run --rm --add-host=auth:127.0.0.1 -v $(PWD)/nginx.cloudfront.conf:/etc/nginx/conf.d/default.conf:ro nginx:alpine nginx -t
+	@docker run --rm \
+		--add-host=auth:127.0.0.1 \
+		--add-host=kg-view-frontend:127.0.0.1 \
+		-v $(PWD)/nginx.cloudfront.conf:/etc/nginx/conf.d/default.conf:ro \
+		nginx:alpine nginx -t
 	@echo "$(GREEN)→ Validating Dockerfile.cloudfront exists...$(NC)"
 	@test -f $(DOCKERFILE) || (echo "$(RED)✗ $(DOCKERFILE) not found$(NC)" && exit 1)
 	@echo "$(GREEN)✓ All nginx configuration tests passed$(NC)"
