@@ -22,9 +22,9 @@
 # =============================================================================
 
 .PHONY: help test-all build-push-all ship-all aws-login connect_aurora_ec2clean-all \
-        test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator \
-        build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator \
-        ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator \
+        test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
+        build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view \
+        ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
         dev
 
 # Load common configuration (colors, ECR, region)
@@ -32,7 +32,7 @@
 include Makefile.common
 
 # Services
-SERVICES := auth backend curator digester retriever frontend neo4j-init nginx oracle content_creator_service
+SERVICES := auth backend curator digester retriever frontend neo4j-init nginx oracle content_creator_service kg_view
 
 # =============================================================================
 # Help
@@ -69,7 +69,7 @@ help:
 	@echo "    cd <service> && make ship"
 	@echo ""
 	@echo "$(GREEN)Available Services:$(NC)"
-	@echo "  $(SERVICES)"
+	@echo "  auth backend curator digester retriever frontend neo4j-init nginx oracle content_creator_service kg_view"
 	@echo ""
 	@echo "$(GREEN)Utility Commands:$(NC)"
 	@echo "  make clean-all         - Clean up temporary files in all services"
@@ -83,7 +83,7 @@ help:
 # Test All Services
 # =============================================================================
 
-test-all: test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-oracle test-content-creator
+test-all: test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-oracle test-content-creator test-kg-view
 	@echo "$(GREEN)✓ All tests completed$(NC)"
 
 test-auth:
@@ -126,11 +126,15 @@ test-content-creator:
 	@echo "$(CYAN)Running tests for content-creator service...$(NC)"
 	@cd content_creator_service && $(MAKE) test
 
+test-kg-view:
+	@echo "$(CYAN)Running tests for kg-view service...$(NC)"
+	@cd kg_view && $(MAKE) test
+
 # =============================================================================
 # Build and Push All Services
 # =============================================================================
 
-build-push-all: build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator
+build-push-all: build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view
 	@echo "$(GREEN)✓ All images built and pushed successfully$(NC)"
 
 build-push-auth:
@@ -172,6 +176,10 @@ build-push-oracle:
 build-push-content-creator:
 	@echo "$(CYAN)Building and pushing content-creator service...$(NC)"
 	@cd content_creator_service && $(MAKE) build-push ECR_REGISTRY=$(ECR_REGISTRY) VERSION=$(VERSION)
+
+build-push-kg-view:
+	@echo "$(CYAN)Building and pushing kg-view service...$(NC)"
+	@cd kg_view && $(MAKE) build-push ECR_REGISTRY=$(ECR_REGISTRY) VERSION=$(VERSION)
 
 # =============================================================================
 # Ship All Services (with tests and builds)
@@ -219,6 +227,10 @@ ship-oracle:
 ship-content-creator:
 	@echo "$(CYAN)Testing, building, and shipping content-creator service...$(NC)"
 	@cd content_creator_service && $(MAKE) ship
+
+ship-kg-view:
+	@echo "$(CYAN)Testing, building, and shipping kg-view service...$(NC)"
+	@cd kg_view && $(MAKE) ship
 
 # =============================================================================
 # AWS ECR Login

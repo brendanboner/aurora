@@ -85,6 +85,36 @@ push-frontend: ## Push frontend image to ECR
 push: push-backend push-frontend ## Push both images to ECR
 
 # =============================================================================
+# Build and Push (combined)
+# =============================================================================
+
+build-push: ## Build and push both images to ECR (called by root Makefile)
+	@echo "$(CYAN)Building and pushing KG View Backend image...$(NC)"
+	@echo "Version: $(VERSION)"
+	@echo "Platform: linux/arm64"
+	@docker buildx build \
+		--platform linux/arm64 \
+		--provenance=false \
+		--sbom=false \
+		-f $(DOCKERFILE_BACKEND) \
+		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-backend:$(VERSION) \
+		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-backend:latest \
+		--push \
+		$(BUILD_CONTEXT)
+	@echo "$(GREEN)✓ Backend image built and pushed: $(SERVICE_NAME)-backend:$(VERSION)$(NC)"
+	@echo "$(CYAN)Building and pushing KG View Frontend image...$(NC)"
+	@docker buildx build \
+		--platform linux/arm64 \
+		--provenance=false \
+		--sbom=false \
+		-f $(DOCKERFILE_FRONTEND) \
+		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-frontend:$(VERSION) \
+		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-frontend:latest \
+		--push \
+		$(BUILD_CONTEXT)
+	@echo "$(GREEN)✓ Frontend image built and pushed: $(SERVICE_NAME)-frontend:$(VERSION)$(NC)"
+
+# =============================================================================
 # Ship (Test -> Build -> Push)
 # =============================================================================
 

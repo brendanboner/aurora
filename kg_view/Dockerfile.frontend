@@ -13,8 +13,7 @@ RUN npm ci
 # Copy source code
 COPY kg_view/kg-visualizer ./
 
-# Build the application with /visualisation/ base path
-ENV VITE_BASE_PATH=/visualisation/
+# Build the application (no base path - nginx handles routing)
 RUN npm run build
 
 # Production stage - serve with nginx
