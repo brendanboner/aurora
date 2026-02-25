@@ -206,6 +206,7 @@ services:
       RETRIEVER_SERVICE_URL: ${RETRIEVER_SERVICE_URL:-http://retriever:8000}
       CONTENT_CREATOR_SERVICE_URL: ${CONTENT_CREATOR_SERVICE_URL:-http://content_creator_service:8000}
       ORACLE_SERVICE_URL: ${ORACLE_SERVICE_URL:-http://oracle:8000}
+      KG_VIEW_BACKEND_URL: ${KG_VIEW_BACKEND_URL:-http://kg-view-backend:8002}
       
       # Application Configuration (simplified - single domain derives URL and cookie)
       DEPLOYMENT_DOMAIN: ${DEPLOYMENT_DOMAIN:-localhost}

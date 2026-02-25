@@ -1,12 +1,17 @@
 """
 FastAPI Backend for Knowledge Graph Visualizer
 """
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 import os
+import sys
+
+# Add common directory to path for auth middleware
+sys.path.insert(0, '/app/common')
+from auth_middleware import get_user_context
 
 from services.neo4j_service import Neo4jService
 from services.llm_service import LLMService
@@ -55,9 +60,12 @@ class QueryResponse(BaseModel):
 
 # Health check
 @app.get("/health")
-async def health_check():
+async def health_check(user: Optional[dict] = Depends(get_user_context)):
     """Health check endpoint"""
-    return {"status": "healthy", "service": "kg-visualizer-api"}
+    response = {"status": "healthy", "service": "kg-visualizer-api"}
+    if user:
+        response["user"] = user.get("email")
+    return response
 
 
 # Graph Statistics

@@ -15,6 +15,7 @@ SERVICE_ROUTES = {
     "/api/content_creator_service": settings.content_creator_service_url,
     "/api/content-creator": settings.content_creator_service_url,  # Alias for content creator
     "/api/oracle": settings.oracle_service_url,  # Oracle question-answering service
+    "/api/visualisation": settings.kg_view_backend_url,  # Knowledge graph visualizer
 }
 
 # Safe headers to forward (allowlist approach)

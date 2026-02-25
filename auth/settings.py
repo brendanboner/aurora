@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     retriever_service_url: str
     content_creator_service_url: str
     oracle_service_url: str
+    kg_view_backend_url: str
     
     # Application Configuration
     # Single base domain that derives APPLICATION_URL and COOKIE_DOMAIN

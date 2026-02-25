@@ -16,6 +16,9 @@ COPY neo4j-client /app/neo4j-client
 # Install neo4j-client
 RUN pip install --no-cache-dir -e /app/neo4j-client
 
+# Copy common directory for auth middleware
+COPY common /app/common
+
 # Copy backend requirements and install
 COPY kg_view/backend/requirements.txt /app/backend/
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
