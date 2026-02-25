@@ -20,15 +20,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS configuration
-origins = os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',')
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS configuration - only for local development
+# In production, nginx handles all requests from same origin (no CORS needed)
+cors_origins = os.getenv('CORS_ORIGINS', '')
+if cors_origins:
+    origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Initialize services
 neo4j_service = Neo4jService()
