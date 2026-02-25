@@ -45,61 +45,77 @@ fi
 
 echo -e "${YELLOW}📋 Step 1: Preparing manifest${NC}"
 
-# Copy and update manifest with domain
+# Copy manifest
 cp "$MANIFEST_SOURCE" "$WORK_DIR/manifest.json"
 
-# Update URLs in manifest if not localhost
+# Update URLs in manifest if not localhost using jq for safe JSON manipulation
 if [ "$DOMAIN" != "localhost" ]; then
-    # Update contentUrl and websiteUrl
-    sed -i '' "s|http://localhost|https://$DOMAIN|g" "$WORK_DIR/manifest.json"
+    # Check if jq is available
+    if ! command -v jq &> /dev/null; then
+        echo -e "${RED}❌ ERROR: jq is required but not installed${NC}"
+        echo "Install with: brew install jq"
+        exit 1
+    fi
     
-    # Update validDomains
-    sed -i '' "s|\"localhost\"|\"$DOMAIN\"|g" "$WORK_DIR/manifest.json"
-    sed -i '' "s|\"127.0.0.1\"|\"$DOMAIN\"|g" "$WORK_DIR/manifest.json"
-    
-    # Remove cloudfront default if custom domain provided
-    sed -i '' "s|\"d23ew7gbss3vnh.cloudfront.net\"||g" "$WORK_DIR/manifest.json"
-    sed -i '' 's/,$//' "$WORK_DIR/manifest.json"
+    # Use jq to safely update the manifest
+    jq --arg domain "$DOMAIN" '
+      .configurableTabs[0].configurationUrl = "https://\($domain)/teams?config=true" |
+      .staticTabs[0].contentUrl = "https://\($domain)/teams" |
+      .staticTabs[0].websiteUrl = "https://\($domain)/teams" |
+      .validDomains = [$domain] |
+      .webApplicationInfo.resource = "https://\($domain)"
+    ' "$WORK_DIR/manifest.json" > "$WORK_DIR/manifest.json.tmp" && mv "$WORK_DIR/manifest.json.tmp" "$WORK_DIR/manifest.json"
     
     echo "✓ Manifest updated for domain: $DOMAIN"
 else
-    echo "✓ Using manifest with localhost domain"
+    echo "✓ Using manifest with default domain"
 fi
 
 # Validate manifest JSON
 echo -e "${YELLOW}📋 Step 2: Validating manifest JSON${NC}"
-if ! node -e "JSON.parse(require('fs').readFileSync('$WORK_DIR/manifest.json'))" 2>/dev/null; then
-    echo -e "${RED}❌ ERROR: Invalid manifest JSON${NC}"
-    exit 1
+if command -v jq &> /dev/null; then
+    if ! jq empty "$WORK_DIR/manifest.json" 2>/dev/null; then
+        echo -e "${RED}❌ ERROR: Invalid manifest JSON${NC}"
+        cat "$WORK_DIR/manifest.json"
+        exit 1
+    fi
+elif command -v python3 &> /dev/null; then
+    if ! python3 -m json.tool "$WORK_DIR/manifest.json" > /dev/null 2>&1; then
+        echo -e "${RED}❌ ERROR: Invalid manifest JSON${NC}"
+        cat "$WORK_DIR/manifest.json"
+        exit 1
+    fi
+else
+    echo "⚠️  JSON validation skipped (jq/python3 not found)"
 fi
 echo "✓ Manifest JSON is valid"
 
-# Copy icons if they exist
+# Copy icons - they're in the public directory, not a teams/icons subdirectory
 echo -e "${YELLOW}📋 Step 3: Adding icons${NC}"
-if [ -d "$ICONS_SOURCE" ]; then
-    mkdir -p "$WORK_DIR/icons"
-    if cp "$ICONS_SOURCE"/*.png "$WORK_DIR/icons/" 2>/dev/null; then
-        echo "✓ Icons copied from $ICONS_SOURCE"
-        ls -lh "$WORK_DIR/icons/"
-    else
-        echo "⚠️  No PNG icons found in $ICONS_SOURCE"
-        echo "   You can create icons later before submitting to Teams Admin Center"
-    fi
+ICON_DIR="$REPO_ROOT/frontend/public"
+if [ -f "$ICON_DIR/icon-color.png" ] && [ -f "$ICON_DIR/icon-outline.png" ]; then
+    cp "$ICON_DIR/icon-color.png" "$WORK_DIR/" || exit 1
+    cp "$ICON_DIR/icon-outline.png" "$WORK_DIR/" || exit 1
+    echo "✓ Icons copied (color: 192x192, outline: 32x32)"
+    ls -lh "$WORK_DIR/"*.png
 else
-    echo "⚠️  Icons directory not found at $ICONS_SOURCE"
-    echo "   You can create icons later before submitting to Teams Admin Center"
+    echo -e "${RED}❌ ERROR: Icons not found${NC}"
+    echo "   Required: $ICON_DIR/icon-color.png (192x192)"
+    echo "            $ICON_DIR/icon-outline.png (32x32)"
+    exit 1
 fi
 
 # Create ZIP package
 echo -e "${YELLOW}📋 Step 4: Creating ZIP package${NC}"
 cd "$WORK_DIR"
 
-if [ -d "icons" ] && [ "$(ls -A icons)" ]; then
-    zip -r aurora-teams-app.zip manifest.json icons/ > /dev/null
-    echo "✓ ZIP created with icons"
+# Validate icons exist and are correct dimensions
+if [ -f "icon-color.png" ] && [ -f "icon-outline.png" ]; then
+    zip -q aurora-teams-app.zip manifest.json icon-color.png icon-outline.png
+    echo "✓ ZIP created with manifest and icons"
 else
-    zip -r aurora-teams-app.zip manifest.json > /dev/null
-    echo "✓ ZIP created (no icons - add them before final submission)"
+    echo -e "${RED}❌ ERROR: Icons missing, cannot create package${NC}"
+    exit 1
 fi
 
 # Prepare output directory and copy file BEFORE cleanup

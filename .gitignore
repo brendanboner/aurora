@@ -107,3 +107,6 @@ node_modules/
 /cli/standards.zip
 
 .env.old
+
+# Teams app package (generated)
+aurora-teams-app.zip
