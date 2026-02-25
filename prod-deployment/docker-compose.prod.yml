@@ -856,3 +856,65 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  # =============================================================================
+  # KG View Service (Knowledge Graph Visualization)
+  # =============================================================================
+  
+  kg-view-backend:
+    image: ${ECR_REGISTRY}/aurora-kg-view-backend:${VERSION:-latest}
+    container_name: aurora-kg-view-backend
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for internal access via nginx
+      - "127.0.0.1:8002:8002"
+    environment:
+      # Neo4j Configuration
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_URI: bolt://neo4j:${NEO4J_BOLT_PORT:-7687}
+      
+      # Azure OpenAI Configuration
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      
+      # CORS Configuration
+      CORS_ORIGINS: ${KG_VIEW_CORS_ORIGINS:-https://${DOMAIN}}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  kg-view-frontend:
+    build:
+      context: ..
+      dockerfile: kg_view/Dockerfile.frontend
+    container_name: aurora-kg-view-frontend
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    ports:
+      # Localhost-only for internal access via nginx
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      kg-view-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5173"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+

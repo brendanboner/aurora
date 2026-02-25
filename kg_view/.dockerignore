@@ -1,0 +1,60 @@
+# Node modules
+kg-visualizer/node_modules
+kg-visualizer/dist
+kg-visualizer/.vite
+
+# Python
+backend/__pycache__
+backend/*.pyc
+backend/venv
+backend/.pytest_cache
+neo4j-client/__pycache__
+neo4j-client/*.pyc
+neo4j-client/.pytest_cache
+neo4j-client/venv
+
+# Git
+.git
+.gitignore
+
+# Environment (use parent .env)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs (use Docker logs instead)
+logs/
+*.log
+*.pid
+backend.pid
+frontend.pid
+
+# Test
+tests/
+neo4j-client/tests/
+
+# Documentation (keep only README.md)
+QUICKSTART.md
+TESTING_GUIDE.md
+IMPLEMENTATION_SUMMARY.md
+DOCKER_DEPLOYMENT.md
+DOCKER_INTEGRATION.md
+PORT_CHANGE_SUMMARY.md
+
+# Development files
+Makefile
+start.sh
+docker-deploy.sh
+docker-compose.yml
+docker-compose.single.yml

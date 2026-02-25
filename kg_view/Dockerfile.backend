@@ -1,0 +1,36 @@
+# Backend Dockerfile for KG Visualizer
+# Designed for integration with main project
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy neo4j-client from parent directory (shared library)
+# Build context is .. so neo4j-client is at ../neo4j-client
+COPY neo4j-client /app/neo4j-client
+
+# Install neo4j-client
+RUN pip install --no-cache-dir -e /app/neo4j-client
+
+# Copy backend requirements and install
+COPY kg_view/backend/requirements.txt /app/backend/
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+
+# Copy backend code
+COPY kg_view/backend /app/backend
+
+WORKDIR /app/backend
+
+# Expose backend port
+EXPOSE 8002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8002/api/graph/stats')" || exit 1
+
+# Run the backend
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
