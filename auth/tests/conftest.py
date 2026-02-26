@@ -19,6 +19,7 @@ os.environ.update({
     "RETRIEVER_SERVICE_URL": "http://retriever:8000",
     "CONTENT_CREATOR_SERVICE_URL": "http://content-creator:8000",
     "ORACLE_SERVICE_URL": "http://oracle:8000",
+    "KG_VIEW_BACKEND_URL": "http://kg-view-backend:8000",
     "DEPLOYMENT_DOMAIN": "localhost",
     "USE_HTTPS": "false",
 })

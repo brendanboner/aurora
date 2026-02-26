@@ -50,7 +50,9 @@ help:
 	@echo "  make stop          - Stop all services"
 	@echo "  make restart       - Restart all services (in place)"
 	@echo "  make restart-nginx - Restart nginx only"
+	@echo "  make restart-kg-view - Restart KG View services only"
 	@echo "  make update        - Pull latest images and restart"
+	@echo "  make update-kg-view - Pull and restart KG View services only"
 	@echo ""
 	@echo "$(GREEN)Monitoring:$(NC)"
 	@echo "  make status        - Check service status"
@@ -58,6 +60,7 @@ help:
 	@echo "  make logs-nginx    - View nginx logs"
 	@echo "  make logs-auth     - View auth logs"
 	@echo "  make logs-backend  - View backend logs"
+	@echo "  make logs-kg-view  - View KG View logs"
 	@echo ""
 	@echo "$(GREEN)Database:$(NC)"
 	@echo "  make migrate       - Run database migrations"
@@ -122,6 +125,25 @@ restart-nginx:
 	@echo "$(CYAN)Restarting nginx...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) restart nginx
 	@echo "$(GREEN)✓ Nginx restarted$(NC)"
+
+update-kg-view: ecr-login
+	@echo "$(CYAN)Updating KG View services...$(NC)"
+	@echo "$(YELLOW)→ Pulling latest kg-view images...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) pull kg-view-frontend kg-view-backend
+	@echo "$(YELLOW)→ Restarting kg-view services...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) up -d kg-view-frontend kg-view-backend
+	@echo "$(GREEN)✓ KG View services updated$(NC)"
+	@echo "$(CYAN)Tailing logs (Ctrl+C to exit)...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) logs -f kg-view-frontend kg-view-backend
+
+restart-kg-view:
+	@echo "$(CYAN)Restarting KG View services...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) restart kg-view-frontend kg-view-backend
+	@echo "$(GREEN)✓ KG View services restarted$(NC)"
+	@docker compose -f $(COMPOSE_FILE) logs -f kg-view-frontend kg-view-backend
+
+logs-kg-view:
+	@docker compose -f $(COMPOSE_FILE) logs -f kg-view-frontend kg-view-backend
 
 update: ecr-login
 	@echo "$(CYAN)Updating services...$(NC)"

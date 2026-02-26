@@ -69,7 +69,7 @@ async def health_check(user: Optional[dict] = Depends(get_user_context)):
 
 
 # Graph Statistics
-@app.get("/api/graph/stats")
+@app.get("/graph/stats")
 async def get_graph_stats():
     """Get statistics about the knowledge graph"""
     try:
@@ -80,7 +80,7 @@ async def get_graph_stats():
 
 
 # Graph Data
-@app.get("/api/graph/data")
+@app.get("/graph/data")
 async def get_graph_data(
     limit: int = Query(default=1000, le=10000, description="Maximum nodes to return"),
     skip: int = Query(default=0, ge=0, description="Number of nodes to skip"),
@@ -96,7 +96,7 @@ async def get_graph_data(
 
 
 # Execute Cypher Query
-@app.post("/api/graph/query")
+@app.post("/graph/query")
 async def execute_query(request: QueryRequest):
     """Execute a Cypher query with timeout protection"""
     try:
@@ -112,7 +112,7 @@ async def execute_query(request: QueryRequest):
 
 
 # Autocomplete endpoints
-@app.get("/api/autocomplete/topics")
+@app.get("/autocomplete/topics")
 async def autocomplete_topics(
     search: str = Query(default="", description="Search text"),
     limit: int = Query(default=50, le=100)
@@ -125,7 +125,7 @@ async def autocomplete_topics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/autocomplete/organizations")
+@app.get("/autocomplete/organizations")
 async def autocomplete_organizations(
     search: str = Query(default="", description="Search text"),
     limit: int = Query(default=50, le=100)
@@ -138,7 +138,7 @@ async def autocomplete_organizations(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/autocomplete/people")
+@app.get("/autocomplete/people")
 async def autocomplete_people(
     search: str = Query(default="", description="Search text"),
     limit: int = Query(default=50, le=100)
@@ -151,7 +151,7 @@ async def autocomplete_people(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/autocomplete/all")
+@app.get("/autocomplete/all")
 async def autocomplete_all(
     search: str = Query(default="", description="Search text"),
     limit: int = Query(default=50, le=100)
@@ -185,7 +185,7 @@ async def autocomplete_all(
 
 
 # Node neighborhood
-@app.get("/api/graph/neighborhood/{node_id}")
+@app.get("/graph/neighborhood/{node_id}")
 async def get_node_neighborhood(
     node_id: str,  # Changed to str to support Neo4j elementId format
     hops: int = Query(default=2, ge=1, le=3, description="Number of hops"),
@@ -200,7 +200,7 @@ async def get_node_neighborhood(
 
 
 # Entity subgraph
-@app.post("/api/graph/entity-subgraph")
+@app.post("/graph/entity-subgraph")
 async def get_entity_subgraph(
     entity_ids: List[str],
     hops: int = Query(default=3, ge=1, le=4, description="Number of hops"),
@@ -215,7 +215,7 @@ async def get_entity_subgraph(
 
 
 # Search nodes
-@app.get("/api/graph/search")
+@app.get("/graph/search")
 async def search_nodes(
     q: str = Query(description="Search query"),
     limit: int = Query(default=100, le=500)
@@ -229,7 +229,7 @@ async def search_nodes(
 
 
 # LLM Query Transformation
-@app.post("/api/llm/transform-query")
+@app.post("/llm/transform-query")
 async def transform_query(request: TransformQueryRequest):
     """Transform natural language query to Cypher using LLM"""
     try:
@@ -239,7 +239,7 @@ async def transform_query(request: TransformQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/llm/extract-entities")
+@app.post("/llm/extract-entities")
 async def extract_entities(request: QueryRequest):
     """Extract entities from text and match them to database entities using aliases"""
     try:

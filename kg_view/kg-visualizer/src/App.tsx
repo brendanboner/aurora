@@ -581,7 +581,7 @@ function AppContent() {
       setNodeConnectionCount(new Map());
       // Only show error if it's a network issue
       if (err instanceof Error && (err.message.includes('Network') || err.message.includes('timeout'))) {
-        setError('Network error. Please check if the backend is running on port 8002.');
+        setError('Network error. Please check your connection and try refreshing the page.');
       }
     }
   }, []);
@@ -1401,7 +1401,7 @@ function AppContent() {
               <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
               <div>{error}</div>
               <div style={{ marginTop: '20px', fontSize: '14px', opacity: 0.7 }}>
-                Make sure the backend is running on port 8002
+                Try refreshing the page or check your connection
               </div>
             </div>
           </div>

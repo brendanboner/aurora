@@ -41,7 +41,7 @@ test: ## Run basic tests
 build-backend: ## Build backend Docker image
 	@echo "$(BLUE)Building KG View Backend image...$(NC)"
 	docker build \
-		-f kg_view/$(DOCKERFILE_BACKEND) \
+		-f $(DOCKERFILE_BACKEND) \
 		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-backend:$(VERSION) \
 		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-backend:latest \
 		$(BUILD_CONTEXT)
@@ -54,7 +54,7 @@ build-backend: ## Build backend Docker image
 build-frontend: ## Build frontend Docker image
 	@echo "$(BLUE)Building KG View Frontend image...$(NC)"
 	docker build \
-		-f kg_view/$(DOCKERFILE_FRONTEND) \
+		-f $(DOCKERFILE_FRONTEND) \
 		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-frontend:$(VERSION) \
 		-t $(ECR_REGISTRY)/$(SERVICE_NAME)-frontend:latest \
 		$(BUILD_CONTEXT)
