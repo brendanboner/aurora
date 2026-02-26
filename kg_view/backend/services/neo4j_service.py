@@ -110,18 +110,22 @@ class Neo4jService:
         self, 
         limit: int = 1000, 
         node_types: Optional[List[str]] = None,
-        skip: int = 0
+        skip: int = 0,
+        importance_threshold: float = 0.0,
+        curated_only: bool = False
     ) -> Dict[str, Any]:
         """
-        Get graph nodes and relationships for visualization
+        Get graph nodes and relationships for visualization with importance-based filtering
         
         Args:
             limit: Maximum number of nodes to return
             node_types: Filter by node types (e.g., ['Topic', 'Organization'])
             skip: Number of nodes to skip (for pagination)
+            importance_threshold: Minimum importance score (0-1) for nodes to include
+            curated_only: If True, only return curated/important nodes (high quality content)
             
         Returns:
-            Dictionary with nodes and links arrays
+            Dictionary with nodes and links arrays plus metadata
         """
         # Build node filter
         node_filter = ""
@@ -129,9 +133,13 @@ class Neo4jService:
             labels = " OR ".join([f"n:{label}" for label in node_types])
             node_filter = f"WHERE {labels}"
         
+        # Add importance threshold filter
+        importance_filter = f"AND COALESCE(n.importance, 0) >= {importance_threshold}" if importance_threshold > 0 else ""
+        
         query = f"""
         MATCH (n)
         {node_filter}
+        {importance_filter}
         WITH n
         ORDER BY n.importance DESC, n.name ASC, elementId(n) ASC
         SKIP $skip
@@ -143,12 +151,16 @@ class Neo4jService:
                 id: elementId(n),
                 label: labels(n)[0],
                 name: COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id),
+                importance: COALESCE(n.importance, 0),
+                tier: COALESCE(n.tier, 2),
                 properties: properties(n)
             }}) + 
             collect(DISTINCT {{
                 id: elementId(m),
                 label: labels(m)[0],
                 name: COALESCE(m.name, m.title, m.topic_id, m.org_id, m.person_id, m.source_id),
+                importance: COALESCE(m.importance, 0),
+                tier: COALESCE(m.tier, 2),
                 properties: properties(m)
             }}) as nodes,
             collect({{
@@ -172,28 +184,34 @@ class Neo4jService:
             return {
                 'nodes': list(nodes_dict.values()),
                 'links': results[0].get('links', []),
-                'total_returned': len(nodes_dict)
+                'total_returned': len(nodes_dict),
+                'importance_threshold': importance_threshold,
+                'curated_only': curated_only
             }
         
-        return {'nodes': [], 'links': [], 'total_returned': 0}
+        return {'nodes': [], 'links': [], 'total_returned': 0, 'importance_threshold': importance_threshold, 'curated_only': curated_only}
     
-    def get_topics_autocomplete(self, search: str = "", limit: int = 50) -> List[Dict[str, str]]:
+    def get_topics_autocomplete(self, search: str = "", limit: int = 50, curated_only: bool = False) -> List[Dict[str, str]]:
         """
-        Get topics for autocomplete with search filter
+        Get topics for autocomplete with search filter and tier-aware results
         
         Args:
             search: Search string to filter topics
             limit: Maximum results to return
+            curated_only: If True, only return tier 0-1 (top-level curated) topics
             
         Returns:
-            List of topics with id, name, and type
+            List of topics with id, name, type, and tier information
         """
-        query = """
+        tier_filter = "AND (t.tier <= 1 OR t.tier IS NULL)" if curated_only else ""
+        query = f"""
         MATCH (t:Topic)
-        WHERE toLower(t.name) CONTAINS toLower($search)
+        WHERE (toLower(t.name) CONTAINS toLower($search)
            OR toLower(t.identifier) CONTAINS toLower($search)
-           OR any(alias IN t.aliases WHERE toLower(alias) CONTAINS toLower($search))
+           OR any(alias IN t.aliases WHERE toLower(alias) CONTAINS toLower($search)))
+        {tier_filter}
         RETURN t.topic_id as id, t.name as name, 'topic' as type, t.classification as classification,
+               COALESCE(t.tier, 2) as tier, COALESCE(t.importance, 0) as importance,
                CASE 
                    WHEN toLower(t.name) = toLower($search) THEN 0
                    WHEN toLower(t.name) STARTS WITH toLower($search) THEN 1
@@ -201,7 +219,7 @@ class Neo4jService:
                    WHEN any(alias IN t.aliases WHERE toLower(alias) STARTS WITH toLower($search)) THEN 1
                    ELSE 2
                END as rank
-        ORDER BY rank, t.name
+        ORDER BY rank, COALESCE(t.importance, 0) DESC, t.name
         LIMIT $limit
         """
         
@@ -262,15 +280,17 @@ class Neo4jService:
         self, 
         node_id: str,  # Changed to str to support elementId format
         hops: int = 2,
-        limit: int = 100
+        limit: int = 100,
+        load_child_topics: bool = False
     ) -> Dict[str, Any]:
         """
-        Get neighborhood of a node up to k hops away
+        Get neighborhood of a node up to k hops away, with optional child topic loading
         
         Args:
             node_id: Neo4j elementId string (format: '4:uuid:internal_id')
             hops: Number of hops to traverse
             limit: Maximum nodes to return
+            load_child_topics: If True and node is a topic, also load child topics via ENCOMPASSES
             
         Returns:
             Dictionary with nodes and links
@@ -285,12 +305,16 @@ class Neo4jService:
                 id: elementId(start),
                 label: labels(start)[0],
                 name: COALESCE(start.name, start.title, start.topic_id, start.org_id),
+                importance: COALESCE(start.importance, 0),
+                tier: COALESCE(start.tier, 2),
                 properties: properties(start)
             }}) +
             collect(DISTINCT {{
                 id: elementId(connected),
                 label: labels(connected)[0],
                 name: COALESCE(connected.name, connected.title, connected.topic_id, connected.org_id),
+                importance: COALESCE(connected.importance, 0),
+                tier: COALESCE(connected.tier, 2),
                 properties: properties(connected)
             }}) as nodes,
             [rel IN rels | {{

@@ -7,6 +7,7 @@ A shared library for interacting with the Aurora Neo4j Knowledge Graph.
 from .client import Neo4jClient
 from .repository import GraphRepository
 from .deduplicator import NodeDeduplicator
+from .migrations import Migrations
 from .models import (
     Node,
     Resource,
@@ -49,6 +50,7 @@ __all__ = [
     "Neo4jClient",
     "GraphRepository",
     "NodeDeduplicator",
+    "Migrations",
     # Models
     "Node",
     "Resource",

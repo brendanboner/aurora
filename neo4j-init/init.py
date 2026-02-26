@@ -5,6 +5,7 @@ One-time initialization container that:
 1. Waits for Neo4j to be ready
 2. Creates schema (constraints and indexes)
 3. Loads base data (organizations and data sources)
+4. Runs database migrations
 
 This ensures the database is ready before other services start.
 """
@@ -161,6 +162,16 @@ def main():
             logger.info("Loading base data (organizations and data sources)...")
             repo.initialize_base_data()
             logger.info("Base data loaded successfully")
+        
+        # Run migrations
+        logger.info("Running database migrations...")
+        from neo4j_client import Migrations
+        with client.driver.session(database=os.getenv("NEO4J_DATABASE", "neo4j")) as session:
+            if Migrations.run_all(session):
+                logger.info("Migrations completed successfully")
+            else:
+                logger.error("Migrations failed")
+                sys.exit(1)
         
         logger.info("=" * 60)
         logger.info("Neo4j Initialization Complete")

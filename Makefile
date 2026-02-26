@@ -43,8 +43,8 @@ help:
 	@echo ""
 	@echo "$(GREEN)Development:$(NC)"
 	@echo "  make dev               - Start development environment"
-	@echo "  make migrate           - Run database migrations"
-	@echo "  make migrate-status    - Show migration status"
+	@echo "  make migrate           - Run PostgreSQL database migrations"
+	@echo "  make migrate-status    - Show PostgreSQL migration status"
 	@echo ""
 	@echo "$(GREEN)Production Deployment:$(NC)"
 	@echo "  See prod-deployment/ folder for EC2 deployment"
@@ -277,6 +277,10 @@ migrate:
 migrate-status:
 	@echo "$(CYAN)Checking migration status...$(NC)"
 	@./prod-deployment/scripts/migrate.sh --status
+
+# =============================================================================
+# Neo4j Graph Migrations
+# =============================================================================
 
 # =============================================================================
 # Cleanup

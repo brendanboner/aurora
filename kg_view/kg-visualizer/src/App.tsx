@@ -5,6 +5,7 @@ import GraphCanvas from './components/GraphCanvas';
 import QueryBar from './components/QueryBar';
 import TopicSelector from './components/TopicSelector';
 import NodeDetails from './components/NodeDetails';
+import FilterPanel from './components/FilterPanel';
 import { graphApi } from './services/api';
 import type { GraphData, GraphNode, Entity, GraphStats } from './types/graph';
 import './App.css';
@@ -53,6 +54,9 @@ function AppContent() {
   const [showNavHelper, setShowNavHelper] = useState(false);
   const [nodeSize, setNodeSize] = useState<number>(100); // 0 to 100%
   const [linkSize, setLinkSize] = useState<number>(100); // 0 to 100%
+  const [importanceThreshold, setImportanceThreshold] = useState<number>(0.0);
+  const [curatedOnly, setCuratedOnly] = useState<boolean>(false);
+  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(true);
 
   // Load initial graph data and stats
   useEffect(() => {
@@ -894,7 +898,54 @@ function AppContent() {
     }
   }, [graphData, highlightNodes]);
 
-  // Handle node click
+  // Handle node type toggle
+  const handleNodeTypeToggle = useCallback((nodeType: string) => {
+    setHiddenNodeTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeType)) {
+        newSet.delete(nodeType);
+      } else {
+        newSet.add(nodeType);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Handle importance threshold change
+  const handleImportanceThresholdChange = useCallback((threshold: number) => {
+    setImportanceThreshold(threshold);
+  }, []);
+
+  // Handle curated only toggle
+  const handleCuratedOnlyChange = useCallback((curated: boolean) => {
+    setCuratedOnly(curated);
+  }, []);
+
+  // Handle apply filters
+  const handleApplyFilters = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Build node types to exclude
+      const visibleNodeTypes = Array.from(new Set(['Resource', 'Topic', 'Organization', 'Person', 'Event', 'DataSource', 'IngestionBatch']))
+        .filter(nt => !hiddenNodeTypes.has(nt));
+
+      // Fetch filtered graph data
+      const newData = await graphApi.getGraphData(
+        1000,
+        0,
+        visibleNodeTypes.length > 0 ? visibleNodeTypes : undefined,
+        importanceThreshold,
+        curatedOnly
+      );
+      setGraphData(newData);
+      setError(null);
+    } catch (err: any) {
+      console.error('Failed to apply filters:', err);
+      setError('Failed to apply filters. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [hiddenNodeTypes, importanceThreshold, curatedOnly]);  // Handle node click
   const handleNodeClick = useCallback((node: GraphNode) => {
     setSelectedNode(node);
     setIsNodeExplorationMode(false); // Start with no hops
@@ -1335,6 +1386,25 @@ function AppContent() {
         >
           🏷️ Topics ({selectedEntities.length})
         </button>
+        <button
+          onClick={() => {
+            setShowFilterPanel(!showFilterPanel);
+          }}
+          style={{
+            padding: '10px 20px',
+            background: showFilterPanel ? '#1976d2' : 'rgba(0,0,0,0.8)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '500',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            transition: 'all 0.2s',
+          }}
+        >
+          ⚙️ Filters
+        </button>
       </div>
 
       {/* Collapsible Search Panel */}
@@ -1380,6 +1450,32 @@ function AppContent() {
             onHighlight={handleEntityHighlight}
             onEntityMouseDown={handleEntityMouseDown}
             onEntityMouseUp={handleEntityMouseUp}
+          />
+        </div>
+      )}
+
+      {/* Collapsible Filter Panel */}
+      {showFilterPanel && (
+        <div style={{
+          position: 'fixed',
+          top: 60,
+          left: '10px',
+          right: '10px',
+          maxWidth: '500px',
+          zIndex: 999,
+          animation: 'slideDown 0.3s ease-out',
+          maxHeight: '70vh',
+          overflowY: 'auto',
+        }}>
+          <FilterPanel
+            hiddenNodeTypes={hiddenNodeTypes}
+            onNodeTypeToggle={handleNodeTypeToggle}
+            importanceThreshold={importanceThreshold}
+            onImportanceThresholdChange={handleImportanceThresholdChange}
+            curatedOnly={curatedOnly}
+            onCuratedOnlyChange={handleCuratedOnlyChange}
+            onApplyFilters={handleApplyFilters}
+            isLoading={isLoading}
           />
         </div>
       )}

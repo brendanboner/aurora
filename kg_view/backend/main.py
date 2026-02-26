@@ -84,12 +84,20 @@ async def get_graph_stats():
 async def get_graph_data(
     limit: int = Query(default=1000, le=10000, description="Maximum nodes to return"),
     skip: int = Query(default=0, ge=0, description="Number of nodes to skip"),
-    node_types: Optional[str] = Query(default=None, description="Comma-separated node types to filter")
+    node_types: Optional[str] = Query(default=None, description="Comma-separated node types to filter"),
+    importance_threshold: float = Query(default=0.0, ge=0.0, le=1.0, description="Minimum importance score (0-1)"),
+    curated_only: bool = Query(default=False, description="If true, only show high-importance curated nodes")
 ):
-    """Get graph nodes and relationships for visualization"""
+    """Get graph nodes and relationships for visualization with smart filtering"""
     try:
         node_type_list = node_types.split(',') if node_types else None
-        data = neo4j_service.get_graph_data(limit=limit, node_types=node_type_list, skip=skip)
+        data = neo4j_service.get_graph_data(
+            limit=limit, 
+            node_types=node_type_list, 
+            skip=skip,
+            importance_threshold=importance_threshold,
+            curated_only=curated_only
+        )
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
