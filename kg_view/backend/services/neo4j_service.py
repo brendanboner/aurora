@@ -191,6 +191,131 @@ class Neo4jService:
         
         return {'nodes': [], 'links': [], 'total_returned': 0, 'importance_threshold': importance_threshold, 'curated_only': curated_only}
     
+    def get_balanced_graph_data(
+        self,
+        total_limit: int = 1000,
+        importance_threshold: float = 0.0
+    ) -> Dict[str, Any]:
+        """
+        Get graph data with balanced sampling across all node types to ensure diversity
+        
+        Args:
+            total_limit: Total maximum number of nodes to return
+            importance_threshold: Minimum importance score (0-1) for nodes to include
+            
+        Returns:
+            Dictionary with nodes and links arrays with balanced representation
+        """
+        # Define node types and their target proportions
+        # This ensures we get a diverse view of the graph
+        node_type_config = {
+            'Resource': 0.35,      # 35% - Documents, articles, specs
+            'Topic': 0.20,         # 20% - Reduced from 14k to prevent dominance
+            'Event': 0.15,         # 15% - Conferences, webinars
+            'Organization': 0.15,  # 15% - Companies, standards bodies
+            'Person': 0.15,        # 15% - Authors, experts
+        }
+        
+        all_nodes = []
+        node_ids = set()
+        
+        # Get stats to understand actual distribution
+        stats = self.get_graph_stats()
+        node_counts = stats.get('nodes', {})
+        
+        # Calculate limits for each type based on proportions
+        for node_type, proportion in node_type_config.items():
+            type_limit = int(total_limit * proportion)
+            actual_count = node_counts.get(node_type, 0)
+            
+            # If type has fewer nodes than limit, use actual count
+            if actual_count > 0 and actual_count < type_limit:
+                type_limit = actual_count
+            
+            if type_limit > 0:
+                # Query for this specific node type
+                importance_filter = f"AND COALESCE(n.importance, 0) >= {importance_threshold}" if importance_threshold > 0 else ""
+                
+                query = f"""
+                MATCH (n:{node_type})
+                WHERE 1=1
+                {importance_filter}
+                WITH n
+                ORDER BY n.importance DESC, n.name ASC, elementId(n) ASC
+                LIMIT $limit
+                RETURN 
+                    elementId(n) as id,
+                    labels(n)[0] as label,
+                    COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id) as name,
+                    COALESCE(n.importance, 0) as importance,
+                    COALESCE(n.tier, 2) as tier,
+                    properties(n) as properties
+                """
+                
+                try:
+                    results = self.client.execute_query(query, {'limit': type_limit})
+                    for record in results:
+                        node_id = record['id']
+                        if node_id not in node_ids:
+                            all_nodes.append({
+                                'id': node_id,
+                                'label': record['label'],
+                                'name': record['name'],
+                                'importance': record['importance'],
+                                'tier': record['tier'],
+                                'properties': record['properties']
+                            })
+                            node_ids.add(node_id)
+                except Exception as e:
+                    print(f"Warning: Failed to fetch {node_type} nodes: {e}")
+        
+        # Now get relationships between the selected nodes
+        if all_nodes:
+            # Build a query to get all relationships between our selected nodes
+            links_query = """
+            MATCH (n)-[r]->(m)
+            WHERE elementId(n) IN $node_ids AND elementId(m) IN $node_ids
+            RETURN 
+                elementId(n) as source,
+                elementId(m) as target,
+                type(r) as type,
+                properties(r) as properties
+            LIMIT 5000
+            """
+            
+            try:
+                links_results = self.client.execute_query(links_query, {'node_ids': list(node_ids)})
+                links = [
+                    {
+                        'source': record['source'],
+                        'target': record['target'],
+                        'type': record['type'],
+                        'properties': record['properties']
+                    }
+                    for record in links_results
+                ]
+            except Exception as e:
+                print(f"Warning: Failed to fetch links: {e}")
+                links = []
+        else:
+            links = []
+        
+        # Calculate node type distribution for metadata
+        type_distribution = {}
+        for node in all_nodes:
+            label = node['label']
+            type_distribution[label] = type_distribution.get(label, 0) + 1
+        
+        return {
+            'nodes': all_nodes,
+            'links': links,
+            'total_returned': len(all_nodes),
+            'importance_threshold': importance_threshold,
+            'balanced': True,
+            'type_distribution': type_distribution,
+            'target_distribution': node_type_config
+        }
+    
     def get_topics_autocomplete(self, search: str = "", limit: int = 50, curated_only: bool = False) -> List[Dict[str, str]]:
         """
         Get topics for autocomplete with search filter and tier-aware results

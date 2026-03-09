@@ -22,6 +22,10 @@ export interface GraphData {
   nodes: GraphNode[];
   links: GraphLink[];
   total_returned?: number;
+  importance_threshold?: number;
+  balanced?: boolean;
+  type_distribution?: Record<string, number>;
+  target_distribution?: Record<string, number>;
 }
 
 export interface GraphStats {

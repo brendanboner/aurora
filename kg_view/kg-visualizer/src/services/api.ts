@@ -118,6 +118,17 @@ export const graphApi = {
     return response.data;
   },
 
+  // Get balanced graph data with diverse node type representation (recommended default)
+  getBalancedGraphData: async (
+    limit: number = 1000,
+    importanceThreshold: number = 0.0
+  ): Promise<GraphData> => {
+    const response = await api.get<GraphData>('/graph/balanced-data', {
+      params: { limit, importance_threshold: importanceThreshold },
+    });
+    return response.data;
+  },
+
   // Execute Cypher query
   executeQuery: async (query: string, parameters?: Record<string, any>): Promise<any> => {
     const response = await api.post('/graph/query', {

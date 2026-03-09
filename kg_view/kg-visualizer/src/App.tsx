@@ -57,6 +57,8 @@ function AppContent() {
   const [importanceThreshold, setImportanceThreshold] = useState<number>(0.0);
   const [curatedOnly, setCuratedOnly] = useState<boolean>(false);
   const [showFilterPanel, setShowFilterPanel] = useState<boolean>(true);
+  const [nodeLimit, setNodeLimit] = useState<number>(1000);
+  const [isLoadingNodes, setIsLoadingNodes] = useState<boolean>(false);
 
   // Load initial graph data and stats
   useEffect(() => {
@@ -65,7 +67,8 @@ function AppContent() {
       try {
         const [graphStats, initialData] = await Promise.all([
           graphApi.getStats(),
-          graphApi.getGraphData(1000, 0),
+          // Use balanced query by default to ensure all node types are represented
+          graphApi.getBalancedGraphData(nodeLimit, 0.0),
         ]);
         setStats(graphStats);
         setGraphData(initialData);
@@ -78,7 +81,7 @@ function AppContent() {
     };
 
     loadInitialData();
-  }, []);
+  }, [nodeLimit]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -1628,6 +1631,69 @@ function AppContent() {
           {panelMode === 'stats' ? (
             <>
               <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>Knowledge Graph Stats</div>
+              
+              {/* Show if balanced mode is active */}
+              {graphData?.balanced && (
+                <div style={{ 
+                  background: 'rgba(46, 204, 113, 0.2)', 
+                  padding: '6px 8px', 
+                  borderRadius: '4px',
+                  marginBottom: '10px',
+                  fontSize: '11px',
+                  border: '1px solid rgba(46, 204, 113, 0.4)'
+                }}>
+                  ✨ <strong>Balanced View</strong>
+                  <div style={{ fontSize: '10px', color: '#aaa', marginTop: '2px' }}>
+                    Showing diverse node types
+                  </div>
+                </div>
+              )}
+              
+              {/* Current view distribution (if available from balanced query) */}
+              {graphData?.type_distribution && (
+                <>
+                  <div style={{ fontSize: '11px', color: '#95A5A6', marginBottom: '6px', fontWeight: 'bold' }}>
+                    Current View ({graphData.nodes.length.toLocaleString()} nodes):
+                  </div>
+                  {Object.entries(graphData.type_distribution as Record<string, number>).map(([label, count]) => (
+                    <div 
+                      key={`view-${label}`}
+                      onClick={() => {
+                        setHiddenNodeTypes(prev => {
+                          const newSet = new Set(prev);
+                          if (newSet.has(label)) {
+                            newSet.delete(label);
+                          } else {
+                            newSet.add(label);
+                          }
+                          return newSet;
+                        });
+                      }}
+                      style={{ 
+                        marginBottom: '4px',
+                        marginLeft: '8px',
+                        cursor: 'pointer',
+                        textDecoration: hiddenNodeTypes.has(label) ? 'line-through' : 'none',
+                        opacity: hiddenNodeTypes.has(label) ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                        fontSize: '11px',
+                      }}
+                    >
+                      <span style={{ color: '#7F8C8D' }}>{label}:</span>{' '}
+                      <span style={{ fontWeight: 'bold' }}>{count.toLocaleString()}</span>
+                      <span style={{ color: '#7F8C8D', marginLeft: '4px' }}>
+                        ({Math.round((count / graphData.nodes.length) * 100)}%)
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ height: '1px', background: '#34495E', margin: '10px 0' }} />
+                </>
+              )}
+              
+              {/* Total graph statistics */}
+              <div style={{ fontSize: '11px', color: '#95A5A6', marginBottom: '6px', fontWeight: 'bold' }}>
+                Total Graph:
+              </div>
               {Object.entries(stats.nodes).map(([label, count]) => (
                 <div 
                   key={label} 
@@ -1818,6 +1884,160 @@ function AppContent() {
           </div>
         </div>
       )}
+
+      {/* Node Count Adjuster - Bottom Right (below navigation helper) */}
+      <div style={{
+        position: 'fixed',
+        bottom: showNavHelper ? '260px' : '80px', // Position above nav helper
+        right: '20px',
+        background: 'rgba(0,0,0,0.85)',
+        padding: '12px 16px',
+        borderRadius: '8px',
+        color: 'white',
+        fontSize: '13px',
+        zIndex: 100,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        minWidth: '180px',
+        transition: 'bottom 0.3s ease',
+      }}>
+        <div style={{ 
+          fontWeight: 'bold', 
+          marginBottom: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          📊 Nodes: {nodeLimit.toLocaleString()}
+          {isLoadingNodes && (
+            <span style={{ fontSize: '11px', color: '#aaa' }}>Loading...</span>
+          )}
+        </div>
+        
+        {/* Preset buttons */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '6px', 
+          marginBottom: '10px',
+          flexWrap: 'wrap',
+        }}>
+          {[500, 1000, 2000, 5000].map(preset => (
+            <button
+              key={preset}
+              onClick={() => setNodeLimit(preset)}
+              disabled={isLoadingNodes}
+              style={{
+                padding: '4px 10px',
+                background: nodeLimit === preset ? '#1976d2' : 'rgba(255,255,255,0.15)',
+                color: 'white',
+                border: nodeLimit === preset ? '1px solid #1976d2' : '1px solid rgba(255,255,255,0.3)',
+                borderRadius: '4px',
+                cursor: isLoadingNodes ? 'not-allowed' : 'pointer',
+                fontSize: '11px',
+                fontWeight: nodeLimit === preset ? 'bold' : 'normal',
+                opacity: isLoadingNodes ? 0.5 : 1,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoadingNodes && nodeLimit !== preset) {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (nodeLimit !== preset) {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                }
+              }}
+            >
+              {preset >= 1000 ? `${preset / 1000}k` : preset}
+            </button>
+          ))}
+        </div>
+        
+        {/* Fine adjustment with +/- buttons */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px',
+          justifyContent: 'space-between',
+        }}>
+          <button
+            onClick={() => setNodeLimit(prev => Math.max(100, prev - 500))}
+            disabled={isLoadingNodes || nodeLimit <= 100}
+            style={{
+              padding: '6px 12px',
+              background: 'rgba(255,255,255,0.15)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: '4px',
+              cursor: (isLoadingNodes || nodeLimit <= 100) ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              opacity: (isLoadingNodes || nodeLimit <= 100) ? 0.3 : 1,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (!isLoadingNodes && nodeLimit > 100) {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+            }}
+          >
+            −500
+          </button>
+          
+          <button
+            onClick={() => setNodeLimit(prev => Math.min(10000, prev + 500))}
+            disabled={isLoadingNodes || nodeLimit >= 10000}
+            style={{
+              padding: '6px 12px',
+              background: 'rgba(255,255,255,0.15)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: '4px',
+              cursor: (isLoadingNodes || nodeLimit >= 10000) ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              opacity: (isLoadingNodes || nodeLimit >= 10000) ? 0.3 : 1,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (!isLoadingNodes && nodeLimit < 10000) {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+            }}
+          >
+            +500
+          </button>
+        </div>
+        
+        {/* Info text */}
+        <div style={{
+          marginTop: '8px',
+          fontSize: '10px',
+          color: '#aaa',
+          fontStyle: 'italic',
+        }}>
+          💡 Adjust visible nodes (100-10k)
+        </div>
+        
+        {/* Current view info */}
+        {graphData?.nodes && (
+          <div style={{
+            marginTop: '6px',
+            paddingTop: '6px',
+            borderTop: '1px solid rgba(255,255,255,0.2)',
+            fontSize: '10px',
+            color: '#bbb',
+          }}>
+            Showing: {graphData.nodes.length.toLocaleString()} nodes
+          </div>
+        )}
+      </div>
 
       {/* Navigation Helper */}
       <div style={{
