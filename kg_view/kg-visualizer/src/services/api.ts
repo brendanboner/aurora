@@ -129,6 +129,18 @@ export const graphApi = {
     return response.data;
   },
 
+  // Get connected graph data prioritizing well-connected nodes (hubs)
+  // Creates more interconnected visualization showing actual connection patterns
+  getConnectedGraphData: async (
+    limit: number = 2000,
+    importanceThreshold: number = 0.0
+  ): Promise<GraphData> => {
+    const response = await api.get<GraphData>('/graph/connected-data', {
+      params: { limit, importance_threshold: importanceThreshold },
+    });
+    return response.data;
+  },
+
   // Execute Cypher query
   executeQuery: async (query: string, parameters?: Record<string, any>): Promise<any> => {
     const response = await api.post('/graph/query', {

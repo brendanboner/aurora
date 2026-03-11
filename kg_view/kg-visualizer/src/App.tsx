@@ -56,9 +56,9 @@ function AppContent() {
   const [linkSize, setLinkSize] = useState<number>(100); // 0 to 100%
   const [importanceThreshold, setImportanceThreshold] = useState<number>(0.0);
   const [curatedOnly, setCuratedOnly] = useState<boolean>(false);
-  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(true);
-  const [nodeLimit, setNodeLimit] = useState<number>(1000);
-  const [isLoadingNodes, setIsLoadingNodes] = useState<boolean>(false);
+  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(false);
+  const [nodeLimit, setNodeLimit] = useState<number>(2000);
+  const [isLoadingNodes] = useState<boolean>(false);
 
   // Load initial graph data and stats
   useEffect(() => {
@@ -67,8 +67,8 @@ function AppContent() {
       try {
         const [graphStats, initialData] = await Promise.all([
           graphApi.getStats(),
-          // Use balanced query by default to ensure all node types are represented
-          graphApi.getBalancedGraphData(nodeLimit, 0.0),
+          // Use connected query by default to show interconnected nodes (not isolated ones)
+          graphApi.getConnectedGraphData(nodeLimit, 0.0),
         ]);
         setStats(graphStats);
         setGraphData(initialData);
@@ -678,6 +678,89 @@ function AppContent() {
       // If multiple entities, update connections automatically
       if (newEntities.length > 1) {
         await updateHighlightedConnections(newEntities);
+      } else if (newEntities.length === 1) {
+        // If this is the only entity, show its neighborhood (1-2 hop)
+        try {
+          const searchResults = await graphApi.searchNodes(entity.name, 10);
+          const matchingResults = searchResults.filter(
+            node => node.label.toLowerCase() === entity.type.toLowerCase()
+          );
+          
+          if (matchingResults.length > 0) {
+            const entityNodeId = matchingResults[0].id;
+            
+            // Fetch 2-hop neighborhood
+            const neighborhoodData = await graphApi.getNeighborhood(entityNodeId, 2, 500);
+            
+            // Merge neighborhood data into graph
+            setGraphData(prevData => {
+              const existingNodeIds = new Set(prevData.nodes.map(n => n.id));
+              const existingLinkKeys = new Set(
+                prevData.links.map(l => {
+                  const src = typeof l.source === 'object' ? l.source.id : l.source;
+                  const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+                  return `${src}-${tgt}`;
+                })
+              );
+
+              const newNodes = neighborhoodData.nodes.filter(n => !existingNodeIds.has(n.id));
+              const newLinks = neighborhoodData.links.filter(l => {
+                const key = `${l.source}-${l.target}`;
+                return !existingLinkKeys.has(key);
+              });
+
+              return {
+                nodes: [...prevData.nodes, ...newNodes],
+                links: [...prevData.links, ...newLinks],
+                total_returned: (prevData.total_returned || 0) + newNodes.length,
+              };
+            });
+            
+            // Build adjacency map for distance calculation
+            const adjacency = new Map<number | string, (number | string)[]>();
+            neighborhoodData.links.forEach(link => {
+              const src = typeof link.source === 'object' ? link.source.id : link.source;
+              const tgt = typeof link.target === 'object' ? link.target.id : link.target;
+              if (!adjacency.has(src)) adjacency.set(src, []);
+              if (!adjacency.has(tgt)) adjacency.set(tgt, []);
+              adjacency.get(src)!.push(tgt);
+              adjacency.get(tgt)!.push(src);
+            });
+
+            // Calculate distances from entity node
+            const distances = calculateDistances(entityNodeId, adjacency);
+            
+            // Filter to only 0, 1, 2 hop nodes
+            const filteredDistances = new Map<number | string, number>();
+            distances.forEach((dist, nodeId) => {
+              if (dist <= 2) {
+                filteredDistances.set(nodeId, dist);
+              }
+            });
+            
+            setNodeDistances(filteredDistances);
+            setNodeConnectionCount(new Map());
+            
+            // Highlight only nodes within 2 hops
+            const nodesToHighlight = new Set(Array.from(filteredDistances.keys()));
+            setHighlightNodes(nodesToHighlight);
+            
+            // Highlight links between these nodes
+            const linksToHighlight = new Set<string>();
+            neighborhoodData.links.forEach(link => {
+              const src = typeof link.source === 'object' ? link.source.id : link.source;
+              const tgt = typeof link.target === 'object' ? link.target.id : link.target;
+              if (nodesToHighlight.has(src) && nodesToHighlight.has(tgt)) {
+                linksToHighlight.add(`${src}-${tgt}`);
+                linksToHighlight.add(`${tgt}-${src}`);
+              }
+            });
+            setHighlightLinks(linksToHighlight);
+            setDirectLinks(new Set());
+          }
+        } catch (err) {
+          console.error('Failed to highlight neighborhood:', err);
+        }
       }
     } catch (err) {
       console.error('Error adding entity:', err);
@@ -936,9 +1019,7 @@ function AppContent() {
       const newData = await graphApi.getGraphData(
         1000,
         0,
-        visibleNodeTypes.length > 0 ? visibleNodeTypes : undefined,
-        importanceThreshold,
-        curatedOnly
+        visibleNodeTypes.length > 0 ? visibleNodeTypes : undefined
       );
       setGraphData(newData);
       setError(null);

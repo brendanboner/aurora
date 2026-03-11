@@ -125,6 +125,28 @@ async def get_balanced_graph_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/graph/connected-data")
+async def get_connected_graph_data(
+    limit: int = Query(default=2000, le=10000, description="Maximum nodes to return across all types"),
+    importance_threshold: float = Query(default=0.0, ge=0.0, le=1.0, description="Minimum importance score (0-1)")
+):
+    """
+    Get graph data prioritizing well-connected nodes (hubs) while maintaining type diversity.
+    
+    This endpoint creates a more interconnected view by selecting the most connected nodes
+    of each type and ensuring their relationships are included, showing actual connection
+    patterns in the knowledge graph rather than isolated nodes.
+    """
+    try:
+        data = neo4j_service.get_connected_graph_data(
+            total_limit=limit,
+            importance_threshold=importance_threshold
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Execute Cypher Query
 @app.post("/graph/query")
 async def execute_query(request: QueryRequest):

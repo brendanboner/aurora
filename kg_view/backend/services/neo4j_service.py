@@ -316,6 +316,140 @@ class Neo4jService:
             'target_distribution': node_type_config
         }
     
+    def get_connected_graph_data(
+        self,
+        total_limit: int = 2000,
+        importance_threshold: float = 0.0
+    ) -> Dict[str, Any]:
+        """
+        Get graph data prioritizing well-connected nodes (hubs) while maintaining type diversity.
+        This creates a more interconnected view showing the actual connection patterns in the graph.
+        
+        Args:
+            total_limit: Total maximum number of nodes to return
+            importance_threshold: Minimum importance score (0-1) for nodes to include
+            
+        Returns:
+            Dictionary with nodes and links arrays emphasizing connectivity
+        """
+        # Node types and their proportions (same as balanced query for consistency)
+        node_type_config = {
+            'Resource': 0.35,      # 35% - Documents, articles, specs
+            'Topic': 0.20,         # 20% - Topics
+            'Event': 0.15,         # 15% - Conferences, webinars
+            'Organization': 0.15,  # 15% - Companies, standards bodies
+            'Person': 0.15,        # 15% - Authors, experts
+        }
+        
+        all_nodes = []
+        node_ids = set()
+        
+        # Get stats
+        stats = self.get_graph_stats()
+        node_counts = stats.get('nodes', {})
+        
+        # For each type, get the most connected nodes (hubs)
+        for node_type, proportion in node_type_config.items():
+            type_limit = int(total_limit * proportion)
+            actual_count = node_counts.get(node_type, 0)
+            
+            if actual_count > 0 and actual_count < type_limit:
+                type_limit = actual_count
+            
+            if type_limit > 0:
+                # Query prioritizes nodes by connection degree (how many relationships they have)
+                importance_filter = f"AND COALESCE(n.importance, 0) >= {importance_threshold}" if importance_threshold > 0 else ""
+                
+                # Get well-connected nodes of this type
+                # Neo4j 5.x requires COUNT {pattern} instead of size(pattern)
+                query = f"""
+                MATCH (n:{node_type})
+                WHERE 1=1
+                {importance_filter}
+                WITH n, COUNT {{ (n)--() }} as degree
+                WHERE degree > 0
+                ORDER BY degree DESC, n.importance DESC, n.name ASC
+                LIMIT $limit
+                RETURN 
+                    elementId(n) as id,
+                    labels(n)[0] as label,
+                    COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id) as name,
+                    COALESCE(n.importance, 0) as importance,
+                    COALESCE(n.tier, 2) as tier,
+                    properties(n) as properties,
+                    degree
+                """
+                
+                try:
+                    results = self.client.execute_query(query, {'limit': type_limit})
+                    for record in results:
+                        node_id = record['id']
+                        if node_id not in node_ids:
+                            all_nodes.append({
+                                'id': node_id,
+                                'label': record['label'],
+                                'name': record['name'],
+                                'importance': record['importance'],
+                                'tier': record['tier'],
+                                'properties': record['properties'],
+                                'degree': record['degree']  # Include degree for debugging
+                            })
+                            node_ids.add(node_id)
+                except Exception as e:
+                    print(f"Warning: Failed to fetch {node_type} nodes: {e}")
+        
+        # Now get ALL relationships between our selected nodes
+        # This is the key difference - we ensure high connectivity
+        if all_nodes:
+            links_query = """
+            MATCH (n)-[r]->(m)
+            WHERE elementId(n) IN $node_ids AND elementId(m) IN $node_ids
+            RETURN 
+                elementId(n) as source,
+                elementId(m) as target,
+                type(r) as type,
+                properties(r) as properties
+            LIMIT 10000
+            """
+            
+            try:
+                links_results = self.client.execute_query(links_query, {'node_ids': list(node_ids)})
+                links = [
+                    {
+                        'source': record['source'],
+                        'target': record['target'],
+                        'type': record['type'],
+                        'properties': record['properties']
+                    }
+                    for record in links_results
+                ]
+            except Exception as e:
+                print(f"Warning: Failed to fetch links: {e}")
+                links = []
+        else:
+            links = []
+        
+        # Calculate type distribution
+        type_distribution = {}
+        for node in all_nodes:
+            label = node['label']
+            type_distribution[label] = type_distribution.get(label, 0) + 1
+        
+        # Calculate connectivity metrics
+        avg_degree = sum(node.get('degree', 0) for node in all_nodes) / len(all_nodes) if all_nodes else 0
+        
+        return {
+            'nodes': all_nodes,
+            'links': links,
+            'total_returned': len(all_nodes),
+            'total_links': len(links),
+            'importance_threshold': importance_threshold,
+            'connected': True,
+            'avg_degree': avg_degree,
+            'type_distribution': type_distribution,
+            'target_distribution': node_type_config
+        }
+    
     def get_topics_autocomplete(self, search: str = "", limit: int = 50, curated_only: bool = False) -> List[Dict[str, str]]:
         """
         Get topics for autocomplete with search filter and tier-aware results

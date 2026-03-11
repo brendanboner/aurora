@@ -35,17 +35,17 @@ const NODE_COLORS: Record<string, string> = {
 // VISUAL CONSTANTS - Adjust these to tune the graph appearance
 // ==============================================================================
 
-// Node Size Multipliers (base size = 4)
+// Node Size Multipliers (base size = 3)
 const NODE_SIZE = {
   BASE: 3,
-  ENTITY: 2.0,           // Entity nodes (distance 0) - largest and prominent
-  HOP_1_MULTI: 1.5,      // 1-hop with multiple connections - 60% of entity
-  HOP_1_SINGLE: 1.0,     // 1-hop with single connection - 50% of entity
-  HOP_2: 0.8,            // 2-hop - 33% of entity size (much smaller)
-  HOP_3_PLUS: 0.75,       // 3+ hops - 27% of entity size (very small)
+  ENTITY: 2.5,           // Entity nodes (distance 0) - largest and prominent (increased)
+  HOP_1_MULTI: 1.8,      // 1-hop with multiple connections (increased)
+  HOP_1_SINGLE: 1.2,     // 1-hop with single connection (increased)
+  HOP_2: 1.0,            // 2-hop (increased)
+  HOP_3_PLUS: 0.85,      // 3+ hops (increased)
   SELECTED: 2.0,         // Selected but not highlighted
-  IMPORTANCE_MIN: 0.3,   // Minimum importance factor (reduced for more size variation)
-  IMPORTANCE_MAX: 0.7,   // Maximum importance boost
+  IMPORTANCE_MIN: 0.4,   // Minimum importance factor (increased for more visibility)
+  IMPORTANCE_MAX: 1.2,   // Maximum importance boost (increased for more dramatic sizing)
 };
 
 // Node Color Brightness (for highlighting)
@@ -71,16 +71,16 @@ const NODE_GLOW = {
 
 // Link Visual Properties
 const LINK_STYLE = {
-  BASE_WIDTH: 0.5,
-  WIDTH_DIRECT: 1.0,     // Direct entity-to-entity links
-  WIDTH_HIGHLIGHTED: 1.5, // Highlighted links
-  OPACITY_DIRECT: 1.0,   // Direct entity-to-entity links
-  OPACITY_HOP_0: 1.0,    // Entity links
-  OPACITY_HOP_1: 0.75,   // 1-hop links
-  OPACITY_HOP_2: 0.60,   // 2-hop links
-  OPACITY_HOP_3_PLUS: 0.65, // 3+ hop links
-  OPACITY_DIMMED: 0.10,  // Non-highlighted when filtering
-  OPACITY_NORMAL: 0.4,   // Normal state
+  BASE_WIDTH: 0.8,           // Increased base width for better visibility
+  WIDTH_DIRECT: 2.5,         // Direct entity-to-entity links - much thicker
+  WIDTH_HIGHLIGHTED: 2.0,    // Highlighted links - thicker
+  OPACITY_DIRECT: 1.0,       // Direct entity-to-entity links
+  OPACITY_HOP_0: 1.0,        // Entity links
+  OPACITY_HOP_1: 0.75,       // 1-hop links
+  OPACITY_HOP_2: 0.60,       // 2-hop links
+  OPACITY_HOP_3_PLUS: 0.65,  // 3+ hop links
+  OPACITY_DIMMED: 0.10,      // Non-highlighted when filtering
+  OPACITY_NORMAL: 0.4,       // Normal state
 };
 
 // Link Colors
@@ -244,7 +244,7 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     const isHighlighted = selectedNodes.has(node.id) || highlightNodes.has(node.id);
     const isEntity = nodeDistances.get(node.id) === 0; // Entity nodes have distance 0
     const color = getNodeColor(node);
-    const size = getNodeSize(node); // This already includes sizeMultiplier
+    const size = getNodeSize(node); // This already includes importance and size multipliers
     
     const geometry = new THREE.SphereGeometry(size, 16, 16);
     const material = new THREE.MeshLambertMaterial({
@@ -256,9 +256,11 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     const mesh = new THREE.Mesh(geometry, material);
     
     // Add glow ONLY for entity nodes (selected/searched topics)
-    // Glow size scales with the node size (which already includes sizeMultiplier)
+    // Glow size MUST scale proportionally with the computed node size
+    // This ensures glow matches both importance-based and distance-based sizing
     if (isEntity) {
-      const glowGeometry = new THREE.SphereGeometry(size * NODE_GLOW.SIZE_MULTIPLIER, 16, 16);
+      const glowSize = size * NODE_GLOW.SIZE_MULTIPLIER; // Proportional to actual node size
+      const glowGeometry = new THREE.SphereGeometry(glowSize, 16, 16);
       const glowMaterial = new THREE.MeshBasicMaterial({
         color: color,
         transparent: true,
