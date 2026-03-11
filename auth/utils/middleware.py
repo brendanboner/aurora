@@ -2,7 +2,7 @@
 
 import logging
 from fastapi import Request, HTTPException, status
-from .oauth import validate_jwt_token, refresh_access_token, extract_user_info
+from .oauth import validate_jwt_token, refresh_access_token, extract_user_info, validate_user_group
 from settings import get_settings
 
 settings = get_settings()
@@ -76,6 +76,9 @@ async def validate_request_token(request: Request) -> dict:
             # Fallback: try to extract from access token (may have limited info)
             access_token_claims = await validate_jwt_token(access_token)
             user_info = extract_user_info(access_token_claims)
+        
+        # Validate user is in required group
+        validate_user_group(user_info, settings.required_cognito_group)
         
         return user_info
     

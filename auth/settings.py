@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     cognito_jwks_url: str
     cognito_token_endpoint: str
     
+    # Cognito Group Access Control
+    required_cognito_group: str = "aurora-users"  # Only users in this group can access the app
+    
     # Service URLs
     backend_service_url: str
     curator_service_url: str

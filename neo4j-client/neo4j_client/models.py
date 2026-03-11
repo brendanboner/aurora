@@ -409,9 +409,9 @@ class DataSource(Node):
         description="Max redirects to follow when resolving URLs"
     )
     
-    discovery_mode: str = Field(
+    discovery_mode: Optional[str] = Field(
         default='incremental',
-        description="Discovery strategy: 'date_based' (Causeway) or 'incremental' (WFA public)"
+        description="Discovery strategy: 'date_based' (Causeway) or 'incremental' (WFA public). None for non-scraped sources."
     )
     
     consecutive_duplicates_limit: int = Field(

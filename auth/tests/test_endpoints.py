@@ -64,6 +64,24 @@ class TestAuthCallbackEndpoint:
             
             assert response.status_code == 307
             assert "error=auth_failed" in response.headers["location"]
+    
+    def test_callback_user_not_in_required_group(self, client, mock_cognito_tokens, unauthorized_group_claims):
+        """Test authentication callback fails when user not in required group."""
+        # Store state in Redis mock
+        from utils.state_storage import store_oauth_state
+        store_oauth_state("test-state", {"ip": "127.0.0.1", "user_agent": "test"})
+        
+        with patch('auth.exchange_code_for_tokens', return_value=mock_cognito_tokens), \
+             patch('auth.validate_jwt_token', return_value=unauthorized_group_claims):
+            
+            response = client.get(
+                "/api/auth/callback?code=test-auth-code&state=test-state",
+                follow_redirects=False
+            )
+            
+            # Should redirect to error page since user is not in required group
+            assert response.status_code == 307
+            assert "error=auth_failed" in response.headers["location"]
 
 
 class TestLogoutEndpoint:

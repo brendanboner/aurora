@@ -152,10 +152,36 @@ async def refresh_access_token(refresh_token: str) -> Dict[str, str]:
 def extract_user_info(id_token_claims: Dict[str, Any]) -> Dict[str, str]:
     """
     Extract user information from ID token claims.
-    Returns dict with id, email, role.
+    Returns dict with id, email, role, groups.
     """
     return {
         "id": id_token_claims.get("sub"),
         "email": id_token_claims.get("email"),
         "role": id_token_claims.get("custom:role", "user"),  # Default to 'user' if not set
+        "groups": id_token_claims.get("cognito:groups", []),  # Cognito groups from token
     }
+
+
+def validate_user_group(user_info: Dict[str, Any], required_group: str) -> None:
+    """
+    Validate that user is a member of the required Cognito group.
+    Raises HTTPException if user is not in the required group.
+    
+    Args:
+        user_info: User information dict containing 'groups' key
+        required_group: Name of the required Cognito group
+    """
+    user_groups = user_info.get("groups", [])
+    user_email = user_info.get("email", "unknown")
+    
+    if required_group not in user_groups:
+        logger.warning(
+            f"Access denied - user not in required group: "
+            f"user={user_email}, groups={user_groups}, required={required_group}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied. You must be a member of the '{required_group}' group to access this application."
+        )
+    
+    logger.debug(f"Group validation passed for user {user_email}: groups={user_groups}")

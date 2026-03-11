@@ -703,6 +703,8 @@ services:
         condition: service_healthy
       auth:
         condition: service_healthy
+      kg-view-frontend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/health || exit 1"]
       interval: 30s
@@ -892,7 +894,7 @@ services:
       kg-view-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5173"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:5173"]
       interval: 10s
       timeout: 5s
       retries: 5

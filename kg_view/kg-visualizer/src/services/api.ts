@@ -108,9 +108,11 @@ export const graphApi = {
   getGraphData: async (
     limit: number = 1000,
     skip: number = 0,
-    nodeTypes?: string[]
+    nodeTypes?: string[],
+    importanceThreshold: number = 0.0,
+    curatedOnly: boolean = false
   ): Promise<GraphData> => {
-    const params: any = { limit, skip };
+    const params: any = { limit, skip, importance_threshold: importanceThreshold, curated_only: curatedOnly };
     if (nodeTypes && nodeTypes.length > 0) {
       params.node_types = nodeTypes.join(',');
     }

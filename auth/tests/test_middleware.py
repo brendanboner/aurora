@@ -83,4 +83,36 @@ class TestValidateRequestToken:
                     await validate_request_token(mock_request)
                 
                 assert exc_info.value.status_code == 401
-                assert "Please login again" in exc_info.value.detail
+                assert "Please login again" in exc_info.value.detail    
+    @pytest.mark.asyncio
+    async def test_validate_user_not_in_required_group(self, unauthorized_group_claims):
+        """Test validation fails when user not in required Cognito group."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies.get.side_effect = lambda key: {
+            "access_token": "valid-token",
+            "id_token": "valid-id-token",
+            "refresh_token": "refresh-token"
+        }.get(key)
+        
+        with patch('utils.middleware.validate_jwt_token', return_value=unauthorized_group_claims):
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_request_token(mock_request)
+            
+            assert exc_info.value.status_code == 403
+            assert "aurora-users" in exc_info.value.detail
+    
+    @pytest.mark.asyncio
+    async def test_validate_user_with_no_groups(self, no_groups_claims):
+        """Test validation fails when user has no groups."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies.get.side_effect = lambda key: {
+            "access_token": "valid-token",
+            "id_token": "valid-id-token",
+            "refresh_token": "refresh-token"
+        }.get(key)
+        
+        with patch('utils.middleware.validate_jwt_token', return_value=no_groups_claims):
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_request_token(mock_request)
+            
+            assert exc_info.value.status_code == 403

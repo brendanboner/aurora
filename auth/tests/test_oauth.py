@@ -8,7 +8,8 @@ from utils.oauth import (
     validate_jwt_token,
     exchange_code_for_tokens,
     refresh_access_token,
-    extract_user_info
+    extract_user_info,
+    validate_user_group
 )
 
 
@@ -185,4 +186,89 @@ class TestExtractUserInfo:
         }
         
         result = extract_user_info(claims)
-        assert result["role"] == "user"
+        assert result["role"] == "user"    
+    def test_extract_user_info_with_groups(self):
+        """Test extracting user info with Cognito groups."""
+        claims = {
+            "sub": "user-123",
+            "email": "test@example.com",
+            "custom:role": "admin",
+            "cognito:groups": ["aurora-users", "admin-group"]
+        }
+        
+        result = extract_user_info(claims)
+        assert result["id"] == "user-123"
+        assert result["email"] == "test@example.com"
+        assert result["role"] == "admin"
+        assert result["groups"] == ["aurora-users", "admin-group"]
+    
+    def test_extract_user_info_no_groups(self):
+        """Test extracting user info when no groups claim exists."""
+        claims = {
+            "sub": "user-123",
+            "email": "test@example.com",
+            "custom:role": "user"
+        }
+        
+        result = extract_user_info(claims)
+        assert result["id"] == "user-123"
+        assert result["groups"] == []  # Default to empty list
+
+
+class TestValidateUserGroup:
+    """Test group-based access control."""
+    
+    def test_validate_user_group_success(self):
+        """Test successful group validation."""
+        user_info = {
+            "id": "user-123",
+            "email": "test@example.com",
+            "role": "user",
+            "groups": ["aurora-users", "other-group"]
+        }
+        
+        # Should not raise any exception
+        validate_user_group(user_info, "aurora-users")
+    
+    def test_validate_user_group_failure(self):
+        """Test group validation failure when user not in group."""
+        user_info = {
+            "id": "user-123",
+            "email": "test@example.com",
+            "role": "user",
+            "groups": ["some-other-group"]
+        }
+        
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_group(user_info, "aurora-users")
+        
+        assert exc_info.value.status_code == 403
+        assert "aurora-users" in str(exc_info.value.detail)
+    
+    def test_validate_user_group_no_groups(self):
+        """Test group validation when user has no groups."""
+        user_info = {
+            "id": "user-123",
+            "email": "test@example.com",
+            "role": "user",
+            "groups": []
+        }
+        
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_group(user_info, "aurora-users")
+        
+        assert exc_info.value.status_code == 403
+    
+    def test_validate_user_group_missing_groups_key(self):
+        """Test group validation when groups key is missing."""
+        user_info = {
+            "id": "user-123",
+            "email": "test@example.com",
+            "role": "user"
+            # No groups key
+        }
+        
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_group(user_info, "aurora-users")
+        
+        assert exc_info.value.status_code == 403

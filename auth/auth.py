@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from settings import get_settings
-from utils.oauth import exchange_code_for_tokens, validate_jwt_token
+from utils.oauth import exchange_code_for_tokens, validate_jwt_token, extract_user_info, validate_user_group
 from utils.middleware import validate_request_token
 from services.proxy import proxy_request
 from utils.logger import setup_logger
@@ -173,6 +173,13 @@ async def auth_callback(code: str, state: str, request: Request):
         
         # Validate ID token to get user info (pass access_token for at_hash validation)
         id_token_claims = await validate_jwt_token(tokens["id_token"], access_token=tokens["access_token"])
+        
+        # Extract user info including groups
+        user_info = extract_user_info(id_token_claims)
+        
+        # Validate user is in required group - reject login if not
+        validate_user_group(user_info, settings.required_cognito_group)
+        
         user_id = id_token_claims.get("sub")  # Cognito user UUID
         user_email = id_token_claims.get("email")
         
@@ -237,8 +244,15 @@ async def auth_callback(code: str, state: str, request: Request):
         
         return response
     
-    except HTTPException:
-        raise
+    except HTTPException as http_exc:
+        # Handle HTTP exceptions (like group validation failures) by redirecting to error page
+        logger.error(
+            f"Authentication failed: status={http_exc.status_code}, detail={http_exc.detail}, "
+            f"ip={request.client.host}, user_agent={request.headers.get('user-agent')}"
+        )
+        # Redirect to frontend with generic error
+        error_url = f"{settings.effective_application_url}/?error=auth_failed"
+        return RedirectResponse(url=error_url)
     except Exception as e:
         logger.error(
             f"Authentication failed: error={str(e)}, ip={request.client.host}, "

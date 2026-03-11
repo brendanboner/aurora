@@ -217,7 +217,24 @@ Prevents brute force attacks:
 - **Callback endpoint**: 20 requests/minute per IP
 - **Automatic 429 response** on violations
 
-### 5. Header Injection Prevention
+### 5. Group-Based Access Control
+
+**Problem**: Need to restrict access to specific users
+
+**Solution**: Cognito group membership validation
+- Validates user is in required Cognito group on login
+- Re-validates on every API request
+- Configurable via `REQUIRED_COGNITO_GROUP` environment variable (default: `aurora-users`)
+- Returns HTTP 403 Forbidden if user not in group
+- Logs all access denials with user email and groups
+
+**Setup**:
+1. Create a Cognito group (e.g., `aurora-users`) in AWS Console
+2. Add authorized users to the group
+3. Configure `REQUIRED_COGNITO_GROUP=aurora-users` in environment
+4. Users not in the group will be denied access on login and all subsequent requests
+
+### 6. Header Injection Prevention
 
 **Allowlist approach**: Only safe headers forwarded
 ```python
@@ -235,7 +252,7 @@ X-User-Email: user@example.com
 X-User-Role: admin
 ```
 
-### 6. Automatic Token Refresh
+### 7. Automatic Token Refresh
 
 Access tokens expire after 1 hour. The service automatically:
 1. Detects expired access token
@@ -244,7 +261,7 @@ Access tokens expire after 1 hour. The service automatically:
 4. Continues original request
 5. User experiences no interruption
 
-### 7. Request Size Limits
+### 8. Request Size Limits
 
 Maximum request size: **1 MB**
 

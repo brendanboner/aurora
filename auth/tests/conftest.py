@@ -91,6 +91,7 @@ def valid_token_claims():
         "sub": "test-user-123",
         "email": "testuser@example.com",
         "custom:role": "user",
+        "cognito:groups": ["aurora-users"],  # User is in required group
         "exp": int(time.time()) + 3600,  # Expires in 1 hour
         "aud": "test_client_id",
         "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST",
@@ -108,7 +109,38 @@ def expired_token_claims():
         "sub": "test-user-123",
         "email": "testuser@example.com",
         "custom:role": "user",
+        "cognito:groups": ["aurora-users"],  # User is in required group
         "exp": int(time.time()) - 3600,  # Expired 1 hour ago
+        "aud": "test_client_id",
+        "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST"
+    }
+
+
+@pytest.fixture
+def unauthorized_group_claims():
+    """JWT token claims for user not in required group."""
+    import time
+    return {
+        "sub": "test-user-456",
+        "email": "unauthorized@example.com",
+        "custom:role": "user",
+        "cognito:groups": ["some-other-group"],  # User is NOT in required group
+        "exp": int(time.time()) + 3600,  # Valid expiration
+        "aud": "test_client_id",
+        "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST"
+    }
+
+
+@pytest.fixture
+def no_groups_claims():
+    """JWT token claims for user with no groups."""
+    import time
+    return {
+        "sub": "test-user-789",
+        "email": "nogroups@example.com",
+        "custom:role": "user",
+        # No cognito:groups claim
+        "exp": int(time.time()) + 3600,  # Valid expiration
         "aud": "test_client_id",
         "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST"
     }

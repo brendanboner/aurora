@@ -56,9 +56,8 @@ function AppContent() {
   const [linkSize, setLinkSize] = useState<number>(100); // 0 to 100%
   const [importanceThreshold, setImportanceThreshold] = useState<number>(0.0);
   const [curatedOnly, setCuratedOnly] = useState<boolean>(false);
-  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(false);
-  const [nodeLimit, setNodeLimit] = useState<number>(2000);
-  const [isLoadingNodes] = useState<boolean>(false);
+  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(true);
+  const [nodeLimit, setNodeLimit] = useState<number>(1000);
 
   // Load initial graph data and stats
   useEffect(() => {
@@ -1989,7 +1988,7 @@ function AppContent() {
           gap: '6px',
         }}>
           📊 Nodes: {nodeLimit.toLocaleString()}
-          {isLoadingNodes && (
+          {isLoading && (
             <span style={{ fontSize: '11px', color: '#aaa' }}>Loading...</span>
           )}
         </div>
@@ -2005,21 +2004,21 @@ function AppContent() {
             <button
               key={preset}
               onClick={() => setNodeLimit(preset)}
-              disabled={isLoadingNodes}
+              disabled={isLoading}
               style={{
                 padding: '4px 10px',
                 background: nodeLimit === preset ? '#1976d2' : 'rgba(255,255,255,0.15)',
                 color: 'white',
                 border: nodeLimit === preset ? '1px solid #1976d2' : '1px solid rgba(255,255,255,0.3)',
                 borderRadius: '4px',
-                cursor: isLoadingNodes ? 'not-allowed' : 'pointer',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
                 fontSize: '11px',
                 fontWeight: nodeLimit === preset ? 'bold' : 'normal',
-                opacity: isLoadingNodes ? 0.5 : 1,
+                opacity: isLoading ? 0.5 : 1,
                 transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => {
-                if (!isLoadingNodes && nodeLimit !== preset) {
+                if (!isLoading && nodeLimit !== preset) {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
                 }
               }}
@@ -2043,21 +2042,21 @@ function AppContent() {
         }}>
           <button
             onClick={() => setNodeLimit(prev => Math.max(100, prev - 500))}
-            disabled={isLoadingNodes || nodeLimit <= 100}
+            disabled={isLoading || nodeLimit <= 100}
             style={{
               padding: '6px 12px',
               background: 'rgba(255,255,255,0.15)',
               color: 'white',
               border: '1px solid rgba(255,255,255,0.3)',
               borderRadius: '4px',
-              cursor: (isLoadingNodes || nodeLimit <= 100) ? 'not-allowed' : 'pointer',
+              cursor: (isLoading || nodeLimit <= 100) ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: 'bold',
-              opacity: (isLoadingNodes || nodeLimit <= 100) ? 0.3 : 1,
+              opacity: (isLoading || nodeLimit <= 100) ? 0.3 : 1,
               transition: 'all 0.2s',
             }}
             onMouseEnter={(e) => {
-              if (!isLoadingNodes && nodeLimit > 100) {
+              if (!isLoading && nodeLimit > 100) {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
               }
             }}
@@ -2070,21 +2069,21 @@ function AppContent() {
           
           <button
             onClick={() => setNodeLimit(prev => Math.min(10000, prev + 500))}
-            disabled={isLoadingNodes || nodeLimit >= 10000}
+            disabled={isLoading || nodeLimit >= 10000}
             style={{
               padding: '6px 12px',
               background: 'rgba(255,255,255,0.15)',
               color: 'white',
               border: '1px solid rgba(255,255,255,0.3)',
               borderRadius: '4px',
-              cursor: (isLoadingNodes || nodeLimit >= 10000) ? 'not-allowed' : 'pointer',
+              cursor: (isLoading || nodeLimit >= 10000) ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: 'bold',
-              opacity: (isLoadingNodes || nodeLimit >= 10000) ? 0.3 : 1,
+              opacity: (isLoading || nodeLimit >= 10000) ? 0.3 : 1,
               transition: 'all 0.2s',
             }}
             onMouseEnter={(e) => {
-              if (!isLoadingNodes && nodeLimit < 10000) {
+              if (!isLoading && nodeLimit < 10000) {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
               }
             }}

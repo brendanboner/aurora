@@ -56,6 +56,7 @@ The auth service acts as the single authentication gateway for all Aurora API en
 - **Cookie Security**: httpOnly, Secure (HTTPS), SameSite=Strict
 - **Header Injection Prevention**: Allowlist-based header filtering
 - **JWT Validation**: Full signature and claims validation against Cognito JWKS
+- **Group-Based Access Control**: Restricts access to users in required Cognito group (default: `aurora-users`)
 - **Automatic Token Refresh**: Seamless access token renewal using refresh tokens
 - **Request Size Limits**: 1 MB max request size
 - **Security Logging**: All auth events logged with IP and user agent
@@ -132,6 +133,11 @@ COGNITO_APP_CLIENT_SECRET=your-app-client-secret
 COGNITO_DOMAIN=your-domain.auth.us-east-1.amazoncognito.com
 COGNITO_JWKS_URL=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX/.well-known/jwks.json
 COGNITO_TOKEN_ENDPOINT=https://your-domain.auth.us-east-1.amazoncognito.com/oauth2/token
+
+# Cognito Group Access Control (optional)
+# Only users in this group can access the application
+# Default: aurora-users
+REQUIRED_COGNITO_GROUP=aurora-users
 
 # Internal Service URLs (Docker network names)
 BACKEND_SERVICE_URL=http://backend:8000
@@ -325,6 +331,50 @@ Each log includes:
 - IP address
 - User agent
 - Timestamp
+
+### Group-Based Access Control
+
+The auth service enforces Cognito group membership to restrict application access:
+
+**Configuration:**
+```bash
+# Set the required Cognito group (default: aurora-users)
+REQUIRED_COGNITO_GROUP=aurora-users
+```
+
+**How it works:**
+1. During login, user's Cognito groups are extracted from the ID token (`cognito:groups` claim)
+2. Group membership is validated against the configured `REQUIRED_COGNITO_GROUP`
+3. If user is not in the required group, login is rejected with HTTP 403 Forbidden
+4. On every API request, group membership is re-validated from the token
+5. Users removed from the group will be denied access on their next request
+
+**Setting up Cognito Groups:**
+
+1. Open AWS Console → Amazon Cognito → User Pools
+2. Select your Aurora user pool
+3. Navigate to "Users and groups" → "Groups"
+4. Click "Create group"
+   - Group name: `aurora-users` (or your configured name)
+   - Description: "Users with access to Aurora application"
+   - Precedence: 0
+5. Click "Create group"
+6. To add users to the group:
+   - Go to "Users and groups" → "Users"
+   - Select a user
+   - Click "Add user to group"
+   - Select `aurora-users`
+   - Click "Add"
+
+**Error Messages:**
+- **Login rejection**: "Access denied. You must be a member of the 'aurora-users' group to access this application."
+- **Subsequent requests**: HTTP 403 Forbidden with similar message
+
+**Logs:**
+All group validation failures are logged with:
+```
+Access denied - user not in required group: user=user@example.com, groups=['other-group'], required=aurora-users
+```
 
 ## Production Deployment
 
