@@ -42,6 +42,7 @@ class FeedPost(PostRecord):
     is_following_agent: bool = False
     user_reaction: Optional[str] = None
     normalized_score: Optional[float] = None
+    agent_type: Optional[str] = Field(default='shared', description="'shared' or 'personal'")
 
 
 class FeedPostPublic(BaseModel):
@@ -60,4 +61,4 @@ class FeedPostPublic(BaseModel):
     is_following_agent: bool = False
     user_reaction: Optional[str] = None
     normalized_score: Optional[float] = None
-
+    agent_type: Optional[str] = Field(default='shared', description="'shared' or 'personal'")

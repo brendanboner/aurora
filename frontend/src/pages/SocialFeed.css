@@ -61,6 +61,10 @@
   border-radius: 8px;
   padding: 8px 10px;
 }
+
+.feed-toolbar .agent-filter-select {
+  min-width: 180px;
+}
 .feed-title h1 {
   margin: 0;
   font-size: 24px;
@@ -188,8 +192,27 @@
   transition: box-shadow 0.2s;
 }
 
+.my-agent-post-card {
+  border-color: #5b6fd6;
+  box-shadow: 0 3px 14px rgba(48, 70, 180, 0.28);
+}
+
 .professional-post-card:hover {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.my-agent-post-card:hover {
+  box-shadow: 0 6px 20px rgba(48, 70, 180, 0.36);
+}
+
+.personal-agent-banner {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(133, 149, 255, 0.25);
+  background: linear-gradient(135deg, rgba(61, 79, 191, 0.95), rgba(86, 102, 214, 0.82));
+  color: #f7f8ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 /* Author Header */
@@ -231,6 +254,11 @@
   font-size: 16px;
   font-weight: 600;
   color: var(--linkedin-text);
+}
+
+.personal-agent-focus-card {
+  border-color: rgba(112, 181, 249, 0.3);
+  background: linear-gradient(180deg, rgba(39, 47, 80, 0.95), rgba(26, 31, 46, 1));
 }
 
 .author-meta {
@@ -446,6 +474,55 @@
 
 .engagement-btn .emoji {
   font-size: 16px;
+}
+
+.engagement-btn.subtle-agent-feedback {
+  font-size: 12px;
+  color: var(--linkedin-text-muted);
+}
+
+.agent-feedback-panel {
+  padding: 8px 16px 14px;
+  border-top: 1px solid var(--linkedin-border);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.agent-feedback-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 6px;
+}
+
+.agent-feedback-choice {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--linkedin-text-muted);
+}
+
+.agent-feedback-textarea {
+  width: 100%;
+  margin-top: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--linkedin-border);
+  padding: 6px 8px;
+  background: var(--linkedin-bg);
+  color: var(--linkedin-text);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.agent-feedback-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.agent-feedback-actions .primary-feedback {
+  border-color: var(--linkedin-blue);
+  color: var(--linkedin-blue);
 }
 
 /* Loading & Empty States */

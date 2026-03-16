@@ -16,7 +16,7 @@ class OracleAgentClient:
     
     def __init__(self, base_url: Optional[str] = None):
         settings = get_settings()
-        self.base_url = base_url or getattr(settings, 'oracle_service_url', 'http://oracle:8003')
+        self.base_url = base_url or getattr(settings, 'oracle_service_url', 'http://oracle:8000')
         self.timeout = httpx.Timeout(30.0)
         
     async def discover_content(

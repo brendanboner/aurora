@@ -22,6 +22,7 @@ import EventDetail from './pages/EventDetail';
 import SocialFeed from './pages/SocialFeed';
 import AgentManagement from './pages/AgentManagement';
 import AgentPreferences from './pages/AgentPreferences';
+import MyAgents from './pages/MyAgents';
 import DocumentSearch from './pages/DocumentSearch';
 import DocumentUpload from './pages/DocumentUpload';
 import MyDocuments from './pages/MyDocuments';
@@ -179,6 +180,10 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
                               <Route 
                                 path="/profile/agents" 
                                 element={<AgentPreferences />} 
+                              />
+                              <Route 
+                                path="/profile/my-agents" 
+                                element={<MyAgents />} 
                               />
                               
                               {/* Admin routes - require admin or superadmin role */}

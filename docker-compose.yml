@@ -634,6 +634,7 @@ services:
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      ORACLE_SERVICE_URL: ${ORACLE_SERVICE_URL:-http://oracle:8000}
 
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
@@ -899,4 +900,3 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-

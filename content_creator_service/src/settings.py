@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     neo4j_database: str = "neo4j"
     
     # Oracle Service (content discovery via fast engine)
-    oracle_service_url: str = "http://oracle:8003"
+    oracle_service_url: str = "http://oracle:8000"
     use_oracle_for_discovery: bool = Field(
         default=True,
         description="Use Oracle service for content discovery instead of direct Neo4j queries. "
