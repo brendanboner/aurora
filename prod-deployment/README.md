@@ -130,7 +130,7 @@ nano .env
 # Required settings:
 # - ECR_REGISTRY=your-account.dkr.ecr.us-east-1.amazonaws.com
 # - AWS_REGION=us-east-1
-# - DOMAIN=your-domain.com
+# - DEPLOYMENT_DOMAIN=your-domain.com
 # - SSL_EMAIL=your-email@domain.com
 # - All passwords and secrets
 # - BACKUP_DIR (optional, defaults to ~/backups/aurora)
@@ -165,6 +165,8 @@ make backup-status
 # Access application
 # https://your-domain.com
 ```
+
+The `frontend` container in the production stack is expected to exit after a successful build copy. Nginx serves the React assets from the shared `frontend-build` volume, so an exited `aurora-frontend` container with exit code `0` is healthy.
 
 ## 📋 Available Commands
 

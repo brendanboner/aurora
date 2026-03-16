@@ -23,7 +23,7 @@ RUN apk add --no-cache \
 RUN mkdir -p /var/www/certbot /etc/letsencrypt
 
 # Copy nginx configuration template
-COPY nginx/nginx.prod.conf /etc/nginx/templates/default.conf.template
+COPY nginx/nginx.letsencrypt.conf /etc/nginx/templates/default.conf.template
 
 # Copy certificate initialization script
 COPY nginx/init-ssl.sh /docker-entrypoint.d/40-init-ssl.sh

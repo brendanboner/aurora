@@ -199,17 +199,17 @@ docker compose -f prod-deployment/docker-compose.build.yml up -d
 # CloudFront handles HTTPS
 ```
 
-### Let's Encrypt (Production with Custom Domain)
-1. Deploy with `docker-compose.build.yml`
-2. Create CloudFront distribution pointing to EC2
-3. Update Cognito callback URLs with CloudFront domain
-4. Done!
+### CloudFront with a Custom Domain
+1. Deploy the CloudFront/static nginx variant.
+2. Point your custom domain at the CloudFront distribution, not directly at EC2.
+3. Set `DEPLOYMENT_DOMAIN` to the public hostname users will browse.
+4. Update Cognito callback/logout URLs to that same hostname.
 
 See: `CLOUDFRONT_SETUP.md`
 
 ### Let's Encrypt Setup
 1. Point domain A record to EC2 IP
-2. Set `DOMAIN_NAME` in `.env.prod`
+2. Set `DEPLOYMENT_DOMAIN` in `.env.prod`
 3. Deploy with `docker-compose.prod.yml`
 4. SSL certificates auto-generated on first run
 5. Auto-renewal runs daily

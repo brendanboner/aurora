@@ -25,7 +25,7 @@
   "accentColor": "#0078D4",
   "configurableTabs": [
     {
-      "configurationUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams?config=true",
+      "configurationUrl": "https://aurora.octorapidlabs.com/teams?config=true",
       "canUpdateConfiguration": true,
       "scopes": ["team", "groupchat"]
     }
@@ -34,17 +34,17 @@
     {
       "entityId": "aurora-personal",
       "name": "Aurora",
-      "contentUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams",
-      "websiteUrl": "https://d23ew7gbss3vnh.cloudfront.net/teams",
+      "contentUrl": "https://aurora.octorapidlabs.com/teams",
+      "websiteUrl": "https://aurora.octorapidlabs.com/teams",
       "scopes": ["personal"]
     }
   ],
   "validDomains": [
-    "d23ew7gbss3vnh.cloudfront.net"
+    "aurora.octorapidlabs.com"
   ],
   "webApplicationInfo": {
     "id": "5f9b6a4d-2e1c-4c9f-a5b3-1d7e9c2f8a4b",
-    "resource": "https://d23ew7gbss3vnh.cloudfront.net"
+    "resource": "https://aurora.octorapidlabs.com"
   },
   "permissions": [
     "identity",

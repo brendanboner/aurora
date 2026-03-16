@@ -885,7 +885,7 @@ services:
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
       
       # CORS Configuration
-      CORS_ORIGINS: ${KG_VIEW_CORS_ORIGINS:-https://${DOMAIN}}
+      CORS_ORIGINS: ${KG_VIEW_CORS_ORIGINS:-https://${DEPLOYMENT_DOMAIN}}
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -920,4 +920,3 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-

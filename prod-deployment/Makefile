@@ -101,7 +101,7 @@ deploy: backup-setup start
 	@echo "$(GREEN)✓ Production deployment complete$(NC)"
 	@echo ""
 	@echo "Your application should be available at:"
-	@echo "  https://$$(grep '^DOMAIN=' .env | cut -d'=' -f2)"
+	@echo "  https://$$(grep '^DEPLOYMENT_DOMAIN=' .env | cut -d'=' -f2)"
 	@echo ""
 	@echo "Check status: make status"
 	@echo "View logs:    make logs"
