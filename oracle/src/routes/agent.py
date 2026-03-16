@@ -14,6 +14,7 @@ from src.services.agent_adapter import (
     CreatorAgentPreferences,
     create_agent_preferences_from_dict
 )
+from src.services.keyword_retriever import get_repo
 from src.services.query_template_registry import QueryTemplateRegistry
 from src.engines.fast_engine import FastEngine
 
@@ -106,9 +107,9 @@ async def discover_content(
         params = template.build_params(route_plan)
         params["limit"] = request.limit
         
-        # Execute query via fast engine's retrieval layer
-        from neo4j_client import get_repository
-        repo = get_repository()
+        # Reuse Oracle's existing Neo4j repository helper instead of relying on
+        # a package-level export that is not present in production images.
+        repo = get_repo()
         
         logger.info(f"Executing {route_id.value} with params: topics={len(request.expertise_topics)}, orgs={len(request.expertise_organisations)}")
         results = repo.client.execute_query(template.cypher, params)
