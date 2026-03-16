@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from . import db
 from .migrations_runner import apply_all_migrations
-from .routes import agents, feed, posts, preferences, admin
+from .routes import admin, agents, feed, posts, preferences, user_agents
 from .services.scheduler import AgentScheduler
 from .settings import get_settings
 
@@ -70,6 +70,7 @@ app.include_router(agents.router)
 app.include_router(posts.router)
 app.include_router(preferences.router)
 app.include_router(admin.router)
+app.include_router(user_agents.router)
 
 
 @app.on_event("startup")

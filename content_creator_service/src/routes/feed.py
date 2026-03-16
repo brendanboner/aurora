@@ -20,6 +20,7 @@ async def get_feed(
     offset: int = Query(default=0, ge=0),
     sort: Literal["relevance", "date"] = Query(default="relevance"),
     q: Optional[str] = Query(default=None, description="Instant search query"),
+    personal_agent_id: Optional[int] = Query(default=None, description="Filter to a single personal agent"),
 ) -> FeedResponse:
     limit = min(limit, _settings.max_feed_page_size)
     return _feed_service.fetch_feed(
@@ -28,4 +29,5 @@ async def get_feed(
         offset=offset,
         sort=sort,
         query=q,
+        personal_agent_id=personal_agent_id,
     )

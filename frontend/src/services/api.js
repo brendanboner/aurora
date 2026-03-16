@@ -344,10 +344,18 @@ export const fetchSocialFeed = async (
   limit = 20,
   offset = 0,
   sort = 'relevance',
-  q = undefined
+  q = undefined,
+  personalAgentId = undefined
 ) => {
+  const params = { user_id: userId, limit, offset, sort };
+  if (q !== undefined) {
+    params.q = q;
+  }
+  if (personalAgentId) {
+    params.personal_agent_id = personalAgentId;
+  }
   const response = await apiClient.get('/content_creator_service/feed', {
-    params: { user_id: userId, limit, offset, sort, q },
+    params,
   });
   return response.data;
 };
@@ -415,6 +423,38 @@ export const updateAgentPreferences = async (agentId, userId, relevance, lengthP
 
 export const triggerAgentPost = async (agentId, force = true, limit = 5) => {
   const response = await apiClient.post(`/content_creator_service/agents/${agentId}/trigger`, { force, limit });
+  return response.data;
+};
+
+// Personal (My) Agents -------------------------------------------------------
+
+export const getMyAgents = async () => {
+  const response = await apiClient.get('/content_creator_service/user_agents');
+  return response.data;
+};
+
+export const createMyAgent = async (payload) => {
+  const response = await apiClient.post('/content_creator_service/user_agents', payload);
+  return response.data;
+};
+
+export const updateMyAgent = async (agentId, payload) => {
+  const response = await apiClient.put(`/content_creator_service/user_agents/${agentId}`, payload);
+  return response.data;
+};
+
+export const deleteMyAgent = async (agentId) => {
+  const response = await apiClient.delete(`/content_creator_service/user_agents/${agentId}`);
+  return response.data;
+};
+
+export const triggerMyAgentGeneration = async (agentId) => {
+  const response = await apiClient.post(`/content_creator_service/user_agents/${agentId}/generate`);
+  return response.data;
+};
+
+export const submitMyAgentPostFeedback = async (payload) => {
+  const response = await apiClient.post('/content_creator_service/user_agents/feedback', payload);
   return response.data;
 };
 

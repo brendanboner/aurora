@@ -22,18 +22,22 @@ class PostService:
         importance: str,
         content_length: str,
         sources: List[PostSource],
+        user_id: str | None = None,
+        agent_type: str = "shared",
     ) -> int:
         row = db.fetch_one(
             """
             INSERT INTO post (
-                agent_id, title, body, summary, tags, visibility, importance, content_length
+                agent_id, user_id, agent_type, title, body, summary, tags, visibility, importance, content_length
             ) VALUES (
-                %(agent_id)s, %(title)s, %(body)s, %(summary)s, %(tags)s, %(visibility)s, %(importance)s, %(content_length)s
+                %(agent_id)s, %(user_id)s, %(agent_type)s, %(title)s, %(body)s, %(summary)s, %(tags)s, %(visibility)s, %(importance)s, %(content_length)s
             )
             RETURNING id
             """,
             {
                 "agent_id": agent_id,
+                "user_id": user_id,
+                "agent_type": agent_type,
                 "title": title,
                 "body": body,
                 "summary": summary,
@@ -50,12 +54,20 @@ class PostService:
         self._store_sources(post_id, sources)
         return post_id
 
-    def fetch_posts(self, user_id: str, limit: int, offset: int, *, query: str | None = None) -> List[FeedPost]:  # Cognito UUID
-        where_clause = ""
+    def fetch_posts(
+        self,
+        user_id: str,
+        limit: int,
+        offset: int,
+        *,
+        query: str | None = None,
+        personal_agent_id: int | None = None,
+    ) -> List[FeedPost]:  # Cognito UUID
+        where_clause_and = ""
         params: Dict[str, Any] = {"user_id": user_id, "limit": limit, "offset": offset}
         if query:
-            where_clause = (
-                "WHERE ("
+            where_clause_and = (
+                "AND ("
                 "p.title ILIKE %(like_q)s OR "
                 "p.body ILIKE %(like_q)s OR "
                 "EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t ILIKE %(like_q)s) OR "
@@ -64,6 +76,9 @@ class PostService:
                 ")"
             )
             params["like_q"] = f"%{query}%"
+        if personal_agent_id is not None:
+            where_clause_and += " AND p.agent_type = 'personal' AND p.agent_id = %(personal_agent_id)s"
+            params["personal_agent_id"] = personal_agent_id
 
         rows = db.fetch_all(
             f"""
@@ -74,7 +89,7 @@ class PostService:
             )
             SELECT p.id,
                    p.agent_id,
-                   ca.name AS agent_name,
+                   COALESCE(ca.name, ua.name, 'Unknown') AS agent_name,
                    p.title,
                    p.body,
                    p.summary,
@@ -84,13 +99,26 @@ class PostService:
                    p.content_length,
                    p.created_at,
                    0.0 AS score,
-                   (f.agent_id IS NOT NULL) AS is_following_agent,
-                   r.reaction_type AS user_reaction
+                   CASE
+                       WHEN p.agent_type = 'personal' THEN COALESCE(ua.show_in_feed, FALSE)
+                       ELSE COALESCE(f.agent_id IS NOT NULL, FALSE)
+                   END AS is_following_agent,
+                   r.reaction_type AS user_reaction,
+                   p.agent_type,
+                   p.user_id AS post_user_id
             FROM post p
-            JOIN creator_agent ca ON ca.id = p.agent_id
-            LEFT JOIN follows f ON f.agent_id = p.agent_id
+            LEFT JOIN creator_agent ca ON ca.id = p.agent_id AND p.agent_type = 'shared'
+            LEFT JOIN user_agent ua ON ua.id = p.agent_id AND p.agent_type = 'personal'
+            LEFT JOIN follows f ON f.agent_id = p.agent_id AND p.agent_type = 'shared'
             LEFT JOIN reactions r ON r.post_id = p.id
-            {where_clause}
+            WHERE (
+                -- Show shared/public posts
+                (p.agent_type = 'shared' AND p.visibility = 'public')
+                OR
+                -- Show user's own personal agent posts (if enabled)
+                (p.agent_type = 'personal' AND p.user_id = %(user_id)s AND ua.enabled = TRUE AND ua.show_in_feed = TRUE)
+            )
+            {where_clause_and}
             ORDER BY p.created_at DESC
             LIMIT %(limit)s OFFSET %(offset)s
             """,
@@ -163,7 +191,7 @@ class PostService:
             """
             SELECT p.id,
                    p.agent_id,
-                   ca.name AS agent_name,
+                   COALESCE(ca.name, ua.name, 'Unknown') AS agent_name,
                    p.title,
                    p.body,
                    p.summary,
@@ -174,7 +202,8 @@ class PostService:
                    p.created_at,
                    0.0 AS score
             FROM post p
-            JOIN creator_agent ca ON ca.id = p.agent_id
+            LEFT JOIN creator_agent ca ON ca.id = p.agent_id AND p.agent_type = 'shared'
+            LEFT JOIN user_agent ua ON ua.id = p.agent_id AND p.agent_type = 'personal'
             WHERE p.id = %s
             """,
             (post_id,),

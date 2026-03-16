@@ -34,6 +34,7 @@ class FeedService:
         *,
         sort: str = "relevance",
         query: str | None = None,
+        personal_agent_id: int | None = None,
     ) -> FeedResponse:
         # Create span for feed generation
         if OTEL_AVAILABLE and tracer:
@@ -48,7 +49,13 @@ class FeedService:
         
         try:
             profile = self._preference_service.get_profile(user_id)
-            posts = self._post_service.fetch_posts(user_id, limit, offset, query=query)
+            posts = self._post_service.fetch_posts(
+                user_id,
+                limit,
+                offset,
+                query=query,
+                personal_agent_id=personal_agent_id,
+            )
             # Always compute scores for display; order by requested sort
             scored_posts = [self._apply_score(post, profile) for post in posts]
             # Normalise to 0..1 where max theoretical score is 3.5
@@ -81,6 +88,7 @@ class FeedService:
                     is_following_agent=p.is_following_agent,
                     user_reaction=p.user_reaction,
                     normalized_score=p.normalized_score,
+                    agent_type=getattr(p, 'agent_type', 'shared'),
                 )
                 for p in ordered
             ]

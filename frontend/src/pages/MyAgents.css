@@ -1,0 +1,275 @@
+.my-agents-shell {
+  padding: 1.5rem 2rem;
+}
+
+.my-agents-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.my-agents-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.my-agents-header p {
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  max-width: 640px;
+}
+
+.my-agents-metrics {
+  display: flex;
+  gap: 1rem;
+}
+
+.my-agents-metrics > div {
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  min-width: 90px;
+}
+
+.my-agents-metrics span {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.my-agents-metrics strong {
+  font-size: 1.2rem;
+}
+
+.my-agents-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background-color: var(--error-bg, #f8d7da);
+  color: var(--error-text, #721c24);
+  margin-bottom: 1rem;
+}
+
+.my-agents-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
+  gap: 1.5rem;
+}
+
+.my-agents-list,
+.my-agents-form {
+  background-color: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+}
+
+.my-agents-list header,
+.my-agents-form header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.my-agents-list h2,
+.my-agents-form h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.empty-copy {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.my-agents-list-items {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.my-agent-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+.my-agent-row.disabled {
+  opacity: 0.65;
+}
+
+.my-agent-main h3 {
+  margin: 0 0 0.35rem 0;
+  font-size: 1rem;
+}
+
+.my-agent-project {
+  margin: 0 0 0.35rem 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.my-agent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.my-agent-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.my-agent-actions .action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  cursor: pointer;
+}
+
+.my-agent-actions .action-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.my-agent-actions .generate-btn {
+  color: var(--accent-color, var(--primary-color));
+}
+
+.my-agent-actions .visibility-btn {
+  color: var(--primary-color);
+}
+
+.my-agent-actions .edit-btn {
+  color: var(--text-primary);
+}
+
+.my-agent-actions .delete-btn {
+  color: var(--error-text, #721c24);
+}
+
+.my-agents-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.my-agents-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.my-agents-form input[type="text"],
+.my-agents-form textarea,
+.my-agents-form select {
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 0.6rem;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.my-agents-form textarea {
+  resize: vertical;
+}
+
+.checkbox-field {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: auto;
+}
+
+.status-pill {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background-color: var(--bg-primary);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.form-actions .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: #fff;
+  cursor: pointer;
+}
+
+.form-actions .ghost-btn {
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 1024px) {
+  .my-agents-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .my-agents-shell {
+    padding: 1rem;
+  }
+
+  .my-agents-header {
+    flex-direction: column;
+  }
+}
