@@ -34,12 +34,9 @@ import { testBackendConnection } from './services/api';
 // Pages that should have no padding in the page-container
 const NO_PADDING_ROUTES = ['/documents'];
 
-// Routes that should not have header/sidebar (full-screen pages)
-const FULL_SCREEN_ROUTES = ['/teams'];
-
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     // Check backend connection on startup
@@ -54,20 +51,14 @@ function App() {
     };
 
     checkBackend();
-
-    // Check if mobile on initial load
-    const handleResize = () => {
-      if (window.innerWidth <= 768) {
-        setSidebarOpen(false);
-      }
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const toggleSidebar = () => {
-    setSidebarOpen(prev => !prev);
+  const toggleMenu = () => {
+    setMenuOpen((prev) => !prev);
+  };
+
+  const closeMenu = () => {
+    setMenuOpen(false);
   };
 
   return (
@@ -75,8 +66,9 @@ function App() {
       <Router>
         <AppContent 
           backendStatus={backendStatus}
-          sidebarOpen={sidebarOpen}
-          toggleSidebar={toggleSidebar}
+          menuOpen={menuOpen}
+          toggleMenu={toggleMenu}
+          closeMenu={closeMenu}
         />
       </Router>
     </AuthProvider>
@@ -84,10 +76,9 @@ function App() {
 }
 
 // Separate component to use useLocation inside Router
-function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
+function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu }) {
   const location = useLocation();
   const noPadding = NO_PADDING_ROUTES.includes(location.pathname);
-  const isFullScreen = FULL_SCREEN_ROUTES.includes(location.pathname);
 
   return (
     <div className="App">
@@ -108,14 +99,13 @@ function AppContent({ backendStatus, sidebarOpen, toggleSidebar }) {
           element={
             <ProtectedRoute>
               <div className="app-shell">
-                <Header onMenuToggle={toggleSidebar} />
-                <div className="sidebar-container">
-                  <Sidebar 
-                    isOpen={sidebarOpen}
-                    onToggle={toggleSidebar}
-                    backendStatus={backendStatus}
-                  />
-                </div>
+                <Header onMenuToggle={toggleMenu} isMenuOpen={menuOpen} />
+                <Sidebar
+                  isOpen={menuOpen}
+                  onToggle={toggleMenu}
+                  onClose={closeMenu}
+                  backendStatus={backendStatus}
+                />
                 <div className={`page-container ${noPadding ? 'no-padding' : ''}`}>
                   <Routes>
                     <Route 

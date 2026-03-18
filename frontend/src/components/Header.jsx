@@ -3,7 +3,7 @@ import './Header.css';
 import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 import { useAuth } from '../contexts/AuthContext';
 
-const Header = ({ onMenuToggle }) => {
+const Header = ({ onMenuToggle, isMenuOpen }) => {
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef(null);
@@ -52,12 +52,21 @@ const Header = ({ onMenuToggle }) => {
   return (
     <header className="app-header">
       <div className="header-brand">
-        <button className="mobile-menu-btn" onClick={onMenuToggle} title="Menu">
-          ☰
+        <button
+          className={`mobile-menu-btn ${isMenuOpen ? 'open' : ''}`}
+          onClick={onMenuToggle}
+          title="Menu"
+          aria-label="Toggle navigation menu"
+          aria-expanded={isMenuOpen}
+        >
+          <span></span>
+          <span></span>
+          <span></span>
         </button>
         <ExtremeNetworksLogo height={36} />
         <div className="header-title">
-          <span className="brand-name"><b>AURORA</b></span>
+          <span className="brand-kicker">Office of the CTO</span>
+          <span className="brand-name"><b>Aurora</b></span>
         </div>
       </div>
 

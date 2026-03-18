@@ -47,9 +47,9 @@ const UserGuide = () => {
 Aurora is your intelligent knowledge management system for wireless standards and industry information. This guide will help you make the most of all available features.
 
 ## Navigation
-- Use the **sidebar** on the left to navigate between different sections
-- Click the hamburger menu (☰) to collapse/expand the sidebar
-- The **connection status** indicator at the bottom shows system health
+- Use the **hamburger menu** in the title bar to open the main navigation drawer
+- Select any menu item to move to that section and close the drawer
+- The **connection status** indicator is shown in the menu drawer footer
 - Your **user role** determines which features you can access
 
 ## Quick Start
@@ -694,7 +694,7 @@ Customize your Aurora experience by setting your interests and preferences.
 ## Troubleshooting Common Issues
 
 ### Chat Not Responding
-- **Check connection status** at bottom of sidebar
+- **Check connection status** in the menu drawer footer
 - **Refresh the page** if responses are slow
 - **Simplify your query** if getting unexpected results
 - **Use Document Search** as an alternative for finding information

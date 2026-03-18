@@ -1,268 +1,196 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
-import { ChatIcon, ProfileIcon, UsersIcon, KnowledgeGraphIcon, MonitoringIcon, AdminIcon, CollapseIcon, CalendarIcon, StarIcon, SearchIcon, TargetIcon, SettingsIcon, BookIcon, FeedbackIcon, AlertCircleIcon, ToolIcon, FileTextIcon } from '../components/icons';
+import {
+  ChatIcon,
+  ProfileIcon,
+  UsersIcon,
+  KnowledgeGraphIcon,
+  MonitoringIcon,
+  AdminIcon,
+  CalendarIcon,
+  StarIcon,
+  SearchIcon,
+  TargetIcon,
+  SettingsIcon,
+  BookIcon,
+  FeedbackIcon,
+  AlertCircleIcon,
+  ToolIcon,
+  FileTextIcon,
+  ChevronDownIcon,
+} from '../components/icons';
+import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 import { useAuth } from '../contexts/AuthContext';
 
-const Sidebar = ({ isOpen, onToggle, backendStatus }) => {
+const MAIN_ITEMS = [
+  { to: '/', label: 'Chat', icon: ChatIcon, exact: true },
+  { to: '/documents', label: 'Document Search', icon: SearchIcon },
+  { to: '/feed', label: 'Creator Feed', icon: StarIcon },
+  { to: '/events', label: 'Events', icon: CalendarIcon, startsWith: true },
+  { to: '/my-documents', label: 'My Documents', icon: FileTextIcon },
+];
+
+const PROFILE_ITEMS = [
+  { to: '/profile/topics', label: 'Topics', icon: ProfileIcon },
+  { to: '/profile/organisations', label: 'Organisations', icon: ProfileIcon },
+  { to: '/profile/people', label: 'People', icon: UsersIcon },
+  { to: '/profile/agents', label: 'Follow Agents', icon: StarIcon },
+  { to: '/profile/my-agents', label: 'My Agents', icon: StarIcon },
+  { to: '/profile/notifications', label: 'Notifications', icon: ProfileIcon },
+];
+
+const ADMIN_ITEMS = [
+  { to: '/admin/users', label: 'Users', icon: UsersIcon },
+  { to: '/admin/knowledge-graph', label: 'Knowledge Graph', icon: KnowledgeGraphIcon },
+  { to: '/admin/monitoring', label: 'Monitoring', icon: MonitoringIcon },
+  { to: '/admin/agents', label: 'Creator Agents', icon: StarIcon },
+  { to: '/admin/system-config', label: 'System Config', icon: SettingsIcon },
+  { to: '/admin/content-quality', label: 'Content Quality', icon: TargetIcon },
+  { to: '/admin/oracle-settings', label: 'Oracle Settings', icon: SettingsIcon },
+  { to: '/admin/chat-sessions', label: 'Chat Sessions', icon: ChatIcon },
+  { to: '/admin/dlq', label: 'Dead Letter Queue', icon: AlertCircleIcon },
+  { to: '/admin/feedback', label: 'Feedback', icon: FeedbackIcon },
+  { to: '/admin/curation', label: 'Topic Curation', icon: ToolIcon },
+];
+
+const UTILITY_ITEMS = [
+  { to: '/feedback', label: 'Submit Feedback', icon: FeedbackIcon },
+  { to: '/guide', label: 'User Guide', icon: BookIcon },
+];
+
+const Sidebar = ({ isOpen, onClose, backendStatus }) => {
   const location = useLocation();
   const { user } = useAuth();
-  const [expandedMenus, setExpandedMenus] = useState({ admin: false, profile: false });
-  
-  // Check if user has admin or superadmin role
+  const [expandedGroups, setExpandedGroups] = useState({
+    profile: true,
+    admin: false,
+  });
+
   const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
 
-  const toggleMenu = (menu) => {
-    setExpandedMenus(prev => ({ ...prev, [menu]: !prev[menu] }));
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  const isActive = (item) => {
+    if (item.startsWith) {
+      return location.pathname.startsWith(item.to);
+    }
+    return location.pathname === item.to;
   };
 
-  const getStatusClass = () => {
-    return `status-indicator status-${backendStatus}`;
+  const getStatusClass = () => `status-indicator status-${backendStatus}`;
+
+  const getStatusText = () => {
+    if (backendStatus === 'connected') return 'Connected';
+    if (backendStatus === 'disconnected') return 'Disconnected';
+    return 'Checking...';
   };
 
-  const isActive = (path) => location.pathname === path;
+  const toggleGroup = (groupName) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [groupName]: !prev[groupName],
+    }));
+  };
+
+  const renderItems = (items, nested = false) =>
+    items.map((item) => {
+      const Icon = item.icon;
+      return (
+        <Link
+          key={item.to}
+          to={item.to}
+          className={`drawer-item ${nested ? 'nested' : ''} ${isActive(item) ? 'active' : ''}`}
+          onClick={onClose}
+        >
+          <span className="drawer-item-icon"><Icon size={18} /></span>
+          <span className="drawer-item-label">{item.label}</span>
+        </Link>
+      );
+    });
 
   return (
     <>
-      {isOpen && <div className="sidebar-overlay" onClick={onToggle} />}
-      
-      <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
-        <button className="hamburger-btn" onClick={onToggle} title={isOpen ? 'Collapse' : 'Expand'}>
-          <CollapseIcon collapsed={!isOpen} />
-        </button>
+      <div className={`sidebar-overlay ${isOpen ? 'open' : ''}`} onClick={onClose} />
 
-        <nav className="sidebar-nav">
-          {/* Chat */}
-          <Link 
-            to="/" 
-            className={`sidebar-item ${isActive('/') ? 'active' : ''}`}
-            title="Chat"
-          >
-            <span className="sidebar-icon"><ChatIcon /></span>
-            {isOpen && <span className="sidebar-label">Chat</span>}
-          </Link>
+      <aside className={`sidebar-drawer ${isOpen ? 'open' : ''}`} aria-hidden={!isOpen}>
+        <div className="drawer-header">
+          <div className="drawer-brand">
+            <ExtremeNetworksLogo height={34} width={34} />
+            <div className="drawer-brand-text">
+              <span className="drawer-brand-name">Aurora</span>
+            </div>
+          </div>
+        </div>
 
-          {/* Document Search */}
-          <Link 
-            to="/documents" 
-            className={`sidebar-item ${isActive('/documents') ? 'active' : ''}`}
-            title="Document Search"
-          >
-            <span className="sidebar-icon"><SearchIcon /></span>
-            {isOpen && <span className="sidebar-label">Document Search</span>}
-          </Link>
+        <nav className="drawer-nav">
+          <div className="drawer-section">{renderItems(MAIN_ITEMS)}</div>
 
-          {/* Creator Feed */}
-          <Link 
-            to="/feed" 
-            className={`sidebar-item ${isActive('/feed') ? 'active' : ''}`}
-            title="Creator Feed"
-          >
-            <span className="sidebar-icon"><StarIcon /></span>
-            {isOpen && <span className="sidebar-label">Creator Feed</span>}
-          </Link>
+          <div className="drawer-divider" />
 
-          {/* Events */}
-          <Link 
-            to="/events" 
-            className={`sidebar-item ${isActive('/events') || location.pathname.startsWith('/events/') ? 'active' : ''}`}
-            title="Events"
-          >
-            <span className="sidebar-icon"><CalendarIcon /></span>
-            {isOpen && <span className="sidebar-label">Events</span>}
-          </Link>
-
-          {/* My Documents */}
-          <Link 
-            to="/my-documents" 
-            className={`sidebar-item ${isActive('/my-documents') ? 'active' : ''}`}
-            title="My Documents"
-          >
-            <span className="sidebar-icon"><FileTextIcon /></span>
-            {isOpen && <span className="sidebar-label">My Documents</span>}
-          </Link>
-
-          {/* Profile Menu with expandable submenu */}
-          <div className="sidebar-menu">
-            <button 
-              className={`sidebar-item ${location.pathname.startsWith('/profile') ? 'active' : ''}`}
-              onClick={() => toggleMenu('profile')}
-              title="Profile"
+          <div className="drawer-section">
+            <button
+              type="button"
+              className={`drawer-item drawer-group-toggle ${expandedGroups.profile ? 'expanded' : ''}`}
+              onClick={() => toggleGroup('profile')}
             >
-              <span className="sidebar-icon"><ProfileIcon /></span>
-              {isOpen && (
-                <>
-                  <span className="sidebar-label">Profile Menu</span>
-                  <span className={`expand-icon ${expandedMenus.profile ? 'expanded' : ''}`}>›</span>
-                </>
-              )}
+              <span className="drawer-item-icon"><ProfileIcon size={18} /></span>
+              <span className="drawer-item-label">My Profile</span>
+              <span className="drawer-group-chevron">
+                <ChevronDownIcon style={{ width: 14, height: 14 }} />
+              </span>
             </button>
-            {isOpen && expandedMenus.profile && (
-              <div className="sidebar-submenu">
-                <Link 
-                  to="/profile/topics" 
-                  className={`sidebar-subitem ${isActive('/profile/topics') ? 'active' : ''}`}
-                >Topics</Link>
-                <Link 
-                  to="/profile/organisations" 
-                  className={`sidebar-subitem ${isActive('/profile/organisations') ? 'active' : ''}`}
-                >Organisations</Link>
-                <Link 
-                  to="/profile/people" 
-                  className={`sidebar-subitem ${isActive('/profile/people') ? 'active' : ''}`}
-                >People</Link>
-                <Link 
-                  to="/profile/agents" 
-                  className={`sidebar-subitem ${isActive('/profile/agents') ? 'active' : ''}`}
-                >Follow Agents</Link>
-                <Link 
-                  to="/profile/my-agents" 
-                  className={`sidebar-subitem ${isActive('/profile/my-agents') ? 'active' : ''}`}
-                >My Agents</Link>
-                <Link 
-                  to="/profile/notifications" 
-                  className={`sidebar-subitem ${isActive('/profile/notifications') ? 'active' : ''}`}
-                >Notifications</Link>
+
+            {expandedGroups.profile && (
+              <div className="drawer-submenu">
+                {renderItems(PROFILE_ITEMS, true)}
               </div>
             )}
           </div>
 
-          {/* Admin with submenu including Monitoring */}
           {isAdmin && (
-            <div className="sidebar-menu">
-              <button 
-                className={`sidebar-item ${location.pathname.startsWith('/admin') ? 'active' : ''}`}
-                onClick={() => toggleMenu('admin')}
-                title="Admin"
+            <div className="drawer-section">
+              <button
+                type="button"
+                className={`drawer-item drawer-group-toggle ${expandedGroups.admin ? 'expanded' : ''}`}
+                onClick={() => toggleGroup('admin')}
               >
-                <span className="sidebar-icon"><AdminIcon /></span>
-                {isOpen && (
-                  <>
-                    <span className="sidebar-label">Admin</span>
-                    <span className={`expand-icon ${expandedMenus.admin ? 'expanded' : ''}`}>›</span>
-                  </>
-                )}
+                <span className="drawer-item-icon"><AdminIcon size={18} /></span>
+                <span className="drawer-item-label">Admin</span>
+                <span className="drawer-group-chevron">
+                  <ChevronDownIcon style={{ width: 14, height: 14 }} />
+                </span>
               </button>
-              {isOpen && expandedMenus.admin && (
-                <div className="sidebar-submenu">
-                  <Link 
-                    to="/admin/users" 
-                    className={`sidebar-subitem ${isActive('/admin/users') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><UsersIcon size={16} /></span>
-                    <span>Users</span>
-                  </Link>
-                  <Link 
-                    to="/admin/knowledge-graph" 
-                    className={`sidebar-subitem ${isActive('/admin/knowledge-graph') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><KnowledgeGraphIcon size={16} /></span>
-                    <span>Knowledge Graph</span>
-                  </Link>
-                  <Link 
-                    to="/admin/monitoring" 
-                    className={`sidebar-subitem ${isActive('/admin/monitoring') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><MonitoringIcon size={16} /></span>
-                    <span>Monitoring</span>
-                  </Link>
-                  <Link 
-                    to="/admin/agents" 
-                    className={`sidebar-subitem ${isActive('/admin/agents') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><StarIcon size={16} /></span>
-                    <span>Creator Agents</span>
-                  </Link>
-                  <Link 
-                    to="/admin/system-config" 
-                    className={`sidebar-subitem ${isActive('/admin/system-config') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><SettingsIcon size={16} /></span>
-                    <span>System Config</span>
-                  </Link>
-                  <Link 
-                    to="/admin/content-quality" 
-                    className={`sidebar-subitem ${isActive('/admin/content-quality') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><TargetIcon size={16} /></span>
-                    <span>Content Quality</span>
-                  </Link>
-                  <Link 
-                    to="/admin/oracle-settings" 
-                    className={`sidebar-subitem ${isActive('/admin/oracle-settings') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><SettingsIcon size={16} /></span>
-                    <span>Oracle Settings</span>
-                  </Link>
-                  <Link 
-                    to="/admin/chat-sessions" 
-                    className={`sidebar-subitem ${isActive('/admin/chat-sessions') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><ChatIcon size={16} /></span>
-                    <span>Chat Sessions</span>
-                  </Link>
-                  <Link 
-                    to="/admin/dlq" 
-                    className={`sidebar-subitem ${isActive('/admin/dlq') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><AlertCircleIcon size={16} /></span>
-                    <span>Dead Letter Queue</span>
-                  </Link>
-                  <Link 
-                    to="/admin/feedback" 
-                    className={`sidebar-subitem ${isActive('/admin/feedback') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><FeedbackIcon size={16} /></span>
-                    <span>Feedback</span>
-                  </Link>
-                  <Link 
-                    to="/admin/curation" 
-                    className={`sidebar-subitem ${isActive('/admin/curation') ? 'active' : ''}`}
-                  >
-                    <span className="sidebar-icon"><ToolIcon size={16} /></span>
-                    <span>Topic Curation</span>
-                  </Link>
+
+              {expandedGroups.admin && (
+                <div className="drawer-submenu">
+                  {renderItems(ADMIN_ITEMS, true)}
                 </div>
               )}
             </div>
           )}
 
-          {/* Submit Feedback - Above User Guide */}
-          <Link 
-            to="/feedback" 
-            className={`sidebar-item ${isActive('/feedback') ? 'active' : ''}`}
-            title="Submit Feedback"
-          >
-            <span className="sidebar-icon"><FeedbackIcon /></span>
-            {isOpen && <span className="sidebar-label">Submit Feedback</span>}
-          </Link>
+          <div className="drawer-divider" />
 
-          {/* User Guide - Always visible at the bottom */}
-          <Link 
-            to="/guide" 
-            className={`sidebar-item ${isActive('/guide') ? 'active' : ''}`}
-            title="User Guide"
-          >
-            <span className="sidebar-icon"><BookIcon /></span>
-            {isOpen && <span className="sidebar-label">User Guide</span>}
-          </Link>
+          <div className="drawer-section">{renderItems(UTILITY_ITEMS)}</div>
         </nav>
 
-        {/* Status indicator at bottom */}
-        <div className="sidebar-footer">
-          {isOpen ? (
-            <div className="status-badge">
-              <span className={getStatusClass()}></span>
-              <span className="status-text">
-                {backendStatus === 'connected' ? 'Connected' : 
-                 backendStatus === 'disconnected' ? 'Disconnected' : 'Checking...'}
-              </span>
-            </div>
-          ) : (
-            <div className="status-badge-collapsed">
-              <span className={getStatusClass()}></span>
-            </div>
-          )}
+        <div className="drawer-footer">
+          <span className={getStatusClass()}></span>
+          <span className="drawer-footer-text">{getStatusText()}</span>
         </div>
       </aside>
     </>

@@ -10,25 +10,19 @@
 .app-shell {
   height: 100vh;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 1fr;
   grid-template-rows: 50px 1fr;
   gap: 12px;
   padding: 12px;
   grid-template-areas:
-    "header header"
-    "sidebar content";
+    "header"
+    "content";
 }
 
 /* Header spans full width */
 .app-header {
   grid-area: header;
   height: 50px;
-}
-
-/* Sidebar - left column */
-.sidebar-container {
-  grid-area: sidebar;
-  overflow: hidden;
 }
 
 /* Content area - scrollable */
@@ -62,12 +56,7 @@
       "header"
       "content";
   }
-  
-  /* Sidebar becomes overlay on mobile */
-  .sidebar-container {
-    display: contents;
-  }
-  
+
   .page-container {
     padding: 16px;
   }
