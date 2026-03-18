@@ -548,3 +548,21 @@
     width: 100%;
   }
 }
+
+html[data-theme='light'] .profile-header,
+html[data-theme='light'] .profile-empty,
+html[data-theme='light'] .profile-section,
+html[data-theme='light'] .preference-item,
+html[data-theme='light'] .checkbox-label,
+html[data-theme='light'] .pagination-btn {
+  background-color: var(--response-surface);
+}
+
+html[data-theme='light'] .filter-dropdown {
+  background-color: var(--menu-surface);
+}
+
+html[data-theme='light'] .search-input .input,
+html[data-theme='light'] .filter-btn {
+  background-color: var(--chat-surface);
+}

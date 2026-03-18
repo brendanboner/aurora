@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getGraphStatistics, getTopics, getOrganisations, getPeople } from '../services/api';
 import './Admin.css';
 import { BookIcon, BuildingIcon, ProfileIcon, WarningIcon } from '../components/icons';
@@ -12,15 +12,13 @@ const AdminKnowledgeGraph = () => {
   const [people, setPeople] = useState([]);
   const [activeTab, setActiveTab] = useState('topics');
 
-  useEffect(() => { loadAll(); }, []);
-
   const normalize = (data, key) => {
     if (Array.isArray(data)) return data;
     if (key && Array.isArray(data?.[key])) return data[key];
     return [];
   };
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -43,7 +41,9 @@ const AdminKnowledgeGraph = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   // Pagination state for tables
   const [page, setPage] = useState(0);

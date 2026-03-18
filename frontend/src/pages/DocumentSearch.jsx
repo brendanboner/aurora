@@ -3,16 +3,12 @@ import './DocumentSearch.css';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   SearchIcon, 
-  RefreshIcon, 
   CalendarIcon, 
   BookIcon, 
-  BuildingIcon,
   LinkIcon,
-  PlusIcon,
-  TrashIcon
+  PlusIcon
 } from '../components/icons';
 import { 
-  getDatasources, 
   getFilterOptions,
   searchDocuments,
   getDocumentCount

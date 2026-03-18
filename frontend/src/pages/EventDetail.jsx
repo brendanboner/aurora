@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './EventDetail.css';
 import {
@@ -32,14 +32,7 @@ const EventDetail = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [downloadingDoc, setDownloadingDoc] = useState(null);
 
-  useEffect(() => {
-    fetchFilterOptions();
-    fetchEventDetails();
-    fetchAttendees();
-    fetchDocuments();
-  }, [urlHash]);
-
-  const fetchFilterOptions = async () => {
+  const fetchFilterOptions = useCallback(async () => {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/backend/events/metadata/filters', {
@@ -56,9 +49,9 @@ const EventDetail = () => {
     } catch (err) {
       console.error('Error fetching filter options:', err);
     }
-  };
+  }, []);
 
-  const fetchEventDetails = async () => {
+  const fetchEventDetails = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -83,9 +76,9 @@ const EventDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [urlHash]);
 
-  const fetchAttendees = async () => {
+  const fetchAttendees = useCallback(async () => {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(`/api/backend/events/${urlHash}/attendees`, {
@@ -104,16 +97,23 @@ const EventDetail = () => {
     } catch (err) {
       console.error('Error fetching attendees:', err);
     }
-  };
+  }, [urlHash]);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     try {
       const docs = await getEventDocuments(urlHash);
       setDocuments(docs || []);
     } catch (err) {
       console.error('Error fetching documents:', err);
     }
-  };
+  }, [urlHash]);
+
+  useEffect(() => {
+    fetchFilterOptions();
+    fetchEventDetails();
+    fetchAttendees();
+    fetchDocuments();
+  }, [fetchFilterOptions, fetchEventDetails, fetchAttendees, fetchDocuments]);
 
   const handleDownloadDocument = async (doc) => {
     try {
@@ -202,17 +202,6 @@ const EventDetail = () => {
     } finally {
       setAttendanceLoading(false);
     }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'TBD';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
   };
 
   const formatDateTime = (dateString) => {

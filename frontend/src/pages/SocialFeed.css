@@ -1,14 +1,15 @@
-/* Professional LinkedIn-style Feed - Dark Theme */
+/* Professional feed styles aligned to app theme tokens */
 :root {
-  --linkedin-bg: #0a0e1a;
-  --linkedin-card: #1a1f2e;
-  --linkedin-border: #2d3548;
-  --linkedin-blue: #70b5f9;
-  --linkedin-blue-hover: #9dccfc;
-  --linkedin-text: #e4e6eb;
-  --linkedin-text-muted: #b0b3b8;
-  --linkedin-green: #26a269;
-  --linkedin-hover-bg: #252a3a;
+  --linkedin-bg: var(--page-surface);
+  --linkedin-card: var(--chat-surface);
+  --linkedin-card-subtle: var(--response-surface);
+  --linkedin-border: var(--border);
+  --linkedin-blue: var(--primary);
+  --linkedin-blue-hover: var(--secondary-color);
+  --linkedin-text: var(--foreground);
+  --linkedin-text-muted: var(--muted-foreground);
+  --linkedin-green: var(--secondary-color);
+  --linkedin-hover-bg: var(--response-surface);
 }
 
 .social-feed-shell {
@@ -42,7 +43,7 @@
 }
 
 .feed-toolbar .search-input {
-  background: var(--card-bg);
+  background: var(--chat-surface);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -55,7 +56,7 @@
 }
 
 .feed-toolbar .sort-select {
-  background: var(--card-bg);
+  background: var(--chat-surface);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -130,7 +131,7 @@
   border: 1px solid var(--linkedin-border);
   border-radius: 8px;
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
 }
 
 .signal-header {
@@ -153,7 +154,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--linkedin-bg);
+  background: var(--linkedin-card-subtle);
   border: 1px solid var(--linkedin-border);
   padding: 4px 12px;
   border-radius: 16px;
@@ -188,28 +189,28 @@
   border: 1px solid var(--linkedin-border);
   border-radius: 8px;
   padding: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
   transition: box-shadow 0.2s;
 }
 
 .my-agent-post-card {
-  border-color: #5b6fd6;
-  box-shadow: 0 3px 14px rgba(48, 70, 180, 0.28);
+  border-color: rgba(111, 100, 217, 0.3);
+  box-shadow: 0 4px 14px rgba(111, 100, 217, 0.12);
 }
 
 .professional-post-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
 }
 
 .my-agent-post-card:hover {
-  box-shadow: 0 6px 20px rgba(48, 70, 180, 0.36);
+  box-shadow: 0 8px 20px rgba(111, 100, 217, 0.16);
 }
 
 .personal-agent-banner {
   padding: 10px 16px;
-  border-bottom: 1px solid rgba(133, 149, 255, 0.25);
-  background: linear-gradient(135deg, rgba(61, 79, 191, 0.95), rgba(86, 102, 214, 0.82));
-  color: #f7f8ff;
+  border-bottom: 1px solid rgba(111, 100, 217, 0.18);
+  background: rgba(111, 100, 217, 0.08);
+  color: var(--linkedin-text);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -257,8 +258,9 @@
 }
 
 .personal-agent-focus-card {
-  border-color: rgba(112, 181, 249, 0.3);
-  background: linear-gradient(180deg, rgba(39, 47, 80, 0.95), rgba(26, 31, 46, 1));
+  border-color: rgba(111, 100, 217, 0.24);
+  background: var(--linkedin-card-subtle);
+  box-shadow: 0 4px 14px rgba(111, 100, 217, 0.1);
 }
 
 .author-meta {
@@ -290,7 +292,7 @@
 }
 
 .follow-button:hover:not(:disabled):not(.following) {
-  background: rgba(10, 102, 194, 0.08);
+  background: rgba(111, 100, 217, 0.08);
 }
 
 .follow-button.following {
@@ -300,9 +302,9 @@
 }
 
 .follow-button.following:hover:not(:disabled) {
-  background: rgba(220, 53, 69, 0.1);
-  border-color: #dc3545;
-  color: #dc3545;
+  background: rgba(220, 95, 89, 0.08);
+  border-color: var(--destructive);
+  color: var(--destructive);
 }
 
 .follow-button.following:hover:not(:disabled) .follow-icon::before {
@@ -375,7 +377,7 @@
 /* Sources */
 .post-sources {
   padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--linkedin-card-subtle);
   border-top: 1px solid var(--linkedin-border);
   border-bottom: 1px solid var(--linkedin-border);
 }
@@ -459,12 +461,12 @@
 
 .engagement-btn.active-like {
   color: var(--linkedin-blue);
-  background: rgba(112, 181, 249, 0.1);
+  background: rgba(111, 100, 217, 0.1);
 }
 
 .engagement-btn.active-dislike {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--destructive);
+  background: rgba(220, 95, 89, 0.1);
 }
 
 .engagement-btn:disabled {
@@ -484,7 +486,7 @@
 .agent-feedback-panel {
   padding: 8px 16px 14px;
   border-top: 1px solid var(--linkedin-border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--linkedin-card-subtle);
 }
 
 .agent-feedback-row {
@@ -508,7 +510,7 @@
   border-radius: 6px;
   border: 1px solid var(--linkedin-border);
   padding: 6px 8px;
-  background: var(--linkedin-bg);
+  background: var(--chat-surface);
   color: var(--linkedin-text);
   font-size: 13px;
   resize: vertical;
@@ -565,9 +567,9 @@
 }
 
 .feed-error, .signal-error {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #fca5a5;
+  background: rgba(220, 95, 89, 0.1);
+  border: 1px solid rgba(220, 95, 89, 0.24);
+  color: var(--destructive);
   padding: 12px 16px;
   border-radius: 8px;
   margin: 16px auto;

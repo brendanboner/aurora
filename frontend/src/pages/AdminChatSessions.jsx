@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -45,13 +45,8 @@ const AdminChatSessions = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    loadOracleQueries();
-    loadOracleStats();
-  }, []);
-
   // === Oracle Queries Functions ===
-  const loadOracleQueries = async () => {
+  const loadOracleQueries = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -75,9 +70,9 @@ const AdminChatSessions = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [queryFilters]);
 
-  const loadOracleStats = async () => {
+  const loadOracleStats = useCallback(async () => {
     try {
       const stats = await getOracleQueryStats(queryFilters.days);
       setOracleStats(stats);
@@ -85,7 +80,12 @@ const AdminChatSessions = () => {
       // Stats not available - not critical
       setOracleStats(null);
     }
-  };
+  }, [queryFilters.days]);
+
+  useEffect(() => {
+    loadOracleQueries();
+    loadOracleStats();
+  }, [loadOracleQueries, loadOracleStats]);
 
   const loadQueryDetail = async (queryId) => {
     setDetailLoading(true);
@@ -104,11 +104,6 @@ const AdminChatSessions = () => {
   const handleFilterChange = (key, value) => {
     setQueryFilters(prev => ({ ...prev, [key]: value }));
   };
-
-  useEffect(() => {
-    loadOracleQueries();
-    loadOracleStats();
-  }, [queryFilters]);
 
   const filteredQueries = oracleQueries.filter(query => {
     if (!searchTerm) return true;

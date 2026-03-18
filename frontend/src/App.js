@@ -37,6 +37,10 @@ const NO_PADDING_ROUTES = ['/documents'];
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
+  });
 
   useEffect(() => {
     // Check backend connection on startup
@@ -53,12 +57,21 @@ function App() {
     checkBackend();
   }, []);
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
   const toggleMenu = () => {
     setMenuOpen((prev) => !prev);
   };
 
   const closeMenu = () => {
     setMenuOpen(false);
+  };
+
+  const toggleTheme = () => {
+    setTheme((previousTheme) => (previousTheme === 'dark' ? 'light' : 'dark'));
   };
 
   return (
@@ -69,6 +82,8 @@ function App() {
           menuOpen={menuOpen}
           toggleMenu={toggleMenu}
           closeMenu={closeMenu}
+          theme={theme}
+          toggleTheme={toggleTheme}
         />
       </Router>
     </AuthProvider>
@@ -76,7 +91,7 @@ function App() {
 }
 
 // Separate component to use useLocation inside Router
-function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu }) {
+function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, toggleTheme }) {
   const location = useLocation();
   const noPadding = NO_PADDING_ROUTES.includes(location.pathname);
 
@@ -99,7 +114,12 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu }) {
           element={
             <ProtectedRoute>
               <div className="app-shell">
-                <Header onMenuToggle={toggleMenu} isMenuOpen={menuOpen} />
+                <Header
+                  onMenuToggle={toggleMenu}
+                  isMenuOpen={menuOpen}
+                  theme={theme}
+                  onThemeToggle={toggleTheme}
+                />
                 <Sidebar
                   isOpen={menuOpen}
                   onToggle={toggleMenu}

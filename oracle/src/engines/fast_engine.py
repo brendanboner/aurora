@@ -85,6 +85,52 @@ class FastEngine:
     def get_name(self) -> str:
         """Get engine name."""
         return "fast"
+
+    def _get_max_documents(self, request: QueryRequest) -> int:
+        options = request.options
+        requested = getattr(options, "max_documents", settings.default_max_documents) if options else settings.default_max_documents
+        return max(1, min(requested, settings.default_max_documents))
+
+    def _build_temporal_patterns(self, plan: RoutePlan, route_result: RouteResult) -> Optional[str]:
+        if plan.route_id != RouteId.RECENT_CONTENT or not route_result.nodes:
+            return None
+
+        requested_days = plan.relative_days or 14
+        fallback_nodes = [
+            node for node in route_result.nodes
+            if int(node.get("time_window_used") or requested_days) > requested_days
+        ]
+        latest_node = None
+        latest_date = None
+        for node in route_result.nodes:
+            raw_date = node.get("last_content_date")
+            if not raw_date:
+                continue
+            try:
+                parsed = datetime.fromisoformat(str(raw_date).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if latest_date is None or parsed > latest_date:
+                latest_date = parsed
+                latest_node = node
+
+        if latest_node is None or latest_date is None:
+            return None
+
+        latest_label = latest_node.get("workgroup_name") or "the knowledge graph"
+        latest_text = latest_date.strftime("%B %d, %Y")
+        if fallback_nodes:
+            expanded_days = max(int(node.get("time_window_used") or requested_days) for node in fallback_nodes)
+            return (
+                f"No matching content was found in the initial {requested_days}-day window. "
+                f"The query expanded to the last {expanded_days} days. "
+                f"The latest known discussion was on {latest_text} in {latest_label}."
+            )
+
+        return (
+            f"The newest relevant discussion in the retrieved results is from {latest_text} in {latest_label}. "
+            f"Prioritize that item first."
+        )
     
     def get_capabilities(self) -> Dict[str, Any]:
         """Get fast engine capabilities."""
@@ -259,7 +305,10 @@ class FastEngine:
                 )
             else:
                 # In retrieval mode, just convert nodes to documents without LLM synthesis
-                documents = self._nodes_to_documents(route_result.nodes)
+                documents = self._nodes_to_documents(
+                    route_result.nodes,
+                    max_documents=self._get_max_documents(request),
+                )
             
             # Build response
             processing_time_ms = int((time.time() - start_time) * 1000)
@@ -804,7 +853,10 @@ class FastEngine:
             Tuple of (answer, documents, citations)
         """
         # Convert nodes to documents
-        documents = self._nodes_to_documents(route_result.nodes)
+        documents = self._nodes_to_documents(
+            route_result.nodes,
+            max_documents=self._get_max_documents(request),
+        )
         
         if not documents:
             # Provide a more helpful message with suggestions
@@ -894,10 +946,19 @@ class FastEngine:
                 })
             
             # Generate answer using LLM
+            graph_context = None
+            temporal_patterns = self._build_temporal_patterns(plan, route_result)
+            if temporal_patterns:
+                graph_context = {
+                    "central_topics": [],
+                    "key_organizations": [],
+                    "temporal_patterns": temporal_patterns,
+                }
+
             messages = get_answer_generator_messages(
                 request.question,
                 docs_for_prompt,
-                None,  # No graph context in fast pipeline
+                graph_context,
                 None   # No user context
             )
             
@@ -949,7 +1010,7 @@ class FastEngine:
             answer = "".join(answer_parts)
             return answer, documents, citations
     
-    def _nodes_to_documents(self, nodes: List[Dict]) -> List[Document]:
+    def _nodes_to_documents(self, nodes: List[Dict], max_documents: Optional[int] = None) -> List[Document]:
         """
         Convert Neo4j nodes to Document objects.
         Handles both flat node structure and grouped structure (recent_documents/recent_events).
@@ -961,15 +1022,23 @@ class FastEngine:
             List of Document objects
         """
         documents = []
+        limit = max_documents or settings.default_max_documents
+        seen_keys = set()
         
         for idx, node in enumerate(nodes):
             # Check if this is a grouped result (from RECENT_CONTENT or ORGANIZATION_ACTIVITY templates)
             if "recent_documents" in node or "recent_events" in node or "recent_activity" in node:
                 # Flatten recent_activity array (from ORGANIZATION_ACTIVITY)
                 for doc_node in node.get("recent_activity", []):
+                    if len(documents) >= limit:
+                        return documents
                     doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
                     title = doc_node.get("title") or "Untitled"
                     url = doc_node.get("url", "")
+                    dedupe_key = (doc_id, url, title)
+                    if dedupe_key in seen_keys:
+                        continue
+                    seen_keys.add(dedupe_key)
                     summary = doc_node.get("summary", "")
                     date = doc_node.get("date") or doc_node.get("publishDate") or doc_node.get("publish_date")
                     category = doc_node.get("category") or doc_node.get("type")
@@ -996,9 +1065,15 @@ class FastEngine:
                 
                 # Flatten recent_documents array
                 for doc_node in node.get("recent_documents", []):
+                    if len(documents) >= limit:
+                        return documents
                     doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
                     title = doc_node.get("title") or "Untitled"
                     url = doc_node.get("url", "")
+                    dedupe_key = (doc_id, url, title)
+                    if dedupe_key in seen_keys:
+                        continue
+                    seen_keys.add(dedupe_key)
                     summary = doc_node.get("summary", "")
                     date = doc_node.get("publishDate") or doc_node.get("publish_date")
                     category = doc_node.get("category") or doc_node.get("type")
@@ -1021,9 +1096,15 @@ class FastEngine:
                 
                 # Flatten recent_events array
                 for event_node in node.get("recent_events", []):
+                    if len(documents) >= limit:
+                        return documents
                     event_id = event_node.get("id") or event_node.get("event_id") or f"event_{len(documents)}"
                     title = event_node.get("title") or event_node.get("name") or "Untitled Event"
                     url = event_node.get("url", "")
+                    dedupe_key = (event_id, url, title)
+                    if dedupe_key in seen_keys:
+                        continue
+                    seen_keys.add(dedupe_key)
                     summary = event_node.get("summary") or event_node.get("description", "")
                     date = event_node.get("eventDate") or event_node.get("start_time") or event_node.get("startTime")
                     category = event_node.get("category") or event_node.get("event_type") or "event"
@@ -1044,9 +1125,15 @@ class FastEngine:
                     documents.append(doc)
             else:
                 # Regular flat node structure
+                if len(documents) >= limit:
+                    return documents
                 doc_id = node.get("id") or node.get("url_hash") or node.get("event_id") or f"node_{idx}"
                 title = node.get("title") or node.get("name") or "Untitled"
                 url = node.get("url", "")
+                dedupe_key = (doc_id, url, title)
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
                 summary = node.get("summary") or node.get("description", "")
                 date = node.get("date") or node.get("start_time") or node.get("startTime") or node.get("publish_date")
                 

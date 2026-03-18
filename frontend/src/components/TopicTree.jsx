@@ -21,7 +21,7 @@ const TopicTree = ({
   }, [searchTerm]);
   
   // Filter nodes based on DEBOUNCED search term - memoized to avoid recalculation
-  const { filteredRoots, filteredNodes, matchingIds } = useMemo(() => {
+  const { filteredRoots, filteredNodes } = useMemo(() => {
     const roots = hierarchyData?.roots || [];
     const nodes = hierarchyData?.nodes || {};
     

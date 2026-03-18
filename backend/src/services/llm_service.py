@@ -3,6 +3,7 @@ import os
 import re
 import logging
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 try:
     from openai import AzureOpenAI  # type: ignore
@@ -31,6 +32,85 @@ def _safe_datetime_to_string(value: Any) -> str:
     if isinstance(value, str):
         return value
     return str(value)
+
+
+def _parse_iso_datetime(value: Any) -> Optional[datetime]:
+    if value in (None, "", "unknown date"):
+        return None
+    text = _safe_datetime_to_string(value)
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _build_recency_guidance(
+    question: str,
+    docs: List[Dict[str, Any]],
+    events: List[Dict[str, Any]],
+    retrieval_context: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    question_lower = question.lower()
+    is_recency_query = any(
+        phrase in question_lower
+        for phrase in [
+            "what is new",
+            "what's new",
+            "latest",
+            "recent",
+            "most recent",
+            "last discussion",
+            "latest discussion",
+            "latest meeting",
+            "last meeting",
+        ]
+    )
+    if not is_recency_query:
+        return None
+
+    newest_doc = None
+    newest_doc_date = None
+    for doc in docs:
+        parsed = _parse_iso_datetime(doc.get("publish_date"))
+        if parsed and (newest_doc_date is None or parsed > newest_doc_date):
+            newest_doc = doc
+            newest_doc_date = parsed
+
+    newest_event = None
+    newest_event_date = None
+    for event in events:
+        parsed = _parse_iso_datetime(event.get("start_date"))
+        if parsed and (newest_event_date is None or parsed > newest_event_date):
+            newest_event = event
+            newest_event_date = parsed
+
+    latest_item = newest_doc
+    latest_type = "document"
+    latest_date = newest_doc_date
+    if newest_event_date and (latest_date is None or newest_event_date > latest_date):
+        latest_item = newest_event
+        latest_type = "event"
+        latest_date = newest_event_date
+
+    if latest_item is None:
+        latest_item = (retrieval_context or {}).get("latest_item")
+        latest_date = _parse_iso_datetime((latest_item or {}).get("publish_date"))
+        latest_type = "document"
+
+    requested_window_days = (retrieval_context or {}).get("requested_window_days") or 14
+    applied_window_days = (retrieval_context or {}).get("applied_window_days") or requested_window_days
+    used_fallback_window = bool((retrieval_context or {}).get("used_fallback_window"))
+    latest_age_days = (datetime.now(latest_date.tzinfo) - latest_date).days if latest_date else None
+
+    return {
+        "requested_window_days": requested_window_days,
+        "applied_window_days": applied_window_days,
+        "used_fallback_window": used_fallback_window,
+        "latest_item": latest_item,
+        "latest_item_type": latest_type,
+        "latest_item_date": latest_date.isoformat() if latest_date else None,
+        "latest_age_days": latest_age_days,
+    }
 
 
 def get_azure_client() -> Optional[AzureOpenAI]:
@@ -348,7 +428,12 @@ def parse_query_to_filters(question: str) -> Dict[str, Any]:
     return data
 
 
-def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferences: Optional[Dict[str, Any]] = None) -> str:
+def summarise_documents(
+    question: str,
+    docs: List[Dict[str, Any]],
+    user_preferences: Optional[Dict[str, Any]] = None,
+    retrieval_context: Optional[Dict[str, Any]] = None,
+) -> str:
     """Summarise documents with LLM or fallback heuristic.
 
     If the LLM is unavailable, produce a concise synthetic answer based on the
@@ -421,6 +506,7 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
     events = []
     if user_preferences and "events" in user_preferences:
         events = user_preferences.get("events", [])
+    recency_guidance = _build_recency_guidance(question, docs, events, retrieval_context)
     
     docs_ctx = []
     for d in docs[:10]:
@@ -555,6 +641,19 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
             "\n\nWhen answering about events, include temporal context (e.g., 'in 2 days', '3 weeks ago') to help users "
             "understand timing. For upcoming events, mention the date, location, and any relevant details."
         )
+
+    if recency_guidance:
+        latest_item = recency_guidance.get("latest_item") or {}
+        latest_title = latest_item.get("title") or latest_item.get("name") or "the latest known item"
+        latest_date = recency_guidance.get("latest_item_date") or "unknown date"
+        latest_source = latest_item.get("source") or latest_item.get("location") or latest_item.get("url") or "the knowledge graph"
+        system_content += (
+            "\n\nFor recency-sensitive queries such as 'what is new', 'latest', or 'most recent discussion': "
+            "lead with the newest relevant meeting or document and its date. "
+            "If the newest relevant item is older than the requested freshness window, explicitly say there has been no recent discussion "
+            f"in the last {recency_guidance['requested_window_days']} days and identify the latest known item ({latest_title} on {latest_date} from {latest_source}). "
+            "Do not pad the answer with generic caveats like 'these documents provide insights' when the real answer is simply that nothing newer was found."
+        )
     
     if user_preferences and any([
         user_preferences.get("topics"),
@@ -586,6 +685,8 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
         
         if events_ctx:
             context_data["events"] = events_ctx
+        if recency_guidance:
+            context_data["freshness"] = recency_guidance
         
         user_msg = {
             "role": "user",
@@ -610,6 +711,14 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
         log.error(f"LLM summarisation failed; using fallback: {e}")
         # Return simple fallback instead of recursion to avoid infinite loop
         if not docs:
+            if recency_guidance and recency_guidance.get("latest_item"):
+                latest_item = recency_guidance["latest_item"]
+                latest_title = latest_item.get("title") or latest_item.get("name") or "the latest known item"
+                latest_date = recency_guidance.get("latest_item_date") or "unknown date"
+                return (
+                    f"There has been no recent discussion in the last {recency_guidance['requested_window_days']} days. "
+                    f"The latest known relevant item is {latest_title} ({latest_date})."
+                )
             return (
                 "I couldn't find any documents in our knowledge base to answer your question.\n\n"
                 "**Suggestions:**\n"
@@ -624,7 +733,12 @@ def summarise_documents(question: str, docs: List[Dict[str, Any]], user_preferen
             date = _safe_datetime_to_string(d.get("publish_date"))
             title = d.get("title") or "Untitled"
             parts.append(f"- {title} ({date})")
-        return (
-            "(Fallback summary – LLM error) Recent documents related to your question:\n"
-            + "\n".join(parts)
-        )
+        prefix = "(Fallback summary – LLM error) "
+        if recency_guidance and recency_guidance.get("used_fallback_window"):
+            prefix += (
+                f"No recent discussion was found in the last {recency_guidance['requested_window_days']} days. "
+                f"Showing the latest known relevant items from the last {recency_guidance['applied_window_days']} days:\n"
+            )
+        else:
+            prefix += "Recent documents related to your question:\n"
+        return prefix + "\n".join(parts)

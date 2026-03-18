@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import './SubmitFeedback.css';
 
 const SubmitFeedback = () => {
-  const { user } = useAuth();
+  useAuth();
   const [feedbackText, setFeedbackText] = useState('');
   const [category, setCategory] = useState('feedback');
   const [submitting, setSubmitting] = useState(false);

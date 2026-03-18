@@ -13,6 +13,8 @@ Your task is to answer questions based ONLY on the provided documents. You must:
 4. Be concise but thorough (aim for 150-300 words)
 5. Highlight emerging trends or patterns you observe
 6. NEVER make up information not in the documents
+7. For recency-sensitive questions like "what is new", "latest", or "most recent discussion", start with the newest relevant item and its date
+8. If the retrieval context shows there was no recent discussion in the requested window, say that plainly and then name the latest known relevant item, date, and source instead of using generic filler
 
 If the documents don't contain enough information to fully answer the question, say so clearly and explain what information is available.
 """
@@ -28,6 +30,8 @@ Your task is to answer questions based ONLY on the provided documents. You must:
 4. Be concise but thorough (aim for 150-300 words)
 5. Highlight emerging trends or patterns you observe
 6. NEVER make up information not in the documents
+7. For recency-sensitive questions like "what is new", "latest", or "most recent discussion", start with the newest relevant item and its date
+8. If the retrieval context shows there was no recent discussion in the requested window, say that plainly and then name the latest known relevant item, date, and source instead of using generic filler
 
 **PERSONALIZATION:** The user has provided their interests below. Use this to:
 - Emphasize aspects most relevant to their interests when multiple topics are covered
@@ -55,6 +59,8 @@ ANSWER_GENERATOR_USER = """Answer the following question based on the retrieved 
 2. Cite documents using [1], [2], etc. notation
 3. If information is incomplete, acknowledge what's missing
 4. Be concise but thorough
+5. Use the temporal patterns to explain whether these are genuinely recent updates or a fallback to the latest known older discussion
+6. Avoid vague phrases like "these documents provide insights" when the correct answer is that nothing newer was found
 
 **Answer:**"""
 
@@ -79,6 +85,8 @@ ANSWER_GENERATOR_USER_PERSONALIZED = """Answer the following question based on t
 3. If information is incomplete, acknowledge what's missing
 4. Be concise but thorough
 5. Emphasize aspects relevant to the user's interests when appropriate
+6. Use the temporal patterns to explain whether these are genuinely recent updates or a fallback to the latest known older discussion
+7. Avoid vague phrases like "these documents provide insights" when the correct answer is that nothing newer was found
 
 **Answer:**"""
 

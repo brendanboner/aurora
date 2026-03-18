@@ -4,8 +4,6 @@
  * Implements automatic message injection and alert system
  */
 
-import apiClient from '../api/client';
-
 class EventBus {
   constructor() {
     this.eventSource = null;
@@ -36,42 +34,6 @@ class EventBus {
       this.isConnected = false;
       this.emitConnectionStatus(false);
       return;
-
-      this.eventSource.addEventListener('feed_update', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.handleFeedUpdate(data);
-        } catch (error) {
-          console.error('Failed to parse feed update:', error);
-        }
-      });
-
-      this.eventSource.addEventListener('chat_message', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.emitChatMessage(data);
-        } catch (error) {
-          console.error('Failed to parse chat message:', error);
-        }
-      });
-
-      this.eventSource.addEventListener('notification', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.emitNotification(data);
-        } catch (error) {
-          console.error('Failed to parse notification:', error);
-        }
-      });
-
-      this.eventSource.onerror = () => {
-        this.handleConnectionError();
-      };
-
-      this.isConnected = true;
-      this.reconnectAttempts = 0;
-      this.emitConnectionStatus(true);
-      console.log('[EventBus] Connected to SSE stream');
     } catch (error) {
       console.error('[EventBus] Failed to establish SSE connection:', error);
       this.handleConnectionError();

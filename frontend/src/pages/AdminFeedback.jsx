@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getAllFeedback, getFeedbackStatistics, updateFeedbackStatus, deleteFeedback } from '../services/api';
 import { FeedbackIcon, RefreshIcon, TrashIcon, WarningIcon, CheckIcon } from '../components/icons';
 import './Admin.css';
@@ -21,11 +21,7 @@ const AdminFeedback = () => {
   const [editStatus, setEditStatus] = useState('');
   const [editPriority, setEditPriority] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, [statusFilter, categoryFilter, priorityFilter]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -47,7 +43,11 @@ const AdminFeedback = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter, categoryFilter, priorityFilter]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleEdit = (item) => {
     setEditingId(item.id);

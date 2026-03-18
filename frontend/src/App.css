@@ -30,7 +30,7 @@
   grid-area: content;
   overflow-y: auto;
   overflow-x: hidden;
-  background-color: var(--card);
+  background-color: var(--page-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   padding: 24px;

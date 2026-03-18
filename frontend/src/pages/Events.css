@@ -100,9 +100,10 @@
   gap: 0.9rem;
   margin-bottom: 1rem;
   padding: 0.8rem 1rem;
-  border: 1px solid rgba(245, 158, 11, 0.28);
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(249, 115, 22, 0.08));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--menu-surface);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
   overflow: hidden;
 }
 
@@ -112,8 +113,8 @@
   flex-shrink: 0;
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
-  background: rgba(245, 158, 11, 0.18);
-  color: #fbbf24;
+  background: rgba(111, 100, 217, 0.1);
+  color: var(--primary);
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -139,8 +140,8 @@
   height: 10px;
   flex-shrink: 0;
   border-radius: 999px;
-  background: linear-gradient(135deg, #f59e0b, #f97316);
-  box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.12);
+  background: var(--primary);
+  box-shadow: 0 0 0 6px rgba(111, 100, 217, 0.12);
 }
 
 .conference-ticker-text {
@@ -155,7 +156,8 @@
 
 .conference-ticker-separator {
   margin: 0 0.5rem;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--muted-foreground);
+  opacity: 0.55;
 }
 
 .calendar-toolbar {
@@ -576,6 +578,64 @@
 .no-events p {
   margin-top: 1rem;
   font-size: 1.05rem;
+}
+
+html[data-theme='light'] .filter-group select {
+  background: var(--menu-surface);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .conference-ticker {
+  background: var(--menu-surface);
+  border-color: var(--border);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+html[data-theme='light'] .conference-ticker-label {
+  background: rgba(111, 100, 217, 0.1);
+  color: var(--primary);
+}
+
+html[data-theme='light'] .conference-ticker-dot {
+  box-shadow: 0 0 0 6px rgba(111, 100, 217, 0.1);
+}
+
+html[data-theme='light'] .conference-ticker-separator {
+  color: var(--muted-foreground);
+  opacity: 0.45;
+}
+
+html[data-theme='light'] .calendar-month-chip {
+  background: var(--menu-surface);
+  color: var(--muted-foreground);
+}
+
+html[data-theme='light'] .calendar-shell {
+  background: var(--response-surface);
+  border-color: var(--border);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme='light'] .calendar-day {
+  background: var(--chat-surface);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme='light'] .calendar-day.outside-month {
+  opacity: 0.6;
+}
+
+html[data-theme='light'] .calendar-day.today {
+  background: rgba(137, 129, 229, 0.08);
+}
+
+html[data-theme='light'] .calendar-event-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme='light'] .calendar-event-link,
+html[data-theme='light'] .calendar-workgroup-badge {
+  background: rgba(255, 255, 255, 0.26);
 }
 
 @media (max-width: 1200px) {
