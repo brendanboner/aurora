@@ -162,7 +162,7 @@
 
 .calendar-toolbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
@@ -171,8 +171,17 @@
 .calendar-toolbar-left {
   display: flex;
   justify-content: flex-start;
+  align-items: center;
   min-width: 0;
   overflow: hidden;
+}
+
+.calendar-toolbar-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .calendar-toolbar-center {
@@ -208,6 +217,7 @@
   color: var(--muted-foreground);
   font-size: 0.88rem;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .calendar-type-filter {
@@ -238,8 +248,8 @@
 }
 
 .calendar-month-strip {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(5, 3.9rem);
   gap: 0.45rem;
   flex-wrap: nowrap;
   min-width: 0;
@@ -251,11 +261,13 @@
   color: var(--muted-foreground);
   border-radius: 999px;
   padding: 0.32rem 0.68rem;
+  min-width: 3.9rem;
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
+  text-align: center;
 }
 
 .calendar-month-chip:hover,
@@ -263,6 +275,13 @@
   border-color: rgba(137, 129, 229, 0.35);
   color: var(--foreground);
   background: rgba(137, 129, 229, 0.14);
+}
+
+.calendar-month-chip.ghost {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+  pointer-events: none;
 }
 
 .calendar-legend {
@@ -278,6 +297,7 @@
   flex-wrap: nowrap;
   overflow-x: auto;
   padding-bottom: 0.1rem;
+  min-width: 0;
 }
 
 .calendar-legend-item {
@@ -645,6 +665,32 @@ html[data-theme='light'] .calendar-workgroup-badge {
     overflow-x: auto;
   }
 
+
+  .calendar-toolbar {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .calendar-toolbar-left,
+  .calendar-toolbar-center,
+  .calendar-toolbar-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .calendar-toolbar-meta {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .calendar-nav {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .calendar-toolbar-right {
+    justify-content: flex-end;
+  }
   .calendar-shell {
     overflow-x: auto;
   }

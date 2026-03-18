@@ -185,6 +185,48 @@ const formatTickerDate = (value) => {
   });
 };
 
+const buildEventsParams = ({ eventType, upcoming, sortOrder, limit }) => {
+  const params = new URLSearchParams();
+  if (eventType) params.append('event_type', eventType);
+  params.append('upcoming', upcoming ? 'true' : 'false');
+  params.append('sort_by', 'start_date');
+  params.append('sort_order', sortOrder);
+  params.append('limit', String(limit));
+  return params;
+};
+
+const mergeEventsByUrlHash = (...eventLists) => {
+  const deduped = new Map();
+
+  eventLists.flat().forEach((event) => {
+    if (!event?.url_hash || deduped.has(event.url_hash)) {
+      return;
+    }
+    deduped.set(event.url_hash, event);
+  });
+
+  return Array.from(deduped.values());
+};
+
+const findSuggestedMonth = (events, referenceDate = new Date()) => {
+  if (!events.length) {
+    return getMonthStart(referenceDate);
+  }
+
+  const currentMonth = getMonthStart(referenceDate);
+  const hasCurrentMonthEvents = events.some((event) => isSameMonth(event.startDateObject, currentMonth));
+  if (hasCurrentMonthEvents) {
+    return currentMonth;
+  }
+
+  const nextUpcomingEvent = events.find((event) => event.startDateObject >= referenceDate);
+  if (nextUpcomingEvent) {
+    return getMonthStart(nextUpcomingEvent.startDateObject);
+  }
+
+  return getMonthStart(events[events.length - 1].startDateObject);
+};
+
 const Events = () => {
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
@@ -221,26 +263,48 @@ const Events = () => {
       setLoading(true);
       setError(null);
 
-      const params = new URLSearchParams();
-      if (eventType) params.append('event_type', eventType);
-      params.append('sort_by', 'start_date');
-      params.append('sort_order', 'asc');
-      params.append('limit', '500');
-
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/backend/events?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
 
-      if (!response.ok) {
+      const [upcomingResponse, pastResponse] = await Promise.all([
+        fetch(
+          `/api/backend/events?${buildEventsParams({
+            eventType,
+            upcoming: true,
+            sortOrder: 'asc',
+            limit: 500,
+          }).toString()}`,
+          { headers }
+        ),
+        fetch(
+          `/api/backend/events?${buildEventsParams({
+            eventType,
+            upcoming: false,
+            sortOrder: 'desc',
+            limit: 240,
+          }).toString()}`,
+          { headers }
+        ),
+      ]);
+
+      if (!upcomingResponse.ok || !pastResponse.ok) {
         throw new Error('Failed to fetch events');
       }
 
-      const data = await response.json();
-      setEvents(data.events || []);
+      const [upcomingData, pastData] = await Promise.all([
+        upcomingResponse.json(),
+        pastResponse.json(),
+      ]);
+
+      setEvents(
+        mergeEventsByUrlHash(
+          upcomingData.events || [],
+          pastData.events || []
+        )
+      );
     } catch (err) {
       console.error('Error fetching events:', err);
       setError(err.message);
@@ -287,6 +351,15 @@ const Events = () => {
         .sort((left, right) => left.startDateObject - right.startDateObject),
     [datasourceNameMap, events]
   );
+
+  useEffect(() => {
+    if (!calendarEvents.length) {
+      return;
+    }
+
+    const suggestedMonth = findSuggestedMonth(calendarEvents);
+    setCurrentMonth((existingMonth) => (isSameMonth(existingMonth, suggestedMonth) ? existingMonth : suggestedMonth));
+  }, [calendarEvents]);
 
   const eventsByDay = useMemo(() => {
     const grouped = {};
@@ -478,14 +551,21 @@ const Events = () => {
 
       <div className="calendar-toolbar">
         <div className="calendar-toolbar-left">
-          {monthLegend.length > 0 && (
-            <div className="calendar-legend calendar-legend-inline">
-              {monthLegend.map((type) => (
-                <div key={type} className="calendar-legend-item">
-                  <span className={`legend-dot ${getEventTypeClass(type)}`} />
-                  <span>{type}</span>
+          {(monthLegend.length > 0 || monthEvents.length >= 0) && (
+            <div className="calendar-toolbar-meta">
+              {monthLegend.length > 0 && (
+                <div className="calendar-legend calendar-legend-inline">
+                  {monthLegend.map((type) => (
+                    <div key={type} className="calendar-legend-item">
+                      <span className={`legend-dot ${getEventTypeClass(type)}`} />
+                      <span>{type}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              <div className="calendar-month-summary">
+                {monthEvents.length} event{monthEvents.length === 1 ? '' : 's'}
+              </div>
             </div>
           )}
         </div>
@@ -501,17 +581,23 @@ const Events = () => {
               <ChevronLeftIcon size={18} />
             </button>
             <div className="calendar-month-strip">
-              {visibleMonthOptions.map((monthDate) => (
-                <button
-                  key={formatMonthValue(monthDate)}
-                  type="button"
-                  className={`calendar-month-chip ${isSameMonth(monthDate, currentMonth) ? 'active' : ''}`}
-                  onClick={() => setCurrentMonth(monthDate)}
-                  aria-label={`Show ${formatMonthLabel(monthDate)}`}
-                >
-                  {formatMonthChipLabel(monthDate)}
-                </button>
-              ))}
+              {Array.from({ length: 5 }, (_, i) => {
+                const monthDate = visibleMonthOptions[i];
+                if (!monthDate) {
+                  return <span key={`ghost-${i}`} className="calendar-month-chip ghost" aria-hidden="true" />;
+                }
+                return (
+                  <button
+                    key={formatMonthValue(monthDate)}
+                    type="button"
+                    className={`calendar-month-chip ${isSameMonth(monthDate, currentMonth) ? 'active' : ''}`}
+                    onClick={() => setCurrentMonth(monthDate)}
+                    aria-label={`Show ${formatMonthLabel(monthDate)}`}
+                  >
+                    {formatMonthChipLabel(monthDate)}
+                  </button>
+                );
+              })}
             </div>
             <button
               type="button"
@@ -525,9 +611,6 @@ const Events = () => {
         </div>
 
         <div className="calendar-toolbar-right">
-          <div className="calendar-month-summary">
-            {monthEvents.length} event{monthEvents.length === 1 ? '' : 's'}
-          </div>
           <button
             type="button"
             className="calendar-today-button"
