@@ -3,7 +3,7 @@ import './Header.css';
 import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 import { useAuth } from '../contexts/AuthContext';
 
-const Header = ({ onMenuToggle, isMenuOpen }) => {
+const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef(null);
@@ -71,6 +71,15 @@ const Header = ({ onMenuToggle, isMenuOpen }) => {
       </div>
 
       <div className="header-actions">
+        <button
+          type="button"
+          className="theme-toggle-btn"
+          onClick={onThemeToggle}
+          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+        >
+          {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+        </button>
         <div 
           className="user-badge-container"
           ref={menuRef}

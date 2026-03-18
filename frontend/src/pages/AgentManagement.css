@@ -1,11 +1,11 @@
-/* Dark Mode styling aligned with SocialFeed */
+/* Theme-aware styling aligned with app tokens */
 :root {
-  --linkedin-bg: #0a0e1a;
-  --linkedin-card: #1a1f2e;
-  --linkedin-border: #2d3548;
-  --linkedin-blue: #70b5f9;
-  --linkedin-text: #e4e6eb;
-  --linkedin-text-muted: #b0b3b8;
+  --linkedin-bg: var(--page-surface);
+  --linkedin-card: var(--response-surface);
+  --linkedin-border: var(--border);
+  --linkedin-blue: var(--primary);
+  --linkedin-text: var(--foreground);
+  --linkedin-text-muted: var(--muted-foreground);
   --danger: #e1635c;
 }
 
@@ -100,7 +100,7 @@
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  background: rgba(255,255,255,0.02);
+  background: var(--chat-surface);
 }
 
 .agent-row.disabled {
@@ -145,7 +145,7 @@
 }
 
 .action-btn:hover {
-  background: rgba(255,255,255,0.05);
+  background: var(--secondary);
   transform: translateY(-1px);
 }
 
@@ -205,7 +205,7 @@
 .agent-form textarea,
 .agent-form select {
   border: 1px solid var(--linkedin-border);
-  background: #0f1422;
+  background: var(--chat-surface);
   color: var(--linkedin-text);
   border-radius: 0.6rem;
   padding: 0.55rem 0.7rem;
@@ -371,7 +371,7 @@
 }
 
 .modal-close:hover {
-  background: var(--linkedin-border);
+  background: var(--secondary);
   color: var(--linkedin-text);
 }
 
@@ -390,11 +390,32 @@
 
 .confirm-input input {
   border: 1px solid var(--linkedin-border);
-  background: #0f1422;
+  background: var(--chat-surface);
   color: var(--linkedin-text);
   border-radius: 0.6rem;
   padding: 0.55rem 0.7rem;
   font-size: 0.95rem;
+}
+
+html[data-theme='light'] .agent-admin-shell {
+  background: var(--page-surface);
+}
+
+html[data-theme='light'] .agent-list,
+html[data-theme='light'] .agent-form,
+html[data-theme='light'] .modal,
+html[data-theme='light'] .modal-content,
+html[data-theme='light'] .agent-metrics {
+  background: var(--response-surface);
+  border-color: var(--border);
+}
+
+html[data-theme='light'] .agent-row,
+html[data-theme='light'] .agent-form input,
+html[data-theme='light'] .agent-form textarea,
+html[data-theme='light'] .agent-form select,
+html[data-theme='light'] .confirm-input input {
+  background: var(--chat-surface);
 }
 
 .modal-footer {

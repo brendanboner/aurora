@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, ResetIcon, WarningIcon } from '../components/icons';
 import { getUserPreferences, updateUserPreferences, getTopics, getOrganisations, getPeople, getTopicsHierarchy } from '../services/api';
@@ -69,95 +69,6 @@ const UserProfile = () => {
     : path.includes('/profile/notifications') ? 'notifications'
     : null;
 
-  // Initial load when user is available
-  useEffect(() => { 
-    if (user && !initialLoaded) {
-      loadData(); 
-    }
-  }, [user]);
-
-  // Load data when navigating between sections
-  useEffect(() => {
-    if (!user || !initialLoaded) return;
-    
-    // Load data for the currently selected section if it hasn't been loaded
-    if (selectedSection === 'organisations' && availableOrgs.length === 0) {
-      loadOrgsPage(1);
-    } else if (selectedSection === 'people' && availablePeople.length === 0) {
-      loadPeoplePage(1);
-    } else if (selectedSection === 'topics' && availableTopics.length === 0 && topicViewMode === 'flat') {
-      loadTopicsPage(1);
-    } else if (selectedSection === 'topics' && !hierarchyData && topicViewMode === 'hierarchical') {
-      loadHierarchyData();
-    } else if (selectedSection === null) {
-      // When viewing all sections, load any missing data
-      const loadPromises = [];
-      if (availableOrgs.length === 0) {
-        loadPromises.push(loadOrgsPage(1));
-      }
-      if (availablePeople.length === 0) {
-        loadPromises.push(loadPeoplePage(1));
-      }
-      if (availableTopics.length === 0 && topicViewMode === 'flat') {
-        loadPromises.push(loadTopicsPage(1));
-      }
-      if (!hierarchyData && topicViewMode === 'hierarchical') {
-        loadPromises.push(loadHierarchyData());
-      }
-      if (loadPromises.length > 0) {
-        Promise.all(loadPromises);
-      }
-    }
-  }, [selectedSection, user, initialLoaded]);
-
-  // Reload topics when sort order changes
-  useEffect(() => {
-    if (initialLoaded && user && topicViewMode === 'flat') {
-      loadTopicsPage(1);
-    }
-  }, [topicSortBy]);
-
-  // Reload organizations when sort order changes
-  useEffect(() => {
-    if (initialLoaded && user && (selectedSection === 'organisations' || !selectedSection)) {
-      loadOrgsPage(1);
-    }
-  }, [orgSortBy]);
-
-  // Reload people when sort order changes
-  useEffect(() => {
-    if (initialLoaded && user && (selectedSection === 'people' || !selectedSection)) {
-      loadPeoplePage(1);
-    }
-  }, [peopleSortBy]);
-
-  // Reload topics when search changes (debounced) - only for flat view
-  useEffect(() => {
-    if (!initialLoaded || !user || topicViewMode !== 'flat') return;
-    const timeout = setTimeout(() => {
-      loadTopicsPage(1);
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [topicSearch]);
-
-  // Reload organizations when search changes (debounced)
-  useEffect(() => {
-    if (!initialLoaded || !user || (selectedSection !== 'organisations' && selectedSection !== null)) return;
-    const timeout = setTimeout(() => {
-      loadOrgsPage(1);
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [orgSearch]);
-
-  // Reload people when search changes (debounced)
-  useEffect(() => {
-    if (!initialLoaded || !user || (selectedSection !== 'people' && selectedSection !== null)) return;
-    const timeout = setTimeout(() => {
-      loadPeoplePage(1);
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [peopleSearch]);
-
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -173,7 +84,77 @@ const UserProfile = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const loadData = async () => {
+  const loadTopicsPage = useCallback(async (page) => {
+    const offset = (page - 1) * pageSize;
+    const topicsData = await getTopics(pageSize, offset, topicSearch, topicSortBy);
+    
+    const normalizeTopics = (data) => {
+      const topics = data?.topics || [];
+      return topics.filter(t => t && typeof t === 'object').map(t => ({
+        ...t,
+        id: t.topic_id || t.id
+      }));
+    };
+    
+    setAvailableTopics(normalizeTopics(topicsData));
+    setTopicsTotalCount(topicsData.total_count || 0);
+    setTopicsPage(page);
+  }, [pageSize, topicSearch, topicSortBy]);
+
+  const loadHierarchyData = useCallback(async () => {
+    if (hierarchyLoadingRef.current || hierarchyData) {
+      return;
+    }
+    
+    hierarchyLoadingRef.current = true;
+    setHierarchyLoading(true);
+    try {
+      const data = await getTopicsHierarchy('');
+      setHierarchyData(data);
+    } catch (err) {
+      console.error('Failed to load hierarchy:', err);
+      setError('Failed to load topic hierarchy');
+    } finally {
+      setHierarchyLoading(false);
+      hierarchyLoadingRef.current = false;
+    }
+  }, [hierarchyData]);
+
+  const loadOrgsPage = useCallback(async (page) => {
+    const offset = (page - 1) * pageSize;
+    const orgsData = await getOrganisations(pageSize, offset, orgSortBy, orgSearch);
+    
+    const normalizeOrgs = (data) => {
+      const orgs = data?.organisations || [];
+      return orgs.filter(o => o && typeof o === 'object').map(o => ({
+        ...o,
+        id: o.org_id || o.id
+      }));
+    };
+    
+    setAvailableOrgs(normalizeOrgs(orgsData));
+    setOrgsTotalCount(orgsData.total_count || 0);
+    setOrgsPage(page);
+  }, [pageSize, orgSortBy, orgSearch]);
+
+  const loadPeoplePage = useCallback(async (page) => {
+    const offset = (page - 1) * pageSize;
+    const peopleData = await getPeople(pageSize, offset, peopleSortBy, peopleSearch);
+    
+    const normalizePeople = (data) => {
+      const people = data?.people || [];
+      return people.filter(p => p && typeof p === 'object').map(p => ({
+        ...p,
+        id: p.person_id || p.id
+      }));
+    };
+    
+    setAvailablePeople(normalizePeople(peopleData));
+    setPeopleTotalCount(peopleData.total_count || 0);
+    setPeoplePage(page);
+  }, [pageSize, peopleSortBy, peopleSearch]);
+
+  const loadData = useCallback(async () => {
     // Prevent duplicate calls during initial load (React StrictMode)
     if (!user || (loadDataRef.current && !initialLoaded)) return;
     
@@ -212,79 +193,88 @@ const UserProfile = () => {
       setLoading(false);
       loadDataRef.current = false;
     }
-  };
+  }, [initialLoaded, loadHierarchyData, loadOrgsPage, loadPeoplePage, loadTopicsPage, selectedSection, topicViewMode, user]);
 
-  const loadTopicsPage = async (page) => {
-    const offset = (page - 1) * pageSize;
-    const topicsData = await getTopics(pageSize, offset, topicSearch, topicSortBy);
-    
-    const normalizeTopics = (data) => {
-      const topics = data?.topics || [];
-      return topics.filter(t => t && typeof t === 'object').map(t => ({
-        ...t,
-        id: t.topic_id || t.id
-      }));
-    };
-    
-    setAvailableTopics(normalizeTopics(topicsData));
-    setTopicsTotalCount(topicsData.total_count || 0);
-    setTopicsPage(page);
-  };
-
-  const loadHierarchyData = async () => {
-    // Prevent duplicate calls
-    if (hierarchyLoadingRef.current || hierarchyData) {
-      return;
+  // Initial load when user is available
+  useEffect(() => {
+    if (user && !initialLoaded) {
+      loadData();
     }
-    
-    hierarchyLoadingRef.current = true;
-    setHierarchyLoading(true);
-    try {
-      // Load all topics without search filter (we'll filter client-side)
-      const data = await getTopicsHierarchy('');
-      setHierarchyData(data);
-    } catch (err) {
-      console.error('Failed to load hierarchy:', err);
-      setError('Failed to load topic hierarchy');
-    } finally {
-      setHierarchyLoading(false);
-      hierarchyLoadingRef.current = false;
+  }, [user, initialLoaded, loadData]);
+
+  // Load data when navigating between sections
+  useEffect(() => {
+    if (!user || !initialLoaded) return;
+
+    if (selectedSection === 'organisations' && availableOrgs.length === 0) {
+      loadOrgsPage(1);
+    } else if (selectedSection === 'people' && availablePeople.length === 0) {
+      loadPeoplePage(1);
+    } else if (selectedSection === 'topics' && availableTopics.length === 0 && topicViewMode === 'flat') {
+      loadTopicsPage(1);
+    } else if (selectedSection === 'topics' && !hierarchyData && topicViewMode === 'hierarchical') {
+      loadHierarchyData();
+    } else if (selectedSection === null) {
+      const loadPromises = [];
+      if (availableOrgs.length === 0) {
+        loadPromises.push(loadOrgsPage(1));
+      }
+      if (availablePeople.length === 0) {
+        loadPromises.push(loadPeoplePage(1));
+      }
+      if (availableTopics.length === 0 && topicViewMode === 'flat') {
+        loadPromises.push(loadTopicsPage(1));
+      }
+      if (!hierarchyData && topicViewMode === 'hierarchical') {
+        loadPromises.push(loadHierarchyData());
+      }
+      if (loadPromises.length > 0) {
+        Promise.all(loadPromises);
+      }
     }
-  };
+  }, [availableOrgs.length, availablePeople.length, availableTopics.length, hierarchyData, initialLoaded, loadHierarchyData, loadOrgsPage, loadPeoplePage, loadTopicsPage, selectedSection, topicViewMode, user]);
 
-  const loadOrgsPage = async (page) => {
-    const offset = (page - 1) * pageSize;
-    const orgsData = await getOrganisations(pageSize, offset, orgSortBy, orgSearch);
-    
-    const normalizeOrgs = (data) => {
-      const orgs = data?.organisations || [];
-      return orgs.filter(o => o && typeof o === 'object').map(o => ({
-        ...o,
-        id: o.org_id || o.id
-      }));
-    };
-    
-    setAvailableOrgs(normalizeOrgs(orgsData));
-    setOrgsTotalCount(orgsData.total_count || 0);
-    setOrgsPage(page);
-  };
+  useEffect(() => {
+    if (initialLoaded && user && topicViewMode === 'flat') {
+      loadTopicsPage(1);
+    }
+  }, [initialLoaded, loadTopicsPage, topicSortBy, topicViewMode, user]);
 
-  const loadPeoplePage = async (page) => {
-    const offset = (page - 1) * pageSize;
-    const peopleData = await getPeople(pageSize, offset, peopleSortBy, peopleSearch);
-    
-    const normalizePeople = (data) => {
-      const people = data?.people || [];
-      return people.filter(p => p && typeof p === 'object').map(p => ({
-        ...p,
-        id: p.person_id || p.id
-      }));
-    };
-    
-    setAvailablePeople(normalizePeople(peopleData));
-    setPeopleTotalCount(peopleData.total_count || 0);
-    setPeoplePage(page);
-  };
+  useEffect(() => {
+    if (initialLoaded && user && (selectedSection === 'organisations' || !selectedSection)) {
+      loadOrgsPage(1);
+    }
+  }, [initialLoaded, loadOrgsPage, orgSortBy, selectedSection, user]);
+
+  useEffect(() => {
+    if (initialLoaded && user && (selectedSection === 'people' || !selectedSection)) {
+      loadPeoplePage(1);
+    }
+  }, [initialLoaded, loadPeoplePage, peopleSortBy, selectedSection, user]);
+
+  useEffect(() => {
+    if (!initialLoaded || !user || topicViewMode !== 'flat') return;
+    const timeout = setTimeout(() => {
+      loadTopicsPage(1);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [initialLoaded, loadTopicsPage, topicSearch, topicViewMode, user]);
+
+  useEffect(() => {
+    if (!initialLoaded || !user || (selectedSection !== 'organisations' && selectedSection !== null)) return;
+    const timeout = setTimeout(() => {
+      loadOrgsPage(1);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [initialLoaded, loadOrgsPage, orgSearch, selectedSection, user]);
+
+  useEffect(() => {
+    if (!initialLoaded || !user || (selectedSection !== 'people' && selectedSection !== null)) return;
+    const timeout = setTimeout(() => {
+      loadPeoplePage(1);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [initialLoaded, loadPeoplePage, peopleSearch, selectedSection, user]);
 
   // Debounced auto-save only when dirty & actually changed
   useEffect(() => {

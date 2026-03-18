@@ -13,8 +13,7 @@ import {
   AdminIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  LightbulbIcon,
-  WarningIcon
+  LightbulbIcon
 } from '../components/icons';
 
 const UserGuide = () => {

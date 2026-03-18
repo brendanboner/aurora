@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BookIcon, CalendarIcon, BuildingIcon, SearchIcon, HourglassIcon, SparkleIcon, BarChartIcon, ThumbsUpIcon, ThumbsDownIcon, LightbulbIcon, ToolIcon } from './icons';
@@ -148,12 +148,12 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   
   // Wrapper to update both local state and persist to parent
-  const setDisplayMode = (mode) => {
+  const setDisplayMode = useCallback((mode) => {
     setDisplayModeState(mode);
     if (onDisplayModeChange) {
       onDisplayModeChange(mode);
     }
-  };
+  }, [onDisplayModeChange]);
 
   // Handle feedback submission
   const handleFeedback = async (feedbackType) => {
@@ -189,7 +189,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
       setDisplayMode(DISPLAY_MODES.ANSWER);
     }
     prevIsEnhanced.current = message.isEnhanced;
-  }, [message.isEnhanced]);
+  }, [message.isEnhanced, setDisplayMode]);
 
   const hasAnswer = message.content && message.content !== 'Here are the relevant documents:';
   const hasDocuments = message.documents && message.documents.length > 0;
@@ -250,7 +250,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
     const canEnhance = onEnhance && hasDocuments && !message.isEnhanced;
     // Determine if we can toggle (already enhanced, have both versions, and original has actual content)
     const hasOriginalContent = message.originalAnswer?.content && message.originalAnswer.content !== 'Here are the relevant documents:';
-    const canToggle = message.isEnhanced && onToggleEnhanced && hasOriginalContent && message.enhancedAnswer;
+    const canToggle = message.isEnhanced && onToggleEnhanced && (hasOriginalContent && message.enhancedAnswer);
 
     return (
       <div className="display-mode-selector">
@@ -456,8 +456,6 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   };
 
   const renderAnswerMode = () => {
-    // Determine if we're showing enhanced or original (for visual indicator)
-    const hasBeenEnhanced = message.isEnhanced && message.originalAnswer && message.enhancedAnswer;
     const isShowingEnhanced = message.showingEnhanced;
     
     // Build a map of document URLs to datasource names for lookup
@@ -520,7 +518,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
     return (
       <div className="answer-view" ref={answerViewRef}>
         {/* Confidence and Stats Row - Above Answer */}
-        {hasAnswer && (message.confidenceScore !== null && message.confidenceScore !== undefined || statsDisplay || message.personalizationApplied) && (
+        {hasAnswer && (((message.confidenceScore !== null && message.confidenceScore !== undefined) || statsDisplay || message.personalizationApplied)) && (
           <div className="answer-stats-row">
             {/* Confidence on the left */}
             {message.confidenceScore !== null && message.confidenceScore !== undefined && (

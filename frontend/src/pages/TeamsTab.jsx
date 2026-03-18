@@ -4,7 +4,7 @@
  * Responsive design: stacks vertically on mobile
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './TeamsTab.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -24,40 +24,6 @@ export const TeamsTab = ({ backendStatus = 'connected' }) => {
   const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef(null);
   const feedEndRef = useRef(null);
-
-  // Initialize Teams SDK and load initial data
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        // Initialize Teams SDK
-        await initializeTeamsSDK();
-        console.log('[TeamsTab] Teams SDK initialized');
-
-        // Load chat history
-        await loadChatHistory();
-
-        // Load feed
-        await loadFeed();
-
-        // Connect to event bus for real-time updates
-        eventBus.connect();
-
-        // Notify Teams that content loaded successfully
-        notifyTeamsSuccess();
-
-        setLoading(false);
-      } catch (error) {
-        console.error('[TeamsTab] Initialization failed:', error);
-        setLoading(false);
-      }
-    };
-
-    initialize();
-
-    return () => {
-      eventBus.disconnect();
-    };
-  }, []);
 
   // Subscribe to event bus
   useEffect(() => {
@@ -102,7 +68,7 @@ export const TeamsTab = ({ backendStatus = 'connected' }) => {
     scrollToBottom('feed');
   }, [feedItems]);
 
-  const loadChatHistory = async () => {
+  const loadChatHistory = useCallback(async () => {
     try {
       // TODO: Implement chat history endpoint in backend
       // For now, we'll just start with an empty chat
@@ -111,9 +77,15 @@ export const TeamsTab = ({ backendStatus = 'connected' }) => {
     } catch (error) {
       console.error('[TeamsTab] Failed to load chat history:', error);
     }
-  };
+  }, []);
 
-  const loadFeed = async () => {
+  const loadFeed = useCallback(async () => {
+    if (!user) {
+      setFeedItems([]);
+      setUnreadCount(0);
+      return;
+    }
+
     try {
       // Endpoint: GET /api/content_creator_service/feed
       // Returns personalized feed for authenticated user
@@ -139,7 +111,33 @@ export const TeamsTab = ({ backendStatus = 'connected' }) => {
       console.error('[TeamsTab] Failed to load feed:', error);
       // Don't show error to user - just log it
     }
-  };
+  }, [user]);
+
+  // Initialize Teams SDK and load initial data
+  useEffect(() => {
+    const initialize = async () => {
+      try {
+        await initializeTeamsSDK();
+        console.log('[TeamsTab] Teams SDK initialized');
+
+        await loadChatHistory();
+        await loadFeed();
+
+        eventBus.connect();
+        notifyTeamsSuccess();
+        setLoading(false);
+      } catch (error) {
+        console.error('[TeamsTab] Initialization failed:', error);
+        setLoading(false);
+      }
+    };
+
+    initialize();
+
+    return () => {
+      eventBus.disconnect();
+    };
+  }, [loadChatHistory, loadFeed]);
 
   const sendMessage = async (e) => {
     e.preventDefault();

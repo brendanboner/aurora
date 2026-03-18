@@ -290,20 +290,29 @@ class QueryTemplateRegistry:
               cypher="""
               // Calculate expanding time windows
               WITH coalesce($relative_days, 14) as requested_days,
-                  toInteger($limit / 2.0) as half_limit
-              WITH requested_days, half_limit,
+                  CASE
+                      WHEN $limit <= 6 THEN 1
+                      WHEN $limit <= 12 THEN 2
+                      ELSE 3
+                  END as items_per_group,
+                  CASE
+                      WHEN $limit <= 4 THEN $limit
+                      WHEN $limit <= 10 THEN 5
+                      ELSE 6
+                  END as group_limit
+              WITH requested_days, items_per_group, group_limit,
                   datetime() - duration({days: requested_days}) as primary_threshold,
                   datetime() - duration({days: 56}) as fallback_threshold,
                   datetime() - duration({days: 180}) as max_threshold
 
               // Get resources with robust date fallback: publish_date -> created_at -> scraped_at
               MATCH (r:Resource)
-              WITH r, primary_threshold, fallback_threshold, max_threshold, half_limit, requested_days,
-                  CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+              WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days,
+                   CASE WHEN r.publish_date IS NOT NULL AND r.publish_date <> '' AND r.publish_date <> 'unknown' AND toInteger(substring(toString(r.publish_date), 0, 4)) >= 2000 AND toInteger(substring(toString(r.publish_date), 0, 4)) <= 2030 THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
               WHERE effective_date >= max_threshold
 
               // Filter by organization (WFA, WBA, etc.) - this ensures "Wi-Fi Alliance updates" only returns WFA sources
-              WITH r, effective_date, primary_threshold, fallback_threshold, half_limit, requested_days
+              WITH r, effective_date, primary_threshold, fallback_threshold, items_per_group, group_limit, requested_days
               WHERE ($organizations IS NULL OR size($organizations) = 0
                 OR EXISTS {
                     MATCH (r)-[:MENTIONS|PUBLISHED_BY]->(org:Organization)
@@ -321,25 +330,26 @@ class QueryTemplateRegistry:
                 })
 
               // Categorize by time window using effective date
-              WITH r, effective_date, half_limit, requested_days,
-                  CASE WHEN effective_date >= primary_threshold THEN 'primary' WHEN effective_date >= fallback_threshold THEN 'fallback'
-                       ELSE 'max' END as time_bucket
+              WITH r, effective_date, items_per_group, group_limit, requested_days,
+                   CASE WHEN effective_date >= primary_threshold THEN 'primary' WHEN effective_date >= fallback_threshold THEN 'fallback'
+                        ELSE 'max' END as time_bucket
 
               WITH collect(CASE WHEN time_bucket = 'primary' THEN r ELSE null END) as primary_docs,
-                  collect(CASE WHEN time_bucket = 'fallback' THEN r ELSE null END) as fallback_docs,
-                  collect(CASE WHEN time_bucket = 'max' THEN r ELSE null END) as max_docs,
-                  half_limit, requested_days
+                   collect(CASE WHEN time_bucket = 'fallback' THEN r ELSE null END) as fallback_docs,
+                   collect(CASE WHEN time_bucket = 'max' THEN r ELSE null END) as max_docs,
+                   items_per_group, group_limit, requested_days
 
               // Use first non-empty bucket
               WITH CASE WHEN size([d IN primary_docs WHERE d IS NOT NULL]) > 0 THEN [d IN primary_docs WHERE d IS NOT NULL] WHEN size([d IN fallback_docs WHERE d IS NOT NULL]) > 0 THEN [d IN fallback_docs WHERE d IS NOT NULL] ELSE [d IN max_docs WHERE d IS NOT NULL] END as final_docs,
-                  CASE WHEN size([d IN primary_docs WHERE d IS NOT NULL]) > 0 THEN requested_days WHEN size([d IN fallback_docs WHERE d IS NOT NULL]) > 0 THEN 56 ELSE 180 END as actual_window_days,
-                  half_limit
+                   CASE WHEN size([d IN primary_docs WHERE d IS NOT NULL]) > 0 THEN requested_days WHEN size([d IN fallback_docs WHERE d IS NOT NULL]) > 0 THEN 56 ELSE 180 END as actual_window_days,
+                   items_per_group,
+                   group_limit
 
               UNWIND final_docs as r
 
               // Calculate effective date for this resource
-              WITH r, actual_window_days, half_limit,
-                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+              WITH r, actual_window_days, items_per_group, group_limit,
+                   CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
 
               // Get datasource for grouping
               OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
@@ -351,36 +361,37 @@ class QueryTemplateRegistry:
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             
             // Group by datasource
-            WITH coalesce(ds.datasource_id, 'unknown') as workgroup_id,
-                 coalesce(ds.name, 'Unknown Source') as workgroup_name,
-                 actual_window_days,
-                 half_limit,
-                 collect(DISTINCT e) as all_events,
-                 collect(DISTINCT {resource: r, effective_date: effective_date}) as all_docs_with_dates,
-                 collect(DISTINCT t.name)[..5] as top_topics
+             WITH coalesce(ds.datasource_id, 'unknown') as workgroup_id,
+                  coalesce(ds.name, 'Unknown Source') as workgroup_name,
+                  actual_window_days,
+                  items_per_group,
+                  group_limit,
+                  collect(DISTINCT e) as all_events,
+                  collect(DISTINCT {resource: r, effective_date: effective_date}) as all_docs_with_dates,
+                  collect(DISTINCT t.name)[..5] as top_topics
             
             // Skip empty groups
             WHERE size(all_docs_with_dates) > 0 OR size(all_events) > 0
             
             // Calculate last update date using effective dates
-            WITH workgroup_id, workgroup_name, actual_window_days, half_limit,
-                 all_events, all_docs_with_dates, top_topics,
-                 CASE WHEN size(all_docs_with_dates) > 0 THEN reduce(latest = datetime('1970-01-01'), doc IN all_docs_with_dates | CASE WHEN doc.effective_date > latest THEN doc.effective_date ELSE latest END) ELSE null END as last_update_date
-            
-            RETURN 
+             WITH workgroup_id, workgroup_name, actual_window_days, items_per_group, group_limit,
+                  all_events, all_docs_with_dates, top_topics,
+                  CASE WHEN size(all_docs_with_dates) > 0 THEN reduce(latest = datetime('1970-01-01'), doc IN all_docs_with_dates | CASE WHEN doc.effective_date > latest THEN doc.effective_date ELSE latest END) ELSE null END as last_update_date
+             
+             RETURN 
                 workgroup_id,
                 workgroup_name,
                 actual_window_days as time_window_used,
                 toString(last_update_date) as last_content_date,
                 top_topics,
-                [event IN all_events[..half_limit] | {
+                [event IN all_events[..items_per_group] | {
                     type: 'event',
                     id: event.url_hash,
                     title: event.name,
                     startTime: event.start_date,
                     url: event.url
                 }] as recent_events,
-                [doc IN all_docs_with_dates[..half_limit] | {
+                [doc IN all_docs_with_dates[..items_per_group] | {
                     type: 'document',
                     id: doc.resource.url_hash,
                     title: doc.resource.title,
@@ -390,7 +401,7 @@ class QueryTemplateRegistry:
                     category: doc.resource.category
                 }] as recent_documents
             ORDER BY last_update_date DESC
-            LIMIT $limit
+            LIMIT group_limit
             """
         )
         

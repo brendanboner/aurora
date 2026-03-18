@@ -2274,3 +2274,30 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+html[data-theme='light'] .admin-section,
+html[data-theme='light'] .kg-stat-card,
+html[data-theme='light'] .kg-entity-table,
+html[data-theme='light'] .user-card,
+html[data-theme='light'] .stat-card,
+html[data-theme='light'] .knowledge-section,
+html[data-theme='light'] .monitoring-section,
+html[data-theme='light'] .service-card,
+html[data-theme='light'] .queue-stat,
+html[data-theme='light'] .current-processing-item,
+html[data-theme='light'] .item-card,
+html[data-theme='light'] .batch-item {
+  background-color: var(--response-surface);
+}
+
+html[data-theme='light'] .resources-table tr:hover,
+html[data-theme='light'] .kg-entity-table tr:hover td,
+html[data-theme='light'] .user-card:hover,
+html[data-theme='light'] .item-card:hover {
+  background-color: rgba(137, 129, 229, 0.08);
+}
+
+html[data-theme='light'] .kg-entity-table th,
+html[data-theme='light'] .batch-progress-bar {
+  background-color: rgba(137, 129, 229, 0.12);
+}

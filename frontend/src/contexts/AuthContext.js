@@ -7,15 +7,6 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    checkAuthStatus();
-    
-    // Set up periodic session check (every 5 minutes)
-    const sessionCheckInterval = setInterval(checkAuthStatus, 5 * 60 * 1000);
-    
-    return () => clearInterval(sessionCheckInterval);
-  }, []);
-
   const checkAuthStatus = useCallback(async () => {
     try {
       // Check if user is authenticated by calling /api/auth/me
@@ -35,6 +26,15 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    checkAuthStatus();
+    
+    // Set up periodic session check (every 5 minutes)
+    const sessionCheckInterval = setInterval(checkAuthStatus, 5 * 60 * 1000);
+    
+    return () => clearInterval(sessionCheckInterval);
+  }, [checkAuthStatus]);
 
   const login = () => {
     // Redirect to auth service login endpoint

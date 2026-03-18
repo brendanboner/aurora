@@ -1,11 +1,93 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import logging
+from datetime import datetime, timedelta
 
 from src.services.llm_service import parse_query_to_filters, summarise_documents
 from src.services.graph_service import query_documents_from_filters, query_upcoming_events, query_past_events, query_temporal_documents
 from src.services import postgres, graph_service
 
 log = logging.getLogger("query_engine")
+
+RECENCY_QUERY_PATTERN = None
+
+
+def _get_recency_query_pattern():
+    global RECENCY_QUERY_PATTERN
+    if RECENCY_QUERY_PATTERN is None:
+        import re
+        RECENCY_QUERY_PATTERN = re.compile(
+            r"\b(recent|latest|new|newest|current|most recent|what(?:'s| is) new|last discussion|latest discussion|last meeting|latest meeting)\b",
+            re.IGNORECASE,
+        )
+    return RECENCY_QUERY_PATTERN
+
+
+def _is_recency_sensitive_query(question: str, query_intent: str, temporal_focus: Optional[str]) -> bool:
+    if temporal_focus in {"published", "updated", "mixed"}:
+        return True
+    if query_intent in {"recent", "historical"}:
+        return bool(_get_recency_query_pattern().search(question))
+    return False
+
+
+def _find_latest_item(items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    latest_item = None
+    latest_dt = None
+    for item in items:
+        raw_date = item.get("publish_date")
+        if not raw_date:
+            continue
+        try:
+            parsed = datetime.fromisoformat(str(raw_date).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if latest_dt is None or parsed > latest_dt:
+            latest_dt = parsed
+            latest_item = item
+    return latest_item
+
+
+def _query_recent_documents_with_fallback(filters: Dict[str, Any]) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    explicit_dates = bool(filters.get("start_date") or filters.get("end_date"))
+    requested_limit = min(int(filters.get("limit") or 20), 12)
+    requested_window_days = 14
+
+    if explicit_dates:
+        docs = query_documents_from_filters({**filters, "limit": requested_limit})
+        latest = _find_latest_item(docs)
+        return docs, {
+            "requested_window_days": None,
+            "applied_window_days": None,
+            "used_fallback_window": False,
+            "latest_item": latest,
+        }
+
+    for window_days in (14, 45, 120, 365):
+        end_date = datetime.now().date().isoformat()
+        start_date = (datetime.now() - timedelta(days=window_days)).date().isoformat()
+        docs = query_documents_from_filters(
+            {
+                **filters,
+                "start_date": start_date,
+                "end_date": end_date,
+                "limit": requested_limit,
+            }
+        )
+        if docs:
+            latest = _find_latest_item(docs)
+            return docs, {
+                "requested_window_days": requested_window_days,
+                "applied_window_days": window_days,
+                "used_fallback_window": window_days > requested_window_days,
+                "latest_item": latest,
+            }
+
+    return [], {
+        "requested_window_days": requested_window_days,
+        "applied_window_days": 365,
+        "used_fallback_window": True,
+        "latest_item": None,
+    }
 
 
 def run_query(user_id: str, question: str) -> Dict[str, Any]:  # Changed from int to str
@@ -129,8 +211,10 @@ def run_query(user_id: str, question: str) -> Dict[str, Any]:  # Changed from in
     
     # Determine if we should retrieve documents or events based on query intent
     should_retrieve_docs = has_query_filters and not is_meta_query
+    recency_sensitive_query = _is_recency_sensitive_query(question, query_intent, temporal_focus)
     docs = []
     events = []
+    retrieval_context = None
     
     if should_retrieve_docs:
         # Step 4: Query Neo4j based on temporal intent and temporal focus
@@ -179,8 +263,11 @@ def run_query(user_id: str, question: str) -> Dict[str, Any]:  # Changed from in
             log.info("✓ Historical query detected - fetching past events and documents")
             events = query_past_events(merged_filters)
             log.info(f"✓ Retrieved {len(events)} past events from Neo4j")
-            
-            docs = query_documents_from_filters(merged_filters)
+
+            if recency_sensitive_query:
+                docs, retrieval_context = _query_recent_documents_with_fallback(merged_filters)
+            else:
+                docs = query_documents_from_filters(merged_filters)
             log.info(f"✓ Retrieved {len(docs)} documents from Neo4j")
             
         elif query_intent == "mixed":
@@ -197,9 +284,9 @@ def run_query(user_id: str, question: str) -> Dict[str, Any]:  # Changed from in
         else:  # "recent" or default
             # Query for recent documents only
             log.info("✓ Recent/default query - fetching documents")
-            docs = query_documents_from_filters(merged_filters)
+            docs, retrieval_context = _query_recent_documents_with_fallback(merged_filters)
             log.info(f"✓ Retrieved {len(docs)} documents from Neo4j knowledge graph")
-        
+
         if not docs and not events:
             log.warning("✗ No documents or events found matching query and filters")
     else:
@@ -221,7 +308,15 @@ def run_query(user_id: str, question: str) -> Dict[str, Any]:  # Changed from in
     if events:
         context_with_events["events"] = events
     
-    answer = summarise_documents(question, docs, context_with_events if context_with_events else None)
+    if retrieval_context:
+        context_with_events["retrieval_context"] = retrieval_context
+
+    answer = summarise_documents(
+        question,
+        docs,
+        context_with_events if context_with_events else None,
+        retrieval_context=retrieval_context,
+    )
     
     # Step 6: Prepare response with limited topic display for users with many preferences
     formatted_docs = _format_documents_for_response(docs, max_topics_per_doc=10) if docs else []

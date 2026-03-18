@@ -31,9 +31,7 @@ const DocumentUpload = () => {
   const [userUploads, setUserUploads] = useState([]);
   
   // UI state
-  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [dragActive, setDragActive] = useState(false);
@@ -134,7 +132,6 @@ const DocumentUpload = () => {
     setUploading(true);
     setError(null);
     setSuccess(null);
-    setUploadProgress({ total: validFiles.length, completed: 0, current: '' });
 
     try {
       const formData = new FormData();
@@ -149,9 +146,6 @@ const DocumentUpload = () => {
       formData.append('categories', JSON.stringify(validFiles.map(f => f.category)));
 
       const result = await uploadDocuments(formData);
-      
-      // Update progress and show results
-      setUploadProgress(null);
       
       if (result.total_success > 0) {
         // If all files uploaded successfully, redirect to My Documents

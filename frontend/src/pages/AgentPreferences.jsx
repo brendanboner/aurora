@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   getCreatorAgents,
@@ -17,19 +17,7 @@ function AgentPreferences() {
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
-  useEffect(() => {
-    if (!authLoading && user) {
-      loadAgents();
-    }
-  }, [user, authLoading]);
-
-  useEffect(() => {
-    // Clear status message after 3 seconds
-    const timer = statusMessage ? setTimeout(() => setStatusMessage(''), 3000) : null;
-    return () => timer && clearTimeout(timer);
-  }, [statusMessage]);
-
-  const loadAgents = async () => {
+  const loadAgents = useCallback(async () => {
     if (!user?.id) {
       setStatusMessage('User not authenticated');
       setIsLoading(false);
@@ -61,7 +49,19 @@ function AgentPreferences() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      loadAgents();
+    }
+  }, [user, authLoading, loadAgents]);
+
+  useEffect(() => {
+    // Clear status message after 3 seconds
+    const timer = statusMessage ? setTimeout(() => setStatusMessage(''), 3000) : null;
+    return () => timer && clearTimeout(timer);
+  }, [statusMessage]);
 
   const isFollowing = (agentId) => {
     return followedAgents.some(a => a.id === agentId);

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, SparkleIcon } from '../components/icons';
+import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon } from '../components/icons';
 import Icon from '../components/Icon';
 import QueryResultDisplay from '../components/QueryResultDisplay';
 import DatasourceMention from '../components/DatasourceMention';
@@ -495,16 +495,6 @@ What would you like to know?`;
       console.error('Failed to submit feedback:', err);
       throw err; // Re-throw so the component can handle it
     }
-  };
-
-  // Handle user accepting the suggested query
-  const handleAcceptSuggestion = () => {
-    const suggestedQuery = querySuggestion.suggested_query;
-    const datasourceIds = pendingDatasourceIds;
-    setQuerySuggestion(null);
-    setPendingQuery(null);
-    setPendingDatasourceIds([]);
-    executeQuery(suggestedQuery, datasourceIds);
   };
 
   // Handle user rejecting the suggestion (use original query)
