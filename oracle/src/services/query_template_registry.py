@@ -322,16 +322,24 @@ class QueryTemplateRegistry:
                     MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)-[:OPERATED_BY]->(org:Organization)
                     WHERE org.name IN $organizations
                 })
-              // Filter by specific workgroups if requested
-              AND ($workgroups IS NULL OR size($workgroups) = 0
-                OR EXISTS {
-                    MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                    WHERE ds.datasource_id IN $workgroups
-                })
+               // Filter by specific workgroups if requested
+               AND ($workgroups IS NULL OR size($workgroups) = 0
+                 OR EXISTS {
+                     MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+                     WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups
+                 })
+               // Filter by topic if requested
+               AND ($topics IS NULL OR size($topics) = 0
+                 OR EXISTS {
+                     MATCH (r)-[:RELATES_TO]->(t:Topic)
+                     WHERE t.name IN $topics
+                        OR t.topic_id IN $topics
+                        OR ANY(alias IN coalesce(t.aliases, []) WHERE alias IN $topics)
+                 })
 
-              // Categorize by time window using effective date
-              WITH r, effective_date, items_per_group, group_limit, requested_days,
-                   CASE WHEN effective_date >= primary_threshold THEN 'primary' WHEN effective_date >= fallback_threshold THEN 'fallback'
+               // Categorize by time window using effective date
+               WITH r, effective_date, items_per_group, group_limit, requested_days,
+                    CASE WHEN effective_date >= primary_threshold THEN 'primary' WHEN effective_date >= fallback_threshold THEN 'fallback'
                         ELSE 'max' END as time_bucket
 
               WITH collect(CASE WHEN time_bucket = 'primary' THEN r ELSE null END) as primary_docs,

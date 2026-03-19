@@ -347,6 +347,20 @@ class LocalRouter:
         
         # Extract entities (workgroups, topics, etc.) with conditional user preference boost
         entities = self._extract_entities(question_lower, user_prefs, skip_user_prefs)
+
+        temporal_rollup_routes = {
+            RouteId.WORKGROUP_DAILY_RECAP,
+            RouteId.WORKGROUP_WEEKLY_RECAP,
+            RouteId.WORKGROUP_MONTHLY_SUMMARY,
+        }
+        has_explicit_workgroup_scope = bool(datasource_ids or entities.get("workgroups"))
+        if route_id in temporal_rollup_routes and not has_explicit_workgroup_scope:
+            logger.info(
+                "Broad temporal synopsis query without explicit workgroup scope - "
+                "using RECENT_CONTENT instead of workgroup rollup"
+            )
+            route_id = RouteId.RECENT_CONTENT
+            route_confidence = max(route_confidence, 0.84)
         
         if skip_user_prefs:
             logger.debug(f"Skipping user preference expansion for {route_id.value} (focused query)")

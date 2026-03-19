@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon } from '../components/icons';
+import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, ChevronDownIcon } from '../components/icons';
 import Icon from '../components/Icon';
 import QueryResultDisplay from '../components/QueryResultDisplay';
 import DatasourceMention from '../components/DatasourceMention';
@@ -38,9 +38,12 @@ const Chatbot = ({ backendStatus }) => {
   const [selectedDatasources, setSelectedDatasources] = useState([]); // Selected @mentions
   const [fastPipelineEnabled, setFastPipelineEnabled] = useState(false); // Track if fast pipeline is enabled
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const messageRefs = useRef({}); // Refs for each message element
-  const skipNextScroll = useRef(false); // Flag to skip auto-scroll on toggle
   const inputRef = useRef(null); // Ref for textarea input
+  const previousMessageCountRef = useRef(0);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [hasUnreadContentBelow, setHasUnreadContentBelow] = useState(false);
 
   // Wrapper to persist queryMode to localStorage
   const setQueryMode = (mode) => {
@@ -60,9 +63,24 @@ const Chatbot = ({ backendStatus }) => {
     localStorage.setItem('pipelineMode', mode);
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const updateScrollState = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const hasContentBelow = distanceFromBottom > 48;
+    setShowScrollToBottom(hasContentBelow);
+    if (!hasContentBelow) {
+      setHasUnreadContentBelow(false);
+    }
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    setHasUnreadContentBelow(false);
+  }, []);
 
   // Load datasources and Oracle settings on mount
   useEffect(() => {
@@ -91,13 +109,36 @@ const Chatbot = ({ backendStatus }) => {
   }, []);
 
   useEffect(() => {
-    // Skip scroll if we just toggled enhanced/original
-    if (skipNextScroll.current) {
-      skipNextScroll.current = false;
+    const container = messagesContainerRef.current;
+    if (!container) {
+      previousMessageCountRef.current = messages.length;
       return;
     }
-    scrollToBottom();
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const hasContentBelow = distanceFromBottom > 48;
+    const messageCountIncreased = messages.length > previousMessageCountRef.current;
+
+    setShowScrollToBottom(hasContentBelow);
+    if (messageCountIncreased && hasContentBelow) {
+      setHasUnreadContentBelow(true);
+    } else if (!hasContentBelow) {
+      setHasUnreadContentBelow(false);
+    }
+
+    previousMessageCountRef.current = messages.length;
   }, [messages]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    updateScrollState();
+    container.addEventListener('scroll', updateScrollState);
+    return () => container.removeEventListener('scroll', updateScrollState);
+  }, [updateScrollState]);
 
   // Welcome message with tips for crafting good queries
   const getWelcomeMessage = (email) => `Hello ${email}! I'm Aurora, your knowledge assistant for wireless standards and industry news.
@@ -430,9 +471,6 @@ What would you like to know?`;
 
   // Handle toggling between original and enhanced answer
   const handleToggleEnhanced = (messageIndex) => {
-    // Prevent auto-scroll to bottom when toggling
-    skipNextScroll.current = true;
-    
     setMessages((prev) => {
       const updated = [...prev];
       const message = updated[messageIndex];
@@ -783,99 +821,113 @@ What would you like to know?`;
         </div>
       </div>
 
-      <div className="messages-container">
-        {messages.map((message, index) => (
-          <div 
-            key={index} 
-            className={`message message-${message.role}`}
-            ref={(el) => { messageRefs.current[index] = el; }}
-          >
-            <div className="message-avatar">
-              {message.role === 'user' ? <ProfileIcon size={20} /> : <ChatIcon size={20} />}
-            </div>
-            <div className="message-content">
-              <div className="message-header">
-                <span className="message-sender">
-                  {message.role === 'user' ? 'You' : 'Aurora'}
-                </span>
-                <span className="message-time">
-                  {message.timestamp.toLocaleTimeString()}
-                </span>
+      <div className="messages-panel">
+        <div className="messages-container" ref={messagesContainerRef}>
+          {messages.map((message, index) => (
+            <div 
+              key={index} 
+              className={`message message-${message.role}`}
+              ref={(el) => { messageRefs.current[index] = el; }}
+            >
+              <div className="message-avatar">
+                {message.role === 'user' ? <ProfileIcon size={20} /> : <ChatIcon size={20} />}
               </div>
-              
-              {/* User messages and error messages - render content directly */}
-              {(message.role === 'user' || message.isError) && (
-                <div className={`message-text ${message.isError ? 'error' : ''}`}>
-                  {/* Show datasource chips for user messages with filtered datasources */}
-                  {message.role === 'user' && message.datasourceIds?.length > 0 && (
-                    <div className="user-message-datasources">
-                      {message.datasourceIds.map((id, idx) => (
-                        <span key={id} className="datasource-chip">
-                          @{message.datasourceNames?.[idx] || id}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {message.content}
-                  </ReactMarkdown>
+              <div className="message-content">
+                <div className="message-header">
+                  <span className="message-sender">
+                    {message.role === 'user' ? 'You' : 'Aurora'}
+                  </span>
+                  <span className="message-time">
+                    {message.timestamp.toLocaleTimeString()}
+                  </span>
                 </div>
-              )}
+                
+                {/* User messages and error messages - render content directly */}
+                {(message.role === 'user' || message.isError) && (
+                  <div className={`message-text ${message.isError ? 'error' : ''}`}>
+                    {/* Show datasource chips for user messages with filtered datasources */}
+                    {message.role === 'user' && message.datasourceIds?.length > 0 && (
+                      <div className="user-message-datasources">
+                        {message.datasourceIds.map((id, idx) => (
+                          <span key={id} className="datasource-chip">
+                            @{message.datasourceNames?.[idx] || id}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
 
-              {/* Assistant messages with Oracle data - use QueryResultDisplay */}
-              {message.role === 'assistant' && !message.isError && (
-                <>
-                  {/* For welcome messages or simple responses without documents */}
-                  {!message.documents?.length && !message.citations?.length && (
-                    <div className="message-text">
-                      {message.isWelcomeMessage ? (
-                        getWelcomeMessageJSX(message.userEmail)
-                      ) : (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
-                        </ReactMarkdown>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* For Oracle responses with documents/citations - use new display component */}
-                  {(message.documents?.length > 0 || message.citations?.length > 0) && (
-                    <QueryResultDisplay 
-                      message={message} 
-                      isAdmin={user?.role === 'admin' || user?.role === 'superadmin'}
-                      onEnhance={() => handleEnhanceMessage(index)}
-                      onToggleEnhanced={() => handleToggleEnhanced(index)}
-                      isEnhancing={enhancingMessageIndex === index}
-                      onFeedback={handleFeedback}
-                      onDisplayModeChange={(mode) => {
-                        setMessages((prev) => {
-                          const updated = [...prev];
-                          updated[index] = { ...updated[index], displayMode: mode };
-                          return updated;
-                        });
-                      }}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="message message-assistant">
-            <div className="message-avatar"><ChatIcon size={20} /></div>
-            <div className="message-content">
-              <div className="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
+                {/* Assistant messages with Oracle data - use QueryResultDisplay */}
+                {message.role === 'assistant' && !message.isError && (
+                  <>
+                    {/* For welcome messages or simple responses without documents */}
+                    {!message.documents?.length && !message.citations?.length && (
+                      <div className="message-text">
+                        {message.isWelcomeMessage ? (
+                          getWelcomeMessageJSX(message.userEmail)
+                        ) : (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </ReactMarkdown>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* For Oracle responses with documents/citations - use new display component */}
+                    {(message.documents?.length > 0 || message.citations?.length > 0) && (
+                      <QueryResultDisplay 
+                        message={message} 
+                        isAdmin={user?.role === 'admin' || user?.role === 'superadmin'}
+                        onEnhance={() => handleEnhanceMessage(index)}
+                        onToggleEnhanced={() => handleToggleEnhanced(index)}
+                        isEnhancing={enhancingMessageIndex === index}
+                        onFeedback={handleFeedback}
+                        onDisplayModeChange={(mode) => {
+                          setMessages((prev) => {
+                            const updated = [...prev];
+                            updated[index] = { ...updated[index], displayMode: mode };
+                            return updated;
+                          });
+                        }}
+                      />
+                    )}
+                  </>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          ))}
 
-        <div ref={messagesEndRef} />
+          {isLoading && (
+            <div className="message message-assistant">
+              <div className="message-avatar"><ChatIcon size={20} /></div>
+              <div className="message-content">
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {showScrollToBottom && (
+          <button
+            type="button"
+            className={`chat-scroll-down-button ${hasUnreadContentBelow ? 'has-new-content' : ''}`}
+            onClick={scrollToBottom}
+            aria-label="Scroll to latest messages"
+            title="Scroll to latest messages"
+          >
+            <Icon Component={ChevronDownIcon} size={18} />
+          </button>
+        )}
       </div>
 
       {/* Query Suggestion Dialog */}
