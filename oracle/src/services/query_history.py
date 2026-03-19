@@ -489,7 +489,11 @@ class QueryHistoryService:
                 }
 
                 if fast_only:
-                    filters.append("(request_options->>'pipeline' = 'fast' OR request_options IS NULL)")
+                    # Match rows explicitly tagged as fast, or rows without a pipeline
+                    # tag (legacy rows saved before pipeline field was introduced, and
+                    # rows where the system auto-selected the pipeline).
+                    # Excludes only rows explicitly tagged as 'baseline'.
+                    filters.append("(request_options->>'pipeline' = 'fast' OR request_options->>'pipeline' IS NULL)")
 
                 hot_query_sql = text(f"""
                     WITH normalized AS (

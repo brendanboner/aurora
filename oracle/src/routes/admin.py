@@ -1,14 +1,17 @@
 """Admin configuration routes for Oracle query settings."""
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ..settings import settings
 from ..services.config_persistence import save_config
+from ..services.fast_prewarm import FastPrewarmService
+from common.auth_middleware import get_user_context, require_role
 
 logger = logging.getLogger(__name__)
 
@@ -162,4 +165,48 @@ async def reset_query_settings_config() -> Dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to reset query settings"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Cache management
+# ---------------------------------------------------------------------------
+
+cache_router = APIRouter(prefix="/admin/cache", tags=["admin"])
+
+
+@cache_router.post("/prewarm")
+@require_role(["admin", "superadmin"])
+async def trigger_cache_prewarm(
+    days: int = 30,
+    limit: int = 20,
+    user: Optional[dict] = Depends(get_user_context),
+) -> Dict[str, Any]:
+    """
+    Manually trigger fast-cache prewarming from recent query history.
+
+    Useful after a restart when the background prewarm found no hot queries
+    (e.g. because the query history table was empty at startup time).
+    Admin/superadmin role required.
+    """
+    if not settings.fast_pipeline_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fast pipeline is not enabled; nothing to prewarm.",
+        )
+    try:
+        from src.routes.query import fast_engine  # late import to avoid circular deps
+
+        prewarm_service = FastPrewarmService(fast_engine)
+        warmed = await prewarm_service.prewarm_hot_queries(days=days, limit=limit)
+        logger.info("Manual prewarm completed: %s queries warmed (user=%s)", warmed, user and user.get("email"))
+        return {
+            "message": f"Prewarmed {warmed} queries from the last {days} days (limit={limit}).",
+            "warmed": warmed,
+        }
+    except Exception as e:
+        logger.error("Manual prewarm failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prewarm failed: {e}",
         )
