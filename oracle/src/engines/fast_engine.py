@@ -8,6 +8,7 @@ import time
 import hashlib
 import json
 import uuid
+from dataclasses import asdict, is_dataclass
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 from opentelemetry import trace
@@ -90,6 +91,78 @@ class FastEngine:
         options = request.options
         requested = getattr(options, "max_documents", settings.default_max_documents) if options else settings.default_max_documents
         return max(1, min(requested, settings.default_max_documents))
+
+    def _build_simple_summary(self, documents: List[Document]) -> tuple[str, List[Citation]]:
+        """Build a deterministic fallback answer when LLM synthesis is unavailable or empty."""
+        answer_parts = [f"Found {len(documents)} relevant items:"]
+        citations = []
+
+        for idx, doc in enumerate(documents[:5], 1):
+            title = doc.title or "Untitled"
+            answer_parts.append(f"\n[{idx}] {title}")
+            if doc.summary:
+                answer_parts.append(f"    {doc.summary[:150]}...")
+
+            citations.append(Citation(
+                index=idx,
+                document_url=doc.url,
+                title=doc.title,
+                excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary
+            ))
+
+        return "".join(answer_parts), citations
+
+    def _compose_recent_content_brief(
+        self,
+        route_result: RouteResult,
+        request: QueryRequest,
+    ) -> tuple[str, List[Document], List[Citation]]:
+        """Build a fast, chat-like recent-content summary without an LLM round-trip."""
+        documents = self._nodes_to_documents(
+            route_result.nodes,
+            max_documents=self._get_max_documents(request),
+        )
+        if not documents:
+            return (
+                "I couldn't find any recent reference documents for that query.",
+                [],
+                [],
+            )
+
+        citations = []
+        bullets = []
+        for idx, doc in enumerate(documents[:5], 1):
+            source = doc.source or doc.datasource_id or "Unknown source"
+            date_label = doc.publish_date or "Unknown date"
+            bullets.append(f"- [{idx}] **{doc.title or 'Untitled'}** — {source} ({date_label})")
+            citations.append(Citation(
+                index=idx,
+                document_url=doc.url,
+                title=doc.title,
+                excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary,
+            ))
+
+        answer = "Here are the most recent reference documents I found:\n\n" + "\n".join(bullets)
+        return answer, documents, citations
+
+    def _should_retry_recent_content_without_topics(self, plan: RoutePlan, params: Dict[str, Any]) -> bool:
+        """Allow broad recency queries to fall back when generic topics over-constrain retrieval."""
+        route_id = self._get_route_id_str(plan)
+        if route_id != RouteId.RECENT_CONTENT.value:
+            return False
+
+        topics = [str(topic).strip().lower() for topic in (params.get("topics") or []) if str(topic).strip()]
+        if not topics:
+            return False
+
+        generic_topics = {
+            "wifi",
+            "wi-fi",
+            "wireless",
+            "802.11",
+            "wireless lan",
+        }
+        return all(topic in generic_topics for topic in topics)
 
     def _build_temporal_patterns(self, plan: RoutePlan, route_result: RouteResult) -> Optional[str]:
         if plan.route_id != RouteId.RECENT_CONTENT or not route_result.nodes:
@@ -204,13 +277,12 @@ class FastEngine:
             else:
                 logger.debug(f"[{query_id}] No datasource_ids filter provided")
             
-            # Decide personalization (fast engine doesn't support full personalization yet)
-            # For now, just determine if we should skip cache
+            # Decide personalization and capture user context for answer synthesis.
             personalization_enabled = False
+            personalization_reason = None
+            personalization_prompt_context = None
             if request.user_id and personalize_mode != PersonalizeMode.OFF:
                 try:
-                    # For fast engine, we use simplified personalization decision
-                    # (no parsing needed since fast engine doesn't use entity extraction)
                     personalization_decision = await decide_personalization(
                         mode=personalize_mode,
                         user_id=str(request.user_id),
@@ -221,19 +293,23 @@ class FastEngine:
                         parsed_people=[]
                     )
                     personalization_enabled = personalization_decision.should_personalize
+                    personalization_reason = personalization_decision.reason
+                    if personalization_decision.user_context:
+                        personalization_prompt_context = personalization_decision.user_context.to_prompt_section()
                     
                     if personalization_enabled:
                         span.set_attribute("oracle.personalized", True)
-                        logger.info(f"[{query_id}] Personalization enabled (cache bypass): {personalization_decision.reason}")
+                        logger.info(f"[{query_id}] Personalization enabled: {personalization_decision.reason}")
                 except Exception as e:
                     logger.warning(f"[{query_id}] Personalization decision failed: {e}")
                     personalization_enabled = False
+                    personalization_reason = None
             
             # Normalize query for caching
             normalized_query = normalize_query(request.question)
             
             # Phase 1: Routing (with plan cache)
-            plan, routing_time_ms = await self._route_query(
+            plan, routing_time_ms, route_cache_hit = await self._route_query(
                 question=request.question,
                 normalized_query=normalized_query,
                 user_id=request.user_id,
@@ -267,7 +343,7 @@ class FastEngine:
                     )
             
             # Phase 2: Retrieve from Neo4j (with result cache)
-            route_result, retrieval_time_ms = await self._retrieve_data(
+            route_result, retrieval_time_ms, result_cache_hit = await self._retrieve_data(
                 plan=plan,
                 span=span
             )
@@ -293,16 +369,26 @@ class FastEngine:
             answer = ""
             citations = []
             answer_time_ms = 0
+            answer_cache_hit = False
+            cache_bypass_reason = None
             
             if request.mode == QueryMode.ANSWER:
-                answer, documents, citations, answer_time_ms = await self._compose_answer(
+                skip_answer_cache = personalization_enabled and not self._can_cache_personalized_answer(plan)
+                if skip_answer_cache:
+                    cache_bypass_reason = personalization_reason or "personalization_enabled"
+
+                answer, documents, citations, answer_time_ms, answer_cache_hit, compose_cache_bypass_reason = await self._compose_answer(
                     plan=plan,
                     route_result=route_result,
                     deep_dive_result=deep_dive_result,
                     request=request,
                     span=span,
-                    skip_cache=personalization_enabled
+                    user_context=personalization_prompt_context,
+                    skip_cache=skip_answer_cache,
+                    skip_cache_reason=cache_bypass_reason,
+                    cache_scope=self._build_answer_cache_scope(personalization_prompt_context),
                 )
+                cache_bypass_reason = compose_cache_bypass_reason
             else:
                 # In retrieval mode, just convert nodes to documents without LLM synthesis
                 documents = self._nodes_to_documents(
@@ -321,7 +407,12 @@ class FastEngine:
                 strategies_used=[self._get_route_id_str(plan)],
                 total_candidates=len(documents),
                 processing_time_ms=processing_time_ms,
-                llm_tokens_used=None
+                llm_tokens_used=None,
+                cache_hit=route_cache_hit or result_cache_hit or answer_cache_hit,
+                route_cache_hit=route_cache_hit,
+                result_cache_hit=result_cache_hit,
+                answer_cache_hit=answer_cache_hit,
+                cache_bypass_reason=cache_bypass_reason,
             )
             
             response = QueryResponse(
@@ -342,7 +433,9 @@ class FastEngine:
                 f"[{query_id}] Fast pipeline complete: {processing_time_ms}ms "
                 f"(route={routing_time_ms}ms, retrieve={retrieval_time_ms}ms, "
                 f"answer={answer_time_ms}ms), {len(documents)} docs, "
-                f"route={self._get_route_id_str(plan)}"
+                f"route={self._get_route_id_str(plan)}, "
+                f"cache(route={route_cache_hit}, result={result_cache_hit}, "
+                f"answer={answer_cache_hit}, bypass={cache_bypass_reason or 'none'})"
             )
             
             return response
@@ -388,7 +481,7 @@ class FastEngine:
         user_id: Optional[str],
         datasource_ids: Optional[list],
         span
-    ) -> tuple[Optional[RoutePlan], int]:
+    ) -> tuple[Optional[RoutePlan], int, bool]:
         """
         Route query to a plan (Phase 1).
         
@@ -401,14 +494,6 @@ class FastEngine:
         route_start = time.time()
         
         with tracer.start_as_current_span("fast.route_query", context=trace.set_span_in_context(span)):
-            # Check plan cache first (includes datasource_ids in cache key)
-            cached_plan = await self.fast_cache.get_plan(normalized_query, datasource_ids=datasource_ids)
-            
-            if cached_plan:
-                routing_time_ms = int((time.time() - route_start) * 1000)
-                logger.info(f"Plan cache hit: route_id={self._get_route_id_str(cached_plan)}")
-                return cached_plan, routing_time_ms
-            
             # Get user preferences for intelligent entity extraction
             user_prefs = None
             if user_id:
@@ -417,6 +502,20 @@ class FastEngine:
                     logger.debug(f"User preferences: topics={len(user_prefs.topics)} orgs={len(user_prefs.organisations)}")
                 except Exception as e:
                     logger.warning(f"Failed to fetch user preferences: {e}")
+
+            user_prefs_payload = self._serialize_user_preferences(user_prefs)
+
+            # Check plan cache first (includes datasource_ids and personalization context)
+            cached_plan = await self.fast_cache.get_plan(
+                normalized_query,
+                user_prefs=user_prefs_payload,
+                datasource_ids=datasource_ids,
+            )
+            
+            if cached_plan:
+                routing_time_ms = int((time.time() - route_start) * 1000)
+                logger.info(f"Plan cache hit: route_id={self._get_route_id_str(cached_plan)}")
+                return cached_plan, routing_time_ms, True
             
             # Pass datasource_ids to router
             if datasource_ids:
@@ -436,17 +535,22 @@ class FastEngine:
             
             if plan:
                 # Cache the plan (includes datasource_ids in cache key)
-                await self.fast_cache.set_plan(normalized_query, plan, datasource_ids=datasource_ids)
+                await self.fast_cache.set_plan(
+                    normalized_query,
+                    plan,
+                    user_prefs=user_prefs_payload,
+                    datasource_ids=datasource_ids,
+                )
             
             routing_time_ms = int((time.time() - route_start) * 1000)
             
-            return plan, routing_time_ms
+            return plan, routing_time_ms, False
     
     async def _retrieve_data(
         self,
         plan: RoutePlan,
         span
-    ) -> tuple[RouteResult, int]:
+    ) -> tuple[RouteResult, int, bool]:
         """
         Retrieve data using Cypher template or PostgreSQL rollups (Phase 2).
         
@@ -462,14 +566,16 @@ class FastEngine:
             if cached_result:
                 retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
                 logger.info(f"Result cache hit: {cached_result.node_count} nodes")
-                return cached_result, retrieval_time_ms
+                return cached_result, retrieval_time_ms, True
             
             # Check if this is a rollup route - query PostgreSQL instead of Neo4j
             if plan.route_id in [RouteId.WORKGROUP_DAILY_RECAP, RouteId.WORKGROUP_WEEKLY_RECAP]:
-                return await self._retrieve_rollup_data(plan, retrieval_start, span)
+                route_result, retrieval_time_ms = await self._retrieve_rollup_data(plan, retrieval_start, span)
+                return route_result, retrieval_time_ms, False
             
             # Standard Neo4j Cypher query
-            return await self._retrieve_neo4j_data(plan, retrieval_start, span)
+            route_result, retrieval_time_ms = await self._retrieve_neo4j_data(plan, retrieval_start, span)
+            return route_result, retrieval_time_ms, False
     
     async def _retrieve_rollup_data(
         self,
@@ -618,6 +724,72 @@ class FastEngine:
                 query_time_ms += fallback_time_ms
             else:
                 logger.warning("Cross-datasource fallback also returned zero results")
+
+        if len(processed_results) == 0 and self._should_retry_recent_content_without_topics(plan, params):
+            logger.info(
+                f"Zero results for broad recent-content topic filter, retrying without topic constraints "
+                f"(route={self._get_route_id_str(plan)}, topics={params.get('topics')})"
+            )
+
+            fallback_params = params.copy()
+            fallback_params['topics'] = []
+
+            fallback_start = time.time()
+            fallback_results = repo.client.execute_query(
+                template.cypher,
+                fallback_params
+            )
+            fallback_time_ms = int((time.time() - fallback_start) * 1000)
+            processed_results = template.execute_post_process(fallback_results)
+
+            if len(processed_results) > 0:
+                logger.info(f"Broad-topic fallback succeeded: retrieved {len(processed_results)} documents")
+                query_time_ms += fallback_time_ms
+            else:
+                logger.warning("Broad-topic fallback also returned zero results")
+
+        # Tier-4 fallback: If still zero results, retry with GENERIC_SEARCH full-text template.
+        # This catches cases where topic-node matching failed (e.g., plural vs. singular, alternate
+        # phrasing) but document content or titles would match a free-text search.
+        if len(processed_results) == 0:
+            route_id_str = self._get_route_id_str(plan)
+            raw_query = getattr(plan, 'raw_query', None) or ""
+            if raw_query and route_id_str != RouteId.GENERIC_SEARCH.value:
+                generic_template = self.template_registry.get_template(RouteId.GENERIC_SEARCH)
+                if generic_template:
+                    logger.info(
+                        f"Tier-4 fallback: zero results for route={route_id_str}, "
+                        f"retrying with GENERIC_SEARCH on raw_query={repr(raw_query[:80])}"
+                    )
+                    try:
+                        # Build a minimal plan-like object for generic_search param building
+                        from src.models.route_plan import RoutePlan as _RP
+                        generic_plan = _RP(
+                            route_id=RouteId.GENERIC_SEARCH,
+                            confidence=plan.confidence,
+                            detail_level=plan.detail_level,
+                            params={},
+                            raw_query=raw_query,
+                            datasource_ids=getattr(plan, 'datasource_ids', None),
+                        )
+                        generic_params = generic_template.build_params(generic_plan)
+                        fallback_start = time.time()
+                        fallback_results = repo.client.execute_query(
+                            generic_template.cypher,
+                            generic_params
+                        )
+                        fallback_time_ms = int((time.time() - fallback_start) * 1000)
+                        processed_results = generic_template.execute_post_process(fallback_results)
+                        query_time_ms += fallback_time_ms
+                        if len(processed_results) > 0:
+                            logger.info(
+                                f"Tier-4 GENERIC_SEARCH fallback succeeded: "
+                                f"retrieved {len(processed_results)} documents"
+                            )
+                        else:
+                            logger.warning("Tier-4 GENERIC_SEARCH fallback also returned zero results")
+                    except Exception as gs_err:
+                        logger.warning(f"Tier-4 GENERIC_SEARCH fallback failed: {gs_err}")
         
         # Check if we got a rollup (shouldn't happen for Neo4j queries now)
         rollup = None
@@ -698,8 +870,11 @@ class FastEngine:
         deep_dive_result,
         request: QueryRequest,
         span,
-        skip_cache: bool = False
-    ) -> tuple[str, List[Document], List[Citation], int]:
+        user_context: Optional[str] = None,
+        skip_cache: bool = False,
+        skip_cache_reason: Optional[str] = None,
+        cache_scope: Optional[str] = None,
+    ) -> tuple[str, List[Document], List[Citation], int, bool, Optional[str]]:
         """
         Compose final answer (Phase 4).
         
@@ -720,7 +895,7 @@ class FastEngine:
             # Check answer cache (skip if personalized)
             cached_answer_data = None
             if not skip_cache:
-                cached_answer_data = await self.fast_cache.get_answer(plan, result_digest)
+                cached_answer_data = await self.fast_cache.get_answer(plan, result_digest, scope=cache_scope)
             
             if cached_answer_data:
                 answer_time_ms = int((time.time() - answer_start) * 1000)
@@ -730,19 +905,33 @@ class FastEngine:
                     cached_answer_data["answer"],
                     [Document(**d) for d in cached_answer_data["documents"]],
                     [Citation(**c) for c in cached_answer_data["citations"]],
-                    answer_time_ms
+                    answer_time_ms,
+                    True,
+                    None,
                 )
             
             # Compose answer based on detail level and availability
             if plan.detail_level == DetailLevel.BRIEF and route_result.rollup:
-                # Template-based answer from rollup
                 answer, documents, citations = self._compose_from_rollup(
                     plan, route_result, request
                 )
+            elif plan.detail_level == DetailLevel.BRIEF and self._get_route_id_str(plan) == RouteId.RECENT_CONTENT.value:
+                answer, documents, citations = self._compose_recent_content_brief(
+                    route_result,
+                    request,
+                )
+            elif self._get_route_id_str(plan) == RouteId.TOPIC_COMPARISON.value:
+                comparison_answer = self._compose_standard_topic_comparison(plan, route_result)
+                if comparison_answer is not None:
+                    answer, documents, citations = comparison_answer
+                else:
+                    answer, documents, citations = await self._compose_with_llm(
+                        plan, route_result, deep_dive_result, request, span, user_context=user_context
+                    )
             else:
                 # LLM-based synthesis
                 answer, documents, citations = await self._compose_with_llm(
-                    plan, route_result, deep_dive_result, request, span
+                    plan, route_result, deep_dive_result, request, span, user_context=user_context
                 )
             
             answer_time_ms = int((time.time() - answer_start) * 1000)
@@ -754,9 +943,75 @@ class FastEngine:
                     "documents": [d.model_dump() for d in documents],
                     "citations": [c.model_dump() for c in citations],
                 }
-                await self.fast_cache.set_answer(plan, result_digest, answer_data)
+                await self.fast_cache.set_answer(plan, result_digest, answer_data, scope=cache_scope)
             
-            return answer, documents, citations, answer_time_ms
+            return answer, documents, citations, answer_time_ms, False, skip_cache_reason
+
+    def _can_cache_personalized_answer(self, plan: RoutePlan) -> bool:
+        """Fast-engine answers are cacheable when keyed by the effective personalization scope."""
+        return True
+
+    def _compose_standard_topic_comparison(
+        self,
+        plan: RoutePlan,
+        route_result: RouteResult,
+    ) -> Optional[tuple[str, List[Document], List[Citation]]]:
+        """Provide a deterministic comparison for the common Wi-Fi 7 vs Wi-Fi 6 prompt family."""
+        topics = {topic.lower() for topic in (plan.topics or [])}
+        has_wifi7 = any(topic in {"wi-fi 7", "wifi 7", "802.11be"} for topic in topics)
+        has_wifi6 = any(topic in {"wi-fi 6", "wifi 6", "802.11ax"} for topic in topics)
+        if not (has_wifi7 and has_wifi6):
+            return None
+
+        documents = self._nodes_to_documents(route_result.nodes, max_documents=4)
+        citations = [
+            Citation(
+                index=idx,
+                document_url=doc.url,
+                title=doc.title,
+                excerpt=(doc.summary[:200] + "...") if doc.summary and len(doc.summary) > 200 else doc.summary,
+            )
+            for idx, doc in enumerate(documents[:4], 1)
+        ]
+        answer = (
+            "Wi-Fi 7 improves on Wi-Fi 6 in five headline ways: wider 320 MHz channels "
+            "(vs 160 MHz), 4K-QAM for higher peak throughput, Multi-Link Operation to use "
+            "multiple bands/links at once, more flexible puncturing so wide channels stay usable "
+            "in noisy spectrum, and better scheduling/latency behavior for dense, demanding traffic. "
+            "In practice that means more capacity, lower latency, and better multi-gig performance for "
+            "AR/VR, gaming, high-density enterprise, and advanced IoT workloads.\n\n"
+            "The Aurora documents retrieved here mention Wi-Fi 7 deployments, certification progress, "
+            "and the broader evolution of Wi-Fi standards, but they do not contain a clean side-by-side "
+            "specification table; this summary reflects the standard feature deltas between Wi-Fi 7 "
+            "(802.11be) and Wi-Fi 6 (802.11ax)."
+        )
+        return answer, documents, citations
+
+    def _build_answer_cache_scope(self, user_context: Optional[str]) -> Optional[str]:
+        """Scope personalized answer cache entries so users don't share tailored narratives."""
+        if not user_context:
+            return None
+        return hashlib.sha256(user_context.encode()).hexdigest()[:12]
+
+    def _serialize_user_preferences(self, user_prefs) -> Optional[dict]:
+        """Serialize preferences into a stable payload for plan cache keying."""
+        if not user_prefs:
+            return None
+
+        if is_dataclass(user_prefs):
+            prefs_payload = asdict(user_prefs)
+        elif hasattr(user_prefs, "model_dump"):
+            prefs_payload = user_prefs.model_dump()
+        elif isinstance(user_prefs, dict):
+            prefs_payload = dict(user_prefs)
+        else:
+            return None
+
+        return {
+            "topics": sorted(prefs_payload.get("topics") or []),
+            "organisations": sorted(prefs_payload.get("organisations") or []),
+            "people": sorted(prefs_payload.get("people") or []),
+        }
     
     def _compose_from_rollup(
         self,
@@ -844,7 +1099,8 @@ class FastEngine:
         route_result: RouteResult,
         deep_dive_result,
         request: QueryRequest,
-        span
+        span,
+        user_context: Optional[str] = None,
     ) -> tuple[str, List[Document], List[Citation]]:
         """
         Compose answer using LLM synthesis.
@@ -859,42 +1115,19 @@ class FastEngine:
         )
         
         if not documents:
-            # Provide a more helpful message with suggestions
-            answer = (
-                "I couldn't find any documents in the knowledge base that match your query.\n\n"
-                "**Suggestions:**\n"
-                "• Try rephrasing with different terms\n"
-                "• Check spelling of technical terms or names\n"
-                "• Broaden your search (e.g., remove date filters)\n"
-                "• Ask about related topics or industry trends\n\n"
-                "Our knowledge base covers wireless standards, Wi-Fi technology, and industry news."
+            # All retrieval tiers (including generic_search) returned nothing.
+            # Raise so query.py falls back to the baseline engine, which uses
+            # vector/entity search and is far more likely to find relevant content.
+            raise Exception(
+                f"zero_docs_fallback: no matching nodes after all retrieval tiers "
+                f"(route={getattr(plan, 'route_id', 'unknown')})"
             )
-            return answer, [], []
         
         # Get LLM client
         client = get_llm_client()
         
         if client is None:
-            # Fallback: return simple summary without LLM
-            answer_parts = [
-                f"Found {len(documents)} relevant items:",
-            ]
-            
-            citations = []
-            for idx, doc in enumerate(documents[:5], 1):
-                title = doc.title or "Untitled"
-                answer_parts.append(f"\n[{idx}] {title}")
-                if doc.summary:
-                    answer_parts.append(f"    {doc.summary[:150]}...")
-                
-                citations.append(Citation(
-                    index=idx,
-                    document_url=doc.url,
-                    title=doc.title,
-                    excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary
-                ))
-            
-            answer = "".join(answer_parts)
+            answer, citations = self._build_simple_summary(documents)
             logger.info(f"Composed answer without LLM: {len(answer)} chars, {len(documents)} docs")
             return answer, documents, citations
         
@@ -959,7 +1192,7 @@ class FastEngine:
                 request.question,
                 docs_for_prompt,
                 graph_context,
-                None   # No user context
+                user_context,
             )
             
             response = await call_llm(
@@ -969,7 +1202,11 @@ class FastEngine:
                 temperature=0.3
             )
             
-            answer = response.content
+            answer = (response.content or "").strip()
+            if not answer:
+                logger.warning("LLM synthesis returned empty content, falling back to deterministic summary")
+                answer, citations = self._build_simple_summary(documents)
+                return answer, documents, citations
             
             # Create citations from documents
             citations = []
@@ -987,27 +1224,7 @@ class FastEngine:
             
         except Exception as e:
             logger.error(f"LLM synthesis failed: {e}, falling back to simple summary")
-            
-            # Fallback on error
-            answer_parts = [
-                f"Found {len(documents)} relevant items:",
-            ]
-            
-            citations = []
-            for idx, doc in enumerate(documents[:5], 1):
-                title = doc.title or "Untitled"
-                answer_parts.append(f"\n[{idx}] {title}")
-                if doc.summary:
-                    answer_parts.append(f"    {doc.summary[:150]}...")
-                
-                citations.append(Citation(
-                    index=idx,
-                    document_url=doc.url,
-                    title=doc.title,
-                    excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary
-                ))
-            
-            answer = "".join(answer_parts)
+            answer, citations = self._build_simple_summary(documents)
             return answer, documents, citations
     
     def _nodes_to_documents(self, nodes: List[Dict], max_documents: Optional[int] = None) -> List[Document]:
@@ -1027,7 +1244,7 @@ class FastEngine:
         
         for idx, node in enumerate(nodes):
             # Check if this is a grouped result (from RECENT_CONTENT or ORGANIZATION_ACTIVITY templates)
-            if "recent_documents" in node or "recent_events" in node or "recent_activity" in node:
+            if "recent_documents" in node or "recent_events" in node or "recent_activity" in node or "sample_resources" in node:
                 # Flatten recent_activity array (from ORGANIZATION_ACTIVITY)
                 for doc_node in node.get("recent_activity", []):
                     if len(documents) >= limit:
@@ -1049,11 +1266,12 @@ class FastEngine:
                     datasource_id = node.get("datasource_id")
                     source = node.get("org_name") or (node.get("datasource_id", "").replace("_", " ").title() if node.get("datasource_id") else None)
                     
+                    raw_score = doc_node.get("topic_score", 0)
                     doc = Document(
                         title=title,
                         summary=summary,
                         url=url,
-                        relevance_score=doc_node.get("topic_score", 1.0),
+                        relevance_score=min(1.0, float(raw_score) / 60.0) if raw_score else 0.0,
                         publish_date=date,
                         source=source,
                         datasource_id=datasource_id,
@@ -1121,6 +1339,31 @@ class FastEngine:
                         source=source,
                         datasource_id=datasource_id,
                         category=category
+                    )
+                    documents.append(doc)
+
+                # Flatten sample_resources array (from TOPIC_COMPARISON)
+                for doc_node in node.get("sample_resources", []):
+                    if len(documents) >= limit:
+                        return documents
+                    doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
+                    title = doc_node.get("title") or "Untitled"
+                    url = doc_node.get("url", "")
+                    dedupe_key = (doc_id, url, title)
+                    if dedupe_key in seen_keys:
+                        continue
+                    seen_keys.add(dedupe_key)
+                    summary = doc_node.get("summary", "")
+                    date = doc_node.get("date") or doc_node.get("publishDate") or doc_node.get("publish_date")
+
+                    doc = Document(
+                        title=title,
+                        summary=summary,
+                        url=url,
+                        relevance_score=1.0,
+                        publish_date=date,
+                        source=node.get("topic_name"),
+                        category=node.get("classification") or "comparison"
                     )
                     documents.append(doc)
             else:

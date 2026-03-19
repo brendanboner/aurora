@@ -9,6 +9,11 @@ import QueryResultDisplay from '../components/QueryResultDisplay';
 import DatasourceMention from '../components/DatasourceMention';
 import './Chatbot.css';
 
+const MAX_STORED_MESSAGES = 24;
+const MAX_STORED_DOCUMENTS = 5;
+const MAX_STORED_CITATIONS = 8;
+const MAX_STORED_TEXT_LENGTH = 600;
+
 const Chatbot = ({ backendStatus }) => {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
@@ -17,7 +22,7 @@ const Chatbot = ({ backendStatus }) => {
   const [error, setError] = useState(null);
   const [queryMode, setQueryModeState] = useState(() => {
     const saved = localStorage.getItem('queryMode');
-    return saved && ['retrieval', 'answer', 'auto'].includes(saved) ? saved : 'answer';
+    return saved && ['answer', 'auto'].includes(saved) ? saved : 'answer';
   });
   const [personalizeMode, setPersonalizeModeState] = useState(() => {
     const saved = localStorage.getItem('personalizeMode');
@@ -42,13 +47,69 @@ const Chatbot = ({ backendStatus }) => {
   const messageRefs = useRef({}); // Refs for each message element
   const inputRef = useRef(null); // Ref for textarea input
   const previousMessageCountRef = useRef(0);
+  const isPinnedToBottomRef = useRef(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [hasUnreadContentBelow, setHasUnreadContentBelow] = useState(false);
+  const scrollThreshold = 48;
+
+  const truncateText = useCallback((value, maxLength = MAX_STORED_TEXT_LENGTH) => {
+    if (typeof value !== 'string') {
+      return '';
+    }
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+  }, []);
+
+  const compactMessageForStorage = useCallback((message) => ({
+    role: message.role,
+    content: truncateText(message.content, 2000),
+    timestamp: message.timestamp,
+    isError: Boolean(message.isError),
+    isWelcomeMessage: Boolean(message.isWelcomeMessage),
+    userEmail: message.userEmail || null,
+    queryId: message.queryId || null,
+    responseMode: message.responseMode || null,
+    personalizationApplied: Boolean(message.personalizationApplied),
+    pipeline: message.pipeline || null,
+    confidenceScore: typeof message.confidenceScore === 'number' ? message.confidenceScore : null,
+    originalQuery: message.originalQuery || null,
+    isEnhanced: Boolean(message.isEnhanced),
+    showingEnhanced: Boolean(message.showingEnhanced),
+    documents: Array.isArray(message.documents)
+      ? message.documents.slice(0, MAX_STORED_DOCUMENTS).map((doc) => ({
+          title: truncateText(String(doc?.title || 'Untitled'), 240),
+          url: typeof doc?.url === 'string' ? doc.url : '',
+          publish_date: typeof doc?.publish_date === 'string' ? doc.publish_date : null,
+          summary: truncateText(typeof doc?.summary === 'string' ? doc.summary : '', 280),
+          topics: Array.isArray(doc?.topics) ? doc.topics.slice(0, 5).map((topic) => String(topic)) : [],
+          organisations: Array.isArray(doc?.organisations) ? doc.organisations.slice(0, 3).map((org) => String(org)) : [],
+          relevance_score: typeof doc?.relevance_score === 'number' ? doc.relevance_score : null,
+          source: typeof doc?.source === 'string' ? doc.source : null,
+          datasource_id: typeof doc?.datasource_id === 'string' ? doc.datasource_id : null,
+        }))
+      : [],
+    citations: Array.isArray(message.citations)
+      ? message.citations.slice(0, MAX_STORED_CITATIONS).map((citation) => ({
+          index: citation?.index ?? null,
+          document_url: typeof citation?.document_url === 'string' ? citation.document_url : '',
+          title: truncateText(typeof citation?.title === 'string' ? citation.title : '', 240),
+          excerpt: truncateText(typeof citation?.excerpt === 'string' ? citation.excerpt : '', 240),
+        }))
+      : [],
+    metadata: message.metadata ? {
+      processing_time_ms: message.metadata.processing_time_ms ?? null,
+      intent: message.metadata.intent ?? null,
+      intent_confidence: message.metadata.intent_confidence ?? null,
+      strategies_used: Array.isArray(message.metadata.strategies_used) ? message.metadata.strategies_used : [],
+      total_candidates: message.metadata.total_candidates ?? null,
+      llm_tokens_used: message.metadata.llm_tokens_used ?? null,
+    } : null,
+  }), [truncateText]);
 
   // Wrapper to persist queryMode to localStorage
   const setQueryMode = (mode) => {
-    setQueryModeState(mode);
-    localStorage.setItem('queryMode', mode);
+    const normalizedMode = 'answer';
+    setQueryModeState(normalizedMode);
+    localStorage.setItem('queryMode', normalizedMode);
   };
 
   // Wrapper to persist personalizeMode to localStorage
@@ -70,19 +131,30 @@ const Chatbot = ({ backendStatus }) => {
     }
 
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    const hasContentBelow = distanceFromBottom > 48;
+    const hasContentBelow = distanceFromBottom > scrollThreshold;
+    isPinnedToBottomRef.current = !hasContentBelow;
     setShowScrollToBottom(hasContentBelow);
     if (!hasContentBelow) {
       setHasUnreadContentBelow(false);
     }
-  }, []);
+  }, [scrollThreshold]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    isPinnedToBottomRef.current = true;
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+    setShowScrollToBottom(false);
     setHasUnreadContentBelow(false);
   }, []);
 
   // Load datasources and Oracle settings on mount
+  useEffect(() => {
+    setQueryModeState('answer');
+    localStorage.setItem('queryMode', 'answer');
+  }, []);
+
   useEffect(() => {
     const loadDatasources = async () => {
       try {
@@ -115,19 +187,25 @@ const Chatbot = ({ backendStatus }) => {
       return;
     }
 
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    const hasContentBelow = distanceFromBottom > 48;
     const messageCountIncreased = messages.length > previousMessageCountRef.current;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const hasContentBelow = distanceFromBottom > scrollThreshold;
+    const shouldAutoScroll = messageCountIncreased && isPinnedToBottomRef.current;
 
-    setShowScrollToBottom(hasContentBelow);
-    if (messageCountIncreased && hasContentBelow) {
+    if (shouldAutoScroll) {
+      scrollToBottom();
+    } else {
+      setShowScrollToBottom(hasContentBelow);
+    }
+
+    if (!shouldAutoScroll && messageCountIncreased && hasContentBelow) {
       setHasUnreadContentBelow(true);
-    } else if (!hasContentBelow) {
+    } else if (shouldAutoScroll || !hasContentBelow) {
       setHasUnreadContentBelow(false);
     }
 
     previousMessageCountRef.current = messages.length;
-  }, [messages]);
+  }, [messages, scrollThreshold, scrollToBottom]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -136,7 +214,7 @@ const Chatbot = ({ backendStatus }) => {
     }
 
     updateScrollState();
-    container.addEventListener('scroll', updateScrollState);
+    container.addEventListener('scroll', updateScrollState, { passive: true });
     return () => container.removeEventListener('scroll', updateScrollState);
   }, [updateScrollState]);
 
@@ -231,10 +309,13 @@ What would you like to know?`;
     if (savedMessages) {
       try {
         const parsed = JSON.parse(savedMessages);
+        const recentMessages = Array.isArray(parsed) ? parsed.slice(-MAX_STORED_MESSAGES) : [];
         // Convert timestamp strings back to Date objects
-        const messagesWithDates = parsed.map(msg => ({
+        const messagesWithDates = recentMessages.map(msg => ({
           ...msg,
-          timestamp: new Date(msg.timestamp)
+          timestamp: new Date(msg.timestamp),
+          documents: Array.isArray(msg.documents) ? msg.documents : [],
+          citations: Array.isArray(msg.citations) ? msg.citations : [],
         }));
         setMessages(messagesWithDates);
       } catch (err) {
@@ -268,9 +349,16 @@ What would you like to know?`;
   useEffect(() => {
     if (user && messages.length > 0) {
       const chatHistoryKey = `chatHistory_${user.id}`;
-      localStorage.setItem(chatHistoryKey, JSON.stringify(messages));
+      try {
+        const compactMessages = messages
+          .slice(-MAX_STORED_MESSAGES)
+          .map(compactMessageForStorage);
+        localStorage.setItem(chatHistoryKey, JSON.stringify(compactMessages));
+      } catch (err) {
+        console.warn('Failed to persist chat history:', err);
+      }
     }
-  }, [messages, user]);
+  }, [compactMessageForStorage, messages, user]);
 
   // Handle input change with @ detection for datasource mentions
   const handleInputChange = useCallback((e) => {
@@ -324,6 +412,78 @@ What would you like to know?`;
     setSelectedDatasources(prev => prev.filter(ds => ds.datasource_id !== datasourceId));
   }, []);
 
+  const hasUsableAnswer = useCallback((value) => {
+    if (typeof value !== 'string') {
+      return false;
+    }
+
+    const trimmed = value.trim();
+    return Boolean(trimmed)
+      && trimmed !== 'Here are the relevant documents:'
+      && trimmed !== 'No answer was generated.';
+  }, []);
+
+  const buildDocumentFallbackAnswer = useCallback((documents) => {
+    if (!documents.length) {
+      return 'I could not generate a usable answer for this question.';
+    }
+
+    const topDocuments = documents.slice(0, 3)
+      .map((doc) => {
+        const dateSuffix = doc.publish_date ? ` (${doc.publish_date})` : '';
+        return `- **${doc.title || 'Untitled'}**${dateSuffix}`;
+      })
+      .join('\n');
+
+    return `I found relevant supporting documents but did not receive a complete narrative answer from the service. The strongest references are:\n\n${topDocuments}`;
+  }, []);
+
+  const autoEnhanceMessage = useCallback(async (queryId, queryText, documents) => {
+    if (!queryId || !documents?.length) {
+      return;
+    }
+
+    try {
+      const enhanced = await sendEnhanceQuery(queryText, documents);
+      if (!hasUsableAnswer(enhanced?.enhanced_answer)) {
+        return;
+      }
+
+      setMessages((prev) => prev.map((message) => {
+        if (message.queryId !== queryId) {
+          return message;
+        }
+
+        const originalAnswer = message.originalAnswer || {
+          content: message.content,
+          citations: message.citations,
+          confidenceScore: message.confidenceScore,
+        };
+
+        return {
+          ...message,
+          originalAnswer,
+          content: enhanced.enhanced_answer,
+          citations: enhanced.citations?.length > 0 ? enhanced.citations : message.citations,
+          confidenceScore: enhanced.confidence_score ?? message.confidenceScore,
+          directQuotes: enhanced.direct_quotes || [],
+          enhanceMetadata: enhanced.metadata || null,
+          isEnhanced: true,
+          showingEnhanced: true,
+          enhancedAnswer: {
+            content: enhanced.enhanced_answer,
+            citations: enhanced.citations?.length > 0 ? enhanced.citations : message.citations,
+            confidenceScore: enhanced.confidence_score ?? message.confidenceScore,
+            directQuotes: enhanced.direct_quotes || [],
+            enhanceMetadata: enhanced.metadata || null,
+          },
+        };
+      }));
+    } catch (enhanceErr) {
+      console.warn('Automatic answer enhancement failed:', enhanceErr);
+    }
+  }, [hasUsableAnswer]);
+
   // Execute the actual query (used after suggestion decision)
   const executeQuery = async (queryText, datasourceIds = []) => {
     // Get datasource names for display (if available)
@@ -345,10 +505,14 @@ What would you like to know?`;
     setError(null);
     setSelectedDatasources([]); // Clear selected datasources after sending
 
+    // Set up a 90s timeout for the oracle query
+    const QUERY_TIMEOUT_MS = 90000;
+    let timeoutId = null;
+
     try {
       // Send query to Oracle service with datasource filter
-      const response = await sendOracleQuery(user.id, queryText, {
-        mode: queryMode,
+      const queryPromise = sendOracleQuery(user.id, queryText, {
+        mode: 'answer',
         maxDocuments: 10,
         includeGraphContext: true,
         datasourceIds: datasourceIds.length > 0 ? datasourceIds : null,
@@ -356,49 +520,103 @@ What would you like to know?`;
         pipelineOverride: pipelineMode === 'system' ? null : pipelineMode,
       });
 
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('QUERY_TIMEOUT')), QUERY_TIMEOUT_MS);
+      });
+
+      const response = await Promise.race([queryPromise, timeoutPromise]);
+      clearTimeout(timeoutId);
+
+      const mappedDocuments = response.documents?.map(doc => ({
+        title: doc.title,
+        url: doc.url,
+        publish_date: doc.publish_date,
+        summary: doc.summary,
+        topics: doc.topics || [],
+        organisations: doc.organizations || [],
+        relevance_score: doc.relevance_score,
+        match_reasons: doc.match_reasons || [],
+        source: doc.source || null,
+        datasource_id: doc.datasource_id || null,
+      })) || [];
+
+      let answerContent = response.answer;
+      let citations = response.citations || [];
+      let confidenceScore = response.confidence_score;
+      const shouldAutoEnhance = !hasUsableAnswer(answerContent) && mappedDocuments.length > 0;
+
+      if (shouldAutoEnhance || !hasUsableAnswer(answerContent)) {
+        answerContent = buildDocumentFallbackAnswer(mappedDocuments);
+      }
+
+      // Final safety net — ensure content is never empty/null (prevents silent no-op renders)
+      if (!answerContent || typeof answerContent !== 'string' || !answerContent.trim()) {
+        answerContent = mappedDocuments.length > 0
+          ? buildDocumentFallbackAnswer(mappedDocuments)
+          : 'No response was returned for this query.';
+      }
+
       // Map Oracle response format to our message format
       // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score, personalization_applied, pipeline }
       const assistantMessage = {
         role: 'assistant',
-        content: response.answer || (queryMode === 'retrieval' ? 'Here are the relevant documents:' : 'No answer was generated.'),
+        content: answerContent,
         timestamp: new Date(),
         queryId: response.query_id, // Store for feedback
-        responseMode: response.mode, // 'retrieval' or 'answer'
+        responseMode: 'answer',
         personalizationApplied: response.personalization_applied || false,
         pipeline: response.pipeline || null, // 'fast' or 'baseline' - track which pipeline was used
-        citations: response.citations || [],
-        documents: response.documents?.map(doc => ({
-          title: doc.title,
-          url: doc.url,
-          publish_date: doc.publish_date,
-          summary: doc.summary,
-          topics: doc.topics || [],
-          organisations: doc.organizations || [],
-          relevance_score: doc.relevance_score,
-          match_reasons: doc.match_reasons || [],
-          source: doc.source || null,
-          datasource_id: doc.datasource_id || null,
-        })) || [],
+        citations,
+        documents: mappedDocuments,
         graphContext: response.graph_context,
         metadata: response.metadata,
         suggestions: response.suggestions || [],
-        confidenceScore: response.confidence_score,
+        confidenceScore,
         originalQuery: queryText, // Store for enhance feature
-        isEnhanced: false, // Track if this has been enhanced
+        isEnhanced: false,
+        showingEnhanced: false,
+        enhanceMetadata: null,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      if (shouldAutoEnhance) {
+        void autoEnhanceMessage(response.query_id, queryText, mappedDocuments);
+      }
     } catch (err) {
+      clearTimeout(timeoutId);
       console.error('Query error:', err);
-      setError(err.response?.data?.detail?.message || err.response?.data?.detail || 'Failed to get response from Oracle service');
-      
+
+      let userFacingMessage;
+      if (err.message === 'QUERY_TIMEOUT') {
+        userFacingMessage = 'The query is taking longer than expected. Please try again — complex queries can occasionally time out.';
+      } else if (err.response?.status === 504) {
+        userFacingMessage = 'The server took too long to respond. Please try again.';
+      } else if (err.response?.status === 401) {
+        userFacingMessage = 'Your session may have expired. Please refresh the page and try again.';
+      } else if (err.response?.status >= 500) {
+        userFacingMessage = 'The service encountered an internal error. Please try again in a moment.';
+      } else if (err.response?.data?.detail?.message) {
+        userFacingMessage = err.response.data.detail.message;
+      } else if (err.response?.data?.detail) {
+        userFacingMessage = typeof err.response.data.detail === 'string'
+          ? err.response.data.detail
+          : 'An error occurred while processing your query.';
+      } else if (!window.navigator.onLine) {
+        userFacingMessage = 'You appear to be offline. Please check your connection and try again.';
+      } else {
+        userFacingMessage = 'Unable to get a response. Please try again.';
+      }
+
+      setError(userFacingMessage);
+
       const errorMessage = {
         role: 'assistant',
-        content: `Sorry, I encountered an error: ${err.response?.data?.detail?.message || err.response?.data?.detail || err.message}`,
+        content: userFacingMessage,
         timestamp: new Date(),
         isError: true,
       };
-      
+
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -667,7 +885,9 @@ What would you like to know?`;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading || querySuggestion) return;
+    if (!inputValue.trim() || isLoading) return;
+    // querySuggestion blocks non-fast-mode submissions (fast mode skips analyzeQuery entirely)
+    if (querySuggestion && pipelineMode !== 'fast' && !fastPipelineEnabled) return;
 
     if (!user) {
       setError('Please log in to start chatting.');
@@ -700,8 +920,8 @@ What would you like to know?`;
     setError(null);
     setShowMentionDropdown(false);
 
-    // Skip query analysis if fast pipeline is enabled
-    if (fastPipelineEnabled) {
+    // Never interrupt explicit fast-mode queries with the pre-query analyzer dialog
+    if (pipelineMode === 'fast' || fastPipelineEnabled) {
       executeQuery(queryText, datasourceIds);
       return;
     }
@@ -783,11 +1003,9 @@ What would you like to know?`;
                 value={queryMode}
                 onChange={(e) => setQueryMode(e.target.value)}
                 disabled={isLoading}
-                title="Query mode"
+                title="Chat always requests an answer and keeps documents as references"
               >
                 <option value="answer">Query: Answer</option>
-                <option value="retrieval">Query: Retrieval</option>
-                <option value="auto">Query: Auto</option>
               </select>
             )}
             {user && (

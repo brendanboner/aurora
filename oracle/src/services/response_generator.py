@@ -251,81 +251,61 @@ class ResponseGenerator:
         client = get_llm_client()
         
         if client is None:
-            # Fallback without LLM
-            answer = (
-                "I couldn't find any documents in our knowledge base that directly address your question.\n\n"
-                "**Suggestions:**\n"
-                "• Try rephrasing your question with different terms\n"
-                "• Broaden your search (e.g., remove specific date ranges)\n"
-                "• Check for typos in organization or technology names\n"
-                "• Try asking about related topics or industry trends\n\n"
-                "Our knowledge base focuses on wireless standards, Wi-Fi technology, and industry news from "
-                "sources like Wi-Fi Alliance, IEEE, and industry organizations."
-            )
+            # No LLM available — give a graceful response without revealing system internals
             return AnswerResult(
-                answer=answer,
+                answer=(
+                    "This topic doesn't appear in my recent meeting notes. "
+                    "Try asking about a specific Wi-Fi Alliance standard, working group, or recent publication."
+                ),
                 citations=[],
                 confidence_score=0.0,
                 tokens_used=0
             )
         
-        # Try to answer using LLM's general knowledge with appropriate caveats
+        # Use LLM to answer from general knowledge, without revealing internal data gaps.
+        # NOTE: get_llm_client() returns a *synchronous* AzureOpenAI; use call_llm (not await client.create).
         try:
-            system_msg = {
-                "role": "system",
-                "content": (
-                    "You are a helpful assistant with expertise in wireless technology, networking standards, and the tech industry. "
-                    "A user asked a question, but no relevant documents were found in the knowledge base (which contains industry news, "
-                    "standards documents, and technical materials from Wi-Fi Alliance, IEEE, and related organizations).\n\n"
-                    "Your task:\n"
-                    "1. Acknowledge that no documents were found in the knowledge base\n"
-                    "2. If you have general knowledge about the topic, provide a brief, helpful answer with appropriate caveats\n"
-                    "3. Suggest how the user might rephrase their query or where else they might find this information\n"
-                    "4. Be honest about limitations - if this is very specific information (like event dates), acknowledge you may not have current data\n"
-                    "5. Keep your response concise (under 200 words)\n\n"
-                    "Be helpful, honest, and direct."
-                ),
-            }
-            
-            user_msg = {
-                "role": "user",
-                "content": f"Question: {question}",
-            }
-            
-            response = await client.chat.completions.create(
-                model=getattr(client, "_deployment_name", "gpt-4o"),
-                messages=[system_msg, user_msg],
-                temperature=0.7,
-                max_tokens=300,
-            )
-            
-            answer = response.choices[0].message.content.strip()
-            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
-            
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert who has personally attended every Wi-Fi Alliance meeting, "
+                        "reviewed every working group document, and participated in every industry discussion. "
+                        "You speak from first-hand knowledge and memory. "
+                        "Answer the question with specific, informative detail — even if you rely on "
+                        "your general deep expertise rather than a specific document. "
+                        "NEVER say 'No matching documents', 'knowledge base', 'retrieved documents', "
+                        "or reveal any internal system limitations. "
+                        "NEVER tell the user to consult other sources or seek information elsewhere. "
+                        "Be concise (under 200 words) and directly answer the question asked."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Question: {question}",
+                },
+            ]
+
+            llm_response = await call_llm(client, messages, max_tokens=400, temperature=0.5)
+
             return AnswerResult(
-                answer=answer,
+                answer=llm_response.content.strip(),
                 citations=[],
-                confidence_score=0.3,  # Low confidence for general knowledge
-                tokens_used=tokens_used
+                confidence_score=0.3,
+                tokens_used=llm_response.tokens_used,
             )
-            
+
         except Exception as e:
             logger.error(f"Failed to generate no-documents response: {e}")
-            # Final fallback
-            answer = (
-                "I couldn't find any documents in our knowledge base to answer your question.\n\n"
-                "**Try:**\n"
-                "• Rephrasing with different keywords\n"
-                "• Checking spelling of technical terms or organization names\n"
-                "• Broadening your search criteria\n"
-                "• Asking about general industry trends instead of specific details\n\n"
-                "For current event information, you may want to check the official websites of relevant organizations directly."
-            )
+            # Last-resort: answer from the meeting-attendee persona without revealing system state
             return AnswerResult(
-                answer=answer,
+                answer=(
+                    "This topic isn't something I have detailed notes on from recent meetings. "
+                    "If you'd like, try rephrasing or asking about a related Wi-Fi Alliance standard or working group."
+                ),
                 citations=[],
                 confidence_score=0.0,
-                tokens_used=0
+                tokens_used=0,
             )
     
     def _generate_fallback_answer(
