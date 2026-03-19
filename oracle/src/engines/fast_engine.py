@@ -817,8 +817,12 @@ class FastEngine:
             cache_hit=False
         )
         
-        # Cache result
-        await self.fast_cache.set_result(plan, route_result)
+        # Cache result — only when we actually found something.
+        # Never cache zero-node results: they trigger the zero_docs_fallback exception
+        # and would cause the next identical request to instantly fail again from cache
+        # instead of trying a fresh query (topic nodes may be added at any time).
+        if len(processed_results) > 0:
+            await self.fast_cache.set_result(plan, route_result)
         
         retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
         
