@@ -6,6 +6,7 @@ Handles cron-based scheduling for datasource scraping.
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from dateutil.relativedelta import relativedelta
 
 from neo4j_client.client import Neo4jClient
 from neo4j_client import GraphRepository
@@ -43,6 +44,8 @@ class ConfigManager:
         self.neo4j_client = None
         self.graph_repository = None
         self._owns_connection = neo4j_client is None  # Track if we created the connection
+        self._config_cache: Dict[str, Dict[str, Any]] = {}
+        self._global_config_cache: Optional[Dict[str, Any]] = None
         
         if neo4j_client:
             # Reuse existing connection
@@ -115,18 +118,83 @@ class ConfigManager:
             "max_redirects": 10,
             "discovery_mode": "incremental",
             "consecutive_duplicates_limit": 5,
-            "full_refresh_schedule": None
+            "full_refresh_schedule": None,
+            "ingestion_lookback_value": 12,
+            "ingestion_lookback_unit": "months"
         }
+
+        cached_config = self._config_cache.get(datasource_id)
+        if cached_config is not None:
+            return cached_config.copy()
         
         if not self._ensure_connection():
             return default_config
         
         try:
             result = self.graph_repository.get_datasource_config(datasource_id)
-            return result if result else default_config
+            resolved = result if result else default_config
+            resolved.setdefault("ingestion_lookback_value", 12)
+            resolved.setdefault("ingestion_lookback_unit", "months")
+            self._config_cache[datasource_id] = resolved.copy()
+            return resolved
         except Exception as e:
             logger.error(f"Error fetching configuration for {datasource_id}: {e}")
             return default_config
+
+    def get_global_config(self) -> Dict[str, Any]:
+        """Get the shared/default configuration node."""
+        default_global_config = {
+            "datasource_id": "default",
+            "name": "System Defaults",
+            "ingestion_lookback_value": 12,
+            "ingestion_lookback_unit": "months"
+        }
+
+        if self._global_config_cache is not None:
+            return self._global_config_cache.copy()
+
+        if not self._ensure_connection():
+            return default_global_config
+
+        try:
+            result = self.graph_repository.get_datasource_config("default")
+            resolved = result if result else default_global_config
+            resolved.setdefault("ingestion_lookback_value", 12)
+            resolved.setdefault("ingestion_lookback_unit", "months")
+            self._global_config_cache = resolved.copy()
+            return resolved
+        except Exception as e:
+            logger.error(f"Error fetching global configuration: {e}")
+            return default_global_config
+
+    def get_ingestion_lookback(self) -> Dict[str, Any]:
+        """Return normalized global ingestion lookback settings."""
+        config = self.get_global_config()
+        return {
+            "value": int(config.get("ingestion_lookback_value", 12)),
+            "unit": config.get("ingestion_lookback_unit", "months")
+        }
+
+    def get_ingestion_lookback_cutoff(self, now: Optional[datetime] = None) -> datetime:
+        """Return the UTC cutoff datetime for automated ingestion lookback checks."""
+        if now is None:
+            now = datetime.now(timezone.utc)
+        elif now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+
+        lookback = self.get_ingestion_lookback()
+        value = lookback["value"]
+        unit = lookback["unit"]
+
+        if unit == "days":
+            return now - relativedelta(days=value)
+        if unit == "weeks":
+            return now - relativedelta(weeks=value)
+        if unit == "years":
+            return now - relativedelta(years=value)
+        return now - relativedelta(months=value)
     
     def is_schedule_due(self, schedule: str, reference_time: Optional[datetime]) -> bool:
         """
@@ -341,6 +409,7 @@ class ConfigManager:
         
         try:
             self.graph_repository.update_datasource_last_scraped(datasource_id)
+            self._config_cache.pop(datasource_id, None)
         except Exception as e:
             logger.error(f"Error updating last_scraped for {datasource_id}: {e}")
     
@@ -351,3 +420,5 @@ class ConfigManager:
             logger.debug("ConfigManager: closed owned Neo4j connection")
         self.neo4j_client = None
         self.graph_repository = None
+        self._config_cache = {}
+        self._global_config_cache = None

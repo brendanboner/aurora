@@ -46,6 +46,7 @@ from src.services.query_suggestions import suggest_refinements, should_show_sugg
 from src.services.ranking_explainer import add_explanations_to_documents
 from src.services.query_analyzer import analyze_query as analyze_query_impl
 from src.services.cache import OracleCache, hash_options
+from src.services.fast_cache import normalize_query
 from src.services.query_history import get_query_history_service
 from src.services.personalization import decide_personalization, get_user_preferences
 from src.services.ab_test import should_use_fast_pipeline
@@ -72,6 +73,25 @@ response_generator = ResponseGenerator()
 # Initialize answer engines
 baseline_engine = BaselineEngine()
 fast_engine = FastEngine()
+
+
+def _build_history_request_options(request: QueryRequest, response: QueryResponse) -> dict:
+    """Persist request options and fast-cache details in existing history JSON."""
+    request_options = request.options.model_dump(mode="json") if request.options else {}
+    metadata = response.metadata
+    request_options.update({
+        "pipeline": response.pipeline,
+        "normalized_question": normalize_query(request.question),
+        "personalization_applied": response.personalization_applied,
+        "cache": {
+            "overall_hit": metadata.cache_hit,
+            "route_hit": metadata.route_cache_hit,
+            "result_hit": metadata.result_cache_hit,
+            "answer_hit": metadata.answer_cache_hit,
+            "bypass_reason": metadata.cache_bypass_reason,
+        },
+    })
+    return request_options
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -315,7 +335,7 @@ async def query(
                         documents_count=len(response.documents),
                         confidence_score=response.confidence_score if response.confidence_score else None,
                         latency_ms=processing_time_ms,
-                        cache_hit=False,  # Cache hit info not exposed in metadata
+                        cache_hit=response.metadata.cache_hit,
                         has_suggestions=len(response.suggestions) > 0,
                         strategies_used=response.metadata.strategies_used,
                     )
@@ -333,8 +353,10 @@ async def query(
                                 intent=response.metadata.intent.value if response.metadata else None,
                                 intent_confidence=response.metadata.intent_confidence if response.metadata else None,
                                 processing_time_ms=response.metadata.processing_time_ms if response.metadata else None,
-                                cache_hit=False,
-                                strategies_used=response.metadata.strategies_used if response.metadata else []
+                                cache_hit=response.metadata.cache_hit if response.metadata else False,
+                                strategies_used=response.metadata.strategies_used if response.metadata else [],
+                                request_options=_build_history_request_options(request, response),
+                                datasource_filter=",".join(request.options.datasource_ids) if request.options and request.options.datasource_ids else None,
                             )
                         except Exception as e:
                             logger.error(f"Failed to store query history: {e}")
@@ -375,7 +397,7 @@ async def query(
                 documents_count=len(response.documents),
                 confidence_score=response.confidence_score if response.confidence_score else None,
                 latency_ms=processing_time_ms,
-                cache_hit=False,  # Cache hit info not exposed in metadata
+                cache_hit=response.metadata.cache_hit,
                 has_suggestions=len(response.suggestions) > 0,
                 strategies_used=response.metadata.strategies_used,
             )
@@ -393,8 +415,10 @@ async def query(
                         intent=response.metadata.intent.value if response.metadata else None,
                         intent_confidence=response.metadata.intent_confidence if response.metadata else None,
                         processing_time_ms=response.metadata.processing_time_ms if response.metadata else None,
-                        cache_hit=False,
-                        strategies_used=response.metadata.strategies_used if response.metadata else []
+                        cache_hit=response.metadata.cache_hit if response.metadata else False,
+                        strategies_used=response.metadata.strategies_used if response.metadata else [],
+                        request_options=_build_history_request_options(request, response),
+                        datasource_filter=",".join(request.options.datasource_ids) if request.options and request.options.datasource_ids else None,
                     )
                 except Exception as e:
                     logger.error(f"Failed to store query history: {e}")

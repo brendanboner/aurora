@@ -728,6 +728,8 @@ def get_all_datasource_configurations() -> List[Dict[str, Any]]:
         ds_node.setdefault("discovery_mode", "incremental")
         ds_node.setdefault("consecutive_duplicates_limit", 5)
         ds_node.setdefault("run_on_startup", False)
+        ds_node.setdefault("ingestion_lookback_value", 12)
+        ds_node.setdefault("ingestion_lookback_unit", "months")
         
         configs.append(ds_node)
     return configs
@@ -764,6 +766,8 @@ def get_datasource_configuration(datasource_id: str) -> Dict[str, Any] | None:
     ds_node.setdefault("discovery_mode", "incremental")
     ds_node.setdefault("consecutive_duplicates_limit", 5)
     ds_node.setdefault("run_on_startup", False)
+    ds_node.setdefault("ingestion_lookback_value", 12)
+    ds_node.setdefault("ingestion_lookback_unit", "months")
     
     return ds_node
 
@@ -786,7 +790,9 @@ def upsert_datasource_configuration(
     folders: List[str] | None = None,
     discovery_mode: str | None = None,
     consecutive_duplicates_limit: int | None = None,
-    full_refresh_schedule: str | None = None
+    full_refresh_schedule: str | None = None,
+    ingestion_lookback_value: int | None = None,
+    ingestion_lookback_unit: str | None = None
 ) -> Dict[str, Any]:
     """
     Create or update a datasource configuration in Neo4j.
@@ -821,7 +827,9 @@ def upsert_datasource_configuration(
         "folders": folders,
         "discovery_mode": discovery_mode,
         "consecutive_duplicates_limit": consecutive_duplicates_limit,
-        "full_refresh_schedule": full_refresh_schedule
+        "full_refresh_schedule": full_refresh_schedule,
+        "ingestion_lookback_value": ingestion_lookback_value,
+        "ingestion_lookback_unit": ingestion_lookback_unit
     }
     
     for field, value in field_map.items():
@@ -857,6 +865,8 @@ def upsert_datasource_configuration(
     for field in ["last_scraped_at", "created_at", "updated_at"]:
         if field in ds_node:
             ds_node[field] = _convert_datetime_to_string(ds_node[field])
+    ds_node.setdefault("ingestion_lookback_value", 12)
+    ds_node.setdefault("ingestion_lookback_unit", "months")
     return ds_node
 
 

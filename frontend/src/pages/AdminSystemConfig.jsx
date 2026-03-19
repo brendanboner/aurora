@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import './AdminSystemConfig.css';
 
+const DEFAULT_LOOKBACK_VALUES = [1, 2, 4, 8, 12, 26, 52];
+const LOOKBACK_UNITS = ['days', 'weeks', 'months', 'years'];
+const DEFAULT_GLOBAL_CONFIG = {
+  datasource_id: 'default',
+  name: 'System Defaults',
+  ingestion_lookback_value: 12,
+  ingestion_lookback_unit: 'months',
+};
+
 const AdminSystemConfig = () => {
   const [configurations, setConfigurations] = useState([]);
+  const [globalConfig, setGlobalConfig] = useState(DEFAULT_GLOBAL_CONFIG);
+  const [globalConfigExists, setGlobalConfigExists] = useState(false);
+  const [savingGlobalConfig, setSavingGlobalConfig] = useState(false);
   const [scraperStatus, setScraperStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,7 +46,13 @@ const AdminSystemConfig = () => {
         throw new Error(`Failed to fetch configurations: ${response.status} ${response.statusText} - ${errorText}`);
       }
       const data = await response.json();
-      setConfigurations(data);
+      const defaultConfig = data.find((config) => config.datasource_id === 'default');
+      setGlobalConfig({
+        ...DEFAULT_GLOBAL_CONFIG,
+        ...(defaultConfig || {}),
+      });
+      setGlobalConfigExists(Boolean(defaultConfig));
+      setConfigurations(data.filter((config) => config.datasource_id !== 'default'));
       setError(null);
     } catch (err) {
       console.error('Error fetching configurations:', err);
@@ -84,6 +102,52 @@ const AdminSystemConfig = () => {
       setEditingConfig(null);
     } catch (err) {
       alert('Error updating configuration: ' + err.message);
+    }
+  };
+
+  const handleGlobalConfigChange = (field, value) => {
+    setGlobalConfig((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveGlobalConfig = async () => {
+    const payload = {
+      ingestion_lookback_value: Number(globalConfig.ingestion_lookback_value),
+      ingestion_lookback_unit: globalConfig.ingestion_lookback_unit,
+    };
+
+    try {
+      setSavingGlobalConfig(true);
+      const response = await fetch(
+        globalConfigExists
+          ? '/api/backend/admin/system-configuration/default'
+          : '/api/backend/admin/system-configuration',
+        {
+          method: globalConfigExists ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            globalConfigExists
+              ? payload
+              : {
+                  ...DEFAULT_GLOBAL_CONFIG,
+                  ...payload,
+                }
+          ),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to save global ingestion settings');
+      }
+
+      await fetchConfigurations();
+      alert('✅ Global ingestion lookback saved');
+    } catch (err) {
+      alert('❌ Error saving global ingestion settings: ' + err.message);
+    } finally {
+      setSavingGlobalConfig(false);
     }
   };
 
@@ -300,6 +364,58 @@ const AdminSystemConfig = () => {
           <div className="url-modal-content">{hoveredUrl}</div>
         </div>
       )}
+
+      <section className="global-ingestion-card">
+        <div className="global-ingestion-copy">
+          <h3>Ingestion Lookback</h3>
+          <p>
+            Block automated scraper items older than the selected window. First-time
+            document scrapes can still backfill history.
+          </p>
+        </div>
+
+        <div className="global-ingestion-controls">
+          <label className="global-ingestion-field">
+            <span>Look back</span>
+            <select
+              value={globalConfig.ingestion_lookback_value}
+              onChange={(event) =>
+                handleGlobalConfigChange('ingestion_lookback_value', Number(event.target.value))
+              }
+            >
+              {DEFAULT_LOOKBACK_VALUES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="global-ingestion-field">
+            <span>Unit</span>
+            <select
+              value={globalConfig.ingestion_lookback_unit}
+              onChange={(event) =>
+                handleGlobalConfigChange('ingestion_lookback_unit', event.target.value)
+              }
+            >
+              {LOOKBACK_UNITS.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            className="btn-save-ingestion"
+            onClick={handleSaveGlobalConfig}
+            disabled={savingGlobalConfig}
+          >
+            {savingGlobalConfig ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </section>
 
       <div className="scrapers-table-container">
         {configurations.length === 0 ? (

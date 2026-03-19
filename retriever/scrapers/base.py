@@ -7,9 +7,10 @@ import uuid
 import io
 from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import redis
 import pypdf
+from dateutil.parser import parse as date_parse
 
 from rabbitmq_client.producer import RabbitMQProducer
 from neo4j_client.client import Neo4jClient
@@ -140,6 +141,7 @@ class BaseScraper:
         self._current_datasource_id: Optional[str] = None
         self._batch_scrape_started_at: Optional[datetime] = None
         self._batch_items_count: int = 0
+        self._current_datasource_config: Optional[Dict[str, Any]] = None
         
         # Collect mode: when enabled, messages are collected instead of published
         self._collect_mode: bool = False
@@ -264,6 +266,132 @@ class BaseScraper:
                 self.redis_client.delete("retriever:current")
             except Exception as e:
                 logger.warning(f"Failed to clear current processing: {e}")
+
+    def _normalize_datetime(self, value: Any) -> Optional[datetime]:
+        """Convert strings/datetimes to timezone-aware UTC datetimes."""
+        if value is None:
+            return None
+
+        try:
+            if isinstance(value, datetime):
+                parsed = value
+            else:
+                parsed = date_parse(str(value))
+        except Exception as e:
+            logger.debug(f"Could not parse datetime value '{value}': {e}")
+            return None
+
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    def _get_lookback_cutoff(self) -> Optional[datetime]:
+        """Return the global automated-ingestion cutoff datetime."""
+        if not self.config_manager:
+            return None
+
+        try:
+            return self.config_manager.get_ingestion_lookback_cutoff()
+        except Exception as e:
+            logger.warning(f"Failed to resolve ingestion lookback cutoff: {e}")
+            return None
+
+    def _get_current_datasource_config(self, datasource_id: Optional[str]) -> Dict[str, Any]:
+        """Return cached datasource configuration for the active scraper run."""
+        if not datasource_id or not self.config_manager:
+            return {}
+
+        if (
+            self._current_datasource_config is not None
+            and self._current_datasource_id == datasource_id
+        ):
+            return self._current_datasource_config
+
+        config = self.config_manager.get_datasource_config(datasource_id)
+        if self._current_datasource_id == datasource_id:
+            self._current_datasource_config = config
+        return config
+
+    def _is_initial_scrape(self, datasource_id: Optional[str]) -> bool:
+        """Return True when the datasource has not yet recorded a successful scrape."""
+        config = self._get_current_datasource_config(datasource_id)
+        return self._normalize_datetime(config.get("last_scraped_at")) is None
+
+    def _record_filtered_item(
+        self,
+        item_type: str,
+        title: str,
+        url: str,
+        datasource_id: Optional[str],
+        reason: str,
+        reference_date: Optional[str]
+    ) -> None:
+        """Record filtered items to Redis monitoring so operators can see skip reasons."""
+        if not self.redis_client:
+            return
+
+        try:
+            filtered_data = {
+                "title": title,
+                "url": url or "",
+                "category": item_type,
+                "status": "skipped",
+                "stage": "filtered",
+                "started_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "datasource_id": datasource_id or "",
+                "publish_date": reference_date or "",
+                "reason": reason,
+            }
+            self.redis_client.lpush("processing:completed", json.dumps(filtered_data))
+            self.redis_client.ltrim("processing:completed", 0, 19)
+        except Exception as e:
+            logger.warning(f"Failed to record filtered item: {e}")
+
+    def _should_skip_by_lookback(
+        self,
+        item_type: str,
+        datasource_id: Optional[str],
+        reference_value: Optional[str],
+        title: str,
+        url: str,
+        allow_initial_backfill: bool = False,
+    ) -> bool:
+        """Determine whether an automated scraper item should be filtered as too old."""
+        cutoff = self._get_lookback_cutoff()
+        if cutoff is None:
+            return False
+
+        if allow_initial_backfill and self._is_initial_scrape(datasource_id):
+            return False
+
+        reference_dt = self._normalize_datetime(reference_value)
+        if reference_dt is None:
+            logger.info(
+                f"Allowing {item_type} without temporal metadata for datasource {datasource_id or 'unknown'}: {title}"
+            )
+            return False
+
+        if reference_dt >= cutoff:
+            return False
+
+        lookback = self.config_manager.get_ingestion_lookback() if self.config_manager else {"value": 12, "unit": "months"}
+        reason = (
+            f"older than automated ingestion lookback ({lookback['value']} {lookback['unit']})"
+        )
+        logger.info(
+            f"Skipping stale {item_type} for datasource {datasource_id or 'unknown'}: "
+            f"{title} ({reference_dt.isoformat()} < {cutoff.isoformat()})"
+        )
+        self._record_filtered_item(
+            item_type=item_type,
+            title=title,
+            url=url,
+            datasource_id=datasource_id,
+            reason=reason,
+            reference_date=reference_dt.isoformat(),
+        )
+        return True
     
     # =========================================================================
     # Batch Tracking Methods
@@ -295,9 +423,11 @@ class BaseScraper:
             self.end_batch(self._batch_items_count)
         
         self._current_batch_id = str(uuid.uuid4())
+        self._current_datasource_config = None
         self._current_datasource_id = datasource_id
         self._batch_scrape_started_at = datetime.now()
         self._batch_items_count = 0
+        self._current_datasource_config = self._get_current_datasource_config(datasource_id)
         
         # Skip batch node creation in collect mode
         if self._collect_mode:
@@ -413,6 +543,7 @@ class BaseScraper:
         self._current_datasource_id = None
         self._batch_scrape_started_at = None
         self._batch_items_count = 0
+        self._current_datasource_config = None
     
     def get_current_batch_id(self) -> Optional[str]:
         """Get the current batch ID, if a batch is active."""
@@ -1045,6 +1176,19 @@ class BaseScraper:
         
         # Get base message from resource
         message = resource.to_message()
+
+        if self._should_skip_by_lookback(
+            item_type="resource",
+            datasource_id=resource.datasource_id or self._current_datasource_id,
+            reference_value=resource.publish_date or resource.scraped_at,
+            title=resource.title,
+            url=resource.url,
+            allow_initial_backfill=True,
+        ):
+            return
+
+        if self._is_initial_scrape(resource.datasource_id or self._current_datasource_id):
+            message["allow_historical_ingest"] = True
         
         # Add any additional fields provided by the specific scraper
         if additional_fields:
@@ -1085,6 +1229,16 @@ class BaseScraper:
             event.batch_id = self._current_batch_id
         
         message = event.to_message()
+
+        if self._should_skip_by_lookback(
+            item_type="event",
+            datasource_id=event.datasource_id or self._current_datasource_id,
+            reference_value=event.start_date or event.scraped_at,
+            title=event.name,
+            url=event.url or "",
+            allow_initial_backfill=False,
+        ):
+            return
         
         # Collect mode: store message instead of publishing
         if self._collect_mode:

@@ -31,6 +31,15 @@ class TopicManager:
     - Hourly cache refresh
     - Thread-safe operations
     """
+
+    QUERY_STOPWORDS: Set[str] = {
+        "a", "an", "the", "what", "whats", "what's", "is", "are", "was", "were",
+        "be", "been", "being", "do", "does", "did", "new", "latest", "recent",
+        "recently", "lately", "last", "this", "past", "today", "yesterday",
+        "week", "month", "day", "days", "weeks", "months", "discussed", "happened",
+        "talked", "covered", "shown", "shared", "announced", "said", "in", "on",
+        "at", "for", "about", "with", "from", "during",
+    }
     
     def __init__(self, neo4j_client, refresh_interval_hours: int = 1, auto_create_threshold: int = 10, min_search_count: int = 2):
         """
@@ -175,10 +184,22 @@ class TopicManager:
         
         logger.debug(f"TopicManager.extract_topics: normalized question = '{question_lower}'")
         
-        # Skip definition extraction for temporal/action queries
-        skip_keywords = ['latest', 'recent', 'new', 'updates', 'changed', 'published', 'coming up']
-        if any(keyword in question_lower for keyword in skip_keywords):
-            logger.debug(f"TopicManager: skipping definition patterns (temporal/action query)")
+        # Skip definition extraction only for pure temporal/action prompts.
+        # Queries like "what happened recently regarding Wi-Fi 7" still need
+        # topic extraction from the tail of the prompt.
+        pure_temporal_patterns = [
+            r"^(what|what's|whats)\s+(is|are)\s+(the\s+)?(latest|recent|new)\b.*$",
+            r"^(recent|latest)\s+(updates|changes|publications|documents|news)\b.*$",
+        ]
+        has_specific_subject = bool(
+            re.search(r"\b(in|about|regarding|for|on|with)\s+[a-z0-9]", question_lower)
+        )
+        should_skip_definition_extraction = (
+            any(re.match(pattern, question_lower) for pattern in pure_temporal_patterns)
+            and not has_specific_subject
+        )
+        if should_skip_definition_extraction:
+            logger.debug("TopicManager: skipping definition patterns (pure temporal/action query)")
             definition_terms = []
         else:
             # Extract potential definition queries: "What is X?", "Define X", etc.
@@ -311,7 +332,12 @@ class TopicManager:
             
             if filtered:  # Only use filtered if it's not empty
                 result = filtered
-        
+
+        result = [
+            topic for topic in result
+            if self._normalize(topic) not in self.QUERY_STOPWORDS
+        ]
+
         if result:
             logger.debug(f"Extracted topics from question: {result}")
         else:

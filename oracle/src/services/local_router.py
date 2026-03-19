@@ -95,6 +95,7 @@ class LocalRouter:
         (r"(differences?|difference|diff) between\s+[\w\s\-]+\s+and\s+", RouteId.TOPIC_COMPARISON),
         (r"[\w\s\-]+\s+or\s+[\w\s\-]+\s+(which|better|best)", RouteId.TOPIC_COMPARISON),
         (r"(compare|comparison)\s+(of|between)\s+", RouteId.TOPIC_COMPARISON),
+        (r"what (are the )?(key )?improvements?.*?compared (to|with|against)", RouteId.TOPIC_COMPARISON),
         
         # === STATUS & PROGRESS QUERIES (high priority) ===
         (r"(status|state|progress) of\s+[\w\s\-]+", RouteId.STATUS_CHECK),
@@ -180,8 +181,10 @@ class LocalRouter:
         (r"what was discussed.*?(today|yesterday)", RouteId.WORKGROUP_DAILY_RECAP),
         (r"what was discussed.*?(this|last|past) week", RouteId.WORKGROUP_WEEKLY_RECAP),
         (r"what was discussed.*?(this|last|past) month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
+        (r"what was discussed\s+(recently|lately)\b", RouteId.RECENT_CONTENT),
         (r"what was discussed.*?in the last (week|month|\d+\s+days?)", RouteId.RECENT_CONTENT),
         (r"what was discussed.*(at|in|during|from).*(last|latest|recent|previous).*(meeting|call|session)", RouteId.RECENT_CONTENT),
+        (r"what happened\s+(recently|lately)\b", RouteId.RECENT_CONTENT),
         (r"what happened.*(at|in|during).*(last|latest|recent|previous).*(meeting|call|session)", RouteId.RECENT_CONTENT),
         (r"(last|latest|recent|previous) (meeting|call|session)", RouteId.RECENT_CONTENT),
         (r"what('s| is) being discussed", RouteId.RECENT_CONTENT),
@@ -201,6 +204,7 @@ class LocalRouter:
         (r"(give|show).*?(idea|summary|overview).*(last|past|this)\s+month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         
         # Recent updates (general)
+        (r"what are the latest .*?(updates|news|developments|changes)", RouteId.RECENT_CONTENT),
         (r"recent (updates|changes|news|developments|activity)", RouteId.RECENT_CONTENT),
         (r"what('s| is) new\s+(in|with|at|for)?", RouteId.RECENT_CONTENT),
         (r"what('s| is) (the )?latest (in|on|with|for|at)\s+", RouteId.RECENT_CONTENT),
@@ -250,7 +254,7 @@ class LocalRouter:
         (r"what (topics?|subjects?|themes?) (are|were|have been) discussed", RouteId.TOPICS_TREND),
         (r"trending (topics?|subjects?|discussions?)", RouteId.TOPICS_TREND),
         (r"(popular|hot|emerging|important) topics?", RouteId.TOPICS_TREND),
-        (r"(related to|similar to|connected to)\s+[\w\s\-]+", RouteId.RELATED_TOPICS),
+        (r"^(what|which)\s+(topics?|subjects?|themes?)\s+(are|is)\s+(related to|similar to|connected to)\s+", RouteId.RELATED_TOPICS),
         (r"(similar|related) (topics?|subjects?)", RouteId.RELATED_TOPICS),
         
         # === DOCUMENTS & PUBLICATIONS ===
@@ -258,23 +262,22 @@ class LocalRouter:
         (r"(recent|latest|new) (publications?|documents?|papers?|articles?|specs?|press releases?)", RouteId.RECENT_PUBLICATIONS),
         (r"press releases?(\s+about)?", RouteId.RECENT_PUBLICATIONS),
         (r"(find|show|get|search for)\s+(documents?|papers?|publications?)", RouteId.DOCUMENTS_BY_TOPIC),
-        (r"documents? (on|about|regarding|covering|discussing|mention|mentioning)\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"documents? (on|about|regarding|covering|discussing|mention|mentioning|related to)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(papers?|articles?|specs?) (on|about|regarding)\s+", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"what has changed in.*?(ieee|802\.11).*(standards?|specs?)", RouteId.RECENT_PUBLICATIONS),
         (r"what (standards?|changes?).*?ieee\s+802", RouteId.RECENT_PUBLICATIONS),
         (r"(published|released)\s+(by|from)\s+[\w\s\-]+\s+about", RouteId.RECENT_PUBLICATIONS),
         
         # === DEFINITION/EXPLANATION QUERIES (must come late - very general) ===
         # "what is X" (topic/concept explanation) - comes after organization and status checks
-        (r"what (is|are)\s+[\w\s\-]+\??$", RouteId.DOCUMENTS_BY_TOPIC),
-        (r"what('s| is)\s+[\w\s\-]+\s+\??$", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"what (is|are)\s+(?!the\s+latest\b|latest\b|recent\b|new\b|changed\b|changing\b)[\w\s\-]+\??$", RouteId.DOCUMENTS_BY_TOPIC),
+        (r"what('s| is)\s+(?!the\s+latest\b|latest\b|recent\b|new\b|changed\b|changing\b)[\w\s\-]+\s+\??$", RouteId.DOCUMENTS_BY_TOPIC),
         (r"what (is )?new (in|about|with|for|on)\s+", RouteId.RECENT_CONTENT),
         (r"(tell me about|explain|describe|define)\s+[\w\s\-]+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(definition|meaning|explanation) of\s+[\w\s\-]+", RouteId.DOCUMENTS_BY_TOPIC),
         # Technical questions about topics/technologies
         (r"what (frequency|frequencies|bands?|channels?|spectrum|range)\s+(does|do)\s+[\w\s\-]+\s+(use|work|operate)", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(how|where)\s+does\s+[\w\s\-]+\s+(work|operate|function)", RouteId.DOCUMENTS_BY_TOPIC),
-        # Comparison and improvement questions
-        (r"what (are the )?(key )?improvements?.*?compared (to|with|against)", RouteId.TOPIC_COMPARISON),
         (r"what (has |should )?changed", RouteId.RECENT_CONTENT),
     ]
     
@@ -282,6 +285,45 @@ class LocalRouter:
         """Initialize the local router."""
         self.confidence_threshold = settings.fast_router_confidence_threshold
         logger.info("Initialized LocalRouter")
+
+    def _prune_generic_recent_topics(self, route_id: RouteId, entities: dict) -> dict:
+        """Avoid over-constraining broad recent-content queries with umbrella Wi-Fi terms."""
+        if route_id != RouteId.RECENT_CONTENT:
+            return entities
+
+        generic_recent_topics = {"wifi", "wi-fi", "wireless", "802.11", "wireless lan"}
+        topics = entities.get("topics", [])
+        if not topics:
+            return entities
+
+        filtered_topics = [topic for topic in topics if topic.strip().lower() not in generic_recent_topics]
+        if len(filtered_topics) == len(topics):
+            return entities
+
+        logger.info(
+            "Dropping generic umbrella topics from RECENT_CONTENT query to preserve broad recency coverage: "
+            f"{topics}"
+        )
+        entities["topics"] = filtered_topics
+        return entities
+
+    def _prefer_brief_recent_answer(self, question: str, route_id: RouteId, entities: Optional[dict] = None) -> bool:
+        """Use deterministic brief answers only for broad recent-discussion prompts."""
+        if route_id != RouteId.RECENT_CONTENT:
+            return False
+
+        if entities:
+            has_explicit_scope = bool(
+                entities.get("topics") or entities.get("organizations") or entities.get("people")
+            )
+            if has_explicit_scope:
+                return False
+
+        brief_recent_patterns = [
+            r"what was discussed\s+(recently|lately)\b",
+            r"what happened\s+(recently|lately)\b",
+        ]
+        return any(re.search(pattern, question, re.IGNORECASE) for pattern in brief_recent_patterns)
     
     async def route(self, question: str, user_id: Optional[str] = None, user_prefs: Optional[UserPreferences] = None, datasource_ids: Optional[List[str]] = None) -> Tuple[Optional[RoutePlan], float]:
         """
@@ -361,6 +403,8 @@ class LocalRouter:
             )
             route_id = RouteId.RECENT_CONTENT
             route_confidence = max(route_confidence, 0.84)
+
+        entities = self._prune_generic_recent_topics(route_id, entities)
         
         if skip_user_prefs:
             logger.debug(f"Skipping user preference expansion for {route_id.value} (focused query)")
@@ -374,6 +418,8 @@ class LocalRouter:
         
         # Determine detail level
         detail_level = self._determine_detail_level(question_lower)
+        if self._prefer_brief_recent_answer(question_lower, route_id, entities):
+            detail_level = DetailLevel.BRIEF
         
         # Should we do deep dive?
         deep_dive = self._should_deep_dive(question_lower, detail_level)
@@ -583,6 +629,8 @@ class LocalRouter:
             "wba": "Wireless Broadband Alliance",
             "wireless broadband alliance": "Wireless Broadband Alliance",
             "ieee": "IEEE",
+            "ieee 802.11": "IEEE",
+            "802.11": "IEEE",
             "ietf": "IETF",
             "3gpp": "3GPP",
             "extreme": "Extreme Networks",
@@ -606,7 +654,22 @@ class LocalRouter:
                 extracted_topics = topic_manager.extract_topics(question)
                 # Filter out topics that match organization names (avoid double-counting WFA as both topic and org)
                 org_names_lower = {org.lower() for org in entities["organizations"]}
-                filtered_topics = [t for t in extracted_topics if t.lower() not in org_names_lower and t.lower() not in org_abbreviations]
+                org_alias_only_terms = {
+                    "wfa",
+                    "wifi alliance",
+                    "wi-fi alliance",
+                    "wba",
+                    "wireless broadband alliance",
+                    "ieee",
+                    "ietf",
+                    "3gpp",
+                    "extreme",
+                    "extreme networks",
+                }
+                filtered_topics = [
+                    t for t in extracted_topics
+                    if t.lower() not in org_names_lower and t.lower() not in org_alias_only_terms
+                ]
                 entities["topics"].extend(filtered_topics)
                 logger.debug(f"TopicManager extracted topics: {filtered_topics}")
             except Exception as e:

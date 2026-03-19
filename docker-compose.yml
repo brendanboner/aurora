@@ -735,7 +735,7 @@ services:
       OTEL_LOG_LEVEL: ${OTEL_LOG_LEVEL:-info}
       ENVIRONMENT: ${ENVIRONMENT:-development}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otel-collector-config.yaml"]
       interval: 10s
       timeout: 5s
       retries: 5

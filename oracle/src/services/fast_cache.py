@@ -190,6 +190,7 @@ class FastCache:
             parts.append(prefs_hash)
         if ds_hash:
             parts.append(ds_hash)
+        parts.append(settings.fast_template_version)
         
         return f"{FastCachePrefix.PLAN}" + ":".join(parts)
     
@@ -265,7 +266,7 @@ class FastCache:
     
     # ===== Answer Cache =====
     
-    async def get_answer(self, plan: RoutePlan, result_digest: str) -> Optional[dict]:
+    async def get_answer(self, plan: RoutePlan, result_digest: str, scope: Optional[str] = None) -> Optional[dict]:
         """
         Get cached final answer.
         
@@ -280,7 +281,7 @@ class FastCache:
             return None
         
         try:
-            cache_key = self._answer_cache_key(plan, result_digest)
+            cache_key = self._answer_cache_key(plan, result_digest, scope=scope)
             
             cached = await self.redis_client.get(cache_key)
             
@@ -299,7 +300,8 @@ class FastCache:
         plan: RoutePlan,
         result_digest: str,
         answer: dict,
-        ttl: Optional[int] = None
+        ttl: Optional[int] = None,
+        scope: Optional[str] = None,
     ):
         """
         Cache a final answer.
@@ -314,7 +316,7 @@ class FastCache:
             return
         
         try:
-            cache_key = self._answer_cache_key(plan, result_digest)
+            cache_key = self._answer_cache_key(plan, result_digest, scope=scope)
             ttl = ttl or settings.fast_cache_answer_ttl
             
             answer_json = json.dumps(answer)
@@ -326,11 +328,12 @@ class FastCache:
         except Exception as e:
             logger.error(f"Error caching answer: {e}", exc_info=True)
     
-    def _answer_cache_key(self, plan: RoutePlan, result_digest: str) -> str:
+    def _answer_cache_key(self, plan: RoutePlan, result_digest: str, scope: Optional[str] = None) -> str:
         """Generate cache key for answer cache."""
         plan_hash = hash_route_plan(plan)
         detail_level_str = plan.detail_level if isinstance(plan.detail_level, str) else plan.detail_level.value
-        return f"{FastCachePrefix.ANSWER}{plan_hash}:{result_digest[:8]}:{detail_level_str}"
+        scope_suffix = f":{scope}" if scope else ""
+        return f"{FastCachePrefix.ANSWER}{plan_hash}:{result_digest[:8]}:{detail_level_str}{scope_suffix}"
     
     # ===== Invalidation =====
     

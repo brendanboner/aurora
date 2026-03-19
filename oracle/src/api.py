@@ -1,5 +1,6 @@
 """Oracle Service - FastAPI Application Entry Point."""
 
+import asyncio
 from fastapi import FastAPI
 import logging
 
@@ -15,6 +16,7 @@ from src.routes.admin import router as admin_router
 from src.routes.agent import router as agent_router
 from src.routes.ingest import router as ingest_router
 from src.services.query_history import get_query_history_service
+from src.services.fast_prewarm import FastPrewarmService
 from src.services.rollup_scheduler import RollupScheduler
 from src.settings import settings
 
@@ -55,6 +57,7 @@ instrument_fastapi(app)
 
 # Global scheduler instance
 rollup_scheduler = RollupScheduler()
+prewarm_task: asyncio.Task | None = None
 
 # Include routers
 app.include_router(health_router)
@@ -116,11 +119,32 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start rollup scheduler: {e}", exc_info=True)
 
+    if settings.fast_pipeline_enabled and settings.fast_cache_prewarm_enabled and settings.query_history_enabled:
+        try:
+            from src.routes.query import fast_engine
+
+            logger.info("Starting background fast-cache prewarm from recent query history...")
+            global prewarm_task
+            prewarm_service = FastPrewarmService(fast_engine)
+            prewarm_task = asyncio.create_task(prewarm_service.prewarm_hot_queries())
+        except Exception as e:
+            logger.error(f"Failed to start fast-cache prewarm: {e}", exc_info=True)
+
 
 @app.on_event("shutdown")
 async def shutdown():
     """Cleanup on shutdown."""
     logger.info("Oracle Service shutting down...")
+
+    global prewarm_task
+    if prewarm_task and not prewarm_task.done():
+        prewarm_task.cancel()
+        try:
+            await prewarm_task
+        except asyncio.CancelledError:
+            logger.info("✓ Fast-cache prewarm task cancelled")
+        finally:
+            prewarm_task = None
     
     # Stop rollup scheduler
     if settings.fast_pipeline_enabled and settings.fast_rollup_generation_enabled:

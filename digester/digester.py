@@ -6,11 +6,12 @@ validates and normalizes the data, and inserts it into a Neo4j knowledge graph.
 """
 
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import re
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.parser import parse as date_parse
+from dateutil.relativedelta import relativedelta
 import threading
 import time
 import asyncio
@@ -113,6 +114,8 @@ class DocumentDigester:
         )
         self.graph_repository = None
         self.deduplicator = None
+        self._datasource_config_cache: Dict[str, Dict[str, Any]] = {}
+        self._global_config_cache: Dict[str, Any] | None = None
         
         # Initialize async Redis client for monitoring and content caching
         # Connection is lazy - will be established on first use
@@ -410,6 +413,260 @@ class DocumentDigester:
             REDIS_MAX_FAILED_ITEMS,
             "failed"
         )
+
+    async def record_skipped(self, message: Dict[str, Any], reason: str, stage: str = "filtered"):
+        """Record intentionally skipped messages in Redis."""
+        resource_data = message.get("resource_data", {})
+        event_data = message.get("event_data", {})
+
+        skipped_data = {
+            "title": self._get_message_title(message),
+            "url": resource_data.get("url") or event_data.get("url") or "",
+            "category": resource_data.get("category") or ("event" if event_data else "unknown"),
+            "status": "skipped",
+            "stage": stage,
+            "started_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "datasource_id": message.get("datasource_id", ""),
+            "publish_date": resource_data.get("publish_date") or event_data.get("start_date") or "",
+            "reason": reason,
+        }
+
+        await self._record_to_redis_list(
+            "processing:completed",
+            skipped_data,
+            REDIS_MAX_COMPLETED_ITEMS,
+            "skipped"
+        )
+
+    def _get_datasource_config(self, datasource_id: Optional[str]) -> Dict[str, Any]:
+        """Fetch datasource configuration with a small in-process cache."""
+        if not datasource_id or not self.graph_repository:
+            return {}
+
+        cached = self._datasource_config_cache.get(datasource_id)
+        if cached is not None:
+            return cached
+
+        try:
+            config = self.graph_repository.get_datasource_config(datasource_id) or {}
+            self._datasource_config_cache[datasource_id] = config
+            return config
+        except Exception as e:
+            logger.warning(f"Failed to load datasource config for {datasource_id}: {e}")
+            return {}
+
+    def _get_global_ingestion_config(self) -> Dict[str, Any]:
+        """Load global ingestion lookback settings from the shared default datasource."""
+        if self._global_config_cache is not None:
+            return self._global_config_cache
+
+        default_config = {
+            "ingestion_lookback_value": 12,
+            "ingestion_lookback_unit": "months",
+        }
+
+        if not self.graph_repository:
+            return default_config
+
+        try:
+            config = self.graph_repository.get_datasource_config("default") or {}
+            config.setdefault("ingestion_lookback_value", 12)
+            config.setdefault("ingestion_lookback_unit", "months")
+            self._global_config_cache = config
+            return config
+        except Exception as e:
+            logger.warning(f"Failed to load global ingestion config: {e}")
+            return default_config
+
+    def _normalize_datetime(self, value: Any) -> Optional[datetime]:
+        """Convert strings/datetimes to timezone-aware datetimes."""
+        if value is None:
+            return None
+
+        try:
+            parsed = value if isinstance(value, datetime) else date_parse(str(value))
+        except Exception:
+            return None
+
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    def _get_ingestion_cutoff(self) -> datetime:
+        """Return the datetime cutoff for automated ingestion."""
+        now = datetime.now(timezone.utc)
+        config = self._get_global_ingestion_config()
+        value = int(config.get("ingestion_lookback_value", 12))
+        unit = config.get("ingestion_lookback_unit", "months")
+
+        if unit == "days":
+            return now - relativedelta(days=value)
+        if unit == "weeks":
+            return now - relativedelta(weeks=value)
+        if unit == "years":
+            return now - relativedelta(years=value)
+        return now - relativedelta(months=value)
+
+    def _extract_embedded_date(self, text: str) -> Optional[datetime]:
+        """Extract a YYYYMMDD or YYYY-MM-DD style date from a title or URL."""
+        if not text:
+            return None
+
+        for pattern in (r'(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)', r'(?<!\d)(20\d{2})-(\d{2})-(\d{2})(?!\d)'):
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            try:
+                year, month, day = match.groups()
+                return datetime(int(year), int(month), int(day), tzinfo=timezone.utc)
+            except ValueError:
+                continue
+
+        return None
+
+    async def _skip_low_value_historical_resource(self, message: Dict[str, Any]) -> bool:
+        """Skip old attendance-style spreadsheets before expensive metadata extraction."""
+        if message.get("uploaded_by") or message.get("allow_historical_ingest"):
+            return False
+
+        if message.get("message_type") != "resource":
+            return False
+
+        resource_data = message.get("resource_data", {})
+        title = resource_data.get("title", "")
+        url = resource_data.get("url", "")
+        lowered_title = title.lower()
+        lowered_url = url.lower()
+
+        if not any(lowered_url.endswith(ext) for ext in (".xlsx", ".xls", ".csv")):
+            return False
+
+        if not any(keyword in lowered_title for keyword in ("attendance", "attendees", "participant list", "roster")):
+            return False
+
+        reference_dt = (
+            self._normalize_datetime(resource_data.get("publish_date"))
+            or self._extract_embedded_date(title)
+            or self._extract_embedded_date(url)
+        )
+        if reference_dt is None or reference_dt >= self._get_ingestion_cutoff():
+            return False
+
+        logger.info(
+            f"Skipping low-value historical spreadsheet: {self._get_message_title(message)} "
+            f"({reference_dt.isoformat()})"
+        )
+        await self.record_skipped(
+            message,
+            "historical attendance spreadsheet skipped before metadata extraction",
+            stage="low_value_filter",
+        )
+        await self.clear_current_processing()
+        await self._clear_delivery_attempts(message)
+        return True
+
+    async def _skip_if_unchanged_resource(self, message: Dict[str, Any]) -> bool:
+        """Skip resources already present in Neo4j with the same content hash or revision date."""
+        if message.get("uploaded_by") or message.get("allow_historical_ingest"):
+            return False
+
+        if message.get("message_type") != "resource" or not self.graph_repository:
+            return False
+
+        resource_data = message.get("resource_data", {})
+        url = resource_data.get("url")
+        if not url:
+            return False
+
+        try:
+            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
+            existing = self.graph_repository.client.execute_query(
+                """
+                MATCH (r:Resource {url_hash: $url_hash})
+                RETURN r.content_hash AS content_hash, r.publish_date AS publish_date
+                LIMIT 1
+                """,
+                {"url_hash": url_hash},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to check existing resource state for {url}: {e}")
+            return False
+
+        if not existing:
+            return False
+
+        existing_row = existing[0]
+        content = resource_data.get("content") or ""
+        new_content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest() if content else None
+        existing_content_hash = existing_row.get("content_hash")
+
+        new_publish_dt = self._normalize_datetime(resource_data.get("publish_date"))
+        existing_publish_dt = self._normalize_datetime(existing_row.get("publish_date"))
+
+        same_content = bool(new_content_hash and existing_content_hash and new_content_hash == existing_content_hash)
+        same_or_older_revision = bool(new_publish_dt and existing_publish_dt and new_publish_dt <= existing_publish_dt)
+
+        if not same_content and not same_or_older_revision:
+            return False
+
+        logger.info(f"Skipping unchanged resource before extraction: {self._get_message_title(message)}")
+        await self.record_skipped(
+            message,
+            "unchanged resource skipped before metadata extraction",
+            stage="unchanged_filter",
+        )
+        await self.clear_current_processing()
+        await self._clear_delivery_attempts(message)
+        return True
+
+    async def _skip_if_stale(self, message: Dict[str, Any]) -> bool:
+        """Skip stale automated scraper items before parsing/insertion."""
+        if message.get("uploaded_by") or message.get("allow_historical_ingest"):
+            return False
+
+        datasource_id = message.get("datasource_id")
+        datasource_config = self._get_datasource_config(datasource_id)
+        if not datasource_config.get("scraper_type"):
+            return False
+
+        resource_data = message.get("resource_data", {})
+        event_data = message.get("event_data", {})
+        message_type = message.get("message_type")
+        reference_value = None
+
+        if message_type == "event":
+            reference_value = event_data.get("start_date") or message.get("scraped_at")
+        else:
+            reference_value = resource_data.get("publish_date") or message.get("scraped_at")
+
+        reference_dt = self._normalize_datetime(reference_value)
+        if reference_dt is None:
+            logger.info(
+                f"Allowing {message_type or 'message'} without temporal metadata for datasource {datasource_id or 'unknown'}"
+            )
+            return False
+
+        cutoff = self._get_ingestion_cutoff()
+        if reference_dt >= cutoff:
+            return False
+
+        global_config = self._get_global_ingestion_config()
+        reason = (
+            f"older than automated ingestion lookback "
+            f"({global_config['ingestion_lookback_value']} {global_config['ingestion_lookback_unit']})"
+        )
+        logger.info(
+            f"Skipping stale {message_type or 'message'} for datasource {datasource_id or 'unknown'}: "
+            f"{self._get_message_title(message)} ({reference_dt.isoformat()} < {cutoff.isoformat()})"
+        )
+        batch_id = message.get("batch_id")
+        if batch_id:
+            self._update_batch_progress(batch_id, item_type="event" if message_type == "event" else "resource")
+        await self.record_skipped(message, reason)
+        await self.clear_current_processing()
+        await self._clear_delivery_attempts(message)
+        return True
     
     def validate_resource_message(self, message: Dict[str, Any]) -> None:
         """
@@ -795,6 +1052,9 @@ class DocumentDigester:
         
         # Validate event message
         self.validate_event_message(message)
+
+        if await self._skip_if_stale(message):
+            return True
         
         logger.info("Building Event model...")
         await self.update_current_processing(message, "building model")
@@ -861,6 +1121,9 @@ class DocumentDigester:
         # Validate resource message
         self.validate_resource_message(message)
 
+        if await self._skip_if_stale(message):
+            return True
+
         # # Step 1.5: Retrieve and parse binary content if file:// URL
         url = resource_data.get("url", "")
         if url.startswith("file:///") and self.redis_client:
@@ -880,6 +1143,12 @@ class DocumentDigester:
                 resource_data["content"] = parsed_content
             else:
                 logger.warning(f"Could not retrieve/parse cached content for {url}")
+
+        if await self._skip_low_value_historical_resource(message):
+            return True
+
+        if await self._skip_if_unchanged_resource(message):
+            return True
 
         logger.info("Extracting and validating metadata nodes from content...")
         await self.update_current_processing(message, "extracting metadata")

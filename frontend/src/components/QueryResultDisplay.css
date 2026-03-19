@@ -406,6 +406,16 @@
   margin: 0 1px;
 }
 
+.answer-content .citation-ref.citation-link {
+  text-decoration: none;
+  border-bottom: none;
+}
+
+.answer-content .citation-ref.citation-link:hover {
+  color: var(--primary);
+  opacity: 1;
+}
+
 /* Answer Stats Row - Confidence and Stats on one line above answer */
 .answer-stats-row {
   display: flex;
@@ -490,6 +500,34 @@
   font-size: 14px;
   padding-bottom: 12px;
   border-bottom: 2px solid rgba(137, 129, 229, 0.2);
+}
+
+.references-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.references-toggle-meta {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.references-scroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .references-header strong {

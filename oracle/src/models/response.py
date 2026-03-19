@@ -62,6 +62,11 @@ class RetrievalMetadata(BaseModel):
     total_candidates: int = Field(default=0, description="Total documents considered")
     processing_time_ms: int = Field(default=0, description="Total processing time in milliseconds")
     llm_tokens_used: Optional[int] = Field(default=None, description="LLM tokens consumed")
+    cache_hit: bool = Field(default=False, description="Whether any fast cache layer was hit")
+    route_cache_hit: bool = Field(default=False, description="Whether route planning came from cache")
+    result_cache_hit: bool = Field(default=False, description="Whether retrieval results came from cache")
+    answer_cache_hit: bool = Field(default=False, description="Whether the final answer came from cache")
+    cache_bypass_reason: Optional[str] = Field(default=None, description="Why a cache layer was intentionally bypassed")
 
 
 class QuerySuggestion(BaseModel):

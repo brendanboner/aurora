@@ -150,7 +150,7 @@ class Settings(BaseSettings):
     # Fast Pipeline: Cypher Templates
     fast_template_max_nodes: int = 100  # Max nodes returned per template query
     fast_template_timeout: float = 5.0  # Timeout for template execution (seconds)
-    fast_template_version: str = "1.0.0"  # Template version for cache invalidation
+    fast_template_version: str = "1.0.8"  # Template version for cache invalidation
     
     # Fast Pipeline: Rollups (PostgreSQL)
     fast_rollup_enabled: bool = True  # Enable rollup generation and retrieval

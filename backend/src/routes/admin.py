@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 import pika
 import os
@@ -676,6 +676,8 @@ class SystemConfigurationResponse(BaseModel):
     discovery_mode: str = Field(default="incremental", description="Discovery mode: 'incremental' or 'date_based'")
     consecutive_duplicates_limit: int = Field(default=5, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
     full_refresh_schedule: Optional[str] = Field(default=None, description="Cron expression for full refresh (incremental mode only)")
+    ingestion_lookback_value: int = Field(default=12, ge=1, description="Global ingestion lookback amount for automated scraper ingestion")
+    ingestion_lookback_unit: Literal["days", "weeks", "months", "years"] = Field(default="months", description="Global ingestion lookback unit for automated scraper ingestion")
     last_scraped_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -701,6 +703,8 @@ class SystemConfigurationCreate(BaseModel):
     discovery_mode: str = Field(default="incremental", description="Discovery mode: 'incremental' or 'date_based'")
     consecutive_duplicates_limit: int = Field(default=5, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
     full_refresh_schedule: Optional[str] = Field(default=None, max_length=100, description="Cron expression for full refresh (incremental mode only)")
+    ingestion_lookback_value: int = Field(default=12, ge=1, description="Global ingestion lookback amount for automated scraper ingestion")
+    ingestion_lookback_unit: Literal["days", "weeks", "months", "years"] = Field(default="months", description="Global ingestion lookback unit for automated scraper ingestion")
 
 
 
@@ -723,6 +727,8 @@ class SystemConfigurationUpdate(BaseModel):
     discovery_mode: Optional[str] = Field(None, description="Discovery mode: 'incremental' or 'date_based'")
     consecutive_duplicates_limit: Optional[int] = Field(None, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
     full_refresh_schedule: Optional[str] = Field(None, max_length=100, description="Cron expression for full refresh (incremental mode only)")
+    ingestion_lookback_value: Optional[int] = Field(None, ge=1, description="Global ingestion lookback amount for automated scraper ingestion")
+    ingestion_lookback_unit: Optional[Literal["days", "weeks", "months", "years"]] = Field(None, description="Global ingestion lookback unit for automated scraper ingestion")
 
 
 
@@ -780,7 +786,9 @@ async def create_system_configuration(config: SystemConfigurationCreate):
             folders=config.folders,
             discovery_mode=config.discovery_mode,
             consecutive_duplicates_limit=config.consecutive_duplicates_limit,
-            full_refresh_schedule=config.full_refresh_schedule
+            full_refresh_schedule=config.full_refresh_schedule,
+            ingestion_lookback_value=config.ingestion_lookback_value,
+            ingestion_lookback_unit=config.ingestion_lookback_unit
         )
         return result
     except Exception as e:
@@ -818,7 +826,9 @@ async def update_system_configuration(datasource_id: str, config: SystemConfigur
             folders=config.folders,
             discovery_mode=config.discovery_mode,
             consecutive_duplicates_limit=config.consecutive_duplicates_limit,
-            full_refresh_schedule=config.full_refresh_schedule
+            full_refresh_schedule=config.full_refresh_schedule,
+            ingestion_lookback_value=config.ingestion_lookback_value,
+            ingestion_lookback_unit=config.ingestion_lookback_unit
         )
         return result
     except HTTPException:
@@ -1066,6 +1076,8 @@ class DLQStatus(BaseModel):
     duplicate_count: int = 0  # Number of URLs that have duplicates
     duplicate_message_count: int = 0  # Total extra messages that are duplicates
     duplicates: List[DLQDuplicateGroup] = []  # Grouped duplicate info
+    inspected_count: int = 0
+    truncated: bool = False
 
 
 class DLQRetryRequest(BaseModel):
@@ -1124,6 +1136,7 @@ def _get_dlq_messages_sync(
     """Synchronous implementation of get_dlq_messages."""
     dlq_name = f"{os.getenv('RABBITMQ_QUEUE', 'document_processing')}-dlq"
     empty_filter_options = DLQFilterOptions(error_types=[], batch_ids=[], datasource_ids=[])
+    peek_limit = max(limit * 10, 500)
     
     try:
         try:
@@ -1168,7 +1181,7 @@ def _get_dlq_messages_sync(
         
         logger.info(f"DLQ queue {dlq_name} has {total_messages} messages")
         
-        # Fetch all messages from DLQ to build filter options and detect duplicates
+        # Fetch a bounded sample from the DLQ so large queues remain inspectable.
         all_messages_data = []
         peeked_tags = []
         position = 0
@@ -1178,9 +1191,9 @@ def _get_dlq_messages_sync(
         batch_ids_set = set()
         datasource_ids_set = set()
         
-        # Peek at messages to build filter options
-        logger.info(f"Peeking at {total_messages} messages from DLQ")
-        for _ in range(total_messages):
+        inspected_target = min(total_messages, peek_limit)
+        logger.info(f"Peeking at up to {inspected_target} messages from DLQ (total={total_messages})")
+        for _ in range(inspected_target):
             method_frame, header_frame, body = channel.basic_get(queue=dlq_name, auto_ack=False)
             
             if not method_frame:
@@ -1376,7 +1389,9 @@ def _get_dlq_messages_sync(
             filter_options=filter_options,
             duplicate_count=duplicate_count,
             duplicate_message_count=duplicate_message_count,
-            duplicates=duplicates
+            duplicates=duplicates,
+            inspected_count=len(all_messages_data),
+            truncated=total_messages > len(all_messages_data)
         )
         
     except Exception as e:

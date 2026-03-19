@@ -19,6 +19,8 @@ const DISPLAY_MODES = {
   DEBUG: 'debug',
 };
 
+const safeText = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
+
 /**
  * Transform match reason text to be more user-friendly
  */
@@ -146,6 +148,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   const [displayMode, setDisplayModeState] = useState(getInitialDisplayMode);
   const [feedbackGiven, setFeedbackGiven] = useState(message.feedbackGiven || null); // 'helpful' | 'not_helpful' | null
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [referencesOpen, setReferencesOpen] = useState(false);
   
   // Wrapper to update both local state and persist to parent
   const setDisplayMode = useCallback((mode) => {
@@ -178,7 +181,11 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   // Scroll to top of answer when toggling between enhanced/original
   useEffect(() => {
     if (prevShowingEnhanced.current !== message.showingEnhanced && answerViewRef.current) {
-      answerViewRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      try {
+        answerViewRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) {
+        console.warn('Failed to scroll enhanced answer into view:', err);
+      }
     }
     prevShowingEnhanced.current = message.showingEnhanced;
   }, [message.showingEnhanced]);
@@ -194,6 +201,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   const hasAnswer = message.content && message.content !== 'Here are the relevant documents:';
   const hasDocuments = message.documents && message.documents.length > 0;
   const hasCitations = message.citations && message.citations.length > 0;
+  const citationUrlMap = new Map((message.citations || []).map((citation) => [String(citation.index), citation.document_url]));
 
   // Format date helper
   const formatDate = (dateStr) => {
@@ -239,6 +247,37 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
       if (a.isCited && !b.isCited) return -1;
       if (!a.isCited && b.isCited) return 1;
       return (b.relevance_score || 0) - (a.relevance_score || 0);
+    });
+  };
+
+  const renderCitationFragments = (value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    return value.split(/(\[\d+\])/g).map((part, idx) => {
+      const match = part.match(/^\[(\d+)\]$/);
+      if (!match) {
+        return part;
+      }
+
+      const url = citationUrlMap.get(match[1]);
+      if (!url) {
+        return <span key={idx} className="citation-ref">{part}</span>;
+      }
+
+      return (
+        <a
+          key={idx}
+          className="citation-ref citation-link"
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open referenced document"
+        >
+          {part}
+        </a>
+      );
     });
   };
 
@@ -515,6 +554,10 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
 
     const statsDisplay = getStatsDisplay();
 
+    const combinedReferences = isShowingEnhanced
+      ? referencesToShow
+      : getCombinedReferences();
+
     return (
       <div className="answer-view" ref={answerViewRef}>
         {/* Confidence and Stats Row - Above Answer */}
@@ -558,35 +601,14 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
               components={{
                 // Custom paragraph rendering with citation styling
                 p: ({children}) => {
-                  // Process children to style citation markers like [1], [2], etc.
                   const styledChildren = React.Children.map(children, (child) => {
-                    if (typeof child === 'string') {
-                      // Replace citation markers with styled spans
-                      const parts = child.split(/(\[\d+\])/g);
-                      return parts.map((part, idx) => {
-                        if (/^\[\d+\]$/.test(part)) {
-                          return <span key={idx} className="citation-ref">{part}</span>;
-                        }
-                        return part;
-                      });
-                    }
-                    return child;
+                    return typeof child === 'string' ? renderCitationFragments(child) : child;
                   });
                   return <p style={{ margin: '0 0 10px 0' }}>{styledChildren}</p>;
                 },
-                // Ensure lists items also get citation styling
                 li: ({children}) => {
                   const styledChildren = React.Children.map(children, (child) => {
-                    if (typeof child === 'string') {
-                      const parts = child.split(/(\[\d+\])/g);
-                      return parts.map((part, idx) => {
-                        if (/^\[\d+\]$/.test(part)) {
-                          return <span key={idx} className="citation-ref">{part}</span>;
-                        }
-                        return part;
-                      });
-                    }
-                    return child;
+                    return typeof child === 'string' ? renderCitationFragments(child) : child;
                   });
                   return <li>{styledChildren}</li>;
                 }
@@ -598,89 +620,66 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
         )}
 
         {/* References Section */}
-        {referencesToShow.length > 0 && (
+        {combinedReferences.length > 0 && (
           <div className="references-section">
-            <div className="references-header">
-              <strong>References (Cited in Answer)</strong>
-            </div>
+            <button
+              type="button"
+              className="references-toggle"
+              onClick={() => setReferencesOpen((prev) => !prev)}
+              aria-expanded={referencesOpen}
+            >
+              <strong>Reference Documents</strong>
+              <span className="references-toggle-meta">
+                {combinedReferences.length} item{combinedReferences.length === 1 ? '' : 's'}
+              </span>
+            </button>
 
-            {/* Cited Documents */}
-            <div className="cited-references">
-              {referencesToShow.map((doc, i) => (
-                <div key={i} className="reference-item cited">
-                  <span className="citation-marker">[{doc.citationIndex}]</span>
-                  <div className="reference-content">
-                    <div className="reference-title-row">
-                      <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                        {doc.title || 'Untitled'}
-                      </a>
-                      {getDatasourceName(doc) && (
-                        <span className="reference-datasource">
-                          {getDatasourceName(doc)}
-                        </span>
+            {referencesOpen && (
+              <div className="references-scroll-list">
+                {combinedReferences.map((doc, i) => (
+                  <div key={`${doc.url || doc.title}-${i}`} className={`reference-item ${doc.isCited ? 'cited' : 'additional'}`}>
+                    <span className="citation-marker">
+                      {doc.isCited && doc.citationIndex ? `[${doc.citationIndex}]` : 'More'}
+                    </span>
+                    <div className="reference-content">
+                      <div className="reference-title-row">
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                          {doc.title || 'Untitled'}
+                        </a>
+                        {getDatasourceName(doc) && (
+                          <span className="reference-datasource">
+                            {getDatasourceName(doc)}
+                          </span>
+                        )}
+                      </div>
+                      {isYouTubeVideo(doc) && (() => {
+                        const videoId = extractYouTubeVideoId(doc.url);
+                        if (videoId) {
+                          return (
+                            <div className="video-thumbnail-small">
+                              <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                                <img 
+                                  src={`https://img.youtube.com/vi/${videoId}/default.jpg`}
+                                  alt={doc.title || 'YouTube Video'}
+                                  style={{ width: '120px', borderRadius: '4px', marginTop: '8px' }}
+                                />
+                              </a>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {doc.excerpt && (
+                        <div className="reference-excerpt">"{doc.excerpt}"</div>
+                      )}
+                      {!doc.excerpt && safeText(doc.summary) && (
+                        <div className="reference-summary">
+                          {safeText(doc.summary).slice(0, 150)}...
+                        </div>
                       )}
                     </div>
-                    {isYouTubeVideo(doc) && (() => {
-                      const videoId = extractYouTubeVideoId(doc.url);
-                      if (videoId) {
-                        return (
-                          <div className="video-thumbnail-small">
-                            <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                              <img 
-                                src={`https://img.youtube.com/vi/${videoId}/default.jpg`}
-                                alt={doc.title || 'YouTube Video'}
-                                style={{ width: '120px', borderRadius: '4px', marginTop: '8px' }}
-                              />
-                            </a>
-                          </div>
-                        );
-                      }
-                    })()}
-                    {doc.excerpt && (
-                      <div className="reference-excerpt">"{doc.excerpt}"</div>
-                    )}
                   </div>
-                </div>
-              ))}
-            </div>
-            
-            {/* Additional Context Documents (non-cited but relevant) */}
-            {message.documents && message.documents.length > referencesToShow.length && (
-              <div className="additional-context-section">
-                <details>
-                  <summary className="additional-context-header">
-                    <strong>Additional Context</strong>
-                    <span className="additional-count">
-                      ({message.documents.length - referencesToShow.length} more documents)
-                    </span>
-                  </summary>
-                  <div className="additional-documents">
-                    {message.documents
-                      .filter(doc => !referencesToShow.find(ref => ref.url === doc.url))
-                      .slice(0, 5)
-                      .map((doc, i) => (
-                        <div key={i} className="reference-item additional">
-                          <div className="reference-content">
-                            <div className="reference-title-row">
-                              <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                                {doc.title || 'Untitled'}
-                              </a>
-                              {getDatasourceName(doc) && (
-                                <span className="reference-datasource">
-                                  {getDatasourceName(doc)}
-                                </span>
-                              )}
-                            </div>
-                            {doc.summary && (
-                              <div className="reference-summary">
-                                {doc.summary.slice(0, 150)}...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </details>
+                ))}
               </div>
             )}
           </div>

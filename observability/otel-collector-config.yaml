@@ -22,7 +22,7 @@ processors:
   
   # Resource detection
   resourcedetection:
-    detectors: [env, system, docker]
+    detectors: [env, system]
     timeout: 5s
 
 exporters:

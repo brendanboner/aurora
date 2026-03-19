@@ -462,6 +462,94 @@ class QueryHistoryService:
             logger.error(f"Failed to get statistics: {e}")
             return {}
 
+    async def get_hot_queries(
+        self,
+        days: int = 30,
+        limit: int = 10,
+        fast_only: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return recent hot queries ranked by a simple frequency * latency score.
+
+        Small punctuation variants are grouped together so repeated prompts
+        differ only when the wording meaningfully changes.
+        """
+        if not self.is_available():
+            return []
+
+        try:
+            session_factory = self._get_session_factory()
+            session = session_factory()
+
+            try:
+                filters = ["created_at >= :cutoff_date", "error = false", "question IS NOT NULL"]
+                params: Dict[str, Any] = {
+                    "cutoff_date": datetime.utcnow() - timedelta(days=days),
+                    "limit": limit,
+                }
+
+                if fast_only:
+                    filters.append("(request_options->>'pipeline' = 'fast' OR request_options IS NULL)")
+
+                hot_query_sql = text(f"""
+                    WITH normalized AS (
+                        SELECT
+                            lower(trim(regexp_replace(question, '[[:punct:]]+$', '', 'g'))) AS normalized_question,
+                            question,
+                            user_id,
+                            processing_time_ms,
+                            cache_hit,
+                            created_at,
+                            request_options,
+                            datasource_filter,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY lower(trim(regexp_replace(question, '[[:punct:]]+$', '', 'g')))
+                                ORDER BY created_at DESC
+                            ) AS variant_rank
+                        FROM oracle_query_history
+                        WHERE {' AND '.join(filters)}
+                    ),
+                    aggregated AS (
+                        SELECT
+                            normalized_question,
+                            COUNT(*) AS frequency,
+                            ROUND(AVG(COALESCE(processing_time_ms, 0)))::int AS avg_processing_time_ms,
+                            MAX(created_at) AS last_seen_at,
+                            COALESCE(AVG(CASE WHEN cache_hit THEN 1.0 ELSE 0.0 END), 0) AS cache_hit_rate,
+                            (COUNT(*) * GREATEST(AVG(COALESCE(processing_time_ms, 0)), 1)) AS hotness_score
+                        FROM normalized
+                        WHERE normalized_question <> ''
+                        GROUP BY normalized_question
+                    )
+                    SELECT
+                        aggregated.normalized_question,
+                        latest.question AS sample_question,
+                        latest.user_id AS sample_user_id,
+                        latest.request_options AS sample_request_options,
+                        latest.datasource_filter AS sample_datasource_filter,
+                        aggregated.frequency,
+                        aggregated.avg_processing_time_ms,
+                        aggregated.last_seen_at,
+                        aggregated.cache_hit_rate,
+                        aggregated.hotness_score
+                    FROM aggregated
+                    JOIN normalized AS latest
+                        ON latest.normalized_question = aggregated.normalized_question
+                       AND latest.variant_rank = 1
+                    ORDER BY aggregated.hotness_score DESC, aggregated.last_seen_at DESC
+                    LIMIT :limit
+                """)
+
+                results = session.execute(hot_query_sql, params).mappings().all()
+                return [dict(row) for row in results]
+
+            finally:
+                session.close()
+
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to get hot queries: {e}")
+            return []
+
 
 # Singleton instance
 _query_history_service: Optional[QueryHistoryService] = None
