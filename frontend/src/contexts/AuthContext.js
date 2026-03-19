@@ -14,18 +14,25 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.get('/api/auth/me', {
         withCredentials: true, // Include httpOnly cookies
       });
-      setUser(response.data);
+      setUser((prev) => {
+        // Avoid creating a new object reference if the data hasn't changed.
+        // This prevents downstream effects (e.g. Chatbot message-load) from
+        // re-firing on every periodic auth check.
+        if (prev && JSON.stringify(prev) === JSON.stringify(response.data)) {
+          return prev;
+        }
+        return response.data;
+      });
     } catch (error) {
       // Not authenticated or token expired
-      // Only log if we had a user before (to avoid spam on startup)
-      if (user && error.response?.status === 401) {
+      if (error.response?.status === 401) {
         console.log('Session expired, user needs to re-authenticate');
       }
       setUser(null);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, []); // No dependencies — checkAuthStatus never needs to be recreated
 
   useEffect(() => {
     checkAuthStatus();

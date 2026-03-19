@@ -343,7 +343,8 @@ What would you like to know?`;
         },
       ]);
     }
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); // Depend on user ID only — object identity changes on every auth check
 
   // Save messages to localStorage whenever they change (user-specific)
   useEffect(() => {
@@ -358,7 +359,8 @@ What would you like to know?`;
         console.warn('Failed to persist chat history:', err);
       }
     }
-  }, [compactMessageForStorage, messages, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compactMessageForStorage, messages, user?.id]); // user?.id avoids resets on auth-check object churn
 
   // Handle input change with @ detection for datasource mentions
   const handleInputChange = useCallback((e) => {
@@ -1056,7 +1058,10 @@ What would you like to know?`;
                     {message.role === 'user' ? 'You' : 'Aurora'}
                   </span>
                   <span className="message-time">
-                    {message.timestamp.toLocaleTimeString()}
+                    {(message.timestamp instanceof Date
+                      ? message.timestamp
+                      : new Date(message.timestamp)
+                    ).toLocaleTimeString()}
                   </span>
                 </div>
                 
