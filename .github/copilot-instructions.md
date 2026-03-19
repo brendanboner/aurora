@@ -1,309 +1,334 @@
-# Aurora - AI Coding Agent Instructions
+# Aurora — AI Coding Agent Instructions
 
-Aurora is a microservices-based knowledge management system that scrapes, processes, and enables LLM-powered Q&A over Wi-Fi Alliance documentation using a Neo4j knowledge graph.
+Aurora is a microservices-based knowledge management system that scrapes, processes, and enables LLM-powered Q&A over Wi-Fi Alliance documentation using a Neo4j knowledge graph.  
+The system is designed so users can ask questions **as if they personally attended every Wi-Fi Alliance meeting and reviewed every published document**.  Answers must always be substantive — never expose internal retrieval limitations.
+
+---
 
 ## Architecture Overview
 
-**Service Pipeline:** `Retriever → RabbitMQ → Digester → Neo4j ← Curator`
-**Query Flow:** `Frontend → Auth Gateway → Backend → Oracle → Neo4j + Azure OpenAI`
+```
+Retriever → RabbitMQ → Digester → Neo4j ← Curator
+Frontend → Auth Gateway → Backend → Oracle → Neo4j + Azure OpenAI
+```
 
-### Core Services (all FastAPI)
+### Core Services (all FastAPI / Python)
 
-- **auth/** - OAuth 2.0/JWT gateway using AWS Cognito, proxies all authenticated requests
-- **backend/** - Main API (users, preferences, queries), coordinates query pipeline
-- **oracle/** - Advanced Q&A with multi-strategy retrieval and graph-aware context
-- **retriever/** - Web scraper publishing to RabbitMQ (`scraped_content` queue)
-- **digester/** - Consumes RabbitMQ, extracts entities via LLM, populates Neo4j
-- **curator/** - Post-processing: organizes topics into hierarchies, deduplicates
-- **content_creator_service/** - AI agent personas that generate personalized social posts
-- **teams-agent/** - Microsoft Teams bot integration (Node.js)
-- **frontend/** - React app (dark theme UI with markdown chat)
+| Service | Role |
+|---------|------|
+| `auth/` | OAuth 2.0/JWT gateway via AWS Cognito; proxies all authenticated requests |
+| `backend/` | Main API (users, preferences, queries); coordinates query pipeline |
+| `oracle/` | Two-pipeline Q&A: **fast** (graph-first, sub-3s) and **baseline** (full LLM) |
+| `retriever/` | Web scraper; publishes to RabbitMQ `scraped_content` queue |
+| `digester/` | Consumes RabbitMQ; LLM entity extraction; populates Neo4j |
+| `curator/` | Post-processing: topic hierarchies, deduplication |
+| `content_creator_service/` | AI agent personas — personalized social posts from KB |
+| `teams-agent/` | Microsoft Teams bot (Node.js) |
+| `frontend/` | React app (dark theme, markdown chat, `src/pages/Chatbot.jsx`) |
 
-### Shared Libraries (installed as editable packages)
+### Shared Libraries (editable installs)
 
-- **neo4j-client/** - Graph operations, models (Topic, Organization, Person, Resource)
-- **rabbitmq-client/** - Producer/consumer utilities
-- **common/** - `auth_middleware.py`, `service_client.py`, `telemetry.py` (OpenTelemetry)
+| Package | Contents |
+|---------|----------|
+| `neo4j-client/` | Graph ops, models: Topic, Organization, Person, Resource |
+| `rabbitmq-client/` | Async producer/consumer helpers |
+| `common/` | `auth_middleware.py`, `service_client.py`, `telemetry.py` (OTel) |
 
 ### Infrastructure
 
-- **PostgreSQL** - Users, preferences, feedback, events
-- **Neo4j** - Knowledge graph with vector indexes
-- **RabbitMQ** - Async message queue between services
-- **Redis** - Monitoring, caching, rate limiting
-- **Nginx** - Reverse proxy (dev) / SSL termination (prod)
-- **Grafana Stack** - Tempo (traces), Loki (logs), Prometheus (metrics)
+- **PostgreSQL** — users, preferences, feedback, events
+- **Neo4j** — knowledge graph with vector indexes (`text-embedding-3-large`)
+- **RabbitMQ** — async queue between retriever → digester
+- **Redis** — fast-engine result cache (1 hr TTL), answer cache, rate limiting
+- **Nginx** — dev reverse proxy / prod SSL termination
+- **Grafana Stack** — Tempo (traces), Loki (logs), Prometheus (metrics)
 
-## Development Workflows
+---
 
-### Starting the System
+## Oracle Fast Pipeline (critical — read this)
 
-```bash
-# Development (hot reload enabled)
-docker compose up -d               # Start all services
-docker compose logs -f [service]   # View logs
+The fast pipeline is the primary query path. It uses a **graph-first, template-driven** approach to return answers in <3s by hitting Neo4j directly before falling back to the full LLM baseline.
 
-# Access points
-http://localhost:3000              # React dev server (HMR)
-http://localhost                   # Via nginx proxy
-http://localhost/api/docs          # Swagger docs
+### Flow
+
+```
+LocalRouter (regex + entity extraction)
+  → RoutePlan (RouteId + params + confidence)
+  → Cypher template (QueryTemplateRegistry)
+  → Neo4j results
+  → LLM synthesis (answer_generator.py)
+  → Response
+
+If fast raises ANY exception → baseline_engine.query() runs automatically
 ```
 
-### Running Tests
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `oracle/src/engines/fast_engine.py` | Core fast pipeline; routing, Cypher execution, LLM synthesis |
+| `oracle/src/services/local_router.py` | Regex pattern matching → RouteId + confidence (0–1) |
+| `oracle/src/models/route_plan.py` | `RouteId` enum (39 route types) |
+| `oracle/src/services/query_template_registry.py` | All Cypher templates + `build_params()` |
+| `oracle/src/prompts/answer_generator.py` | LLM system prompt — "meeting attendee" persona |
+| `oracle/src/services/response_generator.py` | Baseline zero-doc fallback handler |
+| `oracle/src/services/confidence_scorer.py` | Multi-factor answer confidence (baseline only) |
+| `oracle/src/services/fast_cache.py` | Redis caches: `fast:plan:*`, `fast:result:*`, `fast:answer:*` |
+
+### Important invariants (do not break)
+
+1. **Never cache zero-node results.** `fast_engine.py` has a guard: `if len(processed_results) > 0: await self.fast_cache.set_result(...)`. Zero-node caches previously caused blank answers for up to 1 hour.
+2. **Raise exception on zero docs**, don't return a static string. The `fast_fallback_to_baseline` in `query.py` only activates when `fast_engine.query()` raises — a silent return bypasses baseline.
+3. **LLM client is synchronous.** `get_llm_client()` returns `AzureOpenAI` (sync). Use `call_llm(client, messages, ...)` — never `await client.chat.completions.create(...)` directly.
+4. **Topic plural/singular variants.** When building Cypher params, always add both `term` and `term + "s"` / `term[:-1]` so "sticky clients" matches "sticky client" nodes.
+5. **PERSON_PROFILE Cypher** — the `aff` variable from `OPTIONAL MATCH (p)-[aff:AFFILIATED_WITH]->(o)` must appear in every subsequent `WITH` clause or you get a `CypherSyntaxError`.
+
+### Confidence scoring
+
+- **Fast pipeline:** returns `metadata.intent_confidence` (routing confidence, 0–1). No full answer-level score.
+- **Baseline pipeline:** runs `calculate_confidence()` from `confidence_scorer.py` — factors: document coverage (30%), source quality (25%), recency (20%), consensus (15%), query match (10%).
+- CLI surfaces both: `🟢 High / 🟡 Medium / 🔴 Low` with percentage.
+
+### Flushing Redis caches (when debugging stale answers)
 
 ```bash
-# Root orchestrates all services
-make test-all                      # Run tests for all services
-make test-<service>                # Test specific service
+# Flush all fast caches
+redis-cli EVAL "local k=redis.call('keys',ARGV[1]) for i=1,#k,5000 do redis.call('del',unpack(k,i,math.min(i+4999,#k))) end return #k" 0 "fast:*"
 
-# Per-service (from service directory)
-cd backend && make test            # Uses pytest
-cd frontend && npm test            # Uses Jest/React Testing Library
+# Flush only result cache (keep plan + answer caches)
+redis-cli EVAL "..." 0 "fast:result:*"
 ```
 
-### Building & Shipping to ECR
+---
 
-```bash
-make aws-login                     # Authenticate to AWS ECR
-make ship-all                      # Test + build + push all images
-make ship-backend                  # Single service
+## Frontend — Chatbot.jsx critical patterns
 
-# Each service Makefile includes ../Makefile.common
-# VERSION = git SHA (auto-generated)
+**File:** `frontend/src/pages/Chatbot.jsx`
+
+### Known bugs fixed — do not reintroduce
+
+| Bug | Root cause | Fix |
+|-----|-----------|-----|
+| Assistant message silently vanished | `AuthContext.checkAuthStatus` had `[user]` as `useCallback` dep → infinite re-auth loop → each new `user` object reference triggered the message **load** effect, resetting messages from localStorage before the save effect ran | `checkAuthStatus` now has `[]` deps; uses `setUser(prev => identical ? prev : newData)`; Chatbot load/save effects depend on `user?.id` (string) not `user` (object) |
+| "No matching documents" generic response | `response_generator.py` was `await`-ing a sync `AzureOpenAI` client → silent `TypeError` → hardcoded fallback string returned | Use `call_llm()` wrapper, never `await client.chat.completions.create()` |
+| Blank chat after second query | Zero-node results cached in Redis; next request hit cache → 0 docs → zero_docs_fallback every time | Never cache zero-node results |
+
+### Message rendering
+
+- Messages are saved to `localStorage` per-user via `compactMessageForStorage` (truncates docs/text for storage)
+- On load, timestamps are restored with `new Date(msg.timestamp)` — always use `(ts instanceof Date ? ts : new Date(ts)).toLocaleTimeString()` for safe rendering
+- `MAX_STORED_MESSAGES = 24` — only last 24 messages are persisted; full message array kept in React state
+
+### Query flow in `executeQuery()`
+
+```
+sendOracleQuery() → Promise.race(query, 90s timeout)
+  → hasUsableAnswer(response.answer) ?
+      → use answer
+      → buildDocumentFallbackAnswer(docs)  ← never shows blank
+  → setMessages([...prev, assistantMessage])
+  → if shouldAutoEnhance: void autoEnhanceMessage(...)
 ```
 
-### Database Migrations
-
-```bash
-make migrate                       # Apply PostgreSQL migrations
-make migrate-status                # Check migration history
-
-# Migrations in prod-deployment/migrations/*.sql
-# Auto-applied via docker-entrypoint-initdb.d in postgres service
-```
+---
 
 ## Authentication & Authorization
 
-**Security Model:** Docker network isolation. Internal services only reachable via auth gateway.
-
-**Auth Gateway Pattern:**
-1. User authenticates via AWS Cognito OAuth 2.0
-2. Auth service validates JWT and adds headers: `X-User-Id`, `X-User-Email`, `X-User-Role`
-3. Auth service proxies request to internal service
-4. Internal services trust headers (shared network boundary)
-
-**Usage in Services:**
+**Security model:** Docker network isolation. Internal services only reachable through auth gateway.
 
 ```python
 from common.auth_middleware import get_user_context, require_user_context, require_role
-
-# Optional auth (works with/without user)
-@app.get("/status")
-async def status(user: Optional[dict] = Depends(get_user_context)):
-    if user:
-        return {"user": user["email"]}
-    return {"system": "ok"}  # Service-to-service call
-
-# Required auth
-@app.post("/query")
-@require_user_context
-async def query(user: dict = Depends(get_user_context)):
-    # user guaranteed not None
-    pass
-
-# Role-based
-@app.post("/admin/scrape")
-@require_role(["admin", "superadmin"])
-async def scrape(user: dict = Depends(get_user_context)):
-    pass
-```
-
-**Service-to-Service Calls:**
-
-```python
 from common.service_client import call_internal_service
 
-# User-initiated (propagate context)
+# Service-to-service (always use this, never direct HTTP to auth)
 result = await call_internal_service(
     service_url="http://curator:8000",
     path="/trigger/topics",
     method="POST",
-    user_context=user  # Pass through
-)
-
-# System/scheduled (no user context)
-result = await call_internal_service(
-    service_url="http://curator:8000",
-    path="/status",
-    method="GET"
+    user_context=user  # or None for system calls
 )
 ```
 
-## Query Pipeline Architecture
+Auth gateway adds headers: `X-User-Id`, `X-User-Email`, `X-User-Role`. Internal services trust these headers.
 
-**File:** `backend/src/services/query_engine.py`
+---
 
-1. Load user preferences from PostgreSQL (topics/orgs/people)
-2. Extract filters from question via LLM (`llm_service.parse_query_to_filters`)
-3. Merge LLM filters with user preferences (both treated as relevance signals)
-4. Query Neo4j with multi-factor scoring (40% topic, 30% org, 20% people, 10% relationships)
-5. Combine relevance (70%) + recency (30%) for final ranking
-6. Summarize via LLM with anti-hallucination instructions
-7. Return answer + citations + full document metadata
+## Development Workflows
 
-**Key Pattern:** Query filters take precedence over user preferences for precision.
+### Start / stop
 
-**See:** `doc/PIPELINE_FLOW.md` for detailed flow diagram
-
-## RabbitMQ Message Flow
-
-**Queue:** `scraped_content`
-
-**Retriever publishes:**
-```python
-from rabbitmq_client.producer import RabbitMQProducer
-
-producer = RabbitMQProducer(host, port, user, password, queue)
-producer.publish(message_dict, message_type="resource")
+```bash
+docker compose up -d               # Start all (hot reload on)
+docker compose logs -f oracle      # Tail a service
+docker compose restart oracle      # Restart one service
 ```
 
-**Digester consumes:**
-```python
-from rabbitmq_client import AsyncRabbitMQConsumer
+### End-to-end CLI testing
 
-consumer = AsyncRabbitMQConsumer(host, port, user, password, queue)
-await consumer.start(callback=process_message)
+```bash
+# Standard battery (21 questions, all pipelines)
+./test_cli.sh
+
+# Fast-pipeline battery (68 questions, forced fast mode)
+./test_cli_fast.sh --random --questions=5     # 5 random
+./test_cli_fast.sh --random                   # 5 random (default)
+./test_cli_fast.sh                            # all 68 in order
+./test_cli_fast.sh --verbose --questions=3    # + route/graph metadata
+
+# Single query with explicit pipeline
+./cli/aurora --pipeline fast  "What are sticky clients?"
+./cli/aurora --pipeline baseline "Compare Wi-Fi 7 and Wi-Fi 8"
+./cli/aurora -v "What happened in the Wi-Fi 8 meeting last week?"   # verbose
 ```
 
-**Message Types:** `"resource"` (documents), `"event"` (conferences/webinars)
+`cli/fast_questions.txt` — 68 questions covering all 10 route-type categories.
+
+### Build & ship
+
+```bash
+make aws-login                                          # Authenticate ECR (opens browser)
+make build-push-oracle build-push-frontend             # Rebuild changed services
+make build-push-all                                    # Rebuild everything
+# VERSION is auto-set to the current git SHA
+```
+
+### Deploy to production EC2
+
+```bash
+# Option 1 — interactive SSM session
+make connect_aurora_ec2
+# then: sudo -i -u ec2-user
+# then: cd ~/octo-rapid-aurora/prod-deployment && make update
+
+# Option 2 — non-interactive SSM (scriptable)
+aws ssm send-command \
+  --instance-ids "i-083e73fca8dbe3191" \
+  --profile "PowerUserAccess-716121312929" \
+  --region us-east-1 \
+  --document-name "AWS-RunShellScript" \
+  --parameters 'commands=["sudo -u ec2-user bash -c \"cd /home/ec2-user/octo-rapid-aurora && git pull origin main && cd prod-deployment && make update\""]'
+```
+
+`make update` = ECR login → backup → `docker compose pull` → `docker compose up -d`
+
+### Database migrations
+
+```bash
+make migrate          # Apply pending PostgreSQL migrations
+make migrate-status   # Check history
+# Migration SQL files: prod-deployment/migrations/*.sql
+```
+
+---
 
 ## Neo4j Knowledge Graph
 
-**Node Types:** Topic, Organization, Person, Resource, Event, DataSource
-**Key Relationships:** DISCUSSES (Resource→Topic), PUBLISHED_BY (Resource→Organization), ENCOMPASSES (Topic→Topic)
+**Node types:** Topic, Organization, Person, Resource, Event, DataSource  
+**Key relationships:** `DISCUSSES` (Resource→Topic), `PUBLISHED_BY` (Resource→Organization), `ENCOMPASSES` (Topic→Topic), `AFFILIATED_WITH` (Person→Organization)
 
-**Shared Client Usage:**
 ```python
 from neo4j_client import Neo4jClient, GraphRepository
-from neo4j_client.models import Topic, Resource, Organization
+from neo4j_client.deduplicator import NodeDeduplicator
 
 client = Neo4jClient(uri, user, password, database)
-repo = GraphRepository(client)
-
-# Create/update with deduplication
-from neo4j_client.deduplicator import NodeDeduplicator
-dedup = NodeDeduplicator(client)
-topic = await dedup.find_or_create_topic(name="Wi-Fi 7", aliases=["802.11be"])
+dedup  = NodeDeduplicator(client)
+topic  = await dedup.find_or_create_topic(name="Wi-Fi 7", aliases=["802.11be"])
 ```
 
-**Vector Search:** Uses `text-embedding-3-large` embeddings with cosine similarity
+**Vector search:** `text-embedding-3-large`, cosine similarity  
+**Recreate vector indexes:** `python neo4j-client/recreate_vector_indexes.py`
 
-## Observability (OpenTelemetry)
+---
 
-**Pattern:** Each service calls `init_telemetry()` at startup
+## Observability
 
 ```python
 from common.telemetry import init_telemetry, instrument_fastapi
 
-tracer, meter = init_telemetry(
-    service_name="aurora-backend",
-    service_version="1.0.0"
-)
-instrument_fastapi(app)  # Auto-instruments routes
+tracer, meter = init_telemetry(service_name="aurora-oracle", service_version="1.0.0")
+instrument_fastapi(app)   # auto-instruments all routes
 ```
 
-**Instrumentation:** FastAPI, HTTPX, Psycopg2, Redis automatically traced when available.
+Grafana at `http://localhost:3001` (dev) — Tempo traces, Loki logs, Prometheus metrics.
 
-**Backends:** Tempo (traces), Loki (logs), Prometheus (metrics) → Grafana dashboards
+---
 
-## Testing Conventions
+## RabbitMQ Message Flow
 
-**Backend/Services (pytest):**
-- Use `pytest-asyncio` for async tests
-- Mock external dependencies (Neo4j, RabbitMQ, Azure OpenAI)
-- See `retriever/tests/test_base_scraper.py` for comprehensive fixture patterns
+**Queue:** `scraped_content`  
+**Message types:** `"resource"` (documents), `"event"` (conferences/webinars)
 
-**Frontend (Jest):**
-- React Testing Library for component tests
-- Mock API calls via `src/api/client.js`
+```python
+# Retriever publishes
+from rabbitmq_client.producer import RabbitMQProducer
+producer = RabbitMQProducer(host, port, user, password, queue)
+producer.publish(message_dict, message_type="resource")
 
-**Integration Tests:**
-- Some services have `/testing` endpoints (curator, retriever)
-- Use `test_*.sh` scripts in root for end-to-end scenarios
-
-## Production Deployment
-
-**Target:** AWS EC2 with Docker Compose
-
-```bash
-cd prod-deployment
-cp .env.prod .env           # Configure DOMAIN, SSL_EMAIL, passwords
-make deploy                  # Uses docker-compose.prod.yml
-
-# SSL via Let's Encrypt (automatic renewal)
-# nginx/init-ssl.sh runs on first start
-# nginx/renew-certs.sh cron job for renewal
+# Digester consumes
+from rabbitmq_client import AsyncRabbitMQConsumer
+consumer = AsyncRabbitMQConsumer(host, port, user, password, queue)
+await consumer.start(callback=process_message)
 ```
 
-**Key Config:**
-- All infrastructure ports closed (only 80/443 exposed)
-- nginx handles SSL termination, proxies to auth service
-- Auth service proxies to internal services
-- Automated backups via `scripts/backup.sh` (cron)
-
-**See:** `doc/DEPLOYMENT.md` for full EC2 setup guide
-
-## Project-Specific Patterns
-
-### Makefile Hierarchy
-- Root `Makefile` orchestrates all services
-- Each service has `Makefile` that `include ../Makefile.common`
-- Common targets: `test`, `build-push`, `ship` (test + build + push)
-- Uses git SHA for automatic image versioning
-
-### Error Handling
-- Services use structured logging with context (user_id, request_id)
-- LLM calls have fallback heuristics (see `llm_service.py`)
-- Neo4j queries use `OPTIONAL MATCH` for flexible retrieval
-
-### Environment Variables
-- Development: `.env.dev` → `.env`
-- Production: `.env.prod` → `.env`
-- All services read from centralized `.env` via docker-compose
-
-### Content Creator Agents
-- Each agent has persona, cadence, topics, and style preferences
-- Knowledge monitoring triggers post generation when new relevant docs appear
-- Posts include source citations and relevance scoring
-- Quality controls: diversity filtering, domain limits, temporal windows
+---
 
 ## Common Pitfalls
 
-1. **Shared library changes:** After modifying `neo4j-client/` or `rabbitmq-client/`, rebuild dependent service images
-2. **Auth headers:** Internal services MUST NOT call auth endpoints directly; use `call_internal_service()` from `common/service_client.py`
-3. **Neo4j migrations:** Vector indexes must be manually recreated via `neo4j-client/recreate_vector_indexes.py`
-4. **RabbitMQ queues:** If changing queue names, update both producer and consumer configs
-5. **CORS:** Development has CORS enabled for `localhost:3000`; production relies on nginx proxy (no CORS needed)
+1. **Shared library changes** — after editing `neo4j-client/` or `rabbitmq-client/`, rebuild all dependent service images.
+2. **Auth headers** — internal services must use `call_internal_service()`, never raw HTTP to the auth service.
+3. **Async LLM client** — `get_llm_client()` is sync `AzureOpenAI`. Always use `call_llm()` wrapper.
+4. **Zero-doc caching** — never call `fast_cache.set_result()` when `processed_results` is empty.
+5. **CORS** — dev has CORS on for `localhost:3000`; prod relies on nginx proxy (no CORS headers needed).
+6. **`user` object identity in React** — `AuthContext.checkAuthStatus` previously recreated `user` on every call (infinite loop). It now uses a JSON identity check — do not add `user` back to its `useCallback` deps.
+7. **Pipeline override in oracle** — pass `options.pipeline_override = "fast" | "baseline"` in the request body to force a pipeline; do not rely on AB-test flag alone when testing.
 
-## Key Files for Context
+---
 
-- `docker-compose.yml` - Service orchestration (dev)
-- `prod-deployment/docker-compose.prod.yml` - Production config
-- `doc/PIPELINE_FLOW.md` - Query processing flow
-- `doc/DEPLOYMENT.md` - AWS deployment guide
-- `auth/INTEGRATION_GUIDE.md` - Auth gateway deep dive
-- `content_creator_service/README.md` - AI agent configuration
-- `oracle/README.md` - Advanced Q&A features
+## Environment Variables
 
-## Quick Reference
+| Context | File |
+|---------|------|
+| Development | `.env.dev` → `.env` |
+| Production | `.env.prod` → `.env` |
+| CLI testing | `TEST_USER_ID`, `TEST_USER_EMAIL`, `AURORA_ROLE`, `AURORA_ORACLE_URL` |
+
+All services read from the centralized `.env` via docker-compose.
+
+---
+
+## Key Files Quick Reference
+
+| File | What it does |
+|------|-------------|
+| `docker-compose.yml` | Dev service orchestration |
+| `prod-deployment/docker-compose.prod.yml` | Production config |
+| `oracle/src/engines/fast_engine.py` | Fast pipeline (primary query path) |
+| `oracle/src/services/query_template_registry.py` | All 39 Cypher templates |
+| `oracle/src/prompts/answer_generator.py` | LLM persona ("meeting attendee") |
+| `frontend/src/pages/Chatbot.jsx` | Main chat UI |
+| `frontend/src/contexts/AuthContext.js` | Auth state (stable user ref) |
+| `cli/aurora_query.py` | CLI query client with `--pipeline` and confidence badges |
+| `cli/fast_questions.txt` | 68-question fast-mode test bank |
+| `test_cli_fast.sh` | Fast-pipeline test harness (`--random --questions=N`) |
+| `test_cli.sh` | Full 21-question integration test battery |
+| `doc/PIPELINE_FLOW.md` | Query processing flow diagram |
+| `doc/DEPLOYMENT.md` | AWS EC2 deployment guide |
+
+---
+
+## Quick Command Reference
 
 | Task | Command |
 |------|---------|
-| Start dev environment | `docker compose up -d` |
-| View service logs | `docker compose logs -f [service]` |
-| Run all tests | `make test-all` |
-| Test one service | `cd [service] && make test` |
-| Apply DB migrations | `make migrate` |
-| Build for ECR | `make ship-all` |
-| Deploy to prod | `cd prod-deployment && make deploy` |
+| Start dev | `docker compose up -d` |
+| Tail logs | `docker compose logs -f [service]` |
+| Run all service tests | `make test-all` |
+| Run fast-mode CLI tests | `./test_cli_fast.sh --random --questions=5` |
+| Run full CLI battery | `./test_cli.sh` |
+| Rebuild changed services | `make build-push-oracle build-push-frontend` |
+| Rebuild everything | `make build-push-all` |
+| AWS ECR login | `make aws-login` |
+| Deploy to prod | `cd prod-deployment && make update` |
 | Connect to EC2 | `make connect_aurora_ec2` |
+| Flush Redis fast cache | `redis-cli EVAL "..." 0 "fast:*"` |
+| Apply DB migrations | `make migrate` |
