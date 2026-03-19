@@ -1,0 +1,109 @@
+# Aurora Fast-Mode Question Bank
+# ============================================================
+# Questions optimised for the fast (graph-first) pipeline.
+# Each line is a runnable question.  Blank lines and lines
+# starting with "#" are ignored by the test harness.
+#
+# Route types targeted are noted in the inline comments so
+# you can see which template each question exercises.
+#
+# Sections:
+#   1.  Recent-content rollups  (RECENT_CONTENT / WORKGROUP_*)
+#   2.  Topic deep-dives        (DOCUMENTS_BY_TOPIC / TOPIC_TIMELINE)
+#   3.  Topic comparisons       (TOPIC_COMPARISON)
+#   4.  Standards & specs       (STANDARD_STATUS / STANDARD_UPDATES)
+#   5.  People & contributors   (PERSON_PROFILE / WHO_SAID_WHAT)
+#   6.  Organisations           (ORGANIZATION_ACTIVITY)
+#   7.  Events & meetings       (UPCOMING_EVENTS / MEETING_BY_TITLE)
+#   8.  Datasource roll-ups     (RECENT_PUBLICATIONS / WFA press releases)
+#   9.  Regulatory & adoption   (REGULATORY_INFO / ADOPTION_STATUS)
+#  10.  Technical explanations  (TECHNICAL_EXPLANATION)
+# ============================================================
+
+# --- 1. RECENT-CONTENT ROLLUPS ---
+What was discussed in the last month across all working groups?
+What happened in the Wi-Fi 8 working group last week?
+Give me a summary of the most recent Wi-Fi Alliance publications
+What were the key topics from the latest Wi-Fi 8 meeting minutes?
+What documents were published in the last 30 days?
+Summarise the latest Wi-Fi Alliance Causeway workgroup activity
+What new content was added to the knowledge base recently?
+What was discussed in the Wi-Fi 8 February 2026 face-to-face meeting?
+
+# --- 2. TOPIC DEEP-DIVES ---
+What are sticky clients and why are they a problem in Wi-Fi?
+What documents discuss sticky client scenarios in Wi-Fi 8?
+Show me everything in the knowledge base related to Multi-Link Operation
+What has been written about 6 GHz spectrum management?
+What documents cover the upper 6 GHz band discussions?
+What is discussed in the knowledge base about target wake time?
+Find all documents related to 802.11be beamforming
+What are the key documents about Wi-Fi sensing technology?
+What material covers channel bonding in Wi-Fi 7 and Wi-Fi 8?
+What has been documented about power save mechanisms in Wi-Fi 8?
+
+# --- 3. TOPIC COMPARISONS ---
+What is the difference between Wi-Fi 7 and Wi-Fi 8?
+Compare Multi-Link Operation in Wi-Fi 7 versus Wi-Fi 8
+How does 802.11be differ from 802.11ax in terms of channel width?
+What are the improvements in Wi-Fi 8 over Wi-Fi 7 for latency?
+Compare the security features of WPA3 versus WPA2
+What changed between Wi-Fi 6 and Wi-Fi 6E?
+How does the 6 GHz band compare to the 5 GHz band for enterprise deployments?
+
+# --- 4. STANDARDS & SPECS ---
+What is the current status of the IEEE 802.11bn standard?
+What are the latest changes to the 802.11be specification?
+What milestones has the Wi-Fi 8 task group hit recently?
+What is the timeline for Wi-Fi 8 certification?
+What features are being debated in the 802.11bn amendment?
+What is the current status of Wi-Fi 7 certification programmes?
+
+# --- 5. PEOPLE & CONTRIBUTORS ---
+What has been discussed about sticky clients by meeting attendees?
+Who presented at the Wi-Fi 8 February 2026 face-to-face?
+What expert opinions exist on Multi-Link Operation performance?
+Who is contributing to discussions on Wi-Fi sensing in the working groups?
+What do contributors say about roaming improvements in Wi-Fi 8?
+
+# --- 6. ORGANISATIONS ---
+What has the Wi-Fi Alliance published about Wi-Fi 7 adoption?
+What are the latest Wi-Fi Alliance press releases?
+What documents come from the Wi-Fi Alliance Causeway working groups?
+What has Qualcomm contributed to Wi-Fi 8 discussions?
+What positions has Intel published on next-generation Wi-Fi?
+
+# --- 7. EVENTS & MEETINGS ---
+What is on the agenda for upcoming Wi-Fi Alliance events?
+What was the agenda for the Wi-Fi 8 February 2026 face-to-face meeting?
+What were the action items from the last Wi-Fi 8 meeting?
+What decisions were made in the most recent Wi-Fi 8 meeting minutes?
+What was discussed in the Wi-Fi 8 meeting on February 17, 2026?
+What is the Wi-Fi 8 meeting schedule for early 2026?
+
+# --- 8. DATASOURCE ROLL-UPS ---
+What is the latest Wi-Fi Alliance press release?
+Show me all Wi-Fi Alliance blog posts from the last quarter
+What whitepapers has the Wi-Fi Alliance published about Wi-Fi 7?
+What resources are available about Wi-Fi 7 certification?
+What podcasts or broadcasts have discussed Wi-Fi 8?
+Give me a rollup of all WFA Beacon articles about 6 GHz
+
+# --- 9. REGULATORY & ADOPTION ---
+What is the latest regulatory update on 6 GHz spectrum globally?
+Which countries have approved 6 GHz for unlicensed Wi-Fi use?
+What is the adoption status of Wi-Fi 7 among device manufacturers?
+What compliance requirements exist for Wi-Fi 6E devices?
+What regulatory actions has the FCC taken regarding Wi-Fi spectrum?
+What is the RSPG position on the upper 6 GHz band in Europe?
+
+# --- 10. TECHNICAL EXPLANATIONS ---
+How does Multi-Link Operation work in Wi-Fi 7?
+Explain the OFDMA resource unit allocation in Wi-Fi 6
+How does target wake time reduce power consumption in IoT devices?
+What is the role of BSS colouring in reducing interference?
+How does 4K-QAM improve throughput in Wi-Fi 7?
+Explain the roaming problem caused by sticky clients
+How does beamforming improve signal strength in 802.11be?
+What is spatial reuse and how is it implemented in Wi-Fi 6?
+How does preamble puncturing work in Wi-Fi 6E and Wi-Fi 7?

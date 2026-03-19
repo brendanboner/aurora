@@ -9,6 +9,23 @@ import time
 from typing import Optional, List
 
 
+def _format_confidence(score: Optional[float], label: str = "Confidence") -> str:
+    """Return a human-readable confidence badge."""
+    if score is None:
+        return f"🔘 {label}: N/A"
+    pct = int(score * 100)
+    if score >= 0.75:
+        icon = "🟢"
+        level = "High"
+    elif score >= 0.45:
+        icon = "🟡"
+        level = "Medium"
+    else:
+        icon = "🔴"
+        level = "Low"
+    return f"{icon} {label} confidence: {level} ({pct}%)"
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="aurora",
@@ -36,6 +53,12 @@ def main():
         help="Maximum number of documents to retrieve (default: 10)"
     )
     parser.add_argument(
+        "--pipeline",
+        choices=["fast", "baseline", "system"],
+        default="system",
+        help="Force a specific pipeline: fast (graph-first), baseline (full LLM), or system (auto, default)"
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Show detailed information including query ID, confidence, and graph context"
@@ -52,7 +75,10 @@ def main():
     
     print(f"\n🔍 Question: {question}")
     print(f"👤 User: {user_email} ({user_id})")
-    print(f"🎯 Mode: {args.mode}")
+    print(f"🎯 Mode: {args.mode}", end="")
+    if args.pipeline != "system":
+        print(f"  |  ⚡ Pipeline: {args.pipeline}", end="")
+    print()
     if args.datasources:
         print(f"📊 Datasources: {args.datasources}")
     print()
@@ -68,6 +94,10 @@ def main():
         }
     }
     
+    # Force pipeline if explicitly set
+    if args.pipeline != "system":
+        payload["options"]["pipeline_override"] = args.pipeline
+
     # Add datasource filter if specified
     if args.datasources:
         payload["options"]["datasource_ids"] = [ds.strip() for ds in args.datasources.split(",")]
@@ -102,8 +132,22 @@ def main():
 
     data = resp.json()
 
-    # Display query timing
-    print(f"\n⏱️  Query completed in {elapsed_time:.2f}s")
+    # Always show pipeline and confidence alongside timing
+    pipeline = data.get('pipeline', 'N/A')
+    meta = data.get('metadata') or {}
+
+    # Fast pipeline returns routing confidence (intent_confidence) rather than
+    # a full answer-level score.  Show whichever is available.
+    confidence = data.get('confidence_score')
+    if confidence is None and meta.get('intent_confidence') is not None:
+        confidence = meta['intent_confidence']
+        confidence_label = "Routing"
+    else:
+        confidence_label = "Answer"
+
+    confidence_str = _format_confidence(confidence, label=confidence_label)
+
+    print(f"\n⏱️  Query completed in {elapsed_time:.2f}s  |  🚀 Pipeline: {pipeline}  |  {confidence_str}")
 
     # Display verbose metadata first if requested
     if args.verbose:
@@ -111,9 +155,13 @@ def main():
         print("🔍 QUERY METADATA")
         print("=" * 80)
         print(f"Query ID: {data.get('query_id', 'N/A')}")
-        print(f"Pipeline: {data.get('pipeline', 'N/A')}")
-        print(f"Confidence Score: {data.get('confidence_score', 'N/A')}")
+        print(f"Pipeline: {pipeline}")
+        print(f"Confidence Score: {confidence_str}")
         print(f"Personalization Applied: {data.get('personalization_applied', False)}")
+        if meta.get('intent_confidence'):
+            print(f"Routing Confidence: {meta['intent_confidence']:.2f}")
+        if meta.get('route_type'):
+            print(f"Route Type: {meta['route_type']}")
         
         # Show graph context if available
         graph_context = data.get('graph_context')
