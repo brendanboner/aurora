@@ -1271,9 +1271,10 @@ class FastEngine:
                 answer, citations = self._build_simple_summary(documents)
                 return answer, documents, citations
             
-            # Create citations from documents
+            # Create citations for all documents passed to the LLM prompt (up to 10)
+            # Must match docs_for_prompt range so [6]..[10] refs in the answer are resolvable
             citations = []
-            for idx, doc in enumerate(documents[:5], 1):
+            for idx, doc in enumerate(documents[:10], 1):
                 citations.append(Citation(
                     index=idx,
                     document_url=doc.url,

@@ -10,8 +10,8 @@ import DatasourceMention from '../components/DatasourceMention';
 import './Chatbot.css';
 
 const MAX_STORED_MESSAGES = 24;
-const MAX_STORED_DOCUMENTS = 5;
-const MAX_STORED_CITATIONS = 8;
+const MAX_STORED_DOCUMENTS = 10;
+const MAX_STORED_CITATIONS = 10;
 const MAX_STORED_TEXT_LENGTH = 600;
 
 const Chatbot = ({ backendStatus }) => {
