@@ -374,3 +374,21 @@ async def decide_personalization(
         user_context=user_context,
         reason="default_personalize"
     )
+
+
+# ========== User Source Memberships ==========
+
+def get_user_source_memberships(user_id: str) -> dict:
+    """
+    Fetch user source membership preferences from PostgreSQL.
+
+    Returns:
+        Dict with 'joined' (boosted) and 'ignored' (hard-excluded) datasource_id lists.
+        Both lists are empty if no preferences are set (default behaviour).
+    """
+    query = "SELECT datasource_id, status FROM user_source_memberships WHERE user_id = %s"
+    rows = _fetchall(query, (user_id,))
+    joined = [r["datasource_id"] for r in rows if r["status"] == "joined"]
+    ignored = [r["datasource_id"] for r in rows if r["status"] == "ignored"]
+    logger.debug(f"Source memberships for {user_id}: joined={joined}, ignored={ignored}")
+    return {"joined": joined, "ignored": ignored}

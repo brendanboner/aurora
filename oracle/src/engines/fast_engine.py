@@ -21,7 +21,7 @@ from src.services.query_template_registry import QueryTemplateRegistry
 from src.services.fast_cache import FastCache, normalize_query
 from src.services.cache import OracleCache
 from src.services.keyword_retriever import get_repo
-from src.services.personalization import decide_personalization, get_user_preferences
+from src.services.personalization import decide_personalization, get_user_preferences, get_user_source_memberships
 from src.services.llm_client import get_llm_client, call_llm
 from src.services.rollup_generator import RollupGenerator
 from src.services.topic_manager import initialize_topic_manager, get_topic_manager
@@ -276,6 +276,21 @@ class FastEngine:
                 logger.info(f"[{query_id}] Using datasource_ids filter: {datasource_ids}")
             else:
                 logger.debug(f"[{query_id}] No datasource_ids filter provided")
+
+            # Load user source memberships (joined=boost, ignored=hard-exclude)
+            user_excluded_datasources: list = []
+            user_preferred_datasources: list = []
+            if request.user_id:
+                try:
+                    memberships = get_user_source_memberships(str(request.user_id))
+                    user_excluded_datasources = memberships.get("ignored", [])
+                    user_preferred_datasources = memberships.get("joined", [])
+                    if user_excluded_datasources:
+                        logger.info(f"[{query_id}] User ignoring datasources: {user_excluded_datasources}")
+                    if user_preferred_datasources:
+                        logger.info(f"[{query_id}] User joined datasources: {user_preferred_datasources}")
+                except Exception as e:
+                    logger.warning(f"[{query_id}] Failed to fetch source memberships: {e}")
             
             # Decide personalization and capture user context for answer synthesis.
             personalization_enabled = False
@@ -321,6 +336,15 @@ class FastEngine:
                 # Routing failed - should fallback to baseline
                 logger.warning(f"[{query_id}] Fast routing failed, fallback needed")
                 raise Exception("Fast routing failed - no route plan generated")
+
+            # Attach source membership filters to plan for use in build_params()
+            if user_excluded_datasources:
+                plan.excluded_datasources = user_excluded_datasources
+            if user_preferred_datasources:
+                # If request already has explicit datasource_ids, honour those and don't
+                # override with joined preferences. Still apply excluded filter.
+                if not datasource_ids:
+                    plan.preferred_datasources = user_preferred_datasources
             
             # Handle route_id that might be enum or string (after cache deserialization)
             route_id_str = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
@@ -672,6 +696,41 @@ class FastEngine:
         
         # Post-process results
         processed_results = template.execute_post_process(results)
+
+        # Apply source membership filters:
+        # 1. Hard-exclude results from datasources the user has ignored
+        # 2. Soft-boost results from datasources the user has joined
+        excluded_ds = params.get("excluded_datasources", [])
+        preferred_ds = params.get("preferred_datasources", [])
+        if excluded_ds:
+            before_count = len(processed_results)
+            processed_results = [
+                r for r in processed_results
+                if r.get("datasource_id") not in excluded_ds
+                and r.get("workgroup_id") not in excluded_ds
+            ]
+            if len(processed_results) < before_count:
+                logger.info(
+                    f"Excluded {before_count - len(processed_results)} results from ignored datasources"
+                )
+        if preferred_ds and processed_results:
+            def _source_boost(r: dict) -> float:
+                ds_id = r.get("datasource_id") or r.get("workgroup_id") or ""
+                return 1.4 if ds_id in preferred_ds else 1.0
+            # Apply boost to any existing score field, or add a boost multiplier
+            for r in processed_results:
+                if "score" in r and r["score"] is not None:
+                    r["score"] = float(r["score"]) * _source_boost(r)
+                else:
+                    r["_source_boost"] = _source_boost(r)
+            # Re-sort by score after boost
+            try:
+                processed_results.sort(
+                    key=lambda r: (r.get("score") or 0.0) * r.get("_source_boost", 1.0),
+                    reverse=True
+                )
+            except Exception:
+                pass
         
         # Fallback: If no results and query had date filters, retry without dates
         if len(processed_results) == 0 and (params.get('start_date') or params.get('end_date') or params.get('relative_days')):

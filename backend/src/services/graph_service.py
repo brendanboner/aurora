@@ -696,6 +696,42 @@ def get_graph_statistics() -> Dict[str, Any]:
 # DataSource Configuration Management (Admin UI)
 # =============================================================================
 
+# =============================================================================
+# DataSource Configuration Management (Admin UI)
+# =============================================================================
+
+def get_listable_datasources() -> List[Dict[str, Any]]:
+    """
+    Get all datasources visible to users for workgroup/source preference selection.
+
+    Returns DataSource nodes with source_type in ('authenticated_portal', 'scraped_webpage'),
+    classified as 'workgroup' or 'public'. Used by the workgroup preferences UI.
+    """
+    repo = get_repo()
+    query = """
+    MATCH (ds:DataSource)
+    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage']
+    RETURN ds.datasource_id AS datasource_id,
+           coalesce(ds.display_name, ds.name, ds.datasource_id) AS name,
+           ds.source_type AS source_type,
+           ds.fetch_url AS fetch_url
+    ORDER BY ds.source_type DESC, name
+    """
+    results = repo.client.execute_query(query, {})
+    datasources = []
+    for record in results:
+        source_type = record["source_type"] or ""
+        category = "workgroup" if source_type == "authenticated_portal" else "public"
+        datasources.append({
+            "datasource_id": record["datasource_id"],
+            "name": record["name"],
+            "source_type": source_type,
+            "category": category,
+            "fetch_url": record["fetch_url"],
+        })
+    return datasources
+
+
 def get_all_datasource_configurations() -> List[Dict[str, Any]]:
     """
     Get all datasource configurations from Neo4j.

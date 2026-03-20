@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import './Header.css';
 import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 import { useAuth } from '../contexts/AuthContext';
+import WorkgroupPreferencesModal from './WorkgroupPreferencesModal';
 
 const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showWorkgroupPrefs, setShowWorkgroupPrefs] = useState(false);
   const menuRef = useRef(null);
 
   const getUserInitials = () => {
@@ -50,6 +52,7 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
   }, [showUserMenu]);
 
   return (
+    <>
     <header className="app-header">
       <div className="header-brand">
         <button
@@ -97,6 +100,12 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
                 <div className="user-menu-email">{user?.email}</div>
                 <div className="user-menu-role">Role: {user?.role || 'user'}</div>
               </div>
+              <button
+                className="user-menu-logout"
+                onClick={() => { setShowUserMenu(false); setShowWorkgroupPrefs(true); }}
+              >
+                Source Preferences
+              </button>
               <button className="user-menu-logout" onClick={handleLogout}>
                 Logout
               </button>
@@ -105,6 +114,14 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
         </div>
       </div>
     </header>
+
+    {showWorkgroupPrefs && user?.id && (
+      <WorkgroupPreferencesModal
+        userId={user.id}
+        onClose={() => setShowWorkgroupPrefs(false)}
+      />
+    )}
+  </>
   );
 };
 

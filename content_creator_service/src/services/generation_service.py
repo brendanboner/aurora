@@ -16,6 +16,7 @@ from ..settings import get_settings
 from .oracle_client import OracleAgentClient
 from .post_service import PostService
 from .prompt_builder import PromptBuilder
+from .. import db as _db
 
 logger = logging.getLogger(__name__)
 
@@ -678,6 +679,8 @@ class GenerationService:
         topics: List[str],
         organizations: List[str],
         base_window_days: int,
+        excluded_datasources: Optional[List[str]] = None,
+        preferred_datasources: Optional[List[str]] = None,
     ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
         fallback_reason = "Oracle discovery unavailable or returned no relevant content."
         candidate_windows = []
@@ -698,6 +701,8 @@ class GenerationService:
                     limit=20,
                     window_days=window_days,
                     min_relevance_score=min_relevance,
+                    excluded_datasources=excluded_datasources,
+                    preferred_datasources=preferred_datasources,
                 )
             )
             documents = self._normalize_context_records(
@@ -706,6 +711,8 @@ class GenerationService:
                     limit=20,
                     window_days=window_days,
                     min_relevance_score=min_relevance,
+                    excluded_datasources=excluded_datasources,
+                    preferred_datasources=preferred_datasources,
                 )
             )
 
@@ -748,6 +755,8 @@ class GenerationService:
         organizations: List[str],
         cadence_days: int,
         used_content_ids: List[str],
+        excluded_datasources: Optional[List[str]] = None,
+        preferred_datasources: Optional[List[str]] = None,
     ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
         if self._use_oracle:
             try:
@@ -770,6 +779,11 @@ class GenerationService:
                     )
                 )
                 events, documents = self._transform_oracle_content(oracle_result.get("content_items", []))
+                # Apply exclusion filter to oracle results
+                if excluded_datasources and events:
+                    events = [e for e in events if e.get("datasource_id") not in excluded_datasources]
+                if excluded_datasources and documents:
+                    documents = [d for d in documents if d.get("datasource_id") not in excluded_datasources]
                 if events or documents:
                     return events, documents, self._summarize_context_freshness(
                         events,
@@ -792,6 +806,8 @@ class GenerationService:
             topics=topics,
             organizations=organizations,
             base_window_days=cadence_days,
+            excluded_datasources=excluded_datasources,
+            preferred_datasources=preferred_datasources,
         )
     
     def generate_for_user_agent(self, user_agent_dict: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -811,6 +827,14 @@ class GenerationService:
         
         # Determine time window from cadence
         cadence_days = self._get_user_agent_discovery_window_days(cadence)
+
+        # Fetch user source membership preferences
+        excluded_datasources: List[str] = []
+        preferred_datasources: List[str] = []
+        try:
+            excluded_datasources, preferred_datasources = self._get_user_source_memberships(user_id)
+        except Exception as exc:
+            logger.warning("Failed to fetch source memberships for user agent %s: %s", agent_name, exc)
         
         # Fetch previously used content IDs
         used_content_ids = self._fetch_used_content_ids_for_user_agent(agent_id, lookback_days=cadence_days * 2)
@@ -822,6 +846,8 @@ class GenerationService:
             organizations=organizations,
             cadence_days=cadence_days,
             used_content_ids=used_content_ids,
+            excluded_datasources=excluded_datasources,
+            preferred_datasources=preferred_datasources,
         )
         
         if not events and not documents:
@@ -931,6 +957,21 @@ class GenerationService:
         )
         
         return [row["source_identifier"] for row in rows if row.get("source_identifier")]
+
+    def _get_user_source_memberships(self, user_id: str) -> tuple[List[str], List[str]]:
+        """
+        Fetch user source membership preferences from PostgreSQL.
+
+        Returns:
+            Tuple of (excluded_datasource_ids, preferred_datasource_ids).
+        """
+        rows = _db.fetch_all(
+            "SELECT datasource_id, status FROM user_source_memberships WHERE user_id = %s",
+            (user_id,),
+        )
+        excluded = [r["datasource_id"] for r in (rows or []) if r["status"] == "ignored"]
+        preferred = [r["datasource_id"] for r in (rows or []) if r["status"] == "joined"]
+        return excluded, preferred
 
     def _fetch_recent_posts_for_user_agent(
         self,

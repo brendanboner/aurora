@@ -151,6 +151,8 @@ update: ecr-login
 	@$(MAKE) backup
 	@echo "$(YELLOW)→ Pulling latest images...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) pull
+	@echo "$(YELLOW)→ Running database migrations...$(NC)"
+	@$(MAKE) migrate
 	@echo "$(YELLOW)→ Restarting services...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) up -d
 	@echo "$(GREEN)✓ Services updated$(NC)"

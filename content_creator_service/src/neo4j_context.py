@@ -32,6 +32,8 @@ class Neo4jContextGateway:
         limit: int = 15,
         window_days: Optional[int] = None,
         min_relevance_score: Optional[float] = None,
+        excluded_datasources: Optional[List[str]] = None,
+        preferred_datasources: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Return recent events/resources filtered by topics or organisations.
@@ -85,6 +87,9 @@ class Neo4jContextGateway:
         AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
         // Date validation: exclude invalid future dates (beyond year 2100)
         AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
+        // Exclude datasources the user has ignored
+        AND ($excluded_datasources IS NULL OR size($excluded_datasources) = 0
+             OR NOT r.datasource_id IN $excluded_datasources)
         
         // Collect all topics and orgs for scoring
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -145,6 +150,7 @@ class Neo4jContextGateway:
                r.publish_date AS start_date,
                r.publish_date AS end_date,
                r.url AS url,
+               r.datasource_id AS datasource_id,
                COALESCE(r.importance, 'normal') AS importance,
                COALESCE(r.last_updated, r.publish_date) AS last_updated,
                all_topics AS topics,
@@ -165,6 +171,7 @@ class Neo4jContextGateway:
             "window_days": window_days,
             "min_relevance_score": min_relevance_score,
             "max_topics": max_topics,
+            "excluded_datasources": excluded_datasources or [],
         }
         results = self._client.execute_query(query, params)
         
@@ -204,6 +211,8 @@ class Neo4jContextGateway:
         limit: int = 20,
         window_days: Optional[int] = None,
         min_relevance_score: Optional[float] = None,
+        excluded_datasources: Optional[List[str]] = None,
+        preferred_datasources: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Fetch recent documents mentioning specific organisations.
@@ -242,6 +251,9 @@ class Neo4jContextGateway:
         AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
         // Date validation: exclude invalid future dates (beyond year 2100)
         AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
+        // Exclude datasources the user has ignored
+        AND ($excluded_datasources IS NULL OR size($excluded_datasources) = 0
+             OR NOT r.datasource_id IN $excluded_datasources)
         
         WITH r, collect(DISTINCT o.name) AS all_organisations
         
@@ -280,6 +292,7 @@ class Neo4jContextGateway:
                r.summary AS summary,
                r.url AS url,
                r.publish_date AS publish_date,
+               r.datasource_id AS datasource_id,
                all_organisations AS organisations,
                relevance_score
         
@@ -293,6 +306,7 @@ class Neo4jContextGateway:
             "window_days": window_days,
             "min_relevance_score": min_relevance_score,
             "max_orgs": max_orgs,
+            "excluded_datasources": excluded_datasources or [],
         }
         
         results = self._client.execute_query(query, params)

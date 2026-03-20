@@ -577,6 +577,115 @@ async def update_preferences(user_id: str, preferences: UserPreferences, user: O
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ========== Datasource Listing Endpoint ==========
+
+class DatasourceInfo(BaseModel):
+    datasource_id: str
+    name: str
+    source_type: str
+    category: str  # 'workgroup' or 'public'
+    fetch_url: Optional[str] = None
+
+
+@app.get("/datasources", response_model=List[DatasourceInfo])
+@require_user_context
+async def list_datasources(user: Optional[dict] = Depends(get_user_context)):
+    """
+    List all datasources available for user preference selection.
+    Returns workgroups (authenticated_portal) and public sources (scraped_webpage),
+    grouped by category. Used by the Workgroup Preferences UI.
+    """
+    try:
+        datasources = graph_service.get_listable_datasources()
+        return [DatasourceInfo(**ds) for ds in datasources]
+    except Exception as e:
+        logger.error(f"Error fetching listable datasources: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== User Source Membership Endpoints ==========
+
+class SourceMembershipRequest(BaseModel):
+    status: str  # 'joined' or 'ignored'
+
+
+class SourceMembershipResponse(BaseModel):
+    user_id: str
+    datasource_id: str
+    status: str
+
+
+class UserSourceMembershipsResponse(BaseModel):
+    joined: List[str]
+    ignored: List[str]
+
+
+@app.get("/users/{user_id}/source-memberships", response_model=UserSourceMembershipsResponse)
+@require_user_context
+async def get_source_memberships(user_id: str, user: Optional[dict] = Depends(get_user_context)):
+    """Get all workgroup/source membership preferences for a user."""
+    try:
+        if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        memberships = postgres.get_user_source_memberships(user_id)
+        return UserSourceMembershipsResponse(**memberships)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/users/{user_id}/source-memberships/{datasource_id}", response_model=SourceMembershipResponse)
+@require_user_context
+async def upsert_source_membership(
+    user_id: str,
+    datasource_id: str,
+    body: SourceMembershipRequest,
+    user: Optional[dict] = Depends(get_user_context),
+):
+    """
+    Set a user's membership status for a datasource.
+    status='joined' boosts results from this source.
+    status='ignored' hard-excludes results from this source.
+    Saves instantly on toggle.
+    """
+    try:
+        if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        if body.status not in ("joined", "ignored"):
+            raise HTTPException(status_code=422, detail="status must be 'joined' or 'ignored'")
+        result = postgres.upsert_user_source_membership(user_id, datasource_id, body.status)
+        return SourceMembershipResponse(
+            user_id=result["user_id"],
+            datasource_id=result["datasource_id"],
+            status=result["status"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/users/{user_id}/source-memberships/{datasource_id}", status_code=204)
+@require_user_context
+async def delete_source_membership(
+    user_id: str,
+    datasource_id: str,
+    user: Optional[dict] = Depends(get_user_context),
+):
+    """
+    Remove a user's membership preference for a datasource (reverts to default behaviour).
+    """
+    try:
+        if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        postgres.delete_user_source_membership(user_id, datasource_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== Chat History Endpoints ==========
 
 @app.get("/conversations", response_model=List[ConversationResponse])

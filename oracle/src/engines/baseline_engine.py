@@ -17,7 +17,7 @@ from src.services.confidence_scorer import calculate_confidence
 from src.services.query_suggestions import suggest_refinements, should_show_suggestions
 from src.services.ranking_explainer import add_explanations_to_documents
 from src.services.cache import OracleCache, hash_options
-from src.services.personalization import decide_personalization, get_user_preferences
+from src.services.personalization import decide_personalization, get_user_preferences, get_user_source_memberships
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -197,6 +197,25 @@ class BaselineEngine:
                 "category": parsed.category,
                 "keywords": parsed.keywords,
             }
+
+            # Load user source memberships and apply to filters
+            user_excluded_datasources: list = []
+            user_preferred_datasources: list = []
+            if request.user_id:
+                try:
+                    memberships = get_user_source_memberships(str(request.user_id))
+                    user_excluded_datasources = memberships.get("ignored", [])
+                    user_preferred_datasources = memberships.get("joined", [])
+                    if user_excluded_datasources:
+                        logger.info(f"[{query_id}] Baseline: excluding datasources {user_excluded_datasources}")
+                    # Pass explicit datasource_ids from request, or user's preferred (if no explicit filter)
+                    request_datasource_ids = getattr(options, 'datasource_ids', None) if options else None
+                    if user_excluded_datasources:
+                        filters["excluded_datasource_ids"] = user_excluded_datasources
+                    if user_preferred_datasources and not request_datasource_ids:
+                        filters["preferred_datasource_ids"] = user_preferred_datasources
+                except Exception as e:
+                    logger.warning(f"[{query_id}] Failed to fetch source memberships (baseline): {e}")
             
             # Phase 3: Hybrid Search
             with tracer.start_as_current_span("baseline.hybrid_search"):
@@ -209,6 +228,25 @@ class BaselineEngine:
                 
                 documents = search_result.documents
                 strategies_used = search_result.strategies_used
+
+                # Apply source membership filters post-retrieval
+                if user_excluded_datasources:
+                    before_count = len(documents)
+                    documents = [
+                        d for d in documents
+                        if getattr(d, 'datasource_id', None) not in user_excluded_datasources
+                    ]
+                    if len(documents) < before_count:
+                        logger.info(
+                            f"[{query_id}] Baseline: excluded {before_count - len(documents)} "
+                            f"docs from ignored datasources"
+                        )
+                if user_preferred_datasources and documents:
+                    for d in documents:
+                        ds_id = getattr(d, 'datasource_id', None) or ""
+                        if ds_id in user_preferred_datasources and hasattr(d, 'relevance_score'):
+                            d.relevance_score = (d.relevance_score or 0.0) * 1.4
+                    documents.sort(key=lambda d: getattr(d, 'relevance_score', 0.0) or 0.0, reverse=True)
                 
                 span.set_attribute("oracle.documents_found", len(documents))
                 span.set_attribute("oracle.strategies", ",".join(strategies_used))

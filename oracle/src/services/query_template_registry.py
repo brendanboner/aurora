@@ -81,6 +81,9 @@ class QueryTemplate:
         params["category"] = plan.category if hasattr(plan, 'category') and plan.category else None
         params["exclude_meetings"] = plan.exclude_meetings if hasattr(plan, 'exclude_meetings') and plan.exclude_meetings is not None else None
         params["content_types"] = []  # Content type filter (e.g., ['decision', 'action'])
+        # User source membership filters — populated by fast_engine from user preferences
+        params["excluded_datasources"] = plan.excluded_datasources if plan.excluded_datasources else []
+        params["preferred_datasources"] = plan.preferred_datasources if plan.preferred_datasources else []
 
         expanded_topics = list(params["topics"])
         for topic in params["topics"]:

@@ -271,12 +271,12 @@ dev:
 
 migrate:
 	@echo "$(CYAN)Running database migrations...$(NC)"
-	@./prod-deployment/scripts/migrate.sh
+	@POSTGRES_USER=$${POSTGRES_USER:-aurora} POSTGRES_DB=$${POSTGRES_DB:-aurora} POSTGRES_CONTAINER=$${POSTGRES_CONTAINER:-aurora-postgres} ./prod-deployment/scripts/migrate.sh
 	@echo "$(GREEN)✓ Migrations complete$(NC)"
 
 migrate-status:
 	@echo "$(CYAN)Checking migration status...$(NC)"
-	@./prod-deployment/scripts/migrate.sh --status
+	@POSTGRES_USER=$${POSTGRES_USER:-aurora} POSTGRES_DB=$${POSTGRES_DB:-aurora} POSTGRES_CONTAINER=$${POSTGRES_CONTAINER:-aurora-postgres} ./prod-deployment/scripts/migrate.sh --status
 
 # =============================================================================
 # Neo4j Graph Migrations

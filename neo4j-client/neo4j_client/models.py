@@ -318,6 +318,11 @@ class DataSource(Node):
         ...,
         description="Name of the data source"
     )
+
+    display_name: Optional[str] = Field(
+        None,
+        description="Human-readable display name shown in the UI (falls back to name if not set)"
+    )
     
     source_type: str = Field(
         ...,

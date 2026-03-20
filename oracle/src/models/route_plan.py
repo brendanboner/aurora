@@ -198,6 +198,17 @@ class RoutePlan(BaseModel):
         description="For event queries: exclude meetings and only return conferences/summits"
     )
     
+    # User source membership filters (populated from user_source_memberships table)
+    excluded_datasources: List[str] = Field(
+        default_factory=list,
+        description="Datasource IDs to hard-exclude from results (user has ignored these)"
+    )
+
+    preferred_datasources: List[str] = Field(
+        default_factory=list,
+        description="Datasource IDs to boost in results (user has joined these)"
+    )
+
     # Response preferences
     detail_level: DetailLevel = Field(
         default=DetailLevel.DETAILED,

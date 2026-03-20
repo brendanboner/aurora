@@ -71,6 +71,7 @@
     {
       "datasource_id": "wfa_resource_page",
       "name": "Wi-Fi Alliance Resource Center",
+      "display_name": "Wi-Fi Alliance",
       "org_id": "wfa",
       "source_type": "scraped_webpage",
       "fetch_url": "https://www.wi-fi.org/resource-center",
@@ -94,6 +95,7 @@
     {
       "datasource_id": "wfa_causeway_broadcasttg",
       "name": "WFA Causeway - Broadcast TG",
+      "display_name": "WFA Broadcast Technical Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/BroadcastTG/document",
@@ -118,6 +120,7 @@
     {
       "datasource_id": "wfa_causeway_passpointmtg",
       "name": "WFA Causeway - Passpoint MTG",
+      "display_name": "WFA Passpoint Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/PasspointMTG/document",
@@ -142,6 +145,7 @@
     {
       "datasource_id": "wfa_causeway_securitymtg",
       "name": "WFA Causeway - Security MTG",
+      "display_name": "WFA Security Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/SecurityMTG/document",
@@ -166,6 +170,7 @@
     {
       "datasource_id": "wfa_causeway_sensingtg",
       "name": "WFA Causeway - Sensing TG",
+      "display_name": "WFA Sensing Technical Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/SensingTG/document",
@@ -190,6 +195,7 @@
     {
       "datasource_id": "wfa_causeway_wifi7mtg",
       "name": "WFA Causeway - Wi-Fi 7 MTG",
+      "display_name": "WFA Wi-Fi 7 Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/WiFi7MTG/document",
@@ -214,6 +220,7 @@
     {
       "datasource_id": "wfa_causeway_wifi8mtg",
       "name": "WFA Causeway - Wi-Fi 8 MTG",
+      "display_name": "WFA Wi-Fi 8 Marketing Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/WiFi8MTG/document",
@@ -238,6 +245,7 @@
     {
       "datasource_id": "wfa_causeway_wifihalowtg",
       "name": "WFA Causeway - Wi-Fi HaLow TG",
+      "display_name": "WFA Wi-Fi HaLow Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/WiFiHaLowTG/document",
@@ -262,6 +270,7 @@
     {
       "datasource_id": "wfa_causeway_wifilocationtg",
       "name": "WFA Causeway - Wi-Fi Location TG",
+      "display_name": "WFA Wi-Fi Location Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/WiFiLocationTG/document",
@@ -286,6 +295,7 @@
     {
       "datasource_id": "wfa_causeway_xrmstg",
       "name": "WFA Causeway - XRMS TG",
+      "display_name": "WFA Extended Reality & Multi-Sensing Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/XRMSTG/document",
@@ -310,6 +320,7 @@
     {
       "datasource_id": "wfa_causeway_regulatorytg",
       "name": "WFA Causeway - Regulatory",
+      "display_name": "WFA Regulatory Task Group",
       "org_id": "wfa",
       "source_type": "authenticated_portal",
       "fetch_url": "https://groups.wi-fi.org/wg/Regulatory/document",
@@ -358,6 +369,7 @@
     {
       "datasource_id": "wba_resources",
       "name": "WBA Resource Page",
+      "display_name": "Wireless Broadband Alliance",
       "org_id": "wba",
       "source_type": "scraped_webpage",
       "fetch_url": "https://wballiance.com/resources/",
@@ -377,6 +389,54 @@
       "discovery_mode": "incremental",
       "consecutive_duplicates_limit": 5,
       "full_refresh_schedule": "0 3 * * 0"
+    },
+    {
+      "datasource_id": "ieee_public",
+      "name": "IEEE",
+      "display_name": "IEEE",
+      "org_id": "ieee",
+      "source_type": "scraped_webpage",
+      "fetch_url": "https://www.ieee.org/",
+      "has_events": false,
+      "scraper_type": null,
+      "resource_url": null,
+      "scrape_schedule": null,
+      "run_on_startup": false,
+      "check_content_hash": true,
+      "publish_weight": 1.0,
+      "update_weight": 0.8,
+      "event_weight": 0.9,
+      "temporal_extraction_days": 90,
+      "scraper_delay": 0.5,
+      "max_resources": 150,
+      "max_redirects": 10,
+      "discovery_mode": null,
+      "consecutive_duplicates_limit": 5,
+      "full_refresh_schedule": null
+    },
+    {
+      "datasource_id": "ietf_public",
+      "name": "IETF",
+      "display_name": "IETF",
+      "org_id": "ietf",
+      "source_type": "scraped_webpage",
+      "fetch_url": "https://www.ietf.org/",
+      "has_events": false,
+      "scraper_type": null,
+      "resource_url": null,
+      "scrape_schedule": null,
+      "run_on_startup": false,
+      "check_content_hash": true,
+      "publish_weight": 1.0,
+      "update_weight": 0.8,
+      "event_weight": 0.9,
+      "temporal_extraction_days": 90,
+      "scraper_delay": 0.5,
+      "max_resources": 150,
+      "max_redirects": 10,
+      "discovery_mode": null,
+      "consecutive_duplicates_limit": 5,
+      "full_refresh_schedule": null
     }
   ],
   "topics": [

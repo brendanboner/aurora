@@ -101,6 +101,32 @@ export const updateUserPreferences = async (userId, preferences) => {
   return response.data;
 };
 
+// Datasource listing (for workgroup preferences UI)
+export const getListableDatasources = async () => {
+  const response = await apiClient.get('/backend/datasources');
+  return response.data;
+};
+
+// User source memberships (workgroup join/ignore preferences)
+export const getUserSourceMemberships = async (userId) => {
+  const response = await apiClient.get(`/backend/users/${userId}/source-memberships`);
+  return response.data; // { joined: [...], ignored: [...] }
+};
+
+export const upsertSourceMembership = async (userId, datasourceId, status) => {
+  const response = await apiClient.put(
+    `/backend/users/${userId}/source-memberships/${encodeURIComponent(datasourceId)}`,
+    { status }
+  );
+  return response.data;
+};
+
+export const deleteSourceMembership = async (userId, datasourceId) => {
+  await apiClient.delete(
+    `/backend/users/${userId}/source-memberships/${encodeURIComponent(datasourceId)}`
+  );
+};
+
 // Knowledge Graph
 export const getTopics = async (limit = 100, offset = 0, search = '', sortBy = 'alphabetical') => {
   const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';

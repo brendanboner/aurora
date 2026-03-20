@@ -301,6 +301,61 @@ def upsert_user_preferences(
     return fetchone(query, params)
 
 
+# ========== User Source Memberships ==========
+
+def get_user_source_memberships(user_id: str) -> Dict[str, Any]:
+    """
+    Get all source memberships for a user.
+
+    Returns:
+        Dict with 'joined' and 'ignored' lists of datasource_ids.
+    """
+    query = "SELECT datasource_id, status FROM user_source_memberships WHERE user_id = %s"
+    rows = fetchall(query, (user_id,))
+    joined = [r["datasource_id"] for r in rows if r["status"] == "joined"]
+    ignored = [r["datasource_id"] for r in rows if r["status"] == "ignored"]
+    return {"joined": joined, "ignored": ignored}
+
+
+def upsert_user_source_membership(user_id: str, datasource_id: str, status: str) -> Dict[str, Any]:
+    """
+    Create or update a user's membership status for a datasource.
+
+    Args:
+        user_id: Cognito user UUID
+        datasource_id: DataSource node ID (e.g. 'wfa_causeway_wifi7mtg')
+        status: 'joined' or 'ignored'
+
+    Returns:
+        The upserted row.
+    """
+    query = """
+        INSERT INTO user_source_memberships (user_id, datasource_id, status)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id, datasource_id) DO UPDATE SET
+            status = EXCLUDED.status,
+            updated_at = NOW()
+        RETURNING *
+    """
+    return fetchone(query, (user_id, datasource_id, status))
+
+
+def delete_user_source_membership(user_id: str, datasource_id: str) -> bool:
+    """
+    Remove a user's membership preference for a datasource (reverts to default).
+
+    Returns:
+        True if a row was deleted, False if it didn't exist.
+    """
+    query = """
+        DELETE FROM user_source_memberships
+        WHERE user_id = %s AND datasource_id = %s
+        RETURNING datasource_id
+    """
+    result = fetchone(query, (user_id, datasource_id))
+    return result is not None
+
+
 # ========== System Configuration ==========
 
 # ========== System Configuration (MIGRATED TO NEO4J) ==========
