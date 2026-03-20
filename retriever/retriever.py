@@ -134,12 +134,26 @@ class DocumentBatchSubmitResponse(BaseModel):
     total_failed: int
 
 
+class DatasourceScheduleInfo(BaseModel):
+    datasource_id: Optional[str]
+    name: Optional[str]
+    schedule: Optional[str]
+    run_on_startup: Optional[bool]
+    last_scraped_at: Optional[str]
+
+
 class SchedulerStatus(BaseModel):
     """Status of the scheduler and scrapers"""
     scheduler_running: bool
-    next_scheduled_scrape: Optional[str]
+    next_scheduled_scrape: Optional[str] = None
     active_scrapes: int
     total_scrapes_today: int
+    poll_interval_seconds: Optional[int] = None
+    available_scraper_types: Optional[list] = None
+    active_scraper_types: Optional[list] = None
+    total_datasources: Optional[int] = None
+    datasource_schedules: Optional[list] = None
+    error: Optional[str] = None
 
 
 class RetrieverService:
