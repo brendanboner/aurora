@@ -3,6 +3,7 @@ import './Header.css';
 import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 import { useAuth } from '../contexts/AuthContext';
 import WorkgroupPreferencesModal from './WorkgroupPreferencesModal';
+import LightbulbIcon from './icons/LightbulbIcon';
 
 const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
   const { user, logout } = useAuth();
@@ -76,12 +77,12 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
       <div className="header-actions">
         <button
           type="button"
-          className="theme-toggle-btn"
+          className={`theme-toggle-btn${theme === 'light' ? ' theme-toggle-on' : ''}`}
           onClick={onThemeToggle}
           title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
           aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
         >
-          {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+          <LightbulbIcon size={20} filled={theme === 'light'} />
         </button>
         <div 
           className="user-badge-container"

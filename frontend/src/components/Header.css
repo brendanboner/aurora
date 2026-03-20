@@ -93,24 +93,34 @@
 .theme-toggle-btn {
   border: 1px solid var(--border);
   background-color: var(--menu-surface);
-  color: var(--foreground);
+  color: var(--muted-foreground);
   height: 34px;
+  width: 34px;
   border-radius: 999px;
-  padding: 0 12px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Bulb "on" state — light mode active */
+.theme-toggle-btn.theme-toggle-on {
+  color: #f5c400;
+  border-color: #f5c400;
+  box-shadow: 0 0 8px 2px rgba(245, 196, 0, 0.35);
 }
 
 .theme-toggle-btn:hover {
   background-color: var(--secondary);
   border-color: var(--primary);
+  color: var(--foreground);
+}
+
+.theme-toggle-btn.theme-toggle-on:hover {
+  border-color: #f5c400;
+  color: #f5c400;
 }
 
 .theme-toggle-btn:focus-visible {
