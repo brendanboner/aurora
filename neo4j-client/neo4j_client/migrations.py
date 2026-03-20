@@ -25,6 +25,7 @@ class Migrations:
         migrations = [
             Migrations.add_tier_to_topics,
             Migrations.add_importance_to_nodes,
+            Migrations.add_ietf_datasources,
         ]
         
         for migration_func in migrations:
@@ -186,6 +187,111 @@ class Migrations:
             
         except Exception as e:
             logger.error(f"Error adding importance to nodes: {e}")
+            return False
+
+    @staticmethod
+    def add_ietf_datasources(session: Session) -> bool:
+        """
+        Upsert IETF Blog and IETF Datatracker DataSource nodes.
+
+        Idempotent — uses MERGE so it is safe to run on every startup.
+        These nodes are defined in initial_data.json but are skipped when
+        base data already exists (organisations present). This migration
+        ensures they are always present regardless of when the service was
+        first initialised.
+        """
+        try:
+            datasources = [
+                {
+                    "datasource_id": "ietf_blog",
+                    "name": "IETF Blog",
+                    "display_name": "IETF",
+                    "org_id": "ietf",
+                    "source_type": "scraped_webpage",
+                    "fetch_url": "https://www.ietf.org/blog/",
+                    "has_events": False,
+                    "scraper_type": "ietf_blog",
+                    "resource_url": "/blog/",
+                    "scrape_schedule": "0 6 * * *",
+                    "run_on_startup": False,
+                    "check_content_hash": True,
+                    "publish_weight": 1.0,
+                    "update_weight": 0.8,
+                    "event_weight": 0.7,
+                    "temporal_extraction_days": 90,
+                    "scraper_delay": 1.0,
+                    "max_resources": 100,
+                    "max_redirects": 5,
+                    "discovery_mode": "incremental",
+                    "consecutive_duplicates_limit": 5,
+                    "description": "IETF public blog — news, announcements and IETF meeting previews",
+                },
+                {
+                    "datasource_id": "ietf_datatracker_api",
+                    "name": "IETF Datatracker",
+                    "display_name": "IETF Datatracker",
+                    "org_id": "ietf",
+                    "source_type": "scraped_webpage",
+                    "fetch_url": "https://datatracker.ietf.org/",
+                    "has_events": True,
+                    "scraper_type": "ietf_datatracker",
+                    "resource_url": "/",
+                    "scrape_schedule": "0 4 * * *",
+                    "run_on_startup": False,
+                    "check_content_hash": True,
+                    "publish_weight": 1.0,
+                    "update_weight": 0.9,
+                    "event_weight": 1.0,
+                    "temporal_extraction_days": 180,
+                    "scraper_delay": 1.0,
+                    "max_resources": -1,
+                    "max_redirects": 5,
+                    "discovery_mode": "incremental",
+                    "consecutive_duplicates_limit": 0,
+                    "description": "IETF Datatracker — internet-drafts, RFCs and meeting sessions for selected areas and working groups",
+                },
+            ]
+
+            for ds in datasources:
+                query = """
+                MERGE (d:DataSource {datasource_id: $datasource_id})
+                ON CREATE SET
+                    d.name                        = $name,
+                    d.display_name                = $display_name,
+                    d.org_id                      = $org_id,
+                    d.source_type                 = $source_type,
+                    d.fetch_url                   = $fetch_url,
+                    d.has_events                  = $has_events,
+                    d.scraper_type                = $scraper_type,
+                    d.resource_url                = $resource_url,
+                    d.scrape_schedule             = $scrape_schedule,
+                    d.run_on_startup              = $run_on_startup,
+                    d.check_content_hash          = $check_content_hash,
+                    d.publish_weight              = $publish_weight,
+                    d.update_weight               = $update_weight,
+                    d.event_weight                = $event_weight,
+                    d.temporal_extraction_days    = $temporal_extraction_days,
+                    d.scraper_delay               = $scraper_delay,
+                    d.max_resources               = $max_resources,
+                    d.max_redirects               = $max_redirects,
+                    d.discovery_mode              = $discovery_mode,
+                    d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+                    d.description                 = $description
+                ON MATCH SET
+                    d.display_name                = $display_name,
+                    d.description                 = $description
+                RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+                """
+                result = session.run(query, **ds)
+                record = result.single()
+                if record:
+                    action = "updated" if record["existed"] else "created"
+                    logger.info(f"IETF datasource '{record['id']}' {action}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error upserting IETF datasources: {e}")
             return False
 
     @staticmethod
