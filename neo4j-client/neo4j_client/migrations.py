@@ -249,10 +249,12 @@ class Migrations:
                     "discovery_mode": "incremental",
                     "consecutive_duplicates_limit": 0,
                     "description": "IETF Datatracker — internet-drafts, RFCs and meeting sessions for selected areas and working groups",
+                    "folders": ["area:wit", "area:int", "area:rtg", "area:sec"],
                 },
             ]
 
             for ds in datasources:
+                folders = ds.pop("folders", None)
                 query = """
                 MERGE (d:DataSource {datasource_id: $datasource_id})
                 ON CREATE SET
@@ -287,6 +289,19 @@ class Migrations:
                 if record:
                     action = "updated" if record["existed"] else "created"
                     logger.info(f"IETF datasource '{record['id']}' {action}")
+
+                # Always ensure folders is set for ietf_datatracker_api
+                if folders is not None:
+                    session.run(
+                        """
+                        MATCH (d:DataSource {datasource_id: $datasource_id})
+                        WHERE d.folders IS NULL OR size(d.folders) = 0
+                        SET d.folders = $folders
+                        """,
+                        datasource_id=ds["datasource_id"],
+                        folders=folders,
+                    )
+                    logger.info(f"Set folders on '{ds['datasource_id']}': {folders}")
 
             return True
 
