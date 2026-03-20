@@ -146,6 +146,19 @@ class LocalRouter:
         (r"(certification|compliance)\s+requirements?\s+for\s+", RouteId.REGULATORY_INFO),
         (r"legal\s+requirements?\s+(for|of)\s+", RouteId.REGULATORY_INFO),
         
+        # === IETF-SPECIFIC QUERIES (before general org/recent patterns) ===
+        # IETF meeting agenda by number (most specific - e.g. "IETF 120 agenda")
+        (r"(?:agenda|session|schedule|meeting)\s+(?:at|for|of)?\s*ietf\s*\d{2,3}\b", RouteId.IETF_MEETING_AGENDA),
+        (r"ietf\s*\d{2,3}\s+(?:agenda|session|schedule|meeting)", RouteId.IETF_MEETING_AGENDA),
+        (r"what\s+(?:is|are|was|were)\s+(?:the\s+)?(?:agenda|sessions?)\s+(?:at|for|of)?\s*ietf\s*\d{2,3}\b", RouteId.IETF_MEETING_AGENDA),
+
+        # IETF WG updates (protocol/WG-specific news)
+        (r"what\s+is\s+new\s+(?:with|in|for)\s+(?:quic|bgp|ospf|tls|http|dns|ipv6|mpls|bfd|isis|lldp|netconf|yang|pcep|rsvp|ldp|pim|igmp|mld|vxlan|evpn|srv6|segment.routing)\b", RouteId.IETF_WG_UPDATES),
+        (r"(?:latest?|recent|current|new)\s+(?:updates?|drafts?|rfcs?|news)\s+(?:from|in|on)?\s+ietf\b", RouteId.IETF_WG_UPDATES),
+        (r"(?:latest?|recent|current)\s+ietf\s+(?:updates?|drafts?|rfcs?|news|publications?)\b", RouteId.IETF_WG_UPDATES),
+        (r"ietf\s+(?:working\s+group\s+)?(?:updates?|drafts?|rfcs?|status|news)\b", RouteId.IETF_WG_UPDATES),
+        (r"(?:quic|bgp|ospf|tls|http|dns)\s+(?:wg|working\s+group)\s+(?:updates?|news|status|drafts?)\b", RouteId.IETF_WG_UPDATES),
+
         # === ORGANIZATION QUERIES (before general "what is") ===
         # "what is ORG doing" - organization activity
         (r"what is\s+(the\s+)?(3gpp|ieee|ietf|etsi|wfa|oma|gsma|wifi|wi-fi|qualcomm|intel|broadcom|extreme|cisco)\s+doing", RouteId.ORGANIZATION_ACTIVITY),

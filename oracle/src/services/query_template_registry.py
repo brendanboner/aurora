@@ -206,6 +206,36 @@ class QueryTemplate:
                             logger.info(f"Extracted person '{person_name}' and event '{event_name}' from query")
                             break
         
+        # IETF route-specific parameter extraction
+        _IETF_WG_ACRONYMS = [
+            "quic", "bgp", "ospf", "tls", "http", "dns", "ipv6", "mpls",
+            "bfd", "isis", "netconf", "yang", "pcep", "rsvp", "ldp", "pim",
+            "vxlan", "evpn", "srv6",
+        ]
+        if hasattr(plan, 'route_id'):
+            route_id_val = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+
+            if route_id_val == "ietf_wg_updates" and plan.raw_query:
+                query_lower = plan.raw_query.lower()
+                matched_wgs = [acr for acr in _IETF_WG_ACRONYMS if re.search(r'\b' + acr + r'\b', query_lower)]
+                params["wg_datasource_ids"] = [f"ietf_wg_{acr}" for acr in matched_wgs]
+                from datetime import date, timedelta
+                params["lookback_date"] = (date.today() - timedelta(days=90)).isoformat()
+
+            elif route_id_val == "ietf_meeting_agenda" and plan.raw_query:
+                query_lower = plan.raw_query.lower()
+                m = re.search(r'ietf\s*(\d{2,3})', query_lower)
+                if m:
+                    meeting_num = m.group(1)
+                    params["meeting_number"] = meeting_num
+                    params["meeting_number_str"] = f"IETF {meeting_num}"
+                else:
+                    params["meeting_number"] = ""
+                    params["meeting_number_str"] = ""
+                # Also extract any WG acronyms for optional filtering
+                matched_wgs = [acr for acr in _IETF_WG_ACRONYMS if re.search(r'\b' + acr + r'\b', query_lower)]
+                params["wg_acronyms"] = matched_wgs
+
         # Content exclusion (for agent deduplication)
         # Extract from raw_query if it contains exclusion markers
         if plan.raw_query and "exclude_ids:" in plan.raw_query:
@@ -2207,6 +2237,72 @@ class QueryTemplateRegistry:
             """
         )
         
+        # IETF_WG_UPDATES - recent content from IETF working group datasources
+        self.templates[RouteId.IETF_WG_UPDATES] = QueryTemplate(
+            route_id=RouteId.IETF_WG_UPDATES,
+            description="Get recent IETF working group updates, drafts, and RFCs",
+            param_schema={
+                "excluded_datasources": "list[str]",
+                "wg_datasource_ids": "list[str] (specific WG datasource IDs, e.g. ietf_wg_quic)",
+                "lookback_date": "str (ISO date string, e.g. '2025-12-20')",
+            },
+            cypher="""
+MATCH (r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
+WHERE ds.source_type = 'ietf_wg'
+  AND (size($excluded_datasources) = 0 OR NOT r.datasource_id IN $excluded_datasources)
+  AND r.publish_date >= $lookback_date
+  AND (
+    size($wg_datasource_ids) = 0
+    OR r.datasource_id IN $wg_datasource_ids
+  )
+WITH r, ds
+ORDER BY r.publish_date DESC
+LIMIT 20
+OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+RETURN r.url AS url,
+       r.title AS title,
+       r.summary AS summary,
+       r.publish_date AS publish_date,
+       r.category AS category,
+       r.datasource_id AS datasource_id,
+       ds.display_name AS source_name,
+       ds.area_name AS area_name,
+       collect(DISTINCT t.name)[0..5] AS topics
+"""
+        )
+
+        # IETF_MEETING_AGENDA - events and materials for a specific IETF meeting number
+        self.templates[RouteId.IETF_MEETING_AGENDA] = QueryTemplate(
+            route_id=RouteId.IETF_MEETING_AGENDA,
+            description="Get agenda, sessions, and materials for an IETF meeting by number",
+            param_schema={
+                "excluded_datasources": "list[str]",
+                "meeting_number": "str (numeric meeting number, e.g. '120')",
+                "meeting_number_str": "str (formatted, e.g. 'IETF 120')",
+            },
+            cypher="""
+MATCH (e:Event)
+WHERE e.datasource_id STARTS WITH 'ietf_wg_'
+  AND (size($excluded_datasources) = 0 OR NOT e.datasource_id IN $excluded_datasources)
+  AND (
+    $meeting_number = ''
+    OR toLower(e.name) CONTAINS toLower($meeting_number_str)
+    OR e.name CONTAINS $meeting_number_str
+  )
+WITH e
+ORDER BY e.start_date DESC
+LIMIT 10
+OPTIONAL MATCH (e)<-[:RELATES_TO_EVENT]-(r:Resource)
+RETURN e.name AS event_name,
+       e.url AS event_url,
+       e.start_date AS start_date,
+       e.end_date AS end_date,
+       e.datasource_id AS datasource_id,
+       collect(DISTINCT {title: r.title, url: r.url, category: r.category})[0..10] AS materials
+ORDER BY e.start_date DESC
+"""
+        )
+
         # GENERIC_SEARCH - fallback for unmatched queries with full-text + KG-based scoring
         self.templates[RouteId.GENERIC_SEARCH] = QueryTemplate(
             route_id=RouteId.GENERIC_SEARCH,

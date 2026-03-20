@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './AdminSystemConfig.css';
+import IETFGroupsModal from '../components/IETFGroupsModal';
 
 const DEFAULT_LOOKBACK_VALUES = [1, 2, 4, 8, 12, 26, 52];
 const LOOKBACK_UNITS = ['days', 'weeks', 'months', 'years'];
@@ -20,6 +21,7 @@ const AdminSystemConfig = () => {
   const [error, setError] = useState(null);
   const [editingConfig, setEditingConfig] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showIETFGroupsModal, setShowIETFGroupsModal] = useState(false);
   const [hoveredFolder, setHoveredFolder] = useState(null);
   const [folderPosition, setFolderPosition] = useState({ x: 0, y: 0 });
   const [hoveredUrl, setHoveredUrl] = useState(null);
@@ -318,6 +320,7 @@ const AdminSystemConfig = () => {
             <ConfigForm
               onSubmit={handleCreate}
               onCancel={() => setShowCreateForm(false)}
+              onOpenIETFGroups={() => setShowIETFGroupsModal(true)}
             />
           </div>
         </div>
@@ -330,6 +333,7 @@ const AdminSystemConfig = () => {
               config={configurations.find(c => c.datasource_id === editingConfig)}
               onSubmit={(data) => handleUpdate(editingConfig, data)}
               onCancel={() => setEditingConfig(null)}
+              onOpenIETFGroups={() => setShowIETFGroupsModal(true)}
             />
           </div>
         </div>
@@ -363,6 +367,10 @@ const AdminSystemConfig = () => {
           <div className="url-modal-header">Resource URL</div>
           <div className="url-modal-content">{hoveredUrl}</div>
         </div>
+      )}
+
+      {showIETFGroupsModal && (
+        <IETFGroupsModal isOpen={showIETFGroupsModal} onClose={() => setShowIETFGroupsModal(false)} />
       )}
 
       <section className="global-ingestion-card">
@@ -529,7 +537,7 @@ const AdminSystemConfig = () => {
 };
 
 
-const ConfigForm = ({ config, onSubmit, onCancel }) => {
+const ConfigForm = ({ config, onSubmit, onCancel, onOpenIETFGroups }) => {
   const [formData, setFormData] = useState({
     datasource_id: config?.datasource_id || '',
     name: config?.name || '',
@@ -654,11 +662,14 @@ const ConfigForm = ({ config, onSubmit, onCancel }) => {
             <option value="">None (manual only)</option>
             <option value="wfa">WFA Public (wi-fi.org)</option>
             <option value="wfa_causeway">WFA Causeway (authenticated)</option>
+            <option value="wba">WBA (wballiance.com)</option>
+            <option value="ietf_blog">IETF Blog (ietf.org/blog)</option>
+            <option value="ietf_datatracker">IETF Datatracker (datatracker.ietf.org)</option>
           </select>
           <small className="form-hint">Select the scraper to use for this datasource</small>
         </div>
 
-        {formData.scraper_type && (
+        {formData.scraper_type && formData.scraper_type !== 'ietf_datatracker' && (
           <div className="form-group">
             <label htmlFor="resource_url">Resource URL Path:</label>
             <input
@@ -670,6 +681,19 @@ const ConfigForm = ({ config, onSubmit, onCancel }) => {
               placeholder={formData.scraper_type === 'wfa_causeway' ? 'e.g., /wg/WiFi7MTG/document' : 'e.g., /resource-center'}
             />
             <small className="form-hint">URL path to scrape (appended to base URL)</small>
+          </div>
+        )}
+        {formData.scraper_type === 'ietf_datatracker' && (
+          <div className="form-group">
+            <label>IETF Working Groups:</label>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onOpenIETFGroups && onOpenIETFGroups()}
+            >
+              Configure IETF Groups →
+            </button>
+            <small className="form-hint">Select IETF areas and working groups to scrape</small>
           </div>
         )}
 

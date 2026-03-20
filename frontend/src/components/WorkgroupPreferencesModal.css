@@ -182,3 +182,51 @@
   color: var(--muted-foreground);
   font-size: 0.875rem;
 }
+
+/* ── IETF area collapsible headers ─────────────────────────────────── */
+
+.wgp-area-group {
+  margin-bottom: 2px;
+}
+
+.wgp-area-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.wgp-area-header:hover {
+  background: var(--accent);
+}
+
+.wgp-area-chevron {
+  font-size: 0.55rem;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  width: 10px;
+}
+
+.wgp-area-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--foreground);
+  flex: 1;
+}
+
+.wgp-area-count {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.wgp-area-rows {
+  padding-left: 20px;
+}

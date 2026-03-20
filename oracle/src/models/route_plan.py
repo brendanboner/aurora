@@ -110,6 +110,10 @@ class RouteId(str, Enum):
     # Creator Agents
     AGENT_CONTENT_DISCOVERY = "agent_content_discovery"
     
+    # IETF-specific routes
+    IETF_WG_UPDATES = "ietf_wg_updates"
+    IETF_MEETING_AGENDA = "ietf_meeting_agenda"
+
     # Fallback
     GENERIC_SEARCH = "generic_search"
 

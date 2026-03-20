@@ -20,7 +20,8 @@ import './WorkgroupPreferencesModal.css';
  *   - Default (neither) → standard behaviour, nothing changes
  */
 export default function WorkgroupPreferencesModal({ userId, onClose }) {
-  const [datasources, setDatasources] = useState({ public: [], workgroup: [] });
+  const [datasources, setDatasources] = useState({ public: [], workgroup: [], ietfWg: [] });
+  const [collapsedAreas, setCollapsedAreas] = useState({});
   const [memberships, setMemberships] = useState({ joined: [], ignored: [] });
   const [loading, setLoading] = useState(true);
   const [rowState, setRowState] = useState({}); // { [datasourceId]: 'saving' | 'error' | null }
@@ -37,8 +38,9 @@ export default function WorkgroupPreferencesModal({ userId, onClose }) {
       .then(([sources, mems]) => {
         if (cancelled) return;
         const publicSources = sources.filter((s) => s.category === 'public');
-        const workgroups = sources.filter((s) => s.category === 'workgroup');
-        setDatasources({ public: publicSources, workgroup: workgroups });
+        const workgroups = sources.filter((s) => s.category === 'workgroup' && !s.area_acronym);
+        const ietfWgs = sources.filter((s) => s.category === 'workgroup' && s.area_acronym);
+        setDatasources({ public: publicSources, workgroup: workgroups, ietfWg: ietfWgs });
         setMemberships(mems);
       })
       .catch((err) => {
@@ -185,6 +187,47 @@ export default function WorkgroupPreferencesModal({ userId, onClose }) {
                   datasources.workgroup.map(renderRow)
                 )}
               </div>
+
+              {/* IETF Working Groups section — only shown when IETF WGs exist */}
+              {datasources.ietfWg.length > 0 && (() => {
+                const byArea = Object.entries(
+                  datasources.ietfWg.reduce((acc, wg) => {
+                    if (!acc[wg.area_acronym]) acc[wg.area_acronym] = [];
+                    acc[wg.area_acronym].push(wg);
+                    return acc;
+                  }, {})
+                ).sort(([a], [b]) => a.localeCompare(b));
+
+                return (
+                  <div className="wgp-section">
+                    <p className="wgp-section-title">IETF Working Groups</p>
+                    {byArea.map(([acronym, wgs]) => {
+                      const collapsed = collapsedAreas[acronym] !== false;
+                      const areaName = wgs[0].area_name || acronym;
+                      return (
+                        <div key={acronym} className="wgp-area-group">
+                          <button
+                            className="wgp-area-header"
+                            onClick={() =>
+                              setCollapsedAreas((prev) => ({ ...prev, [acronym]: !collapsed }))
+                            }
+                            aria-expanded={!collapsed}
+                          >
+                            <span className="wgp-area-chevron">{collapsed ? '▶' : '▼'}</span>
+                            <span className="wgp-area-name">{areaName}</span>
+                            <span className="wgp-area-count">
+                              ({wgs.length} group{wgs.length !== 1 ? 's' : ''})
+                            </span>
+                          </button>
+                          {!collapsed && (
+                            <div className="wgp-area-rows">{wgs.map(renderRow)}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>

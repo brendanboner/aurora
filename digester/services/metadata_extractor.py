@@ -235,6 +235,7 @@ class MetadataExtractor:
             "publish_date": resource_data.get("publish_date"),
             "scraped_at": message.get("scraped_at"),
             "content_hash": content_hash,
+            "workgroup_id": message.get("workgroup_id"),  # IETF WG acronym (e.g. 'quic'), None for other sources
         })
         
         logger.debug(f"Extracted metadata: \n%s", json.dumps(final_metadata, indent=2))

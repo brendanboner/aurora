@@ -323,6 +323,16 @@ class DataSource(Node):
         None,
         description="Human-readable display name shown in the UI (falls back to name if not set)"
     )
+
+    area_acronym: Optional[str] = Field(
+        None,
+        description="IETF area acronym (e.g., 'wit', 'int', 'sec') — used to group IETF WG datasources in the UI"
+    )
+
+    area_name: Optional[str] = Field(
+        None,
+        description="IETF area full name (e.g., 'Web and Internet Transport') — used as section header in UI"
+    )
     
     source_type: str = Field(
         ...,
@@ -585,6 +595,11 @@ class Resource(Node):
     datasource_id: str = Field(
         ...,
         description="Unique identifier for the data source (e.g., 'api', 'webpage', 'sharepoint', 'rss', 'database')"
+    )
+
+    workgroup_id: Optional[str] = Field(
+        default=None,
+        description="IETF WG acronym (e.g., 'quic', 'http', 'bgp') for IETF Datatracker resources; NULL for all other sources"
     )
 
     batch_id: Optional[str] = Field(

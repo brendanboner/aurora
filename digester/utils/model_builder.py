@@ -175,7 +175,8 @@ def _build_resource(data: Dict[str, Any]) -> Resource:
             publish_date=publish_date,
             access_notes=data.get("access_notes"),
             datasource_id=data.get("datasource_id"),
-            batch_id=data.get("batch_id")
+            batch_id=data.get("batch_id"),
+            workgroup_id=data.get("workgroup_id"),
         )
     except Exception as e:
         raise ValueError(f"Failed to create Resource model: {e}")

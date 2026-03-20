@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from neo4j_client.client import Neo4jClient
 from neo4j_client.repository import GraphRepository
@@ -704,30 +704,34 @@ def get_listable_datasources() -> List[Dict[str, Any]]:
     """
     Get all datasources visible to users for workgroup/source preference selection.
 
-    Returns DataSource nodes with source_type in ('authenticated_portal', 'scraped_webpage'),
+    Returns DataSource nodes with source_type in ('authenticated_portal', 'scraped_webpage', 'ietf_wg'),
     classified as 'workgroup' or 'public'. Used by the workgroup preferences UI.
     """
     repo = get_repo()
     query = """
     MATCH (ds:DataSource)
-    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage']
+    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage', 'ietf_wg']
     RETURN ds.datasource_id AS datasource_id,
            coalesce(ds.display_name, ds.name, ds.datasource_id) AS name,
            ds.source_type AS source_type,
-           ds.fetch_url AS fetch_url
+           ds.fetch_url AS fetch_url,
+           ds.area_acronym AS area_acronym,
+           ds.area_name AS area_name
     ORDER BY ds.source_type DESC, name
     """
     results = repo.client.execute_query(query, {})
     datasources = []
     for record in results:
         source_type = record["source_type"] or ""
-        category = "workgroup" if source_type == "authenticated_portal" else "public"
+        category = "workgroup" if source_type in ("authenticated_portal", "ietf_wg") else "public"
         datasources.append({
             "datasource_id": record["datasource_id"],
             "name": record["name"],
             "source_type": source_type,
             "category": category,
             "fetch_url": record["fetch_url"],
+            "area_acronym": record.get("area_acronym"),
+            "area_name": record.get("area_name"),
         })
     return datasources
 
@@ -946,3 +950,129 @@ def check_user_in_graph(user_uuid: str) -> bool:
     except Exception as e:
         log.warning(f"Failed to check user in graph: {e}")
         return False
+
+
+def get_datasource_config(datasource_id: str) -> Optional[Dict[str, Any]]:
+    """Lightweight config fetch — returns raw Neo4j node properties."""
+    repo = get_repo()
+    query = """
+    MATCH (ds:DataSource {datasource_id: $datasource_id})
+    RETURN ds
+    """
+    results = repo.client.execute_query(query, {"datasource_id": datasource_id})
+    if not results:
+        return None
+    return dict(results[0]["ds"])
+
+
+async def apply_ietf_groups(groups: List[str]) -> Dict[str, Any]:
+    """
+    Update enabled IETF groups (list of 'area:{acronym}' or 'wg:{acronym}' strings).
+    Creates/updates ietf_wg_* DataSource nodes for each WG-level entry.
+    Updates ietf_datatracker_api.folders.
+    Returns a summary of created/updated nodes.
+    """
+    import httpx
+    repo = get_repo()
+
+    # Persist folders list on parent config node
+    repo.client.execute_write(
+        """
+        MATCH (ds:DataSource {datasource_id: 'ietf_datatracker_api'})
+        SET ds.folders = $folders
+        """,
+        {"folders": groups}
+    )
+
+    # Resolve all WG acronyms referenced by group entries
+    wg_entries: List[Dict[str, str]] = []  # {acronym, name, area_acronym, area_name}
+    _DATATRACKER = "https://datatracker.ietf.org/api/v1"
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        for entry in groups:
+            if entry.startswith("area:"):
+                area_acronym = entry[5:]
+                # Fetch area name
+                try:
+                    ar = await client.get(f"{_DATATRACKER}/group/group/", params={"acronym": area_acronym, "type": "area"})
+                    ar.raise_for_status()
+                    area_objs = ar.json().get("objects", [])
+                    area_name = area_objs[0]["name"] if area_objs else area_acronym.upper()
+                except Exception:
+                    area_name = area_acronym.upper()
+
+                # Fetch WGs for this area
+                try:
+                    wr = await client.get(f"{_DATATRACKER}/group/group/", params={
+                        "type": "wg", "parent__acronym": area_acronym, "state": "active", "limit": 200
+                    })
+                    wr.raise_for_status()
+                    for wg in wr.json().get("objects", []):
+                        wg_entries.append({
+                            "acronym": wg["acronym"],
+                            "name": wg["name"],
+                            "area_acronym": area_acronym,
+                            "area_name": area_name,
+                        })
+                except Exception as e:
+                    log.warning(f"Could not fetch WGs for area {area_acronym}: {e}")
+
+            elif entry.startswith("wg:"):
+                wg_acronym = entry[3:]
+                try:
+                    wr = await client.get(f"{_DATATRACKER}/group/group/", params={"acronym": wg_acronym, "type": "wg"})
+                    wr.raise_for_status()
+                    objs = wr.json().get("objects", [])
+                    if objs:
+                        wg_obj = objs[0]
+                        area_url = wg_obj.get("parent", "") or ""
+                        area_acronym = area_url.rstrip("/").split("/")[-2] if "/group/" in area_url else "unknown"
+                        wg_entries.append({
+                            "acronym": wg_acronym,
+                            "name": wg_obj["name"],
+                            "area_acronym": area_acronym,
+                            "area_name": area_acronym.upper(),
+                        })
+                except Exception as e:
+                    log.warning(f"Could not fetch WG {wg_acronym}: {e}")
+
+    # Upsert one ietf_wg_* DataSource node per WG
+    created = []
+    for wg in wg_entries:
+        ds_id = f"ietf_wg_{wg['acronym']}"
+        display_name = f"IETF {wg['name']} ({wg['acronym'].upper()})"
+        repo.client.execute_write(
+            """
+            MERGE (ds:DataSource {datasource_id: $datasource_id})
+            ON CREATE SET
+                ds.name          = $display_name,
+                ds.display_name  = $display_name,
+                ds.source_type   = 'ietf_wg',
+                ds.scraper_type  = 'ietf_datatracker',
+                ds.area_acronym  = $area_acronym,
+                ds.area_name     = $area_name,
+                ds.fetch_url     = $fetch_url,
+                ds.created_at    = datetime()
+            ON MATCH SET
+                ds.display_name  = $display_name,
+                ds.name          = $display_name,
+                ds.area_acronym  = $area_acronym,
+                ds.area_name     = $area_name,
+                ds.fetch_url     = $fetch_url,
+                ds.updated_at    = datetime()
+            """,
+            {
+                "datasource_id": ds_id,
+                "display_name": display_name,
+                "area_acronym": wg["area_acronym"],
+                "area_name": wg["area_name"],
+                "fetch_url": f"https://datatracker.ietf.org/wg/{wg['acronym']}/",
+            }
+        )
+        created.append(ds_id)
+
+    return {
+        "updated_folders": groups,
+        "wg_datasource_nodes": created,
+        "count": len(created),
+    }

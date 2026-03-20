@@ -9,6 +9,7 @@ import pika
 import os
 import json
 import time
+import httpx as _httpx
 
 # Import auth middleware
 from common.auth_middleware import get_user_context, require_user_context, require_role
@@ -585,6 +586,8 @@ class DatasourceInfo(BaseModel):
     source_type: str
     category: str  # 'workgroup' or 'public'
     fetch_url: Optional[str] = None
+    area_acronym: Optional[str] = None
+    area_name: Optional[str] = None
 
 
 @app.get("/datasources", response_model=List[DatasourceInfo])
@@ -683,6 +686,96 @@ async def delete_source_membership(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== IETF Datatracker Endpoints ==========
+
+_DATATRACKER_API = "https://datatracker.ietf.org/api/v1"
+_ietf_area_cache: Optional[dict] = None
+_ietf_area_cache_ts: float = 0.0
+_IETF_AREA_CACHE_TTL = 3600  # 1 hour
+
+
+async def _get_datatracker(path: str, params: Optional[dict] = None) -> dict:
+    url = f"{_DATATRACKER_API}{path}"
+    async with _httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+
+@app.get("/ietf/areas")
+async def list_ietf_areas(user: Optional[dict] = Depends(get_user_context)):
+    """Return active IETF areas from Datatracker (cached 1 hr)."""
+    global _ietf_area_cache, _ietf_area_cache_ts
+    import time
+    if _ietf_area_cache and (time.time() - _ietf_area_cache_ts) < _IETF_AREA_CACHE_TTL:
+        return _ietf_area_cache
+    try:
+        data = await _get_datatracker("/group/group/", {"type": "area", "state": "active", "limit": 50})
+        areas = [
+            {"acronym": g["acronym"], "name": g["name"]}
+            for g in data.get("objects", [])
+        ]
+        _ietf_area_cache = {"areas": areas}
+        _ietf_area_cache_ts = time.time()
+        return _ietf_area_cache
+    except Exception as e:
+        logger.error(f"Error fetching IETF areas: {e}")
+        raise HTTPException(status_code=502, detail=f"Datatracker API error: {e}")
+
+
+@app.get("/ietf/areas/{acronym}/workgroups")
+async def list_ietf_workgroups(acronym: str, user: Optional[dict] = Depends(get_user_context)):
+    """Return active IETF working groups for the given area acronym."""
+    try:
+        data = await _get_datatracker(
+            "/group/group/",
+            {"type": "wg", "parent__acronym": acronym, "state": "active", "limit": 200}
+        )
+        wgs = [
+            {"acronym": g["acronym"], "name": g["name"], "area": acronym}
+            for g in data.get("objects", [])
+        ]
+        return {"area": acronym, "workgroups": wgs}
+    except Exception as e:
+        logger.error(f"Error fetching IETF workgroups for {acronym}: {e}")
+        raise HTTPException(status_code=502, detail=f"Datatracker API error: {e}")
+
+
+@app.get("/ietf/enabled-groups")
+async def get_ietf_enabled_groups(user: Optional[dict] = Depends(get_user_context)):
+    """Return the currently enabled IETF areas/WGs from the ietf_datatracker_api DataSource node."""
+    try:
+        config = graph_service.get_datasource_config("ietf_datatracker_api")
+        folders = config.get("folders", []) if config else []
+        return {"enabled_groups": folders}
+    except Exception as e:
+        logger.error(f"Error fetching IETF enabled groups: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class IETFApplyGroupsRequest(BaseModel):
+    groups: List[str]  # e.g. ["area:wit", "area:int", "wg:quic"]
+
+
+@app.post("/admin/ietf/apply-groups")
+@require_role(["admin", "superadmin"])
+async def apply_ietf_groups(
+    request: IETFApplyGroupsRequest,
+    user: Optional[dict] = Depends(get_user_context)
+):
+    """
+    Update the enabled IETF groups (areas/WGs).
+    Creates/activates ietf_wg_* DataSource nodes for newly added WGs,
+    deactivates nodes for removed ones, and updates ietf_datatracker_api.folders.
+    """
+    try:
+        result = await graph_service.apply_ietf_groups(request.groups)
+        return result
+    except Exception as e:
+        logger.error(f"Error applying IETF groups: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
