@@ -104,6 +104,10 @@ class QueryTemplate:
         # For DOCUMENTS_BY_TOPIC, if no topics were extracted, try to extract from "what is X" query
         if hasattr(plan, 'route_id'):
             route_id_val = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+            # For RECENT_PUBLICATIONS with no explicit date range, use 365-day lookback
+            # so "latest press release" finds the actual most recent even if months old
+            if route_id_val == "recent_publications" and params["relative_days"] is None:
+                params["relative_days"] = 365
             if route_id_val == "documents_by_topic" and not params["topics"] and plan.raw_query:
                 query_lower = plan.raw_query.lower().strip()
                 extracted_term = None

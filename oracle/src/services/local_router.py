@@ -82,6 +82,8 @@ class LocalRouter:
         # === ORGANIZATION PUBLICATION QUERIES (before person activity to avoid false matches) ===
         # "what has [ORG] published/released" - organization publications
         (r"what\s+(has\s+)?(the\s+)?([\w\s\-]+\s+)?(alliance|foundation|consortium|organization|institute|3gpp|ieee|ietf|etsi|wfa|oma|gsma)\s+(published|released|announced|issued)\s+(about|on|regarding)", RouteId.ORGANIZATION_ACTIVITY),
+        # Known company names contributing/publishing - must come BEFORE generic person_activity catch-all
+        (r"what (has|did)\s+(?:qualcomm|intel|broadcom|cisco|aruba|apple|samsung|nokia|ericsson|huawei|mediatek|google|microsoft|extreme|commscope|tp-link|netgear|ubiquiti)\s+(contributed?|done|published|presented|submitted|worked on)", RouteId.ORGANIZATION_ACTIVITY),
         
         # Person activity
         (r"(activity|contributions?|work|involvement|papers|presentations) (by|from|of)\s+[\w\s\-]+", RouteId.PERSON_ACTIVITY),
@@ -226,8 +228,9 @@ class LocalRouter:
         (r"(give|show|provide).*?(update|summary|overview)\s+on", RouteId.RECENT_CONTENT),
         
         # === EVENTS & MEETINGS ===
-        # Upcoming events
-        (r"upcoming (events?|meetings?|conferences?|workshops?|summits?)", RouteId.UPCOMING_EVENTS),
+        # Upcoming events - allow org names between "upcoming" and event type
+        (r"upcoming\s+(?:[\w\-]+\s+){0,4}(events?|meetings?|conferences?|workshops?|summits?)", RouteId.UPCOMING_EVENTS),
+        (r"on the agenda for\s+upcoming", RouteId.UPCOMING_EVENTS),
         (r"(future|planned|scheduled) (events?|meetings?|conferences?)", RouteId.UPCOMING_EVENTS),
         (r"what('s| is) (coming up|scheduled|planned)", RouteId.UPCOMING_EVENTS),
         (r"(next|future) (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
