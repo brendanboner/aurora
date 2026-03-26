@@ -235,7 +235,17 @@ class BaseScraper:
         if self.redis_client:
             try:
                 # Handle both Resource and Event objects
-                if isinstance(item, Event):
+                if isinstance(item, str):
+                    processing_data = {
+                        "title": item,
+                        "url": "",
+                        "category": "unknown",
+                        "status": "retrieving",
+                        "stage": stage,
+                        "started_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat()
+                    }
+                elif isinstance(item, Event):
                     processing_data = {
                         "title": item.name,  # Use 'title' for consistency with digester
                         "url": item.url or "",
