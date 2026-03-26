@@ -1286,10 +1286,14 @@ class QueryTemplateRegistry:
                    ELSE 1.0                        // Mixed or neutral
                  END as stance_boost
             
-            // Calculate title match boost (for event queries)
+            // Calculate title match boost
+            // Apply a strong boost whenever ANY topic longer than 10 chars appears in the
+            // document title — this surfaces focused documents (e.g. "Sticky Client Scenarios")
+            // even when multiple topics are present (e.g. ["sticky clients", "wi-fi"]).
             WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost,
                  CASE 
-                   WHEN size($topics) = 1 AND size($topics[0]) > 10 AND toLower(r.title) CONTAINS toLower($topics[0]) THEN 2.0
+                   WHEN any(topic IN $topics WHERE size(topic) > 10 AND toLower(r.title) CONTAINS toLower(topic)) THEN 2.0
+                   WHEN size($topics) = 1 AND toLower(r.title) CONTAINS toLower($topics[0]) THEN 1.5
                    ELSE 1.0
                  END as title_match_boost
             
