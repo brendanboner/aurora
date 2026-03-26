@@ -147,6 +147,15 @@ class QueryTemplate:
                     elif extracted_lower.startswith("the "):
                         extracted_term = extracted_term[4:].strip()
                     
+                    # Truncate at the first conjunction / question word so that
+                    # "sticky clients and why are they a problem in Wi-Fi" → "sticky clients".
+                    conjunction_cut = re.search(
+                        r'\s+(?:and|or|but|why|how|when|where|which|who)\b',
+                        extracted_term, re.IGNORECASE
+                    )
+                    if conjunction_cut:
+                        extracted_term = extracted_term[:conjunction_cut.start()].strip()
+                    
                     # Strip trailing punctuation
                     extracted_term = re.sub(r'[.,;:!?]+$', '', extracted_term).strip()
                     

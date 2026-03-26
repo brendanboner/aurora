@@ -39,6 +39,17 @@ class TopicManager:
         "week", "month", "day", "days", "weeks", "months", "discussed", "happened",
         "talked", "covered", "shown", "shared", "announced", "said", "in", "on",
         "at", "for", "about", "with", "from", "during",
+        # Conjunctions and question words — must never be treated as topics
+        "and", "or", "but", "nor", "yet", "so",
+        "why", "how", "when", "where", "which", "who", "whom", "whose",
+        # Pronouns and determiners that occasionally appear as Neo4j nodes
+        "they", "their", "them", "these", "those", "that", "there", "then",
+        "it", "its", "we", "our", "you", "your", "he", "she", "his", "her",
+        # Common verbs / adjectives that slip through
+        "can", "could", "would", "should", "will", "not", "no", "yes",
+        "make", "makes", "made", "get", "gets", "got", "use", "used", "using",
+        "cause", "causes", "caused", "problem", "problems", "issue", "issues",
+        "way", "ways", "mean", "means", "need", "needs",
     }
     
     def __init__(self, neo4j_client, refresh_interval_hours: int = 1, auto_create_threshold: int = 10, min_search_count: int = 2):
@@ -203,11 +214,12 @@ class TopicManager:
             definition_terms = []
         else:
             # Extract potential definition queries: "What is X?", "Define X", etc.
-            # Stop capture before verbs (talking, discussing, doing) or prepositions (about, with, in)
-            # to avoid capturing "workgroups are talking about X" as a topic
-            # Skip queries with "latest", "updates", "changed" - these are temporal/action queries, not topic definitions
+            # Stop capture before verbs (talking, discussing, doing), prepositions (about, with, in),
+            # or conjunctions/question words (and, or, but, why, how, when, where, which) that
+            # signal the query subject has ended.  e.g. "What are sticky clients and why are they
+            # a problem?" should capture "sticky clients", not the full tail of the sentence.
             definition_patterns = [
-                r'what\s+(?:is|are|was|were)\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\s+(?:talking|discussing|working|doing|saying|about|with|in|for|at|on)|[?,]|$)',
+                r'what\s+(?:is|are|was|were)\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\s+(?:and|or|but|why|how|when|where|which|talking|discussing|working|doing|saying|about|with|in|for|at|on)|[?,]|$)',
                 r'define\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
                 r'explain\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
                 r'tell\s+me\s+about\s+(?:a|an|the)?\s*([a-zA-Z0-9\s\-_]+?)(?:\?|$)',
