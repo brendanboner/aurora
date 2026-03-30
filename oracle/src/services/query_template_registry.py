@@ -108,6 +108,11 @@ class QueryTemplate:
             # so "latest press release" finds the actual most recent even if months old
             if route_id_val == "recent_publications" and params["relative_days"] is None:
                 params["relative_days"] = 365
+            # For RECENT_PUBLICATIONS, when a category filter is already set (e.g. "press release"),
+            # the org filter over-restricts (requires MENTIONS/PUBLISHED_BY relationships that
+            # many resources lack). Clear it so the category filter alone narrows the results.
+            if route_id_val == "recent_publications" and params.get("category"):
+                params["organizations"] = []
             if route_id_val == "documents_by_topic" and not params["topics"] and plan.raw_query:
                 query_lower = plan.raw_query.lower().strip()
                 extracted_term = None
@@ -998,9 +1003,10 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Find Event nodes with future start_date
+            // Find Event nodes: upcoming events OR recent past events (last 30 days)
+            // This ensures results even when no future events are scheduled
             MATCH (e:Event)
-            WHERE datetime(e.start_date) >= datetime()
+            WHERE datetime(e.start_date) >= datetime() - duration({days: 30})
               AND ($start_date IS NULL OR datetime(e.start_date) >= datetime($start_date))
               // Extend "this quarter" to 90 days ahead
               AND ($end_date IS NULL OR datetime(e.start_date) <= datetime($end_date))
@@ -1405,6 +1411,7 @@ class QueryTemplateRegistry:
             WITH r, threshold,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE effective_date >= threshold
+              AND effective_date <= datetime()
               AND ($workgroups IS NULL OR size($workgroups) = 0
                     OR EXISTS {
                         MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)

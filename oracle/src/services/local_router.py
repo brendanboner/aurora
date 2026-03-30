@@ -651,6 +651,23 @@ class LocalRouter:
             "3gpp": "3GPP",
             "extreme": "Extreme Networks",
             "extreme networks": "Extreme Networks",
+            # Chip/tech vendors commonly mentioned in Wi-Fi discussions
+            "qualcomm": "Qualcomm",
+            "intel": "Intel",
+            "broadcom": "Broadcom",
+            "cisco": "Cisco",
+            "aruba": "Aruba",
+            "apple": "Apple",
+            "samsung": "Samsung",
+            "nokia": "Nokia",
+            "ericsson": "Ericsson",
+            "mediatek": "MediaTek",
+            "google": "Google",
+            "microsoft": "Microsoft",
+            "commscope": "CommScope",
+            "tp-link": "TP-Link",
+            "netgear": "Netgear",
+            "ubiquiti": "Ubiquiti",
         }
         
         for abbrev, full_name in org_abbreviations.items():
