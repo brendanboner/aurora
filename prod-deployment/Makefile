@@ -155,7 +155,9 @@ update: ecr-login
 	@$(MAKE) migrate
 	@echo "$(YELLOW)→ Restarting services...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) up -d
-	@echo "$(GREEN)✓ Services updated$(NC)"
+	@echo "$(YELLOW)→ Removing old unused images...$(NC)"
+	@docker image prune -a -f
+	@echo "$(GREEN)✓ Services updated and old images cleaned$(NC)"
 
 pull: ecr-login
 	@echo "$(CYAN)Pulling latest images from ECR...$(NC)"
@@ -227,6 +229,9 @@ disk:
 	@echo ""
 	@echo "$(GREEN)System:$(NC)"
 	@df -h / | grep -v Filesystem
+	@echo ""
+	@echo "$(GREEN)Data Volume:$(NC)"
+	@df -h /data | grep -v Filesystem
 	@echo ""
 	@echo "$(GREEN)Docker:$(NC)"
 	@docker system df
