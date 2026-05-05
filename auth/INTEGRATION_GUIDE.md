@@ -224,15 +224,16 @@ Prevents brute force attacks:
 **Solution**: Cognito group membership validation
 - Validates user is in required Cognito group on login
 - Re-validates on every API request
-- Configurable via `REQUIRED_COGNITO_GROUP` environment variable (default: `aurora-users`)
-- Returns HTTP 403 Forbidden if user not in group
+- Configurable via `REQUIRED_COGNITO_GROUPS` environment variable (default: `aurora-users`)
+- Supports multiple groups as comma-separated list (users need to be in ANY of the groups)
+- Returns HTTP 403 Forbidden if user not in any group
 - Logs all access denials with user email and groups
 
 **Setup**:
-1. Create a Cognito group (e.g., `aurora-users`) in AWS Console
-2. Add authorized users to the group
-3. Configure `REQUIRED_COGNITO_GROUP=aurora-users` in environment
-4. Users not in the group will be denied access on login and all subsequent requests
+1. Create Cognito groups (e.g., `aurora-users`) in AWS Console
+2. Add authorized users to at least one group
+3. Configure `REQUIRED_COGNITO_GROUPS=aurora-users` (or comma-separated list) in environment
+4. Users not in any of the groups will be denied access on login and all subsequent requests
 
 ### 6. Header Injection Prevention
 

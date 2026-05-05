@@ -135,9 +135,10 @@ COGNITO_JWKS_URL=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX
 COGNITO_TOKEN_ENDPOINT=https://your-domain.auth.us-east-1.amazoncognito.com/oauth2/token
 
 # Cognito Group Access Control (optional)
-# Only users in this group can access the application
+# Users in ANY of these groups can access the application
+# Comma-separated list (e.g., "aurora-users,other-group")
 # Default: aurora-users
-REQUIRED_COGNITO_GROUP=aurora-users
+REQUIRED_COGNITO_GROUPS=aurora-users
 
 # Internal Service URLs (Docker network names)
 BACKEND_SERVICE_URL=http://backend:8000
@@ -338,14 +339,15 @@ The auth service enforces Cognito group membership to restrict application acces
 
 **Configuration:**
 ```bash
-# Set the required Cognito group (default: aurora-users)
-REQUIRED_COGNITO_GROUP=aurora-users
+# Set the required Cognito groups (comma-separated, default: aurora-users)
+# Users need to be in ANY of these groups to access the application
+REQUIRED_COGNITO_GROUPS=aurora-users
 ```
 
 **How it works:**
 1. During login, user's Cognito groups are extracted from the ID token (`cognito:groups` claim)
-2. Group membership is validated against the configured `REQUIRED_COGNITO_GROUP`
-3. If user is not in the required group, login is rejected with HTTP 403 Forbidden
+2. Group membership is validated against the configured `REQUIRED_COGNITO_GROUPS`
+3. If user is not in any of the required groups, login is rejected with HTTP 403 Forbidden
 4. On every API request, group membership is re-validated from the token
 5. Users removed from the group will be denied access on their next request
 

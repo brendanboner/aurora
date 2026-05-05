@@ -2,7 +2,7 @@
 
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, List
 
 
 class Settings(BaseSettings):
@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     cognito_token_endpoint: str
     
     # Cognito Group Access Control
-    required_cognito_group: str = "aurora-users"  # Only users in this group can access the app
+    # Supports multiple groups as comma-separated list (e.g., "aurora-users,us-east-1_xxx_Extreme-Entra-SSO")
+    required_cognito_groups: str = "aurora-users"  # Users in ANY of these groups can access the app
     
     # Service URLs
     backend_service_url: str
@@ -99,6 +100,11 @@ class Settings(BaseSettings):
             raise ValueError("Cannot use secure cookies with localhost. Set USE_HTTPS=false or COOKIE_SECURE=false for development")
         
         return domain
+    
+    @property
+    def allowed_cognito_groups(self) -> List[str]:
+        """Parse required_cognito_groups into a list, supporting comma-separated values"""
+        return [g.strip() for g in self.required_cognito_groups.split(',') if g.strip()]
     
     class Config:
         case_sensitive = False

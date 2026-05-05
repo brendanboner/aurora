@@ -197,6 +197,9 @@ services:
       COGNITO_JWKS_URL: https://cognito-idp.${AWS_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}/.well-known/jwks.json
       COGNITO_TOKEN_ENDPOINT: https://${COGNITO_DOMAIN}/oauth2/token
       
+      # Cognito Group Access Control
+      REQUIRED_COGNITO_GROUPS: ${REQUIRED_COGNITO_GROUPS:-aurora-users}
+      
       # Service URLs (internal Docker network)
       BACKEND_SERVICE_URL: http://backend:8000
       CURATOR_SERVICE_URL: http://curator:8000

@@ -78,7 +78,7 @@ async def validate_request_token(request: Request) -> dict:
             user_info = extract_user_info(access_token_claims)
         
         # Validate user is in required group
-        validate_user_group(user_info, settings.required_cognito_group)
+        validate_user_group(user_info, settings.allowed_cognito_groups)
         
         return user_info
     

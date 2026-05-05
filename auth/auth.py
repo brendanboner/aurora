@@ -177,8 +177,8 @@ async def auth_callback(code: str, state: str, request: Request):
         # Extract user info including groups
         user_info = extract_user_info(id_token_claims)
         
-        # Validate user is in required group - reject login if not
-        validate_user_group(user_info, settings.required_cognito_group)
+        # Validate user is in at least one of the required groups - reject login if not
+        validate_user_group(user_info, settings.allowed_cognito_groups)
         
         user_id = id_token_claims.get("sub")  # Cognito user UUID
         user_email = id_token_claims.get("email")
