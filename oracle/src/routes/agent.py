@@ -138,7 +138,7 @@ async def discover_content(
             date_range={
                 "start": route_plan.start_date.isoformat() if route_plan.start_date else None,
                 "end": route_plan.end_date.isoformat() if route_plan.end_date else None,
-                "relative_days": route_plan.relative_days
+                "relative_days": str(route_plan.relative_days) if route_plan.relative_days is not None else None
             },
             content_items=processed,
             rollup_used=rollup_used,
