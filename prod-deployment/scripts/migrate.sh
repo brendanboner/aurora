@@ -44,13 +44,15 @@ echo "[DEBUG] Color variables set"
 echo "[DEBUG] Starting to load environment variables"
 if [ -f "$SCRIPT_DIR/../.env" ]; then
     echo "[DEBUG] .env file found at: $SCRIPT_DIR/../.env"
-    echo "[DEBUG] Setting auto-export mode"
-    set -a  # automatically export all variables
-    echo "[DEBUG] Sourcing .env file directly"
-    # Source the .env file directly, filtering only comments and empty lines
-    source <(grep -v '^#' "$SCRIPT_DIR/../.env" | grep -v '^$')
-    echo "[DEBUG] Stopping auto-export mode"
-    set +a  # stop auto-export
+    echo "[DEBUG] Parsing .env file line by line"
+    # Only export valid environment variable lines (KEY=VALUE format)
+    # No variable expansion - values are used as-is
+    while IFS='=' read -r key value; do
+        # Skip empty lines, comments, and invalid keys
+        [[ -z "$key" || "$key" =~ ^[[:space:]]*# || ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && continue
+        # Export directly without any eval or expansion
+        export "$key=$value"
+    done < "$SCRIPT_DIR/../.env"
     echo "[DEBUG] .env file loaded successfully"
 else
     echo "[DEBUG] .env file not found at: $SCRIPT_DIR/../.env"
