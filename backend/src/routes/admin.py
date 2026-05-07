@@ -671,16 +671,16 @@ class SystemConfigurationResponse(BaseModel):
     temporal_extraction_days: int = Field(default=90, ge=1)
     scraper_delay: Optional[float] = Field(default=0.5, ge=0.0, le=10.0)
     max_resources: Optional[int] = Field(default=150, ge=-1)
-    max_redirects: Optional[int] = Field(default=10, ge=1, le=50)
+    max_redirects: Optional[int] = Field(default=10, ge=0, le=50)
     folders: Optional[List[str]] = Field(default=None, description="Folder paths for hierarchical scrapers (e.g., WFA Causeway)")
     discovery_mode: str = Field(default="incremental", description="Discovery mode: 'incremental' or 'date_based'")
     consecutive_duplicates_limit: int = Field(default=5, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
     full_refresh_schedule: Optional[str] = Field(default=None, description="Cron expression for full refresh (incremental mode only)")
     ingestion_lookback_value: int = Field(default=12, ge=1, description="Global ingestion lookback amount for automated scraper ingestion")
     ingestion_lookback_unit: Literal["days", "weeks", "months", "years"] = Field(default="months", description="Global ingestion lookback unit for automated scraper ingestion")
-    last_scraped_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    last_scraped_at: Optional[str] = None  # ISO format string from Neo4j
+    created_at: Optional[str] = None  # ISO format string from Neo4j
+    updated_at: Optional[str] = None  # ISO format string from Neo4j
 
 
 class SystemConfigurationCreate(BaseModel):
@@ -698,7 +698,7 @@ class SystemConfigurationCreate(BaseModel):
     temporal_extraction_days: int = Field(default=90, ge=1)
     scraper_delay: float = Field(default=0.5, ge=0.0, le=10.0, description="Delay between requests in seconds")
     max_resources: int = Field(default=150, ge=-1, description="Max resources per scrape run (-1 = unlimited)")
-    max_redirects: int = Field(default=10, ge=1, le=50, description="Max redirects to follow")
+    max_redirects: int = Field(default=10, ge=0, le=50, description="Max redirects to follow (0 = no redirects)")
     folders: Optional[List[str]] = Field(default=None, description="Folder paths for hierarchical scrapers (e.g., WFA Causeway)")
     discovery_mode: str = Field(default="incremental", description="Discovery mode: 'incremental' or 'date_based'")
     consecutive_duplicates_limit: int = Field(default=5, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")
@@ -722,7 +722,7 @@ class SystemConfigurationUpdate(BaseModel):
     temporal_extraction_days: Optional[int] = Field(None, ge=1)
     scraper_delay: Optional[float] = Field(None, ge=0.0, le=10.0, description="Delay between requests in seconds")
     max_resources: Optional[int] = Field(None, ge=-1, description="Max resources per scrape run (-1 = unlimited)")
-    max_redirects: Optional[int] = Field(None, ge=1, le=50, description="Max redirects to follow")
+    max_redirects: Optional[int] = Field(None, ge=0, le=50, description="Max redirects to follow (0 = no redirects)")
     folders: Optional[List[str]] = Field(None, description="Folder paths for hierarchical scrapers (e.g., WFA Causeway)")
     discovery_mode: Optional[str] = Field(None, description="Discovery mode: 'incremental' or 'date_based'")
     consecutive_duplicates_limit: Optional[int] = Field(None, ge=0, description="Stop after this many consecutive duplicate URLs (incremental mode)")

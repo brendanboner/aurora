@@ -58,6 +58,86 @@ def create_user(user_id: str, email: str, display_name: str) -> Dict[str, Any]:
     """
     return fetchone(query, (user_id, email, display_name))
 
+def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) -> Dict[str, Any]:
+    """
+    Migrate a user from an old ID to a new Cognito sub claim ID.
+    This handles SSO integration where existing users need their IDs updated.
+    
+    Updates all related tables (user_preferences, event_attendance, etc.) in a transaction.
+    
+    Args:
+        old_id: Existing user ID in database
+        new_id: New Cognito sub claim ID
+        email: User email (for verification)
+        display_name: Display name to use
+    
+    Returns:
+        Updated user dict
+    """
+    conn = get_conn()
+    
+    try:
+        # Need to temporarily disable autocommit for transaction
+        original_autocommit = conn.autocommit
+        conn.autocommit = False
+        
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Update all dependent tables first (in order of dependencies)
+            cur.execute(
+                "UPDATE user_preferences SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE event_attendance SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE chat_conversations SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE chat_messages SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE user_feedback SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE user_source_memberships SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            
+            # Now update the user record itself
+            cur.execute(
+                """
+                UPDATE app_users 
+                SET id = %s, display_name = COALESCE(%s, display_name), updated_at = NOW()
+                WHERE id = %s AND email = %s
+                RETURNING id, email, display_name, created_at, updated_at
+                """,
+                (new_id, display_name, old_id, email)
+            )
+            
+            user = cur.fetchone()
+            
+            if not user:
+                raise ValueError(f"Failed to migrate user {old_id} - user not found or email mismatch")
+            
+            # Commit the transaction
+            conn.commit()
+            logger.info(f"Successfully migrated user from {old_id} to {new_id}")
+            return user
+            
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to migrate user ID from {old_id} to {new_id}: {e}")
+        raise
+    finally:
+        # Restore original autocommit setting
+        conn.autocommit = original_autocommit
+
+
 def get_or_create_user(
     user_id: str, 
     email: str, 
@@ -68,6 +148,9 @@ def get_or_create_user(
     """
     Get user by ID, or create if doesn't exist in Postgres.
     Also ensures user is synced to Neo4j graph database.
+    
+    This function handles SSO migration scenarios where a user may exist with
+    an old ID but needs to be updated with a new Cognito sub claim.
     
     This function is called automatically by the UserSyncMiddleware on every
     authenticated request, ensuring users exist in both Postgres and Neo4j
@@ -87,13 +170,22 @@ def get_or_create_user(
     if not display_name:
         display_name = email.split('@')[0]  # Use email prefix as default
     
-    # Try to get existing user from Postgres
+    # Try to get existing user from Postgres by ID
     user = get_user_by_id(user_id)
     
     if not user:
-        # Create new user in Postgres if doesn't exist
-        logger.info(f"Creating new user in Postgres: {user_id} ({email})")
-        user = create_user(user_id, email, display_name)
+        # Check if a user with this email already exists (SSO migration scenario)
+        existing_user = get_user_by_email(email)
+        
+        if existing_user:
+            # User exists with old ID - update to new Cognito sub claim
+            old_id = existing_user['id']
+            logger.info(f"Migrating user {email} from old ID {old_id} to new Cognito ID {user_id}")
+            user = _migrate_user_id(old_id, user_id, email, display_name)
+        else:
+            # Create new user in Postgres if doesn't exist
+            logger.info(f"Creating new user in Postgres: {user_id} ({email})")
+            user = create_user(user_id, email, display_name)
     
     # Always ensure user is synced to Neo4j (function checks if already synced)
     _ensure_user_in_neo4j(user_id, email, user.get('display_name', display_name), given_name, family_name)
