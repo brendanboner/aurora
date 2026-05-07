@@ -238,7 +238,7 @@ disk:
 	@echo ""
 	@echo "$(GREEN)Backups:$(NC)"
 	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | grep -v '^$$' | xargs) && \
+		BACKUP_DIR=$$(grep '^BACKUP_DIR=' .env | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'") && \
 		BACKUP_DIR=$${BACKUP_DIR:-$$HOME/backups/aurora} && \
 		du -sh $$BACKUP_DIR 2>/dev/null || echo "  No backup directory"; \
 	else \
@@ -283,7 +283,7 @@ backup-status:
 	@echo ""
 	@echo "$(GREEN)Recent Backups:$(NC)"
 	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | grep -v '^$$' | xargs) && \
+		BACKUP_DIR=$$(grep '^BACKUP_DIR=' .env | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'") && \
 		BACKUP_DIR=$${BACKUP_DIR:-$$HOME/backups/aurora} && \
 		ls -lht $$BACKUP_DIR 2>/dev/null | head -10 || echo "  No backups found at $$BACKUP_DIR"; \
 	else \
@@ -292,7 +292,7 @@ backup-status:
 	@echo ""
 	@echo "$(GREEN)Disk Usage:$(NC)"
 	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | grep -v '^$$' | xargs) && \
+		BACKUP_DIR=$$(grep '^BACKUP_DIR=' .env | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'") && \
 		BACKUP_DIR=$${BACKUP_DIR:-$$HOME/backups/aurora} && \
 		du -sh $$BACKUP_DIR 2>/dev/null || echo "  No backup directory"; \
 	else \
@@ -303,7 +303,7 @@ backup-logs:
 	@echo "$(CYAN)Recent Backup Logs$(NC)"
 	@echo ""
 	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | grep -v '^$$' | xargs) && \
+		BACKUP_DIR=$$(grep '^BACKUP_DIR=' .env | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'") && \
 		BACKUP_DIR=$${BACKUP_DIR:-$$HOME/backups/aurora} && \
 		tail -50 $$BACKUP_DIR/backup.log 2>/dev/null || echo "No backup logs found at $$BACKUP_DIR/backup.log"; \
 	else \
