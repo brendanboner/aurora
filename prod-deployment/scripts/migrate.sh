@@ -46,12 +46,9 @@ if [ -f "$SCRIPT_DIR/../.env" ]; then
     echo "[DEBUG] .env file found at: $SCRIPT_DIR/../.env"
     echo "[DEBUG] Setting auto-export mode"
     set -a  # automatically export all variables
-    echo "[DEBUG] Processing .env file with grep and sed"
-    env_content=$(grep -v '^#' "$SCRIPT_DIR/../.env" | grep -v '^$' | sed 's/=/="/' | sed 's/$/"/')
-    echo "[DEBUG] Processed .env content (first few lines):"
-    echo "$env_content" | head -5
-    echo "[DEBUG] Sourcing processed content"
-    source <(echo "$env_content")
+    echo "[DEBUG] Sourcing .env file directly"
+    # Source the .env file directly, filtering only comments and empty lines
+    source <(grep -v '^#' "$SCRIPT_DIR/../.env" | grep -v '^$')
     echo "[DEBUG] Stopping auto-export mode"
     set +a  # stop auto-export
     echo "[DEBUG] .env file loaded successfully"
