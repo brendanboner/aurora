@@ -797,7 +797,7 @@ class QueryTemplateRegistry:
             cypher="""
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
-            WHERE toLower(r.category) IN ['action', 'task', 'todo']
+              AND toLower(r.category) IN ['action', 'task', 'todo']
               AND (r.status IS NULL OR toLower(r.status) IN ['open', 'pending', 'in progress'])
             
             // Optional workgroup filter
@@ -948,7 +948,7 @@ class QueryTemplateRegistry:
                    OR EXISTS {
                        MATCH (e)<-[:RELATES_TO]-(r:Resource)-[:RELATES_TO]->(t:Topic)
                        WHERE coalesce(r.archived, false) = false
-                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
+                         AND any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                    })
             
             OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
@@ -990,7 +990,7 @@ class QueryTemplateRegistry:
             // Find meeting/event documents
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
-            WHERE toLower(r.category) IN ['meeting', 'minutes', 'agenda', 'session']
+              AND toLower(r.category) IN ['meeting', 'minutes', 'agenda', 'session']
               AND ($start_date IS NULL OR r.publish_date >= $start_date)
               AND ($end_date IS NULL OR r.publish_date <= $end_date)
             
@@ -1056,7 +1056,7 @@ class QueryTemplateRegistry:
                    OR EXISTS {
                        MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
                        WHERE coalesce(r.archived, false) = false
-                       WHERE ds.datasource_id IN $workgroups
+                         AND ds.datasource_id IN $workgroups
                    })
             
             // Optional topic filter (topics mentioned in event or related documents)
@@ -1192,7 +1192,7 @@ class QueryTemplateRegistry:
             cypher="""
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
             WHERE coalesce(r.archived, false) = false
-            WHERE toLower(r.category) = 'decision'
+              AND toLower(r.category) = 'decision'
               AND rt.relevance >= 0.5
               AND t.name IN $topics
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
@@ -1227,7 +1227,7 @@ class QueryTemplateRegistry:
             cypher="""
             MATCH (r:Resource)-[:MENTIONS]->(p:Person)
             WHERE coalesce(r.archived, false) = false
-            WHERE toLower(r.category) IN ['action', 'task', 'todo']
+              AND toLower(r.category) IN ['action', 'task', 'todo']
               AND (r.status IS NULL OR toLower(r.status) IN ['open', 'pending', 'in progress'])
               AND p.name IN $people
             
@@ -1265,7 +1265,7 @@ class QueryTemplateRegistry:
             CALL {
                 MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
                 WHERE coalesce(r.archived, false) = false
-                WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
+                  AND any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                   AND rt.relevance >= 0.5
                 
                 // Date fallback with validation - handle NULL publish_date
@@ -1283,7 +1283,7 @@ class QueryTemplateRegistry:
                 // For short topics, allow partial matches
                 MATCH (r:Resource)
                 WHERE coalesce(r.archived, false) = false
-                WHERE (
+                  AND (
                     // For event names (>10 chars), require presence in title for high relevance
                     // For short topics, allow title or summary matches
                     any(topic IN $topics WHERE 
@@ -1537,7 +1537,7 @@ class QueryTemplateRegistry:
             cypher="""
             MATCH (p:Person)<-[:MENTIONS]-(r:Resource)
             WHERE coalesce(r.archived, false) = false
-            WHERE p.name IN $people
+              AND p.name IN $people
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
               AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
             
@@ -1573,7 +1573,7 @@ class QueryTemplateRegistry:
             // Find resources matching the event name and mentioning the person
             MATCH (r:Resource)-[:MENTIONS]->(p:Person)
             WHERE coalesce(r.archived, false) = false
-            WHERE toLower(r.title) CONTAINS toLower($event_name)
+              AND toLower(r.title) CONTAINS toLower($event_name)
               AND any(person IN $people WHERE toLower(p.name) CONTAINS toLower(person) OR toLower(person) CONTAINS toLower(p.name))
             
             // Date fallback with validation
@@ -1633,7 +1633,7 @@ class QueryTemplateRegistry:
             cypher="""
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
             WHERE coalesce(r.archived, false) = false
-            WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
+              AND any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
               AND rt.relevance >= 0.5
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
               AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
@@ -1670,7 +1670,7 @@ class QueryTemplateRegistry:
             // Find topics that co-occur in documents
             MATCH (t)<-[rt1:RELATES_TO]-(r:Resource)-[rt2:RELATES_TO]->(related:Topic)
             WHERE coalesce(r.archived, false) = false
-            WHERE related <> t
+              AND related <> t
               AND rt1.relevance >= 0.5
               AND rt2.relevance >= 0.5
             
@@ -1938,7 +1938,7 @@ class QueryTemplateRegistry:
             UNWIND topics_to_compare as topic
             MATCH (r:Resource)-[rt:RELATES_TO]->(topic)
             WHERE coalesce(r.archived, false) = false
-            WHERE rt.relevance >= 0.5
+              AND rt.relevance >= 0.5
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
             
             // Collect organizations and key attributes
@@ -1987,7 +1987,7 @@ class QueryTemplateRegistry:
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
-            WHERE r.title =~ '(?i).*(status|progress|update|approved|final|draft|ratified|published|released|version).*'
+              AND r.title =~ '(?i).*(status|progress|update|approved|final|draft|ratified|published|released|version).*'
             
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
             
@@ -2022,7 +2022,7 @@ class QueryTemplateRegistry:
 
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
-            WHERE (r.category IN ['specification', 'whitepaper', 'technical_guide', 'standard']
+              AND (r.category IN ['specification', 'whitepaper', 'technical_guide', 'standard']
                    OR r.title =~ '(?i).*(architecture|design|implementation|guide|specification|technical|mechanism|structure).*')
               AND r.publish_date IS NOT NULL
             
@@ -2195,7 +2195,7 @@ class QueryTemplateRegistry:
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
-            WHERE (r.category IN ['tutorial', 'guide', 'training', 'documentation']
+              AND (r.category IN ['tutorial', 'guide', 'training', 'documentation']
                    OR r.title =~ '(?i).*(intro|tutorial|guide|learn|beginner|getting started|how to|step by step).*')
             
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
@@ -2233,7 +2233,7 @@ class QueryTemplateRegistry:
             
             MATCH (r:Resource)-[:MENTIONS]->(o)
             WHERE coalesce(r.archived, false) = false
-            WHERE r.title =~ '(?i).*(product|chip|chipset|solution|platform|system|device|equipment|implementation).*'
+              AND r.title =~ '(?i).*(product|chip|chipset|solution|platform|system|device|equipment|implementation).*'
             
             // Filter by topics if specified
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
@@ -2272,7 +2272,7 @@ class QueryTemplateRegistry:
             // Find resources with critical/concerned stance or issue keywords
             MATCH (r:Resource)-[rt:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
-            WHERE (rt.stance IN ['critical', 'concerned']
+              AND (rt.stance IN ['critical', 'concerned']
                    OR r.title =~ '(?i).*(issue|problem|bug|limitation|challenge|concern|vulnerability|flaw|weakness).*')
             
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
@@ -2309,7 +2309,7 @@ class QueryTemplateRegistry:
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
-            WHERE r.title =~ '(?i).*(regulation|compliance|certification|requirement|rule|legal|mandate|policy|standard).*'
+              AND r.title =~ '(?i).*(regulation|compliance|certification|requirement|rule|legal|mandate|policy|standard).*'
             
             // Prefer documents from regulatory bodies
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
