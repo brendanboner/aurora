@@ -1711,3 +1711,185 @@ async def dedupe_dlq():
     except Exception as e:
         logger.error(f"Failed to dedupe DLQ: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to dedupe DLQ: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Data-quality admin controls (T10-T12)
+# ---------------------------------------------------------------------------
+
+DATA_QUALITY_FIELDS = {
+    "ingestion_lookback_days": {"type": int, "min": 30, "max": 730, "default": 365},
+    "oracle_max_content_age_days": {"type": int, "min": 30, "max": 730, "default": 365},
+    "creator_temporal_window_days": {"type": int, "min": 7, "max": 365, "default": 90},
+    "creator_min_relevance_score": {"type": float, "min": 0.0, "max": 1.0, "default": 0.25},
+    "initial_backfill_max_months": {"type": int, "min": 1, "max": 36, "default": 12},
+}
+
+
+class DataQualitySettings(BaseModel):
+    ingestion_lookback_days: int = Field(365, ge=30, le=730,
+        description="Max age of content accepted by the digester (days).")
+    oracle_max_content_age_days: int = Field(365, ge=30, le=730,
+        description="Oracle Cypher recency cap for temporal queries (days).")
+    creator_temporal_window_days: int = Field(90, ge=7, le=365,
+        description="Content creator fetch window (days).")
+    creator_min_relevance_score: float = Field(0.25, ge=0.0, le=1.0,
+        description="Minimum relevance score for content creator articles.")
+    initial_backfill_max_months: int = Field(12, ge=1, le=36,
+        description="Max months of history ingested on first scrape.")
+
+
+def _get_neo4j_client() -> Neo4jClient:
+    return Neo4jClient(
+        uri=os.environ["NEO4J_URI"],
+        user=os.environ["NEO4J_USER"],
+        password=os.environ["NEO4J_PASSWORD"],
+        database=os.environ.get("NEO4J_DATABASE", "neo4j"),
+    )
+
+
+def _get_redis_client():
+    return redis.Redis(
+        host=os.environ.get("REDIS_HOST", "redis"),
+        port=int(os.environ.get("REDIS_PORT", 6379)),
+        decode_responses=True,
+    )
+
+
+def _flush_fast_cache(r) -> int:
+    """Flush all fast-pipeline Redis caches and return the number deleted."""
+    keys = r.keys("fast:*")
+    if keys:
+        return r.delete(*keys)
+    return 0
+
+
+@router.get("/data-quality", response_model=DataQualitySettings, tags=["Data Quality"])
+async def get_data_quality_settings():
+    """Return the current data-quality runtime parameters from Neo4j."""
+    client = _get_neo4j_client()
+    try:
+        result = client.run_query(
+            """
+            MATCH (ds:DataSource {datasource_id: 'default'})
+            RETURN ds
+            """,
+            {},
+        )
+        node = result[0]["ds"] if result else {}
+        settings = {}
+        for field, meta in DATA_QUALITY_FIELDS.items():
+            raw = node.get(field)
+            if raw is None:
+                settings[field] = meta["default"]
+            else:
+                try:
+                    settings[field] = meta["type"](raw)
+                except (ValueError, TypeError):
+                    settings[field] = meta["default"]
+        return DataQualitySettings(**settings)
+    except Exception as e:
+        logger.error("Failed to read data-quality settings: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Neo4j error: {e}")
+    finally:
+        client.close()
+
+
+@router.put("/data-quality", response_model=DataQualitySettings, tags=["Data Quality"])
+async def update_data_quality_settings(settings: DataQualitySettings):
+    """Update data-quality runtime parameters in Neo4j and flush fast caches."""
+    client = _get_neo4j_client()
+    try:
+        props = settings.model_dump()
+        client.run_query(
+            """
+            MERGE (ds:DataSource {datasource_id: 'default'})
+            SET ds += $props
+            """,
+            {"props": props},
+        )
+        # Flush fast pipeline cache so new settings take effect immediately
+        try:
+            r = _get_redis_client()
+            flushed = _flush_fast_cache(r)
+            logger.info("Flushed %d fast-cache keys after data-quality update", flushed)
+        except Exception as re:
+            logger.warning("Redis flush failed (non-fatal): %s", re)
+
+        return settings
+    except Exception as e:
+        logger.error("Failed to update data-quality settings: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Neo4j error: {e}")
+    finally:
+        client.close()
+
+
+class FreshnessAuditRow(BaseModel):
+    datasource_id: Optional[str]
+    name: Optional[str]
+    total: int
+    oldest: Optional[str]
+    newest: Optional[str]
+    recent_90d: int
+    recent_30d: int
+    temporal_confidence_low: int
+
+
+class FreshnessAuditResponse(BaseModel):
+    generated_at: str
+    rows: List[FreshnessAuditRow]
+
+
+@router.get("/freshness-audit", response_model=FreshnessAuditResponse, tags=["Data Quality"])
+async def freshness_audit():
+    """Return per-datasource content age distribution for operator review.
+
+    Helps identify which sources are delivering stale content so operators
+    can adjust scraper schedules or trigger archive-stale cleanup.
+    """
+    client = _get_neo4j_client()
+    try:
+        results = client.run_query(
+            """
+            MATCH (r:Resource)
+            OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+            WITH ds,
+                 r.publish_date AS pd,
+                 coalesce(r.temporal_confidence, 'high') AS tc
+            RETURN
+                ds.datasource_id AS datasource_id,
+                ds.name AS name,
+                count(r) AS total,
+                min(CASE WHEN pd IS NOT NULL AND pd <> '' THEN pd END) AS oldest,
+                max(CASE WHEN pd IS NOT NULL AND pd <> '' THEN pd END) AS newest,
+                count(CASE WHEN pd IS NOT NULL AND pd <> ''
+                      AND datetime(pd) >= datetime() - duration({days: 90}) THEN 1 END) AS recent_90d,
+                count(CASE WHEN pd IS NOT NULL AND pd <> ''
+                      AND datetime(pd) >= datetime() - duration({days: 30}) THEN 1 END) AS recent_30d,
+                count(CASE WHEN tc = 'low' THEN 1 END) AS temporal_confidence_low
+            ORDER BY newest DESC
+            """,
+            {},
+        )
+        rows = [
+            FreshnessAuditRow(
+                datasource_id=row.get("datasource_id"),
+                name=row.get("name"),
+                total=row.get("total", 0),
+                oldest=row.get("oldest"),
+                newest=row.get("newest"),
+                recent_90d=row.get("recent_90d", 0),
+                recent_30d=row.get("recent_30d", 0),
+                temporal_confidence_low=row.get("temporal_confidence_low", 0),
+            )
+            for row in results
+        ]
+        return FreshnessAuditResponse(
+            generated_at=datetime.utcnow().isoformat(),
+            rows=rows,
+        )
+    except Exception as e:
+        logger.error("Freshness audit failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Neo4j error: {e}")
+    finally:
+        client.close()

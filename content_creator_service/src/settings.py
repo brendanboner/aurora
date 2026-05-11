@@ -76,14 +76,14 @@ class Settings(BaseSettings):
         le=1.0,
     )
     min_relevance_score_default: float = Field(
-        default=0.15,  # Lowered from 0.2 to allow more content through
+        default=0.25,  # Raised from 0.15 — prevents low-quality articles from appearing in feeds
         description="Default minimum relevance score for article selection (0.0-1.0). "
                     "Can be overridden by agent discovery_tolerance",
         ge=0.0,
         le=1.0,
     )
     max_topics_per_article: int = Field(
-        default=30,  # Increased from 20 to allow broader content
+        default=20,  # Reduced from 30 — filters out generic aggregation articles
         description="Maximum number of topics per article. Articles with more are filtered as generic aggregations",
         ge=1,
     )
@@ -93,7 +93,7 @@ class Settings(BaseSettings):
         ge=1,
     )
     temporal_window_days_default: int = Field(
-        default=180,  # Increased from 90 to look back further
+        default=90,  # Reduced from 180 — keeps content creator focused on recent content
         description="Default temporal window in days for article selection. "
                     "Can be overridden by agent cadence_window_days",
         ge=1,

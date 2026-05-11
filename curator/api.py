@@ -312,3 +312,88 @@ async def trigger_event_reconciliation(background_tasks: BackgroundTasks, user: 
 # 
 # The /trigger/reconcile endpoint is safe - it only processes pending Redis
 # signals from actual scrapes, which have valid timestamps.
+
+
+# ---------------------------------------------------------------------------
+# Archive stale content (T14)
+# ---------------------------------------------------------------------------
+
+class ArchiveStaleRequest(BaseModel):
+    max_age_months: int = 24
+    dry_run: bool = False
+
+
+class ArchiveStaleResponse(BaseModel):
+    success: bool
+    archived: int
+    dry_run: bool
+    message: str
+
+
+@app.post("/curator/archive-stale", response_model=ArchiveStaleResponse, tags=["Data Quality"])
+async def archive_stale_resources(
+    request: ArchiveStaleRequest,
+    user: Optional[dict] = Depends(require_role("admin")),
+):
+    """Mark Resource nodes older than max_age_months as archived=true.
+
+    Archived resources are filtered out of all oracle recency queries.
+    Only resources with a confirmed publish_date and temporal_confidence='high'
+    are eligible — undated content is left alone so nothing is hidden silently.
+
+    Use dry_run=true to preview the count without making changes.
+    """
+    client = Neo4jClient(
+        uri=settings.neo4j_uri,
+        user=settings.neo4j_user,
+        password=settings.neo4j_password,
+        database=settings.neo4j_database,
+    )
+    try:
+        if request.dry_run:
+            result = client.run_query(
+                """
+                MATCH (r:Resource)
+                WHERE r.publish_date IS NOT NULL
+                  AND r.publish_date <> ''
+                  AND coalesce(r.archived, false) = false
+                  AND coalesce(r.temporal_confidence, 'high') = 'high'
+                  AND datetime(r.publish_date) < datetime() - duration({months: $months})
+                RETURN count(r) AS total
+                """,
+                {"months": request.max_age_months},
+            )
+            total = result[0]["total"] if result else 0
+            return ArchiveStaleResponse(
+                success=True,
+                archived=total,
+                dry_run=True,
+                message=f"dry_run: {total} resources would be archived (older than {request.max_age_months} months).",
+            )
+
+        result = client.run_query(
+            """
+            MATCH (r:Resource)
+            WHERE r.publish_date IS NOT NULL
+              AND r.publish_date <> ''
+              AND coalesce(r.archived, false) = false
+              AND coalesce(r.temporal_confidence, 'high') = 'high'
+              AND datetime(r.publish_date) < datetime() - duration({months: $months})
+            SET r.archived = true
+            RETURN count(r) AS total
+            """,
+            {"months": request.max_age_months},
+        )
+        total = result[0]["total"] if result else 0
+        logger.info("archive-stale: archived %d resources older than %d months", total, request.max_age_months)
+        return ArchiveStaleResponse(
+            success=True,
+            archived=total,
+            dry_run=False,
+            message=f"Archived {total} resources older than {request.max_age_months} months.",
+        )
+    except Exception as e:
+        logger.error("archive-stale failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Archive stale failed: {e}")
+    finally:
+        client.close()

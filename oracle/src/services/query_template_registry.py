@@ -238,7 +238,7 @@ class QueryTemplate:
                 matched_wgs = [acr for acr in _IETF_WG_ACRONYMS if re.search(r'\b' + acr + r'\b', query_lower)]
                 params["wg_datasource_ids"] = [f"ietf_wg_{acr}" for acr in matched_wgs]
                 from datetime import date, timedelta
-                params["lookback_date"] = (date.today() - timedelta(days=90)).isoformat()
+                params["lookback_date"] = (date.today() - timedelta(days=60)).isoformat()
 
             elif route_id_val == "ietf_meeting_agenda" and plan.raw_query:
                 query_lower = plan.raw_query.lower()
@@ -387,7 +387,10 @@ class QueryTemplateRegistry:
                   datetime() - duration({days: 180}) as max_threshold
 
               // Get resources with robust date fallback: publish_date -> created_at -> scraped_at
+              // Archived resources are excluded; low temporal_confidence resources are
+              // allowed but will be deprioritised via a score penalty applied below.
               MATCH (r:Resource)
+              WHERE coalesce(r.archived, false) = false
               WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days,
                    CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
               WHERE effective_date >= max_threshold
@@ -426,6 +429,8 @@ class QueryTemplateRegistry:
                    })
 
                 // Categorize by time window using effective date
+                 // Low temporal_confidence resources (no valid publish_date) are penalised
+                 // so they appear after high-confidence resources within the same bucket.
                 WITH r, effective_date, items_per_group, group_limit, requested_days, primary_threshold, fallback_threshold,
                      CASE
                          WHEN $topics IS NULL OR size($topics) = 0 THEN 0
@@ -437,12 +442,16 @@ class QueryTemplateRegistry:
                          WHEN coalesce(trim(r.title), '') = '' OR toLower(trim(r.title)) = 'untitled' THEN -3
                          ELSE 0
                      END as title_quality_bonus,
+                     CASE
+                         WHEN coalesce(r.temporal_confidence, 'high') = 'low' THEN -2
+                         ELSE 0
+                     END as date_confidence_penalty,
                      CASE WHEN effective_date >= primary_threshold THEN 'primary' WHEN effective_date >= fallback_threshold THEN 'fallback'
                          ELSE 'max' END as time_bucket
 
-              WITH collect(CASE WHEN time_bucket = 'primary' THEN {resource: r, effective_date: effective_date, score: topic_term_bonus + title_quality_bonus} ELSE null END) as primary_docs,
-                   collect(CASE WHEN time_bucket = 'fallback' THEN {resource: r, effective_date: effective_date, score: topic_term_bonus + title_quality_bonus} ELSE null END) as fallback_docs,
-                   collect(CASE WHEN time_bucket = 'max' THEN {resource: r, effective_date: effective_date, score: topic_term_bonus + title_quality_bonus} ELSE null END) as max_docs,
+              WITH collect(CASE WHEN time_bucket = 'primary' THEN {resource: r, effective_date: effective_date, score: topic_term_bonus + title_quality_bonus + date_confidence_penalty} ELSE null END) as primary_docs,
+                   collect(CASE WHEN time_bucket = 'fallback' THEN {resource: r, effective_date: effective_date, score: topic_term_bonus + title_quality_bonus + date_confidence_penalty} ELSE null END) as fallback_docs,
+                   collect(CASE WHEN time_bucket = 'max' THEN {resource: r, effective_date: effective_date, score: topic_term_bonus + title_quality_bonus + date_confidence_penalty} ELSE null END) as max_docs,
                    items_per_group, group_limit, requested_days
 
                // Use first non-empty bucket
@@ -558,6 +567,7 @@ class QueryTemplateRegistry:
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WITH ds, r
             WITH ds, r,
                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
@@ -606,6 +616,7 @@ class QueryTemplateRegistry:
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WITH ds, r,
                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
@@ -651,6 +662,7 @@ class QueryTemplateRegistry:
             
             // Get recently PUBLISHED/UPDATED documents (use date fallback for NULL publish_date)
             MATCH (r:Resource)
+            WHERE coalesce(r.archived, false) = false
               WITH r, doc_threshold, half_limit
               WITH r, doc_threshold, half_limit,
                   CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
@@ -717,6 +729,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)
+            WHERE coalesce(r.archived, false) = false
               WITH r,
                   CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE toLower(r.category) = 'decision'
@@ -764,6 +777,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WHERE toLower(r.category) IN ['action', 'task', 'todo']
               AND (r.status IS NULL OR toLower(r.status) IN ['open', 'pending', 'in progress'])
             
@@ -809,6 +823,7 @@ class QueryTemplateRegistry:
             // Get resources in date range - don't filter by user topic preferences
             // User preferences should boost, not limit results (user might discover new topics)
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
+            WHERE coalesce(r.archived, false) = false
             WITH r, rt, t,
                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
@@ -850,6 +865,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)-[:MENTIONS]->(p:Person)
+            WHERE coalesce(r.archived, false) = false
             WITH r, p,
                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
                       WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
@@ -912,6 +928,7 @@ class QueryTemplateRegistry:
             WHERE ($topics IS NULL OR size($topics) = 0
                    OR EXISTS {
                        MATCH (e)<-[:RELATES_TO]-(r:Resource)-[:RELATES_TO]->(t:Topic)
+                       WHERE coalesce(r.archived, false) = false
                        WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                    })
             
@@ -953,6 +970,7 @@ class QueryTemplateRegistry:
             cypher="""
             // Find meeting/event documents
             MATCH (r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WHERE toLower(r.category) IN ['meeting', 'minutes', 'agenda', 'session']
               AND ($start_date IS NULL OR r.publish_date >= $start_date)
               AND ($end_date IS NULL OR r.publish_date <= $end_date)
@@ -1018,6 +1036,7 @@ class QueryTemplateRegistry:
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
                        MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
+                       WHERE coalesce(r.archived, false) = false
                        WHERE ds.datasource_id IN $workgroups
                    })
             
@@ -1031,6 +1050,7 @@ class QueryTemplateRegistry:
                    OR EXISTS {
                        // Check if recent documents mention both the event and the topic
                        MATCH (r:Resource)-[:MENTIONS]->(e)
+                       WHERE coalesce(r.archived, false) = false
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
                        WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
                    })
@@ -1110,6 +1130,7 @@ class QueryTemplateRegistry:
             WITH datetime() - duration({days: coalesce($relative_days, 30)}) as threshold
             
             MATCH (r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WITH r, threshold,
                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
                       WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
@@ -1151,6 +1172,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
+            WHERE coalesce(r.archived, false) = false
             WHERE toLower(r.category) = 'decision'
               AND rt.relevance >= 0.5
               AND t.name IN $topics
@@ -1185,6 +1207,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)-[:MENTIONS]->(p:Person)
+            WHERE coalesce(r.archived, false) = false
             WHERE toLower(r.category) IN ['action', 'task', 'todo']
               AND (r.status IS NULL OR toLower(r.status) IN ['open', 'pending', 'in progress'])
               AND p.name IN $people
@@ -1222,6 +1245,7 @@ class QueryTemplateRegistry:
             // Try exact Topic match first (case-insensitive for topic names)
             CALL {
                 MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
+                WHERE coalesce(r.archived, false) = false
                 WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
                   AND rt.relevance >= 0.5
                 
@@ -1237,6 +1261,7 @@ class QueryTemplateRegistry:
                 // For event queries (long topic strings), require full phrase match in title
                 // For short topics, allow partial matches
                 MATCH (r:Resource)
+                WHERE coalesce(r.archived, false) = false
                 WHERE (
                     // For event names (>10 chars), require presence in title for high relevance
                     // For short topics, allow title or summary matches
@@ -1407,6 +1432,7 @@ class QueryTemplateRegistry:
             WITH datetime() - duration({days: coalesce($relative_days, 14)}) as threshold
             
             MATCH (r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WITH r, threshold
             WITH r, threshold,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
@@ -1485,6 +1511,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (p:Person)<-[:MENTIONS]-(r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WHERE p.name IN $people
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
               AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
@@ -1520,6 +1547,7 @@ class QueryTemplateRegistry:
             cypher="""
             // Find resources matching the event name and mentioning the person
             MATCH (r:Resource)-[:MENTIONS]->(p:Person)
+            WHERE coalesce(r.archived, false) = false
             WHERE toLower(r.title) CONTAINS toLower($event_name)
               AND any(person IN $people WHERE toLower(p.name) CONTAINS toLower(person) OR toLower(person) CONTAINS toLower(p.name))
             
@@ -1577,6 +1605,7 @@ class QueryTemplateRegistry:
             },
             cypher="""
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
+            WHERE coalesce(r.archived, false) = false
             WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
               AND rt.relevance >= 0.5
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
@@ -1613,6 +1642,7 @@ class QueryTemplateRegistry:
             
             // Find topics that co-occur in documents
             MATCH (t)<-[rt1:RELATES_TO]-(r:Resource)-[rt2:RELATES_TO]->(related:Topic)
+            WHERE coalesce(r.archived, false) = false
             WHERE related <> t
               AND rt1.relevance >= 0.5
               AND rt2.relevance >= 0.5
@@ -1647,6 +1677,7 @@ class QueryTemplateRegistry:
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WITH ds, r,
                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
@@ -1692,6 +1723,7 @@ class QueryTemplateRegistry:
             WHERE o.name IN $organizations OR o.org_id IN $organizations
             
             MATCH (o)<-[:MENTIONS]-(r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WITH o, r,
                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
@@ -1782,6 +1814,7 @@ class QueryTemplateRegistry:
             
             // Match resources by topics or organizations
             MATCH (r:Resource)
+            WHERE coalesce(r.archived, false) = false
             WITH r, doc_threshold,
                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE effective_date >= doc_threshold
@@ -1875,6 +1908,7 @@ class QueryTemplateRegistry:
             // Get resources for each topic
             UNWIND topics_to_compare as topic
             MATCH (r:Resource)-[rt:RELATES_TO]->(topic)
+            WHERE coalesce(r.archived, false) = false
             WHERE rt.relevance >= 0.5
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
             
@@ -1923,6 +1957,7 @@ class QueryTemplateRegistry:
             WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE coalesce(r.archived, false) = false
             WHERE r.title =~ '(?i).*(status|progress|update|approved|final|draft|ratified|published|released|version).*'
             
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
@@ -1957,6 +1992,7 @@ class QueryTemplateRegistry:
             WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
 
             MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE coalesce(r.archived, false) = false
             WHERE (r.category IN ['specification', 'whitepaper', 'technical_guide', 'standard']
                    OR r.title =~ '(?i).*(architecture|design|implementation|guide|specification|technical|mechanism|structure).*')
               AND r.publish_date IS NOT NULL
@@ -1994,6 +2030,7 @@ class QueryTemplateRegistry:
 
             // Find resources about this topic mentioning adoption
             MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE coalesce(r.archived, false) = false
             MATCH (r)-[:MENTIONS]->(o:Organization)
             WHERE r.title =~ '(?i).*(adopt|deploy|support|implement|launch|announce|using|enable).*'
             
@@ -2040,6 +2077,7 @@ class QueryTemplateRegistry:
             // Get recent resources mentioning them - sort BEFORE aggregation
             OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
             WHERE r.publish_date IS NOT NULL
+              AND coalesce(r.archived, false) = false
             
             // Sort while r is still in scope, then aggregate
             WITH p, o, aff, t, r
@@ -2089,6 +2127,7 @@ class QueryTemplateRegistry:
             // Get recent resources/events they're mentioned in
             OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
             WHERE r.publish_date IS NOT NULL
+              AND coalesce(r.archived, false) = false
             
             WITH p, org, aff,
                  count(DISTINCT r) as activity_count,
@@ -2126,6 +2165,7 @@ class QueryTemplateRegistry:
             WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE coalesce(r.archived, false) = false
             WHERE (r.category IN ['tutorial', 'guide', 'training', 'documentation']
                    OR r.title =~ '(?i).*(intro|tutorial|guide|learn|beginner|getting started|how to|step by step).*')
             
@@ -2163,6 +2203,7 @@ class QueryTemplateRegistry:
             WHERE o.name IN $organizations OR o.org_id IN $organizations
             
             MATCH (r:Resource)-[:MENTIONS]->(o)
+            WHERE coalesce(r.archived, false) = false
             WHERE r.title =~ '(?i).*(product|chip|chipset|solution|platform|system|device|equipment|implementation).*'
             
             // Filter by topics if specified
@@ -2201,6 +2242,7 @@ class QueryTemplateRegistry:
             
             // Find resources with critical/concerned stance or issue keywords
             MATCH (r:Resource)-[rt:RELATES_TO]->(t)
+            WHERE coalesce(r.archived, false) = false
             WHERE (rt.stance IN ['critical', 'concerned']
                    OR r.title =~ '(?i).*(issue|problem|bug|limitation|challenge|concern|vulnerability|flaw|weakness).*')
             
@@ -2237,6 +2279,7 @@ class QueryTemplateRegistry:
             WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
             
             MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE coalesce(r.archived, false) = false
             WHERE r.title =~ '(?i).*(regulation|compliance|certification|requirement|rule|legal|mandate|policy|standard).*'
             
             // Prefer documents from regulatory bodies
@@ -2273,6 +2316,7 @@ class QueryTemplateRegistry:
             cypher="""
 MATCH (r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
 WHERE ds.source_type = 'ietf_wg'
+  AND coalesce(r.archived, false) = false
   AND (size($excluded_datasources) = 0 OR NOT r.datasource_id IN $excluded_datasources)
   AND r.publish_date >= $lookback_date
   AND (
@@ -2317,6 +2361,7 @@ WITH e
 ORDER BY e.start_date DESC
 LIMIT 10
 OPTIONAL MATCH (e)<-[:RELATES_TO_EVENT]-(r:Resource)
+WHERE coalesce(r.archived, false) = false
 RETURN e.name AS event_name,
        e.url AS event_url,
        e.start_date AS start_date,
@@ -2344,7 +2389,8 @@ ORDER BY e.start_date DESC
             // 2. Topic-based search if topics provided
             // 3. Fallback to graph-based scoring
             MATCH (r:Resource)
-            WHERE (($query_text IS NULL OR 
+            WHERE coalesce(r.archived, false) = false
+              AND (($query_text IS NULL OR 
                     toLower(r.title) CONTAINS toLower($query_text) OR 
                     (r.summary IS NOT NULL AND toLower(r.summary) CONTAINS toLower($query_text))) OR
                    ($topics IS NOT NULL AND size($topics) > 0))

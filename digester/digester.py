@@ -621,34 +621,49 @@ class DocumentDigester:
         return True
 
     async def _skip_if_stale(self, message: Dict[str, Any]) -> bool:
-        """Skip stale automated scraper items before parsing/insertion."""
+        """Skip stale automated scraper items before parsing/insertion.
+
+        Applies to ALL scraped content (not just datasources with scraper_type set).
+        User uploads and allow_historical_ingest messages are always exempted.
+
+        Date logic:
+        - For events: use start_date only (do NOT fall back to scraped_at).
+        - For resources: use publish_date only (do NOT fall back to scraped_at).
+        - If no date is available, allow through but mark temporal_confidence='low'
+          so recency queries can deprioritise the resource.
+        """
         if message.get("uploaded_by") or message.get("allow_historical_ingest"):
             return False
 
         datasource_id = message.get("datasource_id")
-        datasource_config = self._get_datasource_config(datasource_id)
-        if not datasource_config.get("scraper_type"):
-            return False
-
         resource_data = message.get("resource_data", {})
         event_data = message.get("event_data", {})
         message_type = message.get("message_type")
-        reference_value = None
 
+        # Determine reference date using publish_date ONLY — do NOT fall back to
+        # scraped_at, which would make a 2016 document ingested today appear recent.
         if message_type == "event":
-            reference_value = event_data.get("start_date") or message.get("scraped_at")
+            reference_value = event_data.get("start_date")
         else:
-            reference_value = resource_data.get("publish_date") or message.get("scraped_at")
+            reference_value = resource_data.get("publish_date")
 
         reference_dt = self._normalize_datetime(reference_value)
         if reference_dt is None:
-            logger.info(
-                f"Allowing {message_type or 'message'} without temporal metadata for datasource {datasource_id or 'unknown'}"
-            )
+            # No reliable date available — allow through but flag as low confidence
+            # so oracle recency queries can deprioritise this resource.
+            if message_type != "event":
+                resource_data["temporal_confidence"] = "low"
+                logger.debug(
+                    f"No publish_date for {self._get_message_title(message)} "
+                    f"(datasource={datasource_id}) — marked temporal_confidence=low"
+                )
             return False
 
         cutoff = self._get_ingestion_cutoff()
         if reference_dt >= cutoff:
+            # Fresh content — mark high confidence (explicit publish_date present)
+            if message_type != "event":
+                resource_data.setdefault("temporal_confidence", "high")
             return False
 
         global_config = self._get_global_ingestion_config()
