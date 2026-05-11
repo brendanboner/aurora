@@ -30,6 +30,7 @@ class Migrations:
             Migrations.backfill_doc_type,
             Migrations.backfill_datasource_metadata,
             Migrations.backfill_resource_domains,
+            Migrations.fix_wba_subdatasource_types,
         ]
         
         for migration_func in migrations:
@@ -683,6 +684,46 @@ class Migrations:
 
         except Exception as e:
             logger.error(f"Error in backfill_resource_domains migration: {e}")
+            return False
+
+    @staticmethod
+    def fix_wba_subdatasource_types(session: Session) -> bool:
+        """
+        Fix WBA sub-datasource nodes that were created via the Admin UI without
+        source_type, scraper_type, or fetch_url — making them invisible in the
+        sources preferences list and unscrappable.
+
+        Idempotent: only sets fields that are currently NULL/empty.
+        """
+        try:
+            result = session.run("""
+                MATCH (d:DataSource)
+                WHERE d.datasource_id IN [
+                    'wba_case_studies', 'wba_industry_reports',
+                    'wba_presentations', 'wba_specifications', 'wba_whitepapers'
+                ]
+                SET d.source_type  = coalesce(d.source_type,  'scraped_webpage'),
+                    d.scraper_type = coalesce(d.scraper_type, 'wba'),
+                    d.fetch_url    = CASE WHEN d.fetch_url IS NULL OR d.fetch_url = ''
+                                         THEN 'https://wballiance.com/resources/'
+                                         ELSE d.fetch_url END,
+                    d.resource_url = coalesce(d.resource_url, '/resources/'),
+                    d.category_filter = CASE d.datasource_id
+                        WHEN 'wba_case_studies'     THEN coalesce(d.category_filter, 'case study')
+                        WHEN 'wba_industry_reports' THEN coalesce(d.category_filter, 'industry report')
+                        WHEN 'wba_presentations'    THEN coalesce(d.category_filter, 'presentation')
+                        WHEN 'wba_specifications'   THEN coalesce(d.category_filter, 'specifications')
+                        WHEN 'wba_whitepapers'      THEN coalesce(d.category_filter, 'whitepaper')
+                        ELSE d.category_filter
+                    END
+                RETURN count(d) AS updated
+            """)
+            record = result.single()
+            updated = record["updated"] if record else 0
+            logger.info(f"fix_wba_subdatasource_types: patched {updated} WBA sub-datasource nodes")
+            return True
+        except Exception as e:
+            logger.error(f"Error in fix_wba_subdatasource_types migration: {e}")
             return False
 
     @staticmethod
