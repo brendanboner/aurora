@@ -871,19 +871,22 @@ async def query_stream(
 
             response = await engine.query(request, user=user, query_id=query_id)
 
-            # If we got an answer from cache or with no streaming path, yield it whole
-            client = get_llm_client()
-            if not client or not response.documents:
-                # Emit the full answer as a single chunk
+            # Fast pipeline: answer is already fully synthesised — stream the pre-generated
+            # text as word chunks rather than calling the LLM a second time.
+            # Baseline: re-stream so the user sees tokens arriving live.
+            if use_fast or not get_llm_client() or not response.documents:
                 answer = response.answer or ""
+                # Emit META first so the frontend has documents/citations before DONE fires
+                meta = _build_stream_meta(response)
+                meta["answer"] = answer
+                yield f"data: [META] {json.dumps(meta)}\n\n"
                 for chunk in _split_into_chunks(answer):
                     yield f"data: {json.dumps({'token': chunk})}\n\n"
                 yield "data: [DONE]\n\n"
-                meta = _build_stream_meta(response)
-                yield f"data: [META] {json.dumps(meta)}\n\n"
                 return
 
-            # Re-generate the answer with streaming (documents already retrieved)
+            # Baseline: Re-generate the answer with token-by-token streaming
+            # (documents already retrieved by the engine above)
             from src.prompts.answer_generator import get_answer_generator_messages
             from src.services.conversation_store import ConversationStore
 
@@ -935,8 +938,6 @@ async def query_stream(
                 full_answer.append(token)
                 yield f"data: {json.dumps({'token': token})}\n\n"
 
-            yield "data: [DONE]\n\n"
-
             # Save the streaming turn to conversation store
             complete_answer = "".join(full_answer)
             if complete_answer and request.user_id:
@@ -944,10 +945,12 @@ async def query_stream(
                     str(request.user_id), request.question, complete_answer
                 )
 
-            # Emit metadata so the frontend can update citations/confidence
+            # Emit META before DONE so the frontend receives documents/citations/confidence
+            # before the generator closes on [DONE]
             meta = _build_stream_meta(response)
             meta["answer"] = complete_answer
             yield f"data: [META] {json.dumps(meta)}\n\n"
+            yield "data: [DONE]\n\n"
 
         except Exception as exc:
             logger.error(f"[{query_id}] Streaming query failed: {exc}")
@@ -981,6 +984,7 @@ def _split_into_chunks(text: str, size: int = 50) -> list[str]:
 
 def _build_stream_meta(response) -> dict:
     """Serialise the key metadata fields for the [META] SSE event."""
+    meta = response.metadata
     return {
         "query_id": response.query_id,
         "pipeline": response.pipeline if hasattr(response, "pipeline") else None,
@@ -990,9 +994,13 @@ def _build_stream_meta(response) -> dict:
                 "url": d.url,
                 "title": d.title,
                 "publish_date": d.publish_date,
+                "summary": d.summary,
+                "topics": d.topics or [],
+                "organizations": d.organizations or [],
                 "source": d.source,
                 "datasource_id": d.datasource_id,
                 "relevance_score": d.relevance_score,
+                "match_reasons": d.match_reasons or [],
             }
             for d in (response.documents or [])
         ],
@@ -1000,6 +1008,17 @@ def _build_stream_meta(response) -> dict:
             {"index": c.index, "document_url": c.document_url, "title": c.title}
             for c in (response.citations or [])
         ],
+        # Metadata for the debug/admin tab
+        "metadata": {
+            "intent": meta.intent.value if meta and meta.intent else None,
+            "intent_confidence": meta.intent_confidence if meta else None,
+            "strategies_used": meta.strategies_used if meta else [],
+            "total_candidates": meta.total_candidates if meta else None,
+            "processing_time_ms": meta.processing_time_ms if meta else None,
+            "cache_hit": meta.cache_hit if meta else False,
+            "llm_tokens_used": meta.llm_tokens_used if meta else None,
+        } if meta else None,
+        "personalization_applied": response.personalization_applied if hasattr(response, "personalization_applied") else False,
     }
 
 

@@ -325,6 +325,7 @@ export async function* sendOracleQueryStream(userId, question, options = {}) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let doneReceived = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -340,7 +341,9 @@ export async function* sendOracleQueryStream(userId, question, options = {}) {
 
       if (payload_str === '[DONE]') {
         yield { type: 'done' };
-        return;
+        // Don't return here — [META] arrives before [DONE] now, but guard for legacy order too
+        doneReceived = true;
+        continue;
       }
 
       if (payload_str.startsWith('[META] ')) {
@@ -348,6 +351,8 @@ export async function* sendOracleQueryStream(userId, question, options = {}) {
           const meta = JSON.parse(payload_str.slice(7));
           yield { type: 'meta', ...meta };
         } catch (_) { /* ignore parse errors */ }
+        // After meta is received, if [DONE] already fired we can close cleanly
+        if (doneReceived) return;
         continue;
       }
 
@@ -357,6 +362,9 @@ export async function* sendOracleQueryStream(userId, question, options = {}) {
         else if (data.error) yield { type: 'error', error: data.error };
       } catch (_) { /* ignore */ }
     }
+
+    // If [DONE] received but no [META] came in this chunk, check next chunk; stream will
+    // close naturally when server ends the response
   }
 }
 

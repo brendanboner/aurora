@@ -593,6 +593,8 @@ What would you like to know?`;
               citations: event.citations || [],
               documents: mappedDocuments,
               confidenceScore: event.confidence_score ?? null,
+              personalizationApplied: event.personalization_applied ?? false,
+              metadata: event.metadata || null,
               isStreaming: false,
             };
             return updated;

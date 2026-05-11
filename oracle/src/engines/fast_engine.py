@@ -491,7 +491,8 @@ class FastEngine:
                 metadata=metadata,
                 suggestions=[],
                 confidence_score=fast_confidence,
-                personalization_applied=personalization_enabled
+                personalization_applied=personalization_enabled,
+                pipeline="fast",
             )
             
             span.set_attribute("oracle.processing_time_ms", processing_time_ms)
@@ -1051,12 +1052,14 @@ class FastEngine:
                     answer, documents, citations = comparison_answer
                 else:
                     answer, documents, citations = await self._compose_with_llm(
-                        plan, route_result, deep_dive_result, request, span, user_context=user_context
+                        plan, route_result, deep_dive_result, request, span,
+                        user_context=user_context, conversation_history=conversation_history
                     )
             else:
                 # LLM-based synthesis
                 answer, documents, citations = await self._compose_with_llm(
-                    plan, route_result, deep_dive_result, request, span, user_context=user_context
+                    plan, route_result, deep_dive_result, request, span,
+                    user_context=user_context, conversation_history=conversation_history
                 )
             
             answer_time_ms = int((time.time() - answer_start) * 1000)
@@ -1226,6 +1229,7 @@ class FastEngine:
         request: QueryRequest,
         span,
         user_context: Optional[str] = None,
+        conversation_history: Optional[List[dict]] = None,
     ) -> tuple[str, List[Document], List[Citation]]:
         """
         Compose answer using LLM synthesis.

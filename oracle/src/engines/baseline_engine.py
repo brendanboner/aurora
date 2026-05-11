@@ -502,7 +502,8 @@ class BaselineEngine:
                 confidence_score=confidence_score.score if confidence_score else None,
                 suggestions=query_suggestions,
                 personalization_applied=personalization_enabled,
-                metadata=metadata
+                metadata=metadata,
+                pipeline="baseline",
             )
             
             # Cache response if not personalized
