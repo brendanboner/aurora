@@ -86,6 +86,8 @@ class QueryTemplate:
         # User source membership filters — populated by fast_engine from user preferences
         params["excluded_datasources"] = plan.excluded_datasources if plan.excluded_datasources else []
         params["preferred_datasources"] = plan.preferred_datasources if plan.preferred_datasources else []
+        # User domain preferences — soft boost matching resources 1.25x
+        params["preferred_domains"] = plan.preferred_domains if plan.preferred_domains else []
 
         expanded_topics = list(params["topics"])
         for topic in params["topics"]:
@@ -110,6 +112,13 @@ class QueryTemplate:
             # so "latest press release" finds the actual most recent even if months old
             if route_id_val == "recent_publications" and params["relative_days"] is None:
                 params["relative_days"] = 365
+            # For ORGANIZATION_ACTIVITY, "most recent publications" means "sort by recency", not
+            # a hard 14-day cutoff. Remove the vague date constraint entirely and let
+            # ORDER BY effective_date DESC in the template surface the most recent docs.
+            if route_id_val == "organization_activity" and params["relative_days"] is not None and params["relative_days"] <= 30:
+                params["relative_days"] = None
+                params["start_date"] = None
+                params["end_date"] = None
             # For RECENT_PUBLICATIONS, when a category filter is already set (e.g. "press release"),
             # the org filter over-restricts (requires MENTIONS/PUBLISHED_BY relationships that
             # many resources lack). Clear it so the category filter alone narrows the results.

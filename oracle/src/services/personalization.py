@@ -122,10 +122,15 @@ class UserPreferences:
     topics: list[str]
     organisations: list[str]
     people: list[str]
-    
+    domains: list[str] = None
+
+    def __post_init__(self):
+        if self.domains is None:
+            self.domains = []
+
     def is_empty(self) -> bool:
         """Check if user has any preferences set."""
-        return not (self.topics or self.organisations or self.people)
+        return not (self.topics or self.organisations or self.people or self.domains)
 
 
 @dataclass
@@ -171,9 +176,9 @@ async def get_user_preferences(user_id: str) -> UserPreferences:
         user_id: Cognito user UUID
         
     Returns:
-        UserPreferences with topics, orgs, people (may be empty)
+        UserPreferences with topics, orgs, people, domains (may be empty)
     """
-    query = "SELECT topics, organisations, people FROM user_preferences WHERE user_id = %s"
+    query = "SELECT topics, organisations, people, domains FROM user_preferences WHERE user_id = %s"
     result = _fetchone(query, (user_id,))
     
     if not result:
@@ -182,14 +187,16 @@ async def get_user_preferences(user_id: str) -> UserPreferences:
             user_id=user_id,
             topics=[],
             organisations=[],
-            people=[]
+            people=[],
+            domains=[]
         )
     
     return UserPreferences(
         user_id=user_id,
         topics=result.get("topics") or [],
         organisations=result.get("organisations") or [],
-        people=result.get("people") or []
+        people=result.get("people") or [],
+        domains=result.get("domains") or []
     )
 
 

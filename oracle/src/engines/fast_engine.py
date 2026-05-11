@@ -284,6 +284,7 @@ class FastEngine:
             # Load user source memberships (joined=boost, ignored=hard-exclude)
             user_excluded_datasources: list = []
             user_preferred_datasources: list = []
+            user_preferred_domains: list = []
             if request.user_id:
                 try:
                     memberships = get_user_source_memberships(str(request.user_id))
@@ -295,6 +296,14 @@ class FastEngine:
                         logger.info(f"[{query_id}] User joined datasources: {user_preferred_datasources}")
                 except Exception as e:
                     logger.warning(f"[{query_id}] Failed to fetch source memberships: {e}")
+
+                try:
+                    user_prefs_for_domains = await get_user_preferences(str(request.user_id))
+                    user_preferred_domains = user_prefs_for_domains.domains or []
+                    if user_preferred_domains:
+                        logger.info(f"[{query_id}] User domain preferences: {user_preferred_domains}")
+                except Exception as e:
+                    logger.warning(f"[{query_id}] Failed to fetch user domain preferences: {e}")
             
             # Decide personalization and capture user context for answer synthesis.
             personalization_enabled = False
@@ -356,6 +365,8 @@ class FastEngine:
                 # override with joined preferences. Still apply excluded filter.
                 if not datasource_ids:
                     plan.preferred_datasources = user_preferred_datasources
+            if user_preferred_domains:
+                plan.preferred_domains = user_preferred_domains
             
             # Handle route_id that might be enum or string (after cache deserialization)
             route_id_str = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
@@ -759,6 +770,24 @@ class FastEngine:
             try:
                 processed_results.sort(
                     key=lambda r: (r.get("score") or 0.0) * r.get("_source_boost", 1.0),
+                    reverse=True
+                )
+            except Exception:
+                pass
+
+        # Apply domain preferences boost (soft, 1.25x — weaker than datasource membership)
+        preferred_domains = params.get("preferred_domains", [])
+        if preferred_domains and processed_results:
+            for r in processed_results:
+                r_domains = r.get("domains") or []
+                if any(d in preferred_domains for d in r_domains):
+                    if "score" in r and r["score"] is not None:
+                        r["score"] = float(r["score"]) * 1.25
+                    else:
+                        r["_domain_boost"] = 1.25
+            try:
+                processed_results.sort(
+                    key=lambda r: (r.get("score") or 0.0) * r.get("_domain_boost", 1.0),
                     reverse=True
                 )
             except Exception:

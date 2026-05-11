@@ -138,6 +138,7 @@ class UserPreferences(BaseModel):
     organisations: List[str] = []
     people: List[str] = []
     sources: List[str] = []
+    domains: List[str] = []
     notify_email: bool = True
     notify_digest: bool = True
 
@@ -567,6 +568,7 @@ async def update_preferences(user_id: str, preferences: UserPreferences, user: O
             organisations=preferences.organisations,
             people=preferences.people,
             sources=preferences.sources,
+            domains=preferences.domains,
             notify_email=preferences.notify_email,
             notify_digest=preferences.notify_digest
         )

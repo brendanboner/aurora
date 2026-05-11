@@ -353,6 +353,7 @@ def get_user_preferences(user_id: str) -> Dict[str, Any]:  # Changed from int to
             "organisations": [],
             "people": [],
             "sources": [],
+            "domains": [],
             "notify_email": True,
             "notify_digest": True
         }
@@ -364,18 +365,20 @@ def upsert_user_preferences(
     organisations: Optional[List[str]] = None,
     people: Optional[List[str]] = None,
     sources: Optional[List[str]] = None,
+    domains: Optional[List[str]] = None,
     notify_email: Optional[bool] = None,
     notify_digest: Optional[bool] = None
 ) -> Dict[str, Any]:
     """Create or update user preferences."""
     query = """
-        INSERT INTO user_preferences (user_id, topics, organisations, people, sources, notify_email, notify_digest)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO user_preferences (user_id, topics, organisations, people, sources, domains, notify_email, notify_digest)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id) DO UPDATE SET
             topics = COALESCE(EXCLUDED.topics, user_preferences.topics),
             organisations = COALESCE(EXCLUDED.organisations, user_preferences.organisations),
             people = COALESCE(EXCLUDED.people, user_preferences.people),
             sources = COALESCE(EXCLUDED.sources, user_preferences.sources),
+            domains = COALESCE(EXCLUDED.domains, user_preferences.domains),
             notify_email = COALESCE(EXCLUDED.notify_email, user_preferences.notify_email),
             notify_digest = COALESCE(EXCLUDED.notify_digest, user_preferences.notify_digest),
             updated_at = NOW()
@@ -387,6 +390,7 @@ def upsert_user_preferences(
         organisations,
         people,
         sources,
+        domains,
         notify_email,
         notify_digest
     )

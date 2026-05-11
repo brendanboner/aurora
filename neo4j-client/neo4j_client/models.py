@@ -571,8 +571,12 @@ class Resource(Node):
     )
     
     doc_type: str = Field(
-        ...,
-        description="Document type (e.g., 'pdf', 'docx', 'html', 'txt')"
+        default="unknown",
+        description=(
+            "Content type taxonomy. One of: specification, internet-draft, whitepaper, "
+            "meeting-minutes, press-release, blog, video-transcript, case-study, "
+            "infographic, newsletter, governing-document, agenda, presentation, unknown"
+        )
     )
     
     category: str = Field(

@@ -26,6 +26,8 @@ from api import app, set_scheduler, set_start_time, update_job_state
 from services.topic_organizer import TopicOrganizer
 from services.event_reconciler import EventReconciler
 from services.threshold_monitor import TopicThresholdMonitor
+from services.importance_decay import ImportanceDecayService
+from services.orphan_monitor import OrphanMonitorService
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -44,6 +46,8 @@ class CuratorScheduler:
         self._start_time = datetime.now()
         self._threshold_monitor: Optional[TopicThresholdMonitor] = None
         self._event_reconciler: Optional[EventReconciler] = None
+        self._importance_decay: Optional[ImportanceDecayService] = None
+        self._orphan_monitor: Optional[OrphanMonitorService] = None
         
     def _run_topic_organization(self, triggered_by: str = "scheduled"):
         """Execute topic organization job.
@@ -193,7 +197,6 @@ class CuratorScheduler:
         """Check if topic threshold is met and trigger organization if needed."""
         if not self._threshold_monitor:
             return
-        
         try:
             logger.debug("Checking topic threshold...")
             
@@ -215,6 +218,50 @@ class CuratorScheduler:
         except Exception as e:
             logger.error(f"Error checking topic threshold: {e}", exc_info=True)
     
+    def _run_importance_decay(self):
+        """Execute daily importance-decay refresh job."""
+        job_name = "importance_decay"
+        try:
+            update_job_state(job_name, is_running=True)
+            logger.info("-" * 40)
+            logger.info("Starting importance decay refresh")
+            if self._importance_decay is None:
+                self._importance_decay = ImportanceDecayService()
+            summary = self._importance_decay.run()
+            update_job_state(
+                job_name,
+                is_running=False,
+                last_run=datetime.now(),
+                last_error=None,
+            )
+            logger.info(f"Importance decay complete: {summary}")
+        except Exception as e:
+            logger.error(f"Importance decay failed: {e}", exc_info=True)
+            update_job_state(job_name, is_running=False, last_error=str(e))
+
+    def _run_orphan_monitor(self):
+        """Execute periodic orphan-resource monitoring job."""
+        job_name = "orphan_monitor"
+        try:
+            update_job_state(job_name, is_running=True)
+            if self._orphan_monitor is None:
+                self._orphan_monitor = OrphanMonitorService()
+            summary = self._orphan_monitor.run()
+            update_job_state(
+                job_name,
+                is_running=False,
+                last_run=datetime.now(),
+                last_error=None,
+            )
+            if summary.get("orphan_count", 0) > 0:
+                logger.warning(
+                    f"Orphan monitor: {summary['orphan_count']} orphaned resource(s) — "
+                    f"review digester logs or re-queue for processing"
+                )
+        except Exception as e:
+            logger.error(f"Orphan monitor failed: {e}", exc_info=True)
+            update_job_state(job_name, is_running=False, last_error=str(e))
+
     def _schedule_immediate_recheck(self):
         """
         Schedule an immediate threshold check after organization completes.
@@ -320,6 +367,26 @@ class CuratorScheduler:
                 f"Event reconciliation: check every "
                 f"{settings.event_reconciliation_check_interval_seconds}s"
             )
+
+        # Schedule importance decay (daily at 03:00)
+        self.scheduler.add_job(
+            self._run_importance_decay,
+            trigger=CronTrigger(hour=3, minute=0),
+            id="importance_decay",
+            name="Importance Decay Refresh",
+            replace_existing=True,
+        )
+        logger.info("Importance decay: scheduled daily at 03:00")
+
+        # Schedule orphan resource monitoring (every 6 hours)
+        self.scheduler.add_job(
+            self._run_orphan_monitor,
+            trigger=IntervalTrigger(hours=6),
+            id="orphan_monitor",
+            name="Orphan Resource Monitor",
+            replace_existing=True,
+        )
+        logger.info("Orphan monitor: scheduled every 6 hours")
         
         # Start the scheduler
         self.scheduler.start()
@@ -368,6 +435,14 @@ class CuratorScheduler:
         if self._event_reconciler:
             logger.info("Closing event reconciler...")
             self._event_reconciler.close()
+
+        if self._importance_decay:
+            logger.info("Closing importance decay service...")
+            self._importance_decay.close()
+
+        if self._orphan_monitor:
+            logger.info("Closing orphan monitor...")
+            self._orphan_monitor.close()
         
         self._shutdown_event.set()
         logger.info("Shutdown complete")

@@ -633,6 +633,63 @@ class DocumentDigester:
         await self._clear_delivery_attempts(message)
         return True
 
+    async def _skip_if_duplicate_content(self, message: Dict[str, Any]) -> bool:
+        """Skip resources whose content already exists under a different URL.
+
+        The existing _skip_if_unchanged_resource check only catches the same URL
+        being re-submitted. This method catches cross-URL duplicates — e.g. a
+        paywalled download page that returns identical gated content for 35
+        different download URLs, producing 35 identical content_hash values.
+
+        Exemptions: user uploads and allow_historical_ingest are always allowed
+        through so that manual re-uploads are never silently dropped.
+        """
+        if message.get("uploaded_by") or message.get("allow_historical_ingest"):
+            return False
+
+        if message.get("message_type") != "resource" or not self.graph_repository:
+            return False
+
+        resource_data = message.get("resource_data", {})
+        content = resource_data.get("content") or ""
+        url = resource_data.get("url") or ""
+        if not content or not url:
+            return False
+
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+        try:
+            existing = self.graph_repository.client.execute_query(
+                """
+                MATCH (r:Resource {content_hash: $content_hash})
+                WHERE r.url_hash <> $url_hash
+                RETURN r.url AS existing_url
+                LIMIT 1
+                """,
+                {"content_hash": content_hash, "url_hash": url_hash},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to check for duplicate content hash for {url}: {e}")
+            return False
+
+        if not existing:
+            return False
+
+        existing_url = existing[0].get("existing_url", "unknown")
+        logger.info(
+            f"Skipping duplicate content: {self._get_message_title(message)} "
+            f"(same content already exists at {existing_url})"
+        )
+        await self.record_skipped(
+            message,
+            f"duplicate content — identical content_hash already ingested at {existing_url}",
+            stage="duplicate_content_filter",
+        )
+        await self.clear_current_processing()
+        await self._clear_delivery_attempts(message)
+        return True
+
     async def _skip_if_stale(self, message: Dict[str, Any]) -> bool:
         """Skip stale automated scraper items before parsing/insertion.
 
@@ -1178,7 +1235,9 @@ class DocumentDigester:
         if await self._skip_if_unchanged_resource(message):
             return True
 
-        logger.info("Extracting and validating metadata nodes from content...")
+        if await self._skip_if_duplicate_content(message):
+            return True
+
         await self.update_current_processing(message, "extracting metadata")
         
         # CHANGED: await the async metadata extraction
