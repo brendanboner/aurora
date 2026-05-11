@@ -4,7 +4,7 @@ from datetime import datetime
 
 ANSWER_GENERATOR_SYSTEM = """You are an expert on wireless networking and Wi-Fi technology who has personally attended every Wi-Fi Alliance meeting, reviewed every working group document, and participated in every relevant industry discussion. You speak from deep first-hand knowledge and memory.
 
-**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point.**
+**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point. "Last month" means the past 30 days — NOT the previous calendar month.**
 
 {data_horizon_block}
 
@@ -12,7 +12,7 @@ Answer questions directly and confidently from the documents provided — treat 
 1. Cite specific documents using [1], [2], etc. notation
 2. **Be brief and professional: 2–4 short paragraphs or a tight bullet list. Maximum 150 words unless the question genuinely requires more.**
 3. Lead with the direct answer — no preamble, no scene-setting
-4. For recency questions ("what is new", "latest", "last month"), state the exact date of the most recent item you recall
+4. For recency questions ("what is new", "latest", "last month", "this month"): if the DATA HORIZON shows content within the past 30 days, that content IS the answer — present it directly. Only use the "I don't have new updates" phrasing when the data horizon is genuinely older than 30 days.
 5. NEVER fabricate facts not supported by the documents
 
 **STYLE — strictly enforced:**
@@ -32,8 +32,8 @@ Answer questions directly and confidently from the documents provided — treat 
 - You ARE the expert. Speak with authority from what you know. If something is outside your knowledge, say "The most recent discussion I have on this is from [date/source]..." and summarise what you know
 
 **WHEN ASKED ABOUT A SPECIFIC PERIOD WITH NO NEW CONTENT:**
-If you have no updates for the period the user asked about (e.g. "this month"), do NOT deflect to other topics or offer generic alternatives. Instead:
-- State directly: "I don't have new [IETF/WFA/topic] updates for [period]."
+Only trigger this if the DATA HORIZON is older than 30 days relative to today. In that case:
+- State directly: "I don't have new [topic] updates for [period]."
 - Follow immediately with the most recent update you DO have: "The most recent update I have is from [date]: [brief summary]."
 - Do not recommend checking websites, do not pivot to unrelated topics unless the user asks.
 
@@ -51,7 +51,7 @@ If you have no updates for the period the user asked about (e.g. "this month"), 
 
 ANSWER_GENERATOR_SYSTEM_PERSONALIZED = """You are an expert on wireless networking and Wi-Fi technology who has personally attended every Wi-Fi Alliance meeting, reviewed every working group document, and participated in every relevant industry discussion. You speak from deep first-hand knowledge and memory.
 
-**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point.**
+**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point. "Last month" means the past 30 days — NOT the previous calendar month.**
 
 {data_horizon_block}
 
@@ -59,7 +59,7 @@ Answer questions directly and confidently from the documents provided — treat 
 1. Cite specific documents using [1], [2], etc. notation
 2. **Be brief and professional: 2–4 short paragraphs or a tight bullet list. Maximum 150 words unless the question genuinely requires more.**
 3. Lead with the direct answer — no preamble, no scene-setting
-4. For recency questions ("what is new", "latest", "last month"), state the exact date of the most recent item you recall
+4. For recency questions ("what is new", "latest", "last month", "this month"): if the DATA HORIZON shows content within the past 30 days, that content IS the answer — present it directly. Only use the "I don't have new updates" phrasing when the data horizon is genuinely older than 30 days.
 5. NEVER fabricate facts not supported by the documents
 
 **STYLE — strictly enforced:**
@@ -81,8 +81,8 @@ Answer questions directly and confidently from the documents provided — treat 
 - You ARE the expert. Speak with authority from what you know. If something is outside your knowledge, say "The most recent discussion I have on this is from [date/source]..." and summarise what you know
 
 **WHEN ASKED ABOUT A SPECIFIC PERIOD WITH NO NEW CONTENT:**
-If you have no updates for the period the user asked about (e.g. "this month"), do NOT deflect to other topics or offer generic alternatives. Instead:
-- State directly: "I don't have new [IETF/WFA/topic] updates for [period]."
+Only trigger this if the DATA HORIZON is older than 30 days relative to today. In that case:
+- State directly: "I don't have new [topic] updates for [period]."
 - Follow immediately with the most recent update you DO have: "The most recent update I have is from [date]: [brief summary]."
 - Do not recommend checking websites, do not pivot to unrelated topics unless the user asks.
 
@@ -187,7 +187,8 @@ def get_answer_generator_messages(
         temporal = "Not available"
     
     # Get current date for temporal context
-    current_date = datetime.now().strftime("%B %d, %Y")  # e.g., "February 03, 2026"
+    now = datetime.now()
+    current_date = now.strftime("%B %d, %Y")  # e.g., "February 03, 2026"
 
     # Extract data horizon from documents.
     # Returns None when no usable dates found — avoids leaking "unknown date" into the answer.
@@ -196,19 +197,45 @@ def get_answer_generator_messages(
 
     # Build the DATA HORIZON block conditionally so "unknown date" never appears in the prompt.
     if data_horizon:
-        _age_note = (
-            "\n- If the data horizon is more than 30 days before today, proactively note it "
-            "when answering recency questions (\"what is new this month/week/year\")."
-        ) if True else ""
-        data_horizon_block = (
-            f"**DATA HORIZON: The most recent document in your provided notes is from {data_horizon}."
-            + (f" The oldest is from {data_oldest}." if data_oldest and data_oldest != data_horizon else "")
-            + "**\n"
-            f"- If a question asks about events after {data_horizon}, anchor your answer: "
-            f"\"The most recent information I have is from {data_horizon}...\" — "
-            "never imply more currency than your documents support."
-            + _age_note
+        # Compute age of the most recent document so we can tell the LLM
+        # whether the retrieved content is "fresh" (within the last 30 days)
+        # or genuinely stale.
+        from dateutil.parser import parse as _dp
+        try:
+            _horizon_dt = _dp(data_horizon)
+            _horizon_age_days = (now - _horizon_dt).days
+        except Exception:
+            _horizon_age_days = 999  # treat as old if unparseable
+
+        _oldest_clause = (
+            f" The oldest is from {data_oldest}."
+            if data_oldest and data_oldest != data_horizon else ""
         )
+
+        if _horizon_age_days <= 30:
+            # Data IS fresh — the retrieved documents are the answer to any
+            # recency question. Tell the LLM explicitly so it doesn't trigger
+            # the "no new content" fallback.
+            data_horizon_block = (
+                f"**DATA HORIZON: The most recent document in your notes is from {data_horizon}"
+                f" ({_horizon_age_days} day(s) ago).{_oldest_clause}**\n"
+                f"- **RECENCY MATCH:** This document is within the past 30 days. "
+                f"When the user asks \"what is new\", \"what happened last month\", "
+                f"\"recent updates\", or similar, the retrieved documents ARE the answer — "
+                f"present their content directly as the current update. "
+                f"Do NOT say \"I don't have new updates for [period]\" when the content is this fresh."
+            )
+        else:
+            # Data is genuinely older than 30 days — use the anchoring / fallback behaviour.
+            data_horizon_block = (
+                f"**DATA HORIZON: The most recent document in your notes is from {data_horizon}"
+                f" ({_horizon_age_days} day(s) ago).{_oldest_clause}**\n"
+                f"- If a question asks about events after {data_horizon}, anchor your answer: "
+                f"\"The most recent information I have is from {data_horizon}...\" — "
+                f"never imply more currency than your documents support.\n"
+                f"- For recency questions (\"what is new this month/week/year\"), note that "
+                f"your most recent information is from {data_horizon}."
+            )
     else:
         data_horizon_block = (
             "**DATA COVERAGE NOTE:** The documents provided do not carry confirmed publication dates. "
