@@ -1333,6 +1333,7 @@ class FastEngine:
             )
             
             answer = (response.content or "").strip()
+            answer = self._strip_trailing_references(answer)
             if not answer:
                 logger.warning("LLM synthesis returned empty content, falling back to deterministic summary")
                 answer, citations = self._build_simple_summary(documents)
@@ -1358,6 +1359,39 @@ class FastEngine:
             answer, citations = self._build_simple_summary(documents)
             return answer, documents, citations
     
+    @staticmethod
+    def _strip_trailing_references(answer: str) -> str:
+        """Remove any LLM-generated reference list appended after the answer.
+
+        The LLM occasionally echoes the document metadata block at the end of
+        its answer — e.g. lines like:
+            [1] Title: Wi-Fi 8 TTG Meeting
+            [2]URL: Wi-Fi Alliance Newsroom
+            [1] https://...
+
+        These are redundant (the frontend renders its own reference list) and
+        look broken. Strip any trailing block that consists entirely of such lines.
+        """
+        import re
+        lines = answer.rstrip().splitlines()
+        # Walk backwards — drop consecutive lines that look like reference entries
+        ref_pattern = re.compile(
+            r"^\s*(\[\d+\]|\*\*\[\d+\]\*\*)"   # starts with [N] or **[N]**
+            r"(\s*(Title|URL|Source|Date|Datasource|http|https):|\s+https?://|\s*$)",
+            re.IGNORECASE,
+        )
+        cut = len(lines)
+        for i in range(len(lines) - 1, -1, -1):
+            line = lines[i].strip()
+            if not line:
+                cut = i  # skip trailing blank lines too
+                continue
+            if ref_pattern.match(lines[i]):
+                cut = i
+            else:
+                break
+        return "\n".join(lines[:cut]).rstrip()
+
     def _nodes_to_documents(self, nodes: List[Dict], max_documents: Optional[int] = None) -> List[Document]:
         """
         Convert Neo4j nodes to Document objects.

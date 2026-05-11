@@ -13,6 +13,37 @@ from src.settings import settings
 logger = logging.getLogger(__name__)
 
 
+def _strip_trailing_references(answer: str) -> str:
+    """Remove any LLM-generated reference list appended after the answer body.
+
+    The LLM occasionally echoes the document metadata block at the end of its
+    answer — e.g. lines like:
+        [1] Title: Wi-Fi 8 TTG Meeting
+        [2]URL: Wi-Fi Alliance Newsroom
+        [3] https://example.com
+
+    These are redundant (the frontend renders its own reference list) and look
+    broken inline. Strip any trailing block of such lines.
+    """
+    lines = answer.rstrip().splitlines()
+    ref_pattern = re.compile(
+        r"^\s*(\[\d+\]|\*\*\[\d+\]\*\*)"
+        r"(\s*(Title|URL|Source|Date|Datasource|http|https):|\s+https?://|\s*$)",
+        re.IGNORECASE,
+    )
+    cut = len(lines)
+    for i in range(len(lines) - 1, -1, -1):
+        line = lines[i].strip()
+        if not line:
+            cut = i
+            continue
+        if ref_pattern.match(lines[i]):
+            cut = i
+        else:
+            break
+    return "\n".join(lines[:cut]).rstrip()
+
+
 @dataclass
 class AnswerResult:
     """Result of answer generation."""
@@ -93,13 +124,14 @@ class ResponseGenerator:
             )
             
             # Extract citations from answer
-            citations, cited_indices = self._extract_citations(response.content, documents)
+            answer_text = _strip_trailing_references(response.content)
+            citations, cited_indices = self._extract_citations(answer_text, documents)
             
             # Calculate confidence based on citations and document relevance
-            confidence = self._calculate_confidence(response.content, documents, citations)
+            confidence = self._calculate_confidence(answer_text, documents, citations)
             
             return AnswerResult(
-                answer=response.content,
+                answer=answer_text,
                 citations=citations,
                 confidence_score=confidence,
                 tokens_used=response.tokens_used

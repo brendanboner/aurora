@@ -105,7 +105,7 @@ ANSWER_GENERATOR_USER = """**Question:** {question}
 
 **Context:** Topics: {central_topics} | Organisations: {key_organizations} | Temporal: {temporal_patterns}
 {conversation_context}
-Answer directly. Cite sources [1], [2] etc. Be brief — facts only, no filler.
+Answer directly. Cite inline with [1], [2] etc. — do NOT add a reference list or write "URL:", "Title:", "Source:" after the answer. Be brief — facts only, no filler.
 
 **Answer:**"""
 
@@ -118,7 +118,7 @@ ANSWER_GENERATOR_USER_PERSONALIZED = """**Question:** {question}
 
 **User interests (tailor emphasis, not facts):** {user_context}
 {conversation_context}
-Answer directly. Cite sources [1], [2] etc. Be brief — facts only, no filler.
+Answer directly. Cite inline with [1], [2] etc. — do NOT add a reference list or write "URL:", "Title:", "Source:" after the answer. Be brief — facts only, no filler.
 
 **Answer:**"""
 
@@ -138,13 +138,12 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
         orgs = ", ".join(doc.get("organizations", [])) or "None"
         datasource = doc.get("datasource_id", "Unknown source")
         
-        formatted.append(f"""[{i}] **{title}**
-   - Datasource: {datasource}
-   - Date: {date}
-   - URL: {url}
-   - Topics: {topics}
-   - Organizations: {orgs}
-   - Summary: {summary}
+        # URL is intentionally not labeled here — the LLM echoes labeled fields
+        # (e.g. "URL:") verbatim into the answer text, producing "[2]URL: ..." noise.
+        formatted.append(f"""[{i}] **{title}** ({datasource}, {date})
+   {url}
+   Topics: {topics} | Orgs: {orgs}
+   {summary}
 """)
     
     return "\n".join(formatted)
