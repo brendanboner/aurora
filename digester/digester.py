@@ -480,13 +480,26 @@ class DocumentDigester:
             return default_config
 
     def _normalize_datetime(self, value: Any) -> Optional[datetime]:
-        """Convert strings/datetimes to timezone-aware datetimes."""
+        """Convert strings/datetimes to timezone-aware datetimes.
+
+        Returns None for values that are clearly invalid:
+        - year < 2000  (pre-Wi-Fi era; artefact of bad scrape)
+        - year > current_year + 1  (impossible future date; scraper parse error)
+
+        This prevents bad publish_dates (e.g. year 7542 from WFA) from
+        being treated as valid in staleness checks or temporal queries.
+        """
         if value is None:
             return None
 
         try:
             parsed = value if isinstance(value, datetime) else date_parse(str(value))
         except Exception:
+            return None
+
+        # Reject clearly invalid years — scraper artefacts, not real dates
+        current_year = datetime.now(timezone.utc).year
+        if parsed.year < 2000 or parsed.year > current_year + 1:
             return None
 
         if parsed.tzinfo is None:

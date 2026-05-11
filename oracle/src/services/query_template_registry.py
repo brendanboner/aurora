@@ -7,7 +7,9 @@ IMPORTANT: Date Handling
 All temporal queries MUST use robust date fallback since publish_date is often NULL.
 
 Use this pattern in Cypher expressions (WITH/RETURN):
-    CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+    CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
 
 This must be a single expression, not a block. Cypher does not support SQL-style CASE blocks.
 
@@ -392,7 +394,9 @@ class QueryTemplateRegistry:
               MATCH (r:Resource)
               WHERE coalesce(r.archived, false) = false
               WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days,
-                   CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                   CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
               WHERE effective_date >= max_threshold
 
               // Filter by organization (WFA, WBA, etc.) - this ensures "Wi-Fi Alliance updates" only returns WFA sources
@@ -570,7 +574,9 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH ds, r
             WITH ds, r,
-                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -618,7 +624,9 @@ class QueryTemplateRegistry:
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             WHERE coalesce(r.archived, false) = false
             WITH ds, r,
-                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -665,7 +673,9 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
               WITH r, doc_threshold, half_limit
               WITH r, doc_threshold, half_limit,
-                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE effective_date >= doc_threshold
             
             // Filter by datasource (workgroup) via INGESTED_FROM relationship
@@ -1251,7 +1261,9 @@ class QueryTemplateRegistry:
                 
                 // Date fallback with validation - handle NULL publish_date
                 WITH r, t, rt.relevance as base_relevance, rt.stance as stance,
-                     CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                     CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
                 RETURN r, effective_date, base_relevance, stance, t.name as topic_name, 'exact' as match_type
                 
@@ -1276,7 +1288,9 @@ class QueryTemplateRegistry:
                 
                 // Date fallback - handle NULL publish_date
                 WITH r,
-                     CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                     CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
                 // Get the first matching topic for metadata and calculate match quality
                 WITH r, effective_date,
@@ -1435,7 +1449,9 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH r, threshold
             WITH r, threshold,
-                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE effective_date >= threshold
               AND effective_date <= datetime()
               AND ($workgroups IS NULL OR size($workgroups) = 0
@@ -1553,7 +1569,9 @@ class QueryTemplateRegistry:
             
             // Date fallback with validation
             WITH r, p,
-                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             
             // Extract segment number or URL timestamp for secondary sorting of video series
             WITH r, p, effective_date,
@@ -1679,7 +1697,9 @@ class QueryTemplateRegistry:
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             WHERE coalesce(r.archived, false) = false
             WITH ds, r,
-                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -2405,7 +2425,9 @@ ORDER BY e.start_date DESC
                    ))
             
             // Calculate effective date with robust fallback
-            WITH r, CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown'] THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+            WITH r, CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             
             // Filter by date range if provided
             WITH r, effective_date

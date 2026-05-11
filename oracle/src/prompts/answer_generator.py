@@ -279,29 +279,38 @@ def _extract_document_date(documents: list[dict], newest: bool) -> str | None:
       2. created_at                 (set when ingested — good approximation)
       3. scraped_at                 (fallback — when the scraper visited the page)
 
+    Dates outside the valid range (year < 2000 or year > current_year + 1) are
+    treated as missing and the next fallback field is tried.  This suppresses
+    WFA/provider artefacts like "7542-01-03" from appearing in responses.
+
     Returns None if no usable date is found in any document.
     """
     if not documents:
         return None
 
+    from datetime import datetime as _dt
+    _current_year = _dt.now().year
+
+    def _parse_safe(raw) -> "datetime | None":
+        if not raw:
+            return None
+        try:
+            from dateutil.parser import parse as date_parse
+            result = raw if isinstance(raw, datetime) else date_parse(str(raw))
+            if result.year < 2000 or result.year > _current_year + 1:
+                return None
+            return result
+        except Exception:
+            return None
+
     parsed_dates: list[datetime] = []
     for doc in documents:
-        raw = (
-            doc.get("publish_date")
-            or doc.get("start_date")
-            or doc.get("created_at")
-            or doc.get("scraped_at")
-        )
-        if not raw:
-            continue
-        try:
-            if isinstance(raw, datetime):
-                parsed_dates.append(raw)
-            else:
-                from dateutil.parser import parse as date_parse
-                parsed_dates.append(date_parse(str(raw)))
-        except Exception:
-            continue
+        # Try each field in priority order, skip invalid values
+        for field in ("publish_date", "start_date", "created_at", "scraped_at"):
+            dt = _parse_safe(doc.get(field))
+            if dt is not None:
+                parsed_dates.append(dt)
+                break  # use first valid date for this document
 
     if not parsed_dates:
         return None
