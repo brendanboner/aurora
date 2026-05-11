@@ -19,7 +19,10 @@ from typing import Optional, Dict, Any, List, Type
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel, HttpUrl, Field
 
-from scrapers import WFAScraper, WFACausewayScraper, WBAScraper, IETFBlogScraper, IETFDatatrackerScraper
+from scrapers import (
+    WFAScraper, WFACausewayScraper, WBAScraper, IETFBlogScraper, IETFDatatrackerScraper,
+    IEEE802Scraper, MEFScraper, NISTScraper, ONFScraper, DMTFScraper,
+)
 from scrapers.base import BaseScraper, Resource
 from config_manager import ConfigManager
 from settings import settings
@@ -61,6 +64,11 @@ SCRAPER_CLASSES: Dict[str, Type[BaseScraper]] = {
     "wba": WBAScraper,
     "ietf_blog": IETFBlogScraper,
     "ietf_datatracker": IETFDatatrackerScraper,
+    "ieee802": IEEE802Scraper,
+    "mef": MEFScraper,
+    "nist": NISTScraper,
+    "onf": ONFScraper,
+    "dmtf": DMTFScraper,
 }
 
 logger.info(f"Available scraper types: {list(SCRAPER_CLASSES.keys())}")

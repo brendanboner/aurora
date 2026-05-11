@@ -31,6 +31,11 @@ class Migrations:
             Migrations.backfill_datasource_metadata,
             Migrations.backfill_resource_domains,
             Migrations.fix_wba_subdatasource_types,
+            Migrations.add_ieee802_datasources,
+            Migrations.add_mef_datasources,
+            Migrations.add_nist_datasources,
+            Migrations.add_onf_datasources,
+            Migrations.add_dmtf_datasources,
         ]
         
         for migration_func in migrations:
@@ -724,6 +729,571 @@ class Migrations:
             return True
         except Exception as e:
             logger.error(f"Error in fix_wba_subdatasource_types migration: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # IEEE 802 datasource migrations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def add_ieee802_datasources(session: Session) -> bool:
+        """
+        Upsert DataSource nodes for IEEE 802 working groups.
+
+        Three datasources:
+          ieee802_11  —  802.11 / Wi-Fi working group
+          ieee802_1   —  802.1 Bridging & Security
+          ieee802_3   —  802.3 Ethernet
+
+        Idempotent — uses MERGE on datasource_id.
+        """
+        datasources = [
+            {
+                "datasource_id": "ieee802_11",
+                "name": "IEEE 802.11 Working Group",
+                "display_name": "IEEE 802.11 (Wi-Fi)",
+                "org_id": "ieee",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.ieee802.org/11/",
+                "has_events": False,
+                "scraper_type": "ieee802",
+                "resource_url": "https://www.ieee802.org/11/",
+                "scrape_schedule": "0 6 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "IEEE 802.11 Wi-Fi working group — draft amendments, approved standards, and technical documents",
+            },
+            {
+                "datasource_id": "ieee802_1",
+                "name": "IEEE 802.1 Working Group",
+                "display_name": "IEEE 802.1 (Bridging & Security)",
+                "org_id": "ieee",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.ieee802.org/1/",
+                "has_events": False,
+                "scraper_type": "ieee802",
+                "resource_url": "https://www.ieee802.org/1/",
+                "scrape_schedule": "0 6 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "IEEE 802.1 working group — bridging, VLANs, TSN, and network security standards",
+            },
+            {
+                "datasource_id": "ieee802_3",
+                "name": "IEEE 802.3 Working Group",
+                "display_name": "IEEE 802.3 (Ethernet)",
+                "org_id": "ieee",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.ieee802.org/3/",
+                "has_events": False,
+                "scraper_type": "ieee802",
+                "resource_url": "https://www.ieee802.org/3/",
+                "scrape_schedule": "0 6 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "IEEE 802.3 Ethernet working group — Ethernet standards, amendments, and technical specifications",
+            },
+        ]
+
+        query = """
+        MERGE (d:DataSource {datasource_id: $datasource_id})
+        ON CREATE SET
+            d.name                        = $name,
+            d.display_name                = $display_name,
+            d.org_id                      = $org_id,
+            d.source_type                 = $source_type,
+            d.fetch_url                   = $fetch_url,
+            d.has_events                  = $has_events,
+            d.scraper_type                = $scraper_type,
+            d.resource_url                = $resource_url,
+            d.scrape_schedule             = $scrape_schedule,
+            d.run_on_startup              = $run_on_startup,
+            d.check_content_hash          = $check_content_hash,
+            d.publish_weight              = $publish_weight,
+            d.update_weight               = $update_weight,
+            d.event_weight                = $event_weight,
+            d.temporal_extraction_days    = $temporal_extraction_days,
+            d.scraper_delay               = $scraper_delay,
+            d.max_resources               = $max_resources,
+            d.max_redirects               = $max_redirects,
+            d.discovery_mode              = $discovery_mode,
+            d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+            d.description                 = $description
+        ON MATCH SET
+            d.display_name                = $display_name,
+            d.description                 = $description
+        RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+        """
+
+        try:
+            for ds in datasources:
+                result = session.run(query, **ds)
+                record = result.single()
+                if record:
+                    action = "updated" if record["existed"] else "created"
+                    logger.info(f"IEEE 802 datasource '{record['id']}' {action}")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting IEEE 802 datasources: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # MEF datasource migrations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def add_mef_datasources(session: Session) -> bool:
+        """
+        Upsert DataSource nodes for MEF (Metro Ethernet Forum).
+
+        Two datasources:
+          mef_specs  — technical specifications
+          mef_news   — news and updates
+
+        Idempotent — uses MERGE on datasource_id.
+        """
+        datasources = [
+            {
+                "datasource_id": "mef_specs",
+                "name": "MEF Technical Specifications",
+                "display_name": "MEF Technical Specifications",
+                "org_id": "mef",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.mef.net/resources/technical-specifications/",
+                "has_events": False,
+                "scraper_type": "mef",
+                "resource_url": "https://www.mef.net/resources/technical-specifications/",
+                "scrape_schedule": "30 6 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "MEF technical specifications — carrier Ethernet, SD-WAN, and LSO API standards",
+            },
+            {
+                "datasource_id": "mef_news",
+                "name": "MEF News and Updates",
+                "display_name": "MEF News",
+                "org_id": "mef",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.mef.net/news-and-updates/",
+                "has_events": False,
+                "scraper_type": "mef",
+                "resource_url": "https://www.mef.net/news-and-updates/",
+                "scrape_schedule": "30 6 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "MEF news and updates — press releases and industry announcements",
+            },
+        ]
+
+        query = """
+        MERGE (d:DataSource {datasource_id: $datasource_id})
+        ON CREATE SET
+            d.name                        = $name,
+            d.display_name                = $display_name,
+            d.org_id                      = $org_id,
+            d.source_type                 = $source_type,
+            d.fetch_url                   = $fetch_url,
+            d.has_events                  = $has_events,
+            d.scraper_type                = $scraper_type,
+            d.resource_url                = $resource_url,
+            d.scrape_schedule             = $scrape_schedule,
+            d.run_on_startup              = $run_on_startup,
+            d.check_content_hash          = $check_content_hash,
+            d.publish_weight              = $publish_weight,
+            d.update_weight               = $update_weight,
+            d.event_weight                = $event_weight,
+            d.temporal_extraction_days    = $temporal_extraction_days,
+            d.scraper_delay               = $scraper_delay,
+            d.max_resources               = $max_resources,
+            d.max_redirects               = $max_redirects,
+            d.discovery_mode              = $discovery_mode,
+            d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+            d.description                 = $description
+        ON MATCH SET
+            d.display_name                = $display_name,
+            d.description                 = $description
+        RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+        """
+
+        try:
+            for ds in datasources:
+                result = session.run(query, **ds)
+                record = result.single()
+                if record:
+                    action = "updated" if record["existed"] else "created"
+                    logger.info(f"MEF datasource '{record['id']}' {action}")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting MEF datasources: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # NIST datasource migrations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def add_nist_datasources(session: Session) -> bool:
+        """
+        Upsert DataSource nodes for NIST CSRC.
+
+        Two datasources:
+          nist_sp800  — SP 800 series (cybersecurity)
+          nist_fips   — FIPS standards
+
+        Idempotent — uses MERGE on datasource_id.
+        """
+        datasources = [
+            {
+                "datasource_id": "nist_sp800",
+                "name": "NIST SP 800 Series",
+                "display_name": "NIST SP 800 (Cybersecurity)",
+                "org_id": "nist",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://csrc.nist.gov/publications/sp800",
+                "has_events": False,
+                "scraper_type": "nist",
+                "resource_url": "https://csrc.nist.gov/publications/sp800",
+                "scrape_schedule": "0 5 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "NIST Special Publication 800 series — cybersecurity guidelines, frameworks, and best practices",
+            },
+            {
+                "datasource_id": "nist_fips",
+                "name": "NIST FIPS Standards",
+                "display_name": "NIST FIPS",
+                "org_id": "nist",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://csrc.nist.gov/publications/fips",
+                "has_events": False,
+                "scraper_type": "nist",
+                "resource_url": "https://csrc.nist.gov/publications/fips",
+                "scrape_schedule": "0 5 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "NIST Federal Information Processing Standards (FIPS) — mandatory security standards for US federal agencies",
+            },
+        ]
+
+        query = """
+        MERGE (d:DataSource {datasource_id: $datasource_id})
+        ON CREATE SET
+            d.name                        = $name,
+            d.display_name                = $display_name,
+            d.org_id                      = $org_id,
+            d.source_type                 = $source_type,
+            d.fetch_url                   = $fetch_url,
+            d.has_events                  = $has_events,
+            d.scraper_type                = $scraper_type,
+            d.resource_url                = $resource_url,
+            d.scrape_schedule             = $scrape_schedule,
+            d.run_on_startup              = $run_on_startup,
+            d.check_content_hash          = $check_content_hash,
+            d.publish_weight              = $publish_weight,
+            d.update_weight               = $update_weight,
+            d.event_weight                = $event_weight,
+            d.temporal_extraction_days    = $temporal_extraction_days,
+            d.scraper_delay               = $scraper_delay,
+            d.max_resources               = $max_resources,
+            d.max_redirects               = $max_redirects,
+            d.discovery_mode              = $discovery_mode,
+            d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+            d.description                 = $description
+        ON MATCH SET
+            d.display_name                = $display_name,
+            d.description                 = $description
+        RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+        """
+
+        try:
+            for ds in datasources:
+                result = session.run(query, **ds)
+                record = result.single()
+                if record:
+                    action = "updated" if record["existed"] else "created"
+                    logger.info(f"NIST datasource '{record['id']}' {action}")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting NIST datasources: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # ONF datasource migrations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def add_onf_datasources(session: Session) -> bool:
+        """
+        Upsert DataSource nodes for ONF (Open Networking Foundation).
+
+        Two datasources:
+          onf_blog  — blog / news
+          onf_docs  — technical documents
+
+        Idempotent — uses MERGE on datasource_id.
+        """
+        datasources = [
+            {
+                "datasource_id": "onf_blog",
+                "name": "ONF Blog",
+                "display_name": "ONF Blog",
+                "org_id": "onf",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://opennetworking.org/news-and-events/blog/",
+                "has_events": False,
+                "scraper_type": "onf",
+                "resource_url": "https://opennetworking.org/news-and-events/blog/",
+                "scrape_schedule": "0 7 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "ONF blog — open networking technology news, project updates, and thought leadership",
+            },
+            {
+                "datasource_id": "onf_docs",
+                "name": "ONF Technical Documents",
+                "display_name": "ONF Technical Documents",
+                "org_id": "onf",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://opennetworking.org/technical-documents/",
+                "has_events": False,
+                "scraper_type": "onf",
+                "resource_url": "https://opennetworking.org/technical-documents/",
+                "scrape_schedule": "0 7 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "ONF technical documents — white papers, specifications, and architecture guides for open networking",
+            },
+        ]
+
+        query = """
+        MERGE (d:DataSource {datasource_id: $datasource_id})
+        ON CREATE SET
+            d.name                        = $name,
+            d.display_name                = $display_name,
+            d.org_id                      = $org_id,
+            d.source_type                 = $source_type,
+            d.fetch_url                   = $fetch_url,
+            d.has_events                  = $has_events,
+            d.scraper_type                = $scraper_type,
+            d.resource_url                = $resource_url,
+            d.scrape_schedule             = $scrape_schedule,
+            d.run_on_startup              = $run_on_startup,
+            d.check_content_hash          = $check_content_hash,
+            d.publish_weight              = $publish_weight,
+            d.update_weight               = $update_weight,
+            d.event_weight                = $event_weight,
+            d.temporal_extraction_days    = $temporal_extraction_days,
+            d.scraper_delay               = $scraper_delay,
+            d.max_resources               = $max_resources,
+            d.max_redirects               = $max_redirects,
+            d.discovery_mode              = $discovery_mode,
+            d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+            d.description                 = $description
+        ON MATCH SET
+            d.display_name                = $display_name,
+            d.description                 = $description
+        RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+        """
+
+        try:
+            for ds in datasources:
+                result = session.run(query, **ds)
+                record = result.single()
+                if record:
+                    action = "updated" if record["existed"] else "created"
+                    logger.info(f"ONF datasource '{record['id']}' {action}")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting ONF datasources: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # DMTF datasource migrations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def add_dmtf_datasources(session: Session) -> bool:
+        """
+        Upsert DataSource nodes for DMTF.
+
+        Two datasources:
+          dmtf_news     — news / press releases
+          dmtf_redfish  — Redfish specifications
+
+        Idempotent — uses MERGE on datasource_id.
+        """
+        datasources = [
+            {
+                "datasource_id": "dmtf_news",
+                "name": "DMTF News",
+                "display_name": "DMTF News",
+                "org_id": "dmtf",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.dmtf.org/about/news",
+                "has_events": False,
+                "scraper_type": "dmtf",
+                "resource_url": "https://www.dmtf.org/about/news",
+                "scrape_schedule": "30 7 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "DMTF news — press releases and announcements from the Distributed Management Task Force",
+            },
+            {
+                "datasource_id": "dmtf_redfish",
+                "name": "DMTF Redfish Specifications",
+                "display_name": "DMTF Redfish Specs",
+                "org_id": "dmtf",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.dmtf.org/standards/redfish",
+                "has_events": False,
+                "scraper_type": "dmtf",
+                "resource_url": "https://www.dmtf.org/standards/redfish",
+                "scrape_schedule": "30 7 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "DMTF Redfish specifications — RESTful API standard for data center hardware management (DSP0266, DSP0268, etc.)",
+            },
+        ]
+
+        query = """
+        MERGE (d:DataSource {datasource_id: $datasource_id})
+        ON CREATE SET
+            d.name                        = $name,
+            d.display_name                = $display_name,
+            d.org_id                      = $org_id,
+            d.source_type                 = $source_type,
+            d.fetch_url                   = $fetch_url,
+            d.has_events                  = $has_events,
+            d.scraper_type                = $scraper_type,
+            d.resource_url                = $resource_url,
+            d.scrape_schedule             = $scrape_schedule,
+            d.run_on_startup              = $run_on_startup,
+            d.check_content_hash          = $check_content_hash,
+            d.publish_weight              = $publish_weight,
+            d.update_weight               = $update_weight,
+            d.event_weight                = $event_weight,
+            d.temporal_extraction_days    = $temporal_extraction_days,
+            d.scraper_delay               = $scraper_delay,
+            d.max_resources               = $max_resources,
+            d.max_redirects               = $max_redirects,
+            d.discovery_mode              = $discovery_mode,
+            d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+            d.description                 = $description
+        ON MATCH SET
+            d.display_name                = $display_name,
+            d.description                 = $description
+        RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+        """
+
+        try:
+            for ds in datasources:
+                result = session.run(query, **ds)
+                record = result.single()
+                if record:
+                    action = "updated" if record["existed"] else "created"
+                    logger.info(f"DMTF datasource '{record['id']}' {action}")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting DMTF datasources: {e}")
             return False
 
     @staticmethod
