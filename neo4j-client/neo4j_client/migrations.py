@@ -26,6 +26,7 @@ class Migrations:
             Migrations.add_tier_to_topics,
             Migrations.add_importance_to_nodes,
             Migrations.add_ietf_datasources,
+            Migrations.add_wba_newsroom_datasource,
         ]
         
         for migration_func in migrations:
@@ -307,6 +308,86 @@ class Migrations:
 
         except Exception as e:
             logger.error(f"Error upserting IETF datasources: {e}")
+            return False
+
+    @staticmethod
+    def add_wba_newsroom_datasource(session: Session) -> bool:
+        """
+        Upsert a WBA Newsroom DataSource node.
+
+        The WBA newsroom (wballiance.com/newsroom/) is a WordPress blog
+        containing press releases, partner spotlights, and trial reports.
+        It is separate from the /resources/ section and was previously not
+        scraped.  This migration ensures the datasource is present so the
+        retriever will scrape it on its next scheduled run.
+
+        Idempotent — uses MERGE on datasource_id.
+        """
+        try:
+            ds = {
+                "datasource_id": "wba_newsroom",
+                "name": "WBA Newsroom",
+                "display_name": "WBA Newsroom",
+                "org_id": "wba",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://wballiance.com/newsroom/",
+                "has_events": False,
+                "scraper_type": "wba",
+                "resource_url": "/newsroom/",
+                "scrape_schedule": "0 7 * * *",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.7,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": 200,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": "WBA Newsroom — press releases, partner spotlights and field trial reports",
+            }
+
+            query = """
+            MERGE (d:DataSource {datasource_id: $datasource_id})
+            ON CREATE SET
+                d.name                        = $name,
+                d.display_name                = $display_name,
+                d.org_id                      = $org_id,
+                d.source_type                 = $source_type,
+                d.fetch_url                   = $fetch_url,
+                d.has_events                  = $has_events,
+                d.scraper_type                = $scraper_type,
+                d.resource_url                = $resource_url,
+                d.scrape_schedule             = $scrape_schedule,
+                d.run_on_startup              = $run_on_startup,
+                d.check_content_hash          = $check_content_hash,
+                d.publish_weight              = $publish_weight,
+                d.update_weight               = $update_weight,
+                d.event_weight                = $event_weight,
+                d.temporal_extraction_days    = $temporal_extraction_days,
+                d.scraper_delay               = $scraper_delay,
+                d.max_resources               = $max_resources,
+                d.max_redirects               = $max_redirects,
+                d.discovery_mode              = $discovery_mode,
+                d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+                d.description                 = $description
+            ON MATCH SET
+                d.display_name                = $display_name,
+                d.description                 = $description
+            RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+            """
+            result = session.run(query, **ds)
+            record = result.single()
+            if record:
+                action = "updated" if record["existed"] else "created"
+                logger.info(f"WBA Newsroom datasource '{record['id']}' {action}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error upserting WBA Newsroom datasource: {e}")
             return False
 
     @staticmethod
