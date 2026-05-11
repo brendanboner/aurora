@@ -828,6 +828,181 @@ async def query(
             )
 
 
+@router.post("/query/stream")
+@require_user_context
+async def query_stream(
+    request: QueryRequest,
+    user: Optional[dict] = Depends(get_user_context),
+):
+    """
+    Streaming query endpoint — returns tokens as Server-Sent Events.
+
+    The client receives a stream of `data: <token>\\n\\n` lines while the LLM
+    is generating.  A final `data: [DONE]\\n\\n` event signals completion,
+    followed by a `data: [META] <json>\\n\\n` event carrying the full response
+    metadata (documents, citations, confidence, pipeline).
+
+    Falls back to the non-streaming /query endpoint silently if the LLM
+    client is not available.
+    """
+    from fastapi.responses import StreamingResponse as _StreamingResponse
+    from src.services.llm_client import get_llm_client, call_llm_stream
+    from src.services.conversation_store import ConversationStore
+    from src.engines.fast_engine import FastEngine
+    from src.engines.baseline_engine import BaselineEngine
+    from src.services.cache import OracleCache
+
+    query_id = str(uuid.uuid4())
+
+    async def _event_stream():
+        try:
+            # Determine pipeline
+            use_fast = should_use_fast_pipeline(
+                user_id=str(request.user_id) if request.user_id else None,
+                pipeline_override=getattr(request.options, 'pipeline_override', None) if request.options else None,
+            )
+
+            # Run retrieval (non-streaming) to get documents + metadata
+            if use_fast:
+                engine = FastEngine()
+                await engine._ensure_initialized()
+            else:
+                engine = BaselineEngine()
+
+            response = await engine.query(request, user=user, query_id=query_id)
+
+            # If we got an answer from cache or with no streaming path, yield it whole
+            client = get_llm_client()
+            if not client or not response.documents:
+                # Emit the full answer as a single chunk
+                answer = response.answer or ""
+                for chunk in _split_into_chunks(answer):
+                    yield f"data: {json.dumps({'token': chunk})}\n\n"
+                yield "data: [DONE]\n\n"
+                meta = _build_stream_meta(response)
+                yield f"data: [META] {json.dumps(meta)}\n\n"
+                return
+
+            # Re-generate the answer with streaming (documents already retrieved)
+            from src.prompts.answer_generator import get_answer_generator_messages
+            from src.services.conversation_store import ConversationStore
+
+            cache = await OracleCache.get_cache()
+            redis_client = cache._redis_client if cache.enabled else None
+            conv_store = ConversationStore(redis_client=redis_client)
+
+            conversation_history: list[dict] = []
+            if request.user_id:
+                conversation_history = await conv_store.get_context(
+                    str(request.user_id), max_turns=2
+                )
+
+            docs_for_prompt = [
+                {
+                    "title": d.title or "Untitled",
+                    "summary": d.summary or "",
+                    "publish_date": d.publish_date or "",
+                    "url": d.url,
+                    "topics": d.topics,
+                    "organizations": d.organizations,
+                    "datasource_id": d.datasource_id or "",
+                }
+                for d in response.documents[:10]
+            ]
+
+            gc_dict = None
+            if response.graph_context:
+                gc_dict = {
+                    "central_topics": response.graph_context.central_topics,
+                    "key_organizations": response.graph_context.key_organizations,
+                    "temporal_patterns": response.graph_context.temporal_patterns,
+                }
+
+            messages = get_answer_generator_messages(
+                request.question,
+                docs_for_prompt,
+                gc_dict,
+                user_context=None,
+                conversation_history=conversation_history or None,
+            )
+
+            full_answer = []
+            async for token in call_llm_stream(
+                client, messages,
+                max_tokens=settings.max_answer_tokens,
+                temperature=0.3,
+            ):
+                full_answer.append(token)
+                yield f"data: {json.dumps({'token': token})}\n\n"
+
+            yield "data: [DONE]\n\n"
+
+            # Save the streaming turn to conversation store
+            complete_answer = "".join(full_answer)
+            if complete_answer and request.user_id:
+                await conv_store.append_turn(
+                    str(request.user_id), request.question, complete_answer
+                )
+
+            # Emit metadata so the frontend can update citations/confidence
+            meta = _build_stream_meta(response)
+            meta["answer"] = complete_answer
+            yield f"data: [META] {json.dumps(meta)}\n\n"
+
+        except Exception as exc:
+            logger.error(f"[{query_id}] Streaming query failed: {exc}")
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return _StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+def _split_into_chunks(text: str, size: int = 50) -> list[str]:
+    """Split text into word-boundary chunks for non-streaming fallback."""
+    words = text.split()
+    chunks = []
+    current: list[str] = []
+    for word in words:
+        current.append(word)
+        if len(current) >= size:
+            chunks.append(" ".join(current))
+            current = []
+    if current:
+        chunks.append(" ".join(current))
+    return chunks or [text]
+
+
+def _build_stream_meta(response) -> dict:
+    """Serialise the key metadata fields for the [META] SSE event."""
+    return {
+        "query_id": response.query_id,
+        "pipeline": response.pipeline if hasattr(response, "pipeline") else None,
+        "confidence_score": response.confidence_score,
+        "documents": [
+            {
+                "url": d.url,
+                "title": d.title,
+                "publish_date": d.publish_date,
+                "source": d.source,
+                "datasource_id": d.datasource_id,
+                "relevance_score": d.relevance_score,
+            }
+            for d in (response.documents or [])
+        ],
+        "citations": [
+            {"index": c.index, "document_url": c.document_url, "title": c.title}
+            for c in (response.citations or [])
+        ],
+    }
+
+
 @router.post("/enhance", response_model=EnhanceResponse)
 @require_user_context
 async def enhance_answer(

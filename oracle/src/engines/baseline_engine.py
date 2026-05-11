@@ -18,6 +18,7 @@ from src.services.confidence_scorer import calculate_confidence
 from src.services.query_suggestions import suggest_refinements, should_show_suggestions
 from src.services.ranking_explainer import add_explanations_to_documents
 from src.services.cache import OracleCache, hash_options
+from src.services.conversation_store import ConversationStore
 from src.services.personalization import decide_personalization, get_user_preferences, get_user_source_memberships
 from src.settings import settings
 
@@ -220,6 +221,8 @@ class BaselineEngine:
             
             # Decide personalization (with all required parameters)
             cache = await OracleCache.get_cache()
+            redis_client = cache._redis_client if cache.enabled else None
+            conv_store = ConversationStore(redis_client=redis_client)
             personalization_decision = None
             personalization_enabled = False
             
@@ -401,17 +404,31 @@ class BaselineEngine:
                     user_context_str = None
                     if personalization_enabled and personalization_decision and personalization_decision.user_context:
                         user_context_str = personalization_decision.user_context.to_prompt_section()
+
+                    # Load conversation history for follow-up questions
+                    conversation_history: list[dict] = []
+                    if request.user_id:
+                        conversation_history = await conv_store.get_context(
+                            str(request.user_id), max_turns=2
+                        )
                     
                     answer_result = await self.response_generator.generate_answer(
                         question=request.question,
                         documents=documents[:10],  # Limit for context window
                         graph_context=graph_context,
                         intent=intent,
-                        user_context=user_context_str
+                        user_context=user_context_str,
+                        conversation_history=conversation_history or None,
                     )
                     
                     answer_text = answer_result.answer
                     citations = answer_result.citations
+
+                    # Persist this turn for future follow-ups
+                    if answer_text and request.user_id:
+                        await conv_store.append_turn(
+                            str(request.user_id), request.question, answer_text
+                        )
                     
                     logger.info(
                         f"[{query_id}] Generated answer: {len(answer_text)} chars, "

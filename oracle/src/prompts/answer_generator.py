@@ -104,7 +104,7 @@ ANSWER_GENERATOR_USER = """**Question:** {question}
 {documents}
 
 **Context:** Topics: {central_topics} | Organisations: {key_organizations} | Temporal: {temporal_patterns}
-
+{conversation_context}
 Answer directly. Cite sources [1], [2] etc. Be brief — facts only, no filler.
 
 **Answer:**"""
@@ -117,7 +117,7 @@ ANSWER_GENERATOR_USER_PERSONALIZED = """**Question:** {question}
 **Context:** Topics: {central_topics} | Organisations: {key_organizations} | Temporal: {temporal_patterns}
 
 **User interests (tailor emphasis, not facts):** {user_context}
-
+{conversation_context}
 Answer directly. Cite sources [1], [2] etc. Be brief — facts only, no filler.
 
 **Answer:**"""
@@ -154,7 +154,8 @@ def get_answer_generator_messages(
     question: str,
     documents: list[dict],
     graph_context: dict | None = None,
-    user_context: str | None = None
+    user_context: str | None = None,
+    conversation_history: list[dict] | None = None,
 ) -> list[dict]:
     """Get messages for answer generation.
     
@@ -163,6 +164,7 @@ def get_answer_generator_messages(
         documents: Retrieved documents
         graph_context: Graph context dict
         user_context: Optional user context string for personalization
+        conversation_history: Optional list of prior {role, content} turns
         
     Returns:
         List of messages for LLM chat completion
@@ -218,6 +220,16 @@ def get_answer_generator_messages(
             "- Never deflect to unrelated topics or suggest checking other sources"
         )
     
+    # Format conversation context block
+    if conversation_history:
+        lines = ["\n**Previous conversation (for context only — do not re-answer):**"]
+        for msg in conversation_history:
+            role = "You" if msg["role"] == "assistant" else "User"
+            lines.append(f"{role}: {msg['content']}")
+        conversation_context = "\n".join(lines) + "\n"
+    else:
+        conversation_context = ""
+
     # Choose prompts based on whether personalization is enabled
     if user_context:
         system_prompt = ANSWER_GENERATOR_SYSTEM_PERSONALIZED.format(
@@ -230,7 +242,8 @@ def get_answer_generator_messages(
             central_topics=central_topics,
             key_organizations=key_orgs,
             temporal_patterns=temporal,
-            user_context=user_context
+            user_context=user_context,
+            conversation_context=conversation_context,
         )
     else:
         system_prompt = ANSWER_GENERATOR_SYSTEM.format(
@@ -248,7 +261,8 @@ def get_answer_generator_messages(
             documents=docs_text,
             central_topics=central_topics,
             key_organizations=key_orgs,
-            temporal_patterns=temporal
+            temporal_patterns=temporal,
+            conversation_context=conversation_context,
         ) + workgroup_instruction
     
     return [

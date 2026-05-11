@@ -31,7 +31,8 @@ class ResponseGenerator:
         documents: list[Document],
         graph_context: Optional[GraphContext],
         intent: QueryIntent,
-        user_context: Optional[str] = None
+        user_context: Optional[str] = None,
+        conversation_history: Optional[list[dict]] = None,
     ) -> AnswerResult:
         """
         Generate an LLM answer with citations.
@@ -80,7 +81,10 @@ class ResponseGenerator:
                 }
             
             # Generate answer
-            messages = get_answer_generator_messages(question, docs_for_prompt, gc_dict, user_context)
+            messages = get_answer_generator_messages(
+                question, docs_for_prompt, gc_dict, user_context,
+                conversation_history=conversation_history,
+            )
             response = await call_llm(
                 client=client,
                 messages=messages,

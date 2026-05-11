@@ -23,9 +23,11 @@ from src.services.cache import OracleCache
 from src.services.keyword_retriever import get_repo
 from src.services.personalization import decide_personalization, get_user_preferences, get_user_source_memberships
 from src.services.llm_client import get_llm_client, call_llm
+from src.services.conversation_store import ConversationStore
 from src.services.rollup_generator import RollupGenerator
 from src.services.topic_manager import initialize_topic_manager, get_topic_manager
 from src.prompts.answer_generator import get_answer_generator_messages
+
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,7 @@ class FastEngine:
         self.local_router = LocalRouter()
         self.template_registry = QueryTemplateRegistry()
         self.fast_cache: Optional[FastCache] = None
+        self.conv_store: Optional[ConversationStore] = None
         self.rollup_generator = RollupGenerator()
         
         # Initialize TopicManager with Neo4j client
@@ -81,6 +84,7 @@ class FastEngine:
         redis_client = oracle_cache._redis_client if oracle_cache.enabled else None
         
         self.fast_cache = FastCache(redis_client=redis_client)
+        self.conv_store = ConversationStore(redis_client=redis_client)
         self._initialized = True
     
     def get_name(self) -> str:
@@ -322,6 +326,13 @@ class FastEngine:
             
             # Normalize query for caching
             normalized_query = normalize_query(request.question)
+
+            # Load conversation history for contextual follow-up questions
+            conversation_history: list[dict] = []
+            if self.conv_store and request.user_id:
+                conversation_history = await self.conv_store.get_context(
+                    str(request.user_id), max_turns=2
+                )
             
             # Phase 1: Routing (with plan cache)
             plan, routing_time_ms, route_cache_hit = await self._route_query(
@@ -411,8 +422,15 @@ class FastEngine:
                     skip_cache=skip_answer_cache,
                     skip_cache_reason=cache_bypass_reason,
                     cache_scope=self._build_answer_cache_scope(personalization_prompt_context),
+                    conversation_history=conversation_history or None,
                 )
                 cache_bypass_reason = compose_cache_bypass_reason
+
+                # Persist this turn for future follow-up questions
+                if answer and self.conv_store and request.user_id:
+                    await self.conv_store.append_turn(
+                        str(request.user_id), request.question, answer
+                    )
             else:
                 # In retrieval mode, just convert nodes to documents without LLM synthesis
                 documents = self._nodes_to_documents(
@@ -439,6 +457,20 @@ class FastEngine:
                 cache_bypass_reason=cache_bypass_reason,
             )
             
+            # Composite confidence: routing quality + result coverage + temporal quality
+            doc_count = len(documents)
+            result_count_factor = min(doc_count / 5.0, 1.0) if doc_count > 0 else 0.0
+            temporal_factor = (
+                sum(1 for d in documents if d.publish_date) / doc_count
+                if doc_count > 0 else 0.0
+            )
+            fast_confidence = round(
+                plan.confidence * 0.4
+                + result_count_factor * 0.4
+                + temporal_factor * 0.2,
+                3,
+            )
+
             response = QueryResponse(
                 query_id=str(query_id),
                 answer=answer,
@@ -447,7 +479,7 @@ class FastEngine:
                 citations=citations,
                 metadata=metadata,
                 suggestions=[],
-                confidence_score=None,
+                confidence_score=fast_confidence,
                 personalization_applied=personalization_enabled
             )
             
@@ -937,6 +969,7 @@ class FastEngine:
         skip_cache: bool = False,
         skip_cache_reason: Optional[str] = None,
         cache_scope: Optional[str] = None,
+        conversation_history: Optional[List[dict]] = None,
     ) -> tuple[str, List[Document], List[Citation], int, bool, Optional[str]]:
         """
         Compose final answer (Phase 4).
@@ -1256,6 +1289,7 @@ class FastEngine:
                 docs_for_prompt,
                 graph_context,
                 user_context,
+                conversation_history=conversation_history,
             )
             
             response = await call_llm(
