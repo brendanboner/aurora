@@ -16,6 +16,12 @@ class ReactionRequest(BaseModel):
     user_id: str  # Cognito UUID
 
 
+class CommentRequest(BaseModel):
+    user_id: str
+    body: str
+    user_display_name: str | None = None
+
+
 @router.post("/{post_id}/like")
 async def like_post(post_id: int, request: ReactionRequest) -> dict:
     post = _post_service.get_post(post_id)
@@ -32,6 +38,21 @@ async def dislike_post(post_id: int, request: ReactionRequest) -> dict:
     _preference_service.apply_topic_feedback(request.user_id, post.tags, delta=-0.1)
     _preference_service.update_length_preference(request.user_id, post.content_length)
     return {"status": "disliked"}
+
+
+@router.get("/{post_id}/comments")
+async def get_comments(post_id: int) -> list:
+    return _post_service.get_comments(post_id)
+
+
+@router.post("/{post_id}/comments")
+async def add_comment(post_id: int, request: CommentRequest) -> dict:
+    return _post_service.add_comment(
+        post_id=post_id,
+        user_id=request.user_id,
+        body=request.body,
+        user_display_name=request.user_display_name,
+    )
 
 
 @router.delete("/agent/{agent_id}/purge")

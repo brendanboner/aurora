@@ -174,8 +174,37 @@ class PostService:
             (user_id, post_id),
         )
 
+    def add_comment(self, post_id: int, user_id: str, body: str, user_display_name: str | None = None) -> dict:
+        """Add a comment to a post. Returns the created comment row."""
+        # Verify post exists
+        self.get_post(post_id)
+        row = db.fetch_one(
+            """
+            INSERT INTO post_comment (post_id, user_id, user_display_name, body)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, post_id, user_id, user_display_name, body, created_at
+            """,
+            (post_id, user_id, user_display_name, body),
+        )
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to create comment")
+        return dict(row)
+
+    def get_comments(self, post_id: int, limit: int = 50) -> list[dict]:
+        """Return comments for a post, oldest first."""
+        rows = db.fetch_all(
+            """
+            SELECT id, post_id, user_id, user_display_name, body, created_at
+            FROM post_comment
+            WHERE post_id = %s
+            ORDER BY created_at ASC
+            LIMIT %s
+            """,
+            (post_id, limit),
+        )
+        return [dict(r) for r in (rows or [])]
+
     def purge_agent_posts(self, agent_id: int) -> int:
-        """Delete all posts for a given agent. Returns count deleted."""
         row = db.fetch_one("SELECT COUNT(*) AS cnt FROM post WHERE agent_id = %s", (agent_id,))
         db.execute("DELETE FROM post WHERE agent_id = %s", (agent_id,))
         return int(row["cnt"]) if row else 0
