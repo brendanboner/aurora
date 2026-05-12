@@ -405,21 +405,6 @@ def _ensure_user_in_neo4j(user_uuid: str, email: str, full_name: str, given_name
                 client.close()
             except Exception as e:
                 logger.warning(f"Failed to close Neo4j connection: {e}")
-```
-                raise ValueError(f"Failed to migrate user {old_id} - user not found or email mismatch")
-            
-            # Commit the transaction
-            conn.commit()
-            logger.info(f"Successfully migrated user from {old_id} to {new_id}")
-            return user
-            
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Failed to migrate user ID from {old_id} to {new_id}: {e}")
-        raise
-    finally:
-        # Restore original autocommit setting
-        conn.autocommit = original_autocommit
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:  # Changed from int to str
