@@ -81,6 +81,33 @@ class IEEE802Scraper(BaseScraper):
             logger.error(f"IEEE802: error fetching {url}: {exc}")
             return None
 
+    async def _fetch_content_for_url(self, url: str) -> str:
+        """
+        Fetch readable text content from a URL.
+        - PDF → extract via base helper (pdfminer)
+        - HTML/HTM → fetch and clean body text
+        - Other → return empty string (will use row summary instead)
+        """
+        try:
+            if re.search(r"\.pdf($|\?)", url, re.I):
+                text = await self.fetch_and_extract_pdf(url)
+                return text or ""
+
+            # HTML page — fetch and extract visible text
+            soup = await self._fetch_page(url)
+            if not soup:
+                return ""
+            # Remove nav/header/footer/script/style noise
+            for tag in soup(["script", "style", "nav", "header", "footer", "form"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            # Collapse excessive blank lines
+            text = re.sub(r"\n{3,}", "\n\n", text)
+            return text[:15000]  # cap to avoid oversized chunks
+        except Exception as exc:
+            logger.debug(f"IEEE802: content fetch failed for {url}: {exc}")
+            return ""
+
     # ------------------------------------------------------------------
     # WG page parsers
     # ------------------------------------------------------------------
@@ -137,6 +164,10 @@ class IEEE802Scraper(BaseScraper):
                             category="working_group_document",
                             publish_date=publish_date,
                             datasource_id=datasource_id,
+                            # Row text used as placeholder; full content fetched in run_scraper
+                            content=" | ".join(
+                                c.get_text(strip=True) for c in cells if c.get_text(strip=True)
+                            )[:500] or title,
                         )
                     )
                 except Exception as exc:
@@ -166,6 +197,7 @@ class IEEE802Scraper(BaseScraper):
                         url=url,
                         category="working_group_document",
                         datasource_id=datasource_id,
+                        content=title,  # full content fetched in run_scraper
                     )
                 )
 
@@ -251,6 +283,7 @@ class IEEE802Scraper(BaseScraper):
                         category=category,
                         publish_date=publish_date,
                         datasource_id=datasource_id,
+                        content=card.get_text(" ", strip=True)[:500] or title,
                     )
                 )
             except Exception as exc:
@@ -326,6 +359,13 @@ class IEEE802Scraper(BaseScraper):
                             break
                     else:
                         consecutive_duplicates = 0
+                        # Fetch full content from the linked page before publishing
+                        if not res.content or len(res.content) < 100:
+                            fetched = await self._fetch_content_for_url(res.url)
+                            if fetched:
+                                res.content = fetched
+                            elif not res.content:
+                                res.content = res.title  # absolute fallback
                         self.publish_resource(res)
                         total_published += 1
 
@@ -357,6 +397,12 @@ class IEEE802Scraper(BaseScraper):
                             continue
 
                         if not std_existing.get(res.url, False):
+                            if not res.content or len(res.content) < 100:
+                                fetched = await self._fetch_content_for_url(res.url)
+                                if fetched:
+                                    res.content = fetched
+                                elif not res.content:
+                                    res.content = res.title
                             self.publish_resource(res)
                             total_published += 1
 
