@@ -735,8 +735,9 @@ services:
     environment:
       - BOT_ID=${BOT_ID:-}
       - BOT_PASSWORD=${BOT_PASSWORD:-}
-      - AURORA_API_URL=http://auth:8000
-      - AURORA_CONTENT_CREATOR_URL=http://content-creator:8000
+      - AURORA_API_URL=http://backend:8000
+      - AURORA_ORACLE_URL=http://oracle:8000
+      - AURORA_CONTENT_CREATOR_URL=http://content_creator_service:8000
       - AURORA_FRONTEND_URL=${AURORA_FRONTEND_URL:-http://localhost:3000}
       # Microsoft Graph API for email lookup (optional but recommended for production)
       - GRAPH_TENANT_ID=${AZURE_TENANT_ID:-}
