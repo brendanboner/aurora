@@ -35,7 +35,7 @@ export
 # Docker compose file
 COMPOSE_FILE := docker-compose.prod.yml
 
-.PHONY: help deploy start stop restart logs status backup backup-setup backup-status backup-logs update clean ecr-login
+.PHONY: help deploy start stop restart logs status backup backup-setup backup-status backup-logs update update-fast clean ecr-login
 
 # =============================================================================
 # Help
@@ -51,7 +51,8 @@ help:
 	@echo "  make restart       - Restart all services (in place)"
 	@echo "  make restart-nginx - Restart nginx only"
 	@echo "  make restart-kg-view - Restart KG View services only"
-	@echo "  make update        - Pull latest images and restart"
+	@echo "  make update        - Pull latest images and restart (with backup)"
+	@echo "  make update-fast   - Pull latest images and restart (no backup)"
 	@echo "  make update-kg-view - Pull and restart KG View services only"
 	@echo ""
 	@echo "$(GREEN)Monitoring:$(NC)"
@@ -149,6 +150,18 @@ update: ecr-login
 	@echo "$(CYAN)Updating services...$(NC)"
 	@echo "$(YELLOW)→ Creating backup first...$(NC)"
 	@$(MAKE) backup
+	@echo "$(YELLOW)→ Pulling latest images...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) pull
+	@echo "$(YELLOW)→ Running database migrations...$(NC)"
+	@$(MAKE) migrate
+	@echo "$(YELLOW)→ Restarting services...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) up -d
+	@echo "$(YELLOW)→ Removing old unused images...$(NC)"
+	@docker image prune -a -f
+	@echo "$(GREEN)✓ Services updated and old images cleaned$(NC)"
+
+update-fast: ecr-login
+	@echo "$(CYAN)Fast updating services (no backup)...$(NC)"
 	@echo "$(YELLOW)→ Pulling latest images...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) pull
 	@echo "$(YELLOW)→ Running database migrations...$(NC)"
