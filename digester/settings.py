@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # RabbitMQ Async Configuration
     rabbitmq_max_concurrent: int = 10  # Max concurrent message processing (async semaphore)
     rabbitmq_message_timeout: float = 1200.0  # Message timeout in seconds (20 minutes)
-    rabbitmq_heartbeat: int = 60  # Heartbeat interval in seconds (60s recommended for async)
+    rabbitmq_heartbeat: int = 1800  # 30 min — must survive long LLM processing (was 60s, causing channel death)
     
     @property
     def rabbitmq_prefetch_count(self) -> int:

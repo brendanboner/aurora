@@ -688,11 +688,19 @@ class WBAScraper(BaseScraper):
         all_resources = []
         current_year = datetime.now().year
         consecutive_count = 0  # Track consecutive duplicates across all years
-        
+
+        # Cap the earliest year we'll scrape to the ingestion lookback window.
+        # Without this, every run re-scans content back to START_YEAR (2009).
+        cutoff = self._get_lookback_cutoff()
+        if cutoff is not None:
+            min_year = cutoff.year
+        else:
+            min_year = self.START_YEAR
+
         # Scrape years in reverse order (newest first)
-        years_to_scrape = list(range(current_year, self.START_YEAR - 1, -1))
+        years_to_scrape = list(range(current_year, min_year - 1, -1))
         
-        logger.info(f"Scraping WBA resources from {self.START_YEAR} to {current_year} (mode: {discovery_mode})")
+        logger.info(f"Scraping WBA resources from {min_year} to {current_year} (mode: {discovery_mode})")
         
         for year in years_to_scrape:
             if max_resources >= 0 and len(all_resources) >= max_resources:
@@ -1622,7 +1630,20 @@ class WBAScraper(BaseScraper):
                         else:
                             # Need to scrape the content
                             scraped_item = await self.scrape_resource(item)
-                        
+
+                        # Lookback filter — skip items older than the ingestion window.
+                        # publish_date is set to YYYY-01-01 from the year URL if not on page,
+                        # so this correctly filters e.g. 2023-01-01 < 12-month cutoff.
+                        if scraped_item.publish_date and self._should_skip_by_lookback(
+                            "resource",
+                            datasource_id,
+                            scraped_item.publish_date,
+                            scraped_item.title or "",
+                            scraped_item.url or "",
+                            allow_initial_backfill=True,
+                        ):
+                            continue
+
                         self.publish_resource(scraped_item)
                         resources_processed += 1
                         
