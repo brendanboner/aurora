@@ -162,10 +162,12 @@ async def call_llm_with_retry(
             is_rate_limit = "429" in error_str or "RateLimitReached" in error_str
             
             if is_rate_limit and attempt < max_retries:
-                wait_time = parse_rate_limit_wait_time(error_str) + 0.5
+                raw_wait = parse_rate_limit_wait_time(error_str)
+                wait_time = min(raw_wait, 60.0) + 0.5  # Cap at 60s — Azure can return 600s retry-after
                 logger.warning(
                     f"Rate limit hit (attempt {attempt + 1}/{max_retries + 1}). "
-                    f"Waiting {wait_time:.1f}s before retry..."
+                    f"Waiting {wait_time:.1f}s before retry "
+                    f"(Azure suggested {raw_wait:.0f}s)..."
                 )
                 await asyncio.sleep(wait_time)
                 continue
