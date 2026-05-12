@@ -2,6 +2,18 @@
 
 from datetime import datetime
 
+# Length/depth instruction injected into the system prompt based on detected detail_level.
+_DETAIL_INSTRUCTIONS = {
+    "brief":         "**Be concise: 1–2 short paragraphs or a tight bullet list. Maximum 80 words.**",
+    "detailed":      "**Be brief and professional: 2–4 short paragraphs or a tight bullet list. Maximum 150 words unless the question genuinely requires more.**",
+    "comprehensive": (
+        "**The user has explicitly asked for a detailed response — provide one.**\n"
+        "- Use 400–600 words. Structure with headers (##) and bullet sub-points where it aids clarity.\n"
+        "- Cover background, key technical detail, implications, and any open issues or debates.\n"
+        "- Cite every major claim with [n]. Quality over brevity — leave nothing important out."
+    ),
+}
+
 ANSWER_GENERATOR_SYSTEM = """You are an expert on wireless networking and Wi-Fi technology who has personally attended every Wi-Fi Alliance meeting, reviewed every working group document, and participated in every relevant industry discussion. You speak from deep first-hand knowledge and memory.
 
 **IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point. "Last month" means the past 30 days — NOT the previous calendar month.**
@@ -10,7 +22,7 @@ ANSWER_GENERATOR_SYSTEM = """You are an expert on wireless networking and Wi-Fi 
 
 Answer questions directly and confidently from the documents provided — treat them as your own meeting notes and reading material. Your rules:
 1. Cite specific documents using [1], [2], etc. notation
-2. **Be brief and professional: 2–4 short paragraphs or a tight bullet list. Maximum 150 words unless the question genuinely requires more.**
+2. {detail_instruction}
 3. Lead with the direct answer — no preamble, no scene-setting
 4. For recency questions ("what is new", "latest", "last month", "this month"): if the DATA HORIZON shows content within the past 30 days, that content IS the answer — present it directly. Only use the "I don't have new updates" phrasing when the data horizon is genuinely older than 30 days.
 5. NEVER fabricate facts not supported by the documents
@@ -57,7 +69,7 @@ ANSWER_GENERATOR_SYSTEM_PERSONALIZED = """You are an expert on wireless networki
 
 Answer questions directly and confidently from the documents provided — treat them as your own meeting notes and reading material. Your rules:
 1. Cite specific documents using [1], [2], etc. notation
-2. **Be brief and professional: 2–4 short paragraphs or a tight bullet list. Maximum 150 words unless the question genuinely requires more.**
+2. {detail_instruction}
 3. Lead with the direct answer — no preamble, no scene-setting
 4. For recency questions ("what is new", "latest", "last month", "this month"): if the DATA HORIZON shows content within the past 30 days, that content IS the answer — present it directly. Only use the "I don't have new updates" phrasing when the data horizon is genuinely older than 30 days.
 5. NEVER fabricate facts not supported by the documents
@@ -166,6 +178,7 @@ def get_answer_generator_messages(
     graph_context: dict | None = None,
     user_context: str | None = None,
     conversation_history: list[dict] | None = None,
+    detail_level: str = "detailed",
 ) -> list[dict]:
     """Get messages for answer generation.
     
@@ -175,10 +188,13 @@ def get_answer_generator_messages(
         graph_context: Graph context dict
         user_context: Optional user context string for personalization
         conversation_history: Optional list of prior {role, content} turns
+        detail_level: One of 'brief', 'detailed', 'comprehensive'
         
     Returns:
         List of messages for LLM chat completion
     """
+    detail_instruction = _DETAIL_INSTRUCTIONS.get(detail_level, _DETAIL_INSTRUCTIONS["detailed"])
+
     # Format documents
     docs_text = format_documents_for_prompt(documents)
     
@@ -272,6 +288,7 @@ def get_answer_generator_messages(
         system_prompt = ANSWER_GENERATOR_SYSTEM_PERSONALIZED.format(
             current_date=current_date,
             data_horizon_block=data_horizon_block,
+            detail_instruction=detail_instruction,
         )
         user_content = ANSWER_GENERATOR_USER_PERSONALIZED.format(
             question=question,
@@ -286,6 +303,7 @@ def get_answer_generator_messages(
         system_prompt = ANSWER_GENERATOR_SYSTEM.format(
             current_date=current_date,
             data_horizon_block=data_horizon_block,
+            detail_instruction=detail_instruction,
         )
         
         # Add workgroup grouping instruction if needed

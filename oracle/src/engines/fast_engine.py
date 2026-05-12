@@ -1318,18 +1318,31 @@ class FastEngine:
                     "temporal_patterns": temporal_patterns,
                 }
 
+            # Map DetailLevel enum to string for the prompt builder
+            detail_str = "detailed"
+            if plan.detail_level == DetailLevel.BRIEF:
+                detail_str = "brief"
+            elif plan.detail_level == DetailLevel.COMPREHENSIVE:
+                detail_str = "comprehensive"
+
             messages = get_answer_generator_messages(
                 request.question,
                 docs_for_prompt,
                 graph_context,
                 user_context,
                 conversation_history=conversation_history,
+                detail_level=detail_str,
             )
             
+            # Allow more tokens for comprehensive requests
+            max_tokens = settings.max_answer_tokens
+            if plan.detail_level == DetailLevel.COMPREHENSIVE:
+                max_tokens = max(max_tokens, 1500)
+
             response = await call_llm(
                 client=client,
                 messages=messages,
-                max_tokens=settings.max_answer_tokens,
+                max_tokens=max_tokens,
                 temperature=0.3
             )
             
