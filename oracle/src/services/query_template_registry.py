@@ -234,6 +234,28 @@ class QueryTemplate:
                             params["event_name"] = event_name
                             logger.info(f"Extracted person '{person_name}' and event '{event_name}' from query")
                             break
+            
+            # ORGANIZATION_REPRESENTATIVES - "who represents X in Y"
+            # Split organizations into (a) the company whose people we want and
+            # (b) the standards body / forum that provides context.
+            # Standards bodies are the "context"; everything else is the "source company".
+            if route_id_val == "organization_representatives":
+                _STANDARDS_BODIES = {
+                    "wi-fi alliance", "wireless broadband alliance", "ieee", "ietf",
+                    "3gpp", "etsi", "itu", "iso", "ansi", "gsma", "wi-fi6e alliance",
+                }
+                all_orgs = params.get("organizations", [])
+                source_orgs = [o for o in all_orgs if o.lower() not in _STANDARDS_BODIES]
+                context_orgs = [o for o in all_orgs if o.lower() in _STANDARDS_BODIES]
+                # If no explicit company found, use all orgs as source (single-org query)
+                if not source_orgs:
+                    source_orgs = all_orgs
+                    context_orgs = []
+                params["organizations"] = source_orgs
+                params["context_orgs"] = context_orgs
+                logger.info(
+                    f"ORGANIZATION_REPRESENTATIVES: source={source_orgs}, context={context_orgs}"
+                )
         
         # IETF route-specific parameter extraction
         _IETF_WG_ACRONYMS = [
@@ -2144,44 +2166,55 @@ class QueryTemplateRegistry:
             description="Find people representing an organization at meetings/events",
             param_schema={
                 "organizations": "list[str]",
+                "context_orgs": "list[str]",
                 "topics": "list[str]",
                 "limit": "int"
             },
             cypher="""
-            // Find the organization
+            // Find the SOURCE organization (the company whose people we want).
+            // Use CONTAINS matching so "Extreme Networks" matches "Extreme Networks, Inc."
+            // and the first match wins (most specific org name supplied by the router).
             MATCH (org:Organization)
-            WHERE org.name IN $organizations OR org.org_id IN $organizations
+            WHERE ANY(name IN $organizations
+                      WHERE toLower(org.name) CONTAINS toLower(name)
+                         OR toLower(name) CONTAINS toLower(org.name))
             
-            // Find people affiliated with this org
+            // Find all people affiliated with that org
             MATCH (p:Person)-[aff:AFFILIATED_WITH]->(org)
             
-            // If topics specified, filter by topic connections
-            OPTIONAL MATCH (p)-[:CONNECTED_TO]->(t:Topic)
-            WHERE $topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics)
-            
-            // Get recent resources/events they're mentioned in
+            // Optionally boost people who appear in context-org documents (e.g. WBA docs)
             OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
-            WHERE r.publish_date IS NOT NULL
-              AND coalesce(r.archived, false) = false
+            WHERE coalesce(r.archived, false) = false
+              AND (
+                size($context_orgs) = 0
+                OR EXISTS {
+                    MATCH (r)-[:MENTIONS|PUBLISHED_BY]->(co:Organization)
+                    WHERE ANY(cn IN $context_orgs
+                              WHERE toLower(co.name) CONTAINS toLower(cn)
+                                 OR toLower(cn) CONTAINS toLower(co.name))
+                }
+              )
+            
+            // Topics the person is connected to
+            OPTIONAL MATCH (p)-[:CONNECTED_TO]->(t:Topic)
             
             WITH p, org, aff,
-                 count(DISTINCT r) as activity_count,
+                 count(DISTINCT r) as context_activity,
                  collect(DISTINCT t.name)[0..5] as topics,
                  collect(DISTINCT {
-                     id: r.url_hash,
                      title: r.title,
-                     date: r.publish_date,
-                     url: r.url
-                 })[0..5] as recent_activity
-            ORDER BY activity_count DESC
+                     date:  r.publish_date,
+                     url:   r.url
+                 })[0..3] as recent_activity
+            ORDER BY context_activity DESC, p.name ASC
             
-            RETURN 
-                p.name as name,
-                p.email as email,
-                aff.role as role,
-                org.name as organization,
+            RETURN
+                p.name        as name,
+                p.email       as email,
+                aff.role      as role,
+                org.name      as organization,
                 topics,
-                activity_count,
+                context_activity as activity_count,
                 recent_activity
             LIMIT $limit
             """

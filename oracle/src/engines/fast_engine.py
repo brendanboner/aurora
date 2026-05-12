@@ -1557,6 +1557,25 @@ class FastEngine:
                     continue
                 seen_keys.add(dedupe_key)
                 summary = node.get("summary") or node.get("description", "")
+
+                # Person nodes (from ORGANIZATION_REPRESENTATIVES / PERSON_PROFILE) carry
+                # role + organization instead of a document summary.  Build a human-readable
+                # summary so the LLM has substance to work with.
+                if not summary and node.get("role") and node.get("organization"):
+                    role = node["role"]
+                    org  = node["organization"]
+                    topics_list = node.get("topics") or []
+                    topic_str = (", ".join(topics_list[:3]) + " ") if topics_list else ""
+                    email_str  = f" ({node['email']})" if node.get("email") else ""
+                    activity   = node.get("activity_count", 0)
+                    activity_str = f" — {activity} document mention(s) found" if activity else ""
+                    summary = (
+                        f"{role} at {org}{email_str}. "
+                        f"Known topics: {topic_str}in the knowledge graph{activity_str}."
+                    )
+                elif not summary and node.get("role"):
+                    summary = node["role"]
+
                 date = node.get("date") or node.get("start_time") or node.get("startTime") or node.get("publish_date")
                 
                 # Extract real metadata from Neo4j results
@@ -1564,6 +1583,8 @@ class FastEngine:
                 category = node.get("category") or node.get("event_type") or node.get("type")
                 topics = node.get("topics", []) or node.get("all_topic_names", [])
                 organizations = node.get("organizations", []) or node.get("org_names", [])
+                if node.get("organization") and not organizations:
+                    organizations = [node["organization"]]
                 relevance = node.get("relevance_score", 1.0)
                 
                 # Build source name from datasource_id or fall back to category
@@ -1573,6 +1594,8 @@ class FastEngine:
                     source = datasource_id.replace("_", " ").title()
                 elif category:
                     source = category.replace("_", " ").title()
+                elif node.get("organization"):
+                    source = node["organization"]
                 
                 doc = Document(
                     title=title,
