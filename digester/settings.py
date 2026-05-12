@@ -49,8 +49,9 @@ class Settings(BaseSettings):
     
     # LLM Rate Limiting (Proactive)
     llm_rate_limit_enabled: bool = True  # Enable proactive rate limiting
-    llm_max_requests_per_minute: int = 60  # RPM quota (requests per minute)
-    llm_max_tokens_per_minute: int = 10000  # TPM quota (tokens per minute)
+    llm_max_requests_per_minute: int = 300  # RPM — override via LLM_MAX_REQUESTS_PER_MINUTE
+    llm_max_tokens_per_minute: int = 150000  # TPM — override via LLM_MAX_TOKENS_PER_MINUTE
+    # ↑ Default was 10,000 TPM which caused 600s queue waits when processing backlogs.
     
     # Content Chunking
     max_chunk_size: int = 8000
