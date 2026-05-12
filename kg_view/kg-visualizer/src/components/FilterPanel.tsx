@@ -115,9 +115,11 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         {/* Info Box */}
         <div className="info-box">
           <p>
-            <strong>Tip:</strong> Use these filters to focus on the most important nodes in the graph. 
-            Higher importance thresholds reduce clutter, while curated-only mode limits topic search to 
-            top-level categories.
+            <strong>Connections:</strong> Edges are hidden by default to keep the view clean.
+            Hover any node to reveal its connections. Click to lock the highlight.
+          </p>
+          <p style={{ marginTop: '6px' }}>
+            <strong>🟢 Green ring</strong> = published within the last 30 days.
           </p>
         </div>
       </div>

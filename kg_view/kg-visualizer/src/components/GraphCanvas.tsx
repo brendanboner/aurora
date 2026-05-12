@@ -24,15 +24,15 @@ interface GraphCanvasProps {
   is3D?: boolean;
 }
 
-// Node color mapping by type
+// Node color mapping by type — muted at rest, vivid only on interaction
 const NODE_COLORS: Record<string, string> = {
-  Resource: '#4A90E2',      // Blue
-  Topic: '#9B59B6',         // Purple
-  Organization: '#2ECC71',  // Green
-  Event: '#E67E22',         // Orange
-  Person: '#E74C3C',        // Red
-  DataSource: '#95A5A6',    // Gray
-  Default: '#34495E',       // Dark gray
+  Resource: '#3A7BD5',      // Steel blue
+  Topic: '#7D4FA0',         // Muted purple
+  Organization: '#27AE60',  // Forest green
+  Event: '#C0782A',         // Burnt orange
+  Person: '#C0392B',        // Muted red
+  DataSource: '#7F8C8D',    // Slate gray
+  Default: '#2C3E50',       // Dark navy
 };
 
 // ==============================================================================
@@ -84,7 +84,7 @@ const LINK_STYLE = {
   OPACITY_HOP_2: 0.60,       // 2-hop links
   OPACITY_HOP_3_PLUS: 0.65,  // 3+ hop links
   OPACITY_DIMMED: 0.10,      // Non-highlighted when filtering
-  OPACITY_NORMAL: 0.06,      // Normal state — near-zero to reduce spider web effect
+  OPACITY_NORMAL: 0,         // Hidden by default — edges only visible on hover/select
 };
 
 // Link Colors
@@ -266,51 +266,56 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     
     const geometry = new THREE.SphereGeometry(size, 16, 16);
     const material = new THREE.MeshLambertMaterial({
-      color: isFresh ? freshColor : color,
+      color,
       transparent: true,
-      opacity: isHighlighted ? 1.0 : 0.8,
+      opacity: isHighlighted ? 1.0 : 0.85,
     });
     
     const mesh = new THREE.Mesh(geometry, material);
-    
-    // Add glow for entity nodes, highly important nodes, fresh nodes, or highlighted nodes
-    if (isEntity || importance > 0.3 || isFresh || isHighlighted) {
-      const glowOpacity = isEntity ? NODE_GLOW.OPACITY_BASE : importance * 0.15;
-      const glowSize = size * (isEntity ? NODE_GLOW.SIZE_MULTIPLIER : 1.3);
-      const glowColor = isFresh ? freshColor : color;
+
+    // Fresh-node indicator: small bright green ring (not full color override)
+    if (isFresh) {
+      const ringGeometry = new THREE.TorusGeometry(size * 1.35, size * 0.12, 8, 24);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: freshColor,
+        transparent: true,
+        opacity: 0.7,
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      gsap.to(ringMaterial, { opacity: 0.2, duration: 1.5, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      mesh.add(ring);
+    }
+
+    // Glow only for entity nodes, highlighted nodes, or high-importance (>0.7) nodes
+    if (isEntity || isHighlighted || importance > 0.7) {
+      const glowOpacity = isEntity ? NODE_GLOW.OPACITY_BASE : 0.08;
+      const glowSize = size * NODE_GLOW.SIZE_MULTIPLIER;
 
       const glowGeometry = new THREE.SphereGeometry(glowSize, 16, 16);
       const glowMaterial = new THREE.MeshBasicMaterial({
-        color: glowColor,
+        color,
         transparent: true,
         opacity: glowOpacity,
       });
       const glow = new THREE.Mesh(glowGeometry, glowMaterial);
       mesh.add(glow);
-      
-      // Pulse animation: entity nodes and high-importance nodes always pulse;
-      // fresh nodes pulse faster with brighter glow
-      if (isEntity || importance > 0.7 || isFresh) {
-        const maxOpacity = isFresh ? 0.5 : NODE_GLOW.OPACITY_MAX;
-        const duration = isFresh ? 1.5 : NODE_GLOW.PULSE_DURATION;
+
+      // Only pulse for entity nodes — keeps motion reserved for truly important nodes
+      if (isEntity) {
         gsap.to(glowMaterial, {
-          opacity: maxOpacity,
-          duration,
+          opacity: NODE_GLOW.OPACITY_MAX,
+          duration: NODE_GLOW.PULSE_DURATION,
           repeat: -1,
           yoyo: true,
           ease: 'sine.inOut',
         });
-        
-        if (isEntity) {
-          // Also pulse the main material slightly for entity emphasis
-          gsap.to(material, {
-            opacity: NODE_GLOW.ENTITY_OPACITY_MIN,
-            duration: NODE_GLOW.PULSE_DURATION,
-            repeat: -1,
-            yoyo: true,
-            ease: 'sine.inOut',
-          });
-        }
+        gsap.to(material, {
+          opacity: NODE_GLOW.ENTITY_OPACITY_MIN,
+          duration: NODE_GLOW.PULSE_DURATION,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+        });
       }
     }
     
@@ -470,15 +475,28 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     
     if (node.x == null || node.y == null) return;
 
-    // Draw glow for important nodes
-    if (importance > 0.3) {
-      const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, size * 2.5);
-      gradient.addColorStop(0, color + '60');
+    // Draw glow only for high-importance nodes (>0.7) — not all nodes
+    if (importance > 0.7) {
+      const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, size * 2.2);
+      gradient.addColorStop(0, color + '40');
       gradient.addColorStop(1, color + '00');
       ctx.beginPath();
-      ctx.arc(node.x, node.y, size * 2.5, 0, 2 * Math.PI);
+      ctx.arc(node.x, node.y, size * 2.2, 0, 2 * Math.PI);
       ctx.fillStyle = gradient;
       ctx.fill();
+    }
+
+    // Fresh-node indicator: small green ring
+    const publishDate = graphNode.properties?.publish_date;
+    const isFresh2D = publishDate
+      ? (Date.now() - new Date(publishDate).getTime()) < 30 * 24 * 60 * 60 * 1000
+      : false;
+    if (isFresh2D) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size * 1.4, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#00FF8880';
+      ctx.lineWidth = size * 0.2;
+      ctx.stroke();
     }
 
     // Draw node circle
