@@ -28,10 +28,12 @@ export class AuroraBot extends TeamsActivityHandler {
 
     // Handle incoming messages
     this.onMessage(async (context, next) => {
-      console.log(`[${new Date().toISOString()}] Received message from ${context.activity.from.name}: ${context.activity.text}`);
-      
-      const text = context.activity.text?.trim() || '';
+      // Strip Teams @mention tags: "<at>Bot Name</at> actual message"
+      const rawText = context.activity.text?.trim() || '';
+      const text = rawText.replace(/<at>[^<]*<\/at>/gi, '').trim();
       const lower = text.toLowerCase();
+
+      console.log(`[${new Date().toISOString()}] Received message from ${context.activity.from.name}: ${text}`);
 
       try {
         // Command: show feed
@@ -61,6 +63,19 @@ export class AuroraBot extends TeamsActivityHandler {
         // Command: about
         else if (lower === 'about' || lower === 'info') {
           await this.sendAboutMessage(context);
+        }
+        // Command: @AgentName <question> — direct question to a named agent
+        // Also handles bare "@" or "@partial" to show agent suggestions
+        else if (text.startsWith('@')) {
+          const afterAt = text.substring(1).trim();
+          if (!afterAt) {
+            // Just "@" — show full agent list with chip suggestions
+            await this.agentHandler.handleAgentSuggestions(context);
+          } else {
+            // Try to route as "ask <name> <question>"
+            // If the name doesn't resolve, handleAskAgent will show a helpful error
+            await this.agentHandler.handleAskAgent(context, afterAt);
+          }
         }
         // Default: treat as Oracle question
         else if (text.length > 0) {
@@ -174,7 +189,7 @@ Just type your question naturally!
             },
             {
               type: 'TextBlock',
-              text: '• `agents` - List all available AI content agents\n• `follow <agent name>` - Follow an agent (their posts appear in your feed)\n• `unfollow <agent name>` - Unfollow an agent\n• `ask <agent name> <question>` - Ask a question from that agent\'s perspective',
+              text: '• `agents` - List all available AI content agents\n• `follow <agent name>` - Follow an agent\n• `unfollow <agent name>` - Unfollow an agent\n• `ask <agent name> <question>` - Ask from that agent\'s perspective\n• `@<agent name> <question>` - Shorthand for ask (e.g. `@TechWatcher what is Wi-Fi 7?`)\n• `@` alone — show agent list with quick-select chips',
               wrap: true,
               spacing: 'Small'
             }

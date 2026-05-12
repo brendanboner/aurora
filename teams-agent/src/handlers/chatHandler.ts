@@ -93,16 +93,20 @@ export class ChatHandler {
       topics: topics,
       document_count: response.documents.length,
       frontend_url: process.env.AURORA_FRONTEND_URL || 'http://localhost:3000',
-      documents: response.documents.slice(0, 3).map((doc, index) => ({
+      documents: response.documents.slice(0, 5).map((doc, index) => ({
         number: index + 1,
-        title: doc.title,
-        url: doc.url,
-        summary: doc.summary?.substring(0, 150) + (doc.summary?.length > 150 ? '...' : ''),
-        date: new Date(doc.publish_date).toLocaleDateString('en-US', { 
-          month: 'short', 
-          day: 'numeric', 
-          year: 'numeric' 
-        })
+        title: doc.title || 'Source',
+        url: doc.url || '',
+        summary: doc.summary
+          ? doc.summary.substring(0, 150) + (doc.summary.length > 150 ? '...' : '')
+          : '',
+        date: doc.publish_date
+          ? new Date(doc.publish_date).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })
+          : 'Unknown date',
       }))
     };
     

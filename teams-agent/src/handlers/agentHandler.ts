@@ -21,6 +21,51 @@ export class AgentHandler {
     this.oracleService = new AuroraOracleService();
   }
 
+  /**
+   * Show a quick-select list of agents when the user types @ alone
+   * or an unrecognised @ prefix. Uses suggestedActions so agent names
+   * appear as tap-to-fill chips above the compose box.
+   */
+  async handleAgentSuggestions(context: TurnContext, partial: string = ''): Promise<void> {
+    const email = this.userService.extractUserEmail(context.activity);
+    const displayName = context.activity.from.name || 'User';
+    const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+    const agentService = new AuroraAgentService(auroraUser.id, email);
+    const agents = await agentService.listAgents();
+
+    // Filter by partial match if the user typed @something
+    const filtered = partial
+      ? agents.filter((a) => a.name.toLowerCase().startsWith(partial.toLowerCase()))
+      : agents;
+
+    if (filtered.length === 0) {
+      await context.sendActivity(
+        `No agents match "@${partial}". Type \`agents\` to see the full list.`
+      );
+      return;
+    }
+
+    // suggestedActions render as chip buttons in Teams; value pre-fills "ask <name> "
+    const actions = filtered.slice(0, 8).map((a) => ({
+      type: 'imBack',
+      title: `@${a.name}`,
+      value: `ask ${a.name} `,
+    }));
+
+    const descriptions = filtered
+      .slice(0, 8)
+      .map((a) => `• **${a.name}** — ${a.description || a.persona || 'Content agent'}`)
+      .join('\n');
+
+    await context.sendActivity({
+      text: `**Ask a creator agent** — select one below, then type your question:\n\n${descriptions}`,
+      suggestedActions: {
+        to: [context.activity.from.id],
+        actions,
+      },
+    });
+  }
+
   /** List all content creator agents. */
   async handleListAgents(context: TurnContext): Promise<void> {
     const email = this.userService.extractUserEmail(context.activity);
