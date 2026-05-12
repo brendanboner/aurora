@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendOracleQuery, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings } from '../services/api';
+import { sendOracleQuery, sendOracleQueryStream, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, ChevronDownIcon } from '../components/icons';
 import Icon from '../components/Icon';
@@ -496,98 +496,133 @@ What would you like to know?`;
     
     const userMessage = {
       role: 'user',
-      content: queryText,  // Clean query without @ mentions
+      content: queryText,
       timestamp: new Date(),
-      datasourceIds: datasourceIds, // Store IDs for reference
-      datasourceNames: datasourceNames, // Store names for display
+      datasourceIds: datasourceIds,
+      datasourceNames: datasourceNames,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
     setError(null);
-    setSelectedDatasources([]); // Clear selected datasources after sending
+    setSelectedDatasources([]);
 
-    // Set up a 90s timeout for the oracle query
-    const QUERY_TIMEOUT_MS = 90000;
-    let timeoutId = null;
+    const streamOptions = {
+      mode: 'answer',
+      maxDocuments: 10,
+      includeGraphContext: true,
+      datasourceIds: datasourceIds.length > 0 ? datasourceIds : null,
+      personalize: personalizeMode,
+      pipelineOverride: pipelineMode === 'system' ? null : pipelineMode,
+    };
+
+    // Streaming placeholder — added once, then updated incrementally
+    const placeholderMsg = {
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      queryId: null,
+      responseMode: 'answer',
+      personalizationApplied: false,
+      pipeline: null,
+      citations: [],
+      documents: [],
+      graphContext: null,
+      metadata: null,
+      suggestions: [],
+      confidenceScore: null,
+      originalQuery: queryText,
+      isEnhanced: false,
+      showingEnhanced: false,
+      enhanceMetadata: null,
+      isStreaming: true,
+    };
+
+    // Append placeholder so the user sees the typing indicator immediately
+    setMessages((prev) => [...prev, placeholderMsg]);
+    const msgIndexRef = { current: -1 }; // will be set on first state update
+
+    // Accumulate tokens so we can apply the fallback check at the end
+    let accumulated = '';
+    let metaReceived = false;
 
     try {
-      // Send query to Oracle service with datasource filter
-      const queryPromise = sendOracleQuery(user.id, queryText, {
-        mode: 'answer',
-        maxDocuments: 10,
-        includeGraphContext: true,
-        datasourceIds: datasourceIds.length > 0 ? datasourceIds : null,
-        personalize: personalizeMode,
-        pipelineOverride: pipelineMode === 'system' ? null : pipelineMode,
-      });
+      for await (const event of sendOracleQueryStream(user.id, queryText, streamOptions)) {
+        if (event.type === 'token') {
+          accumulated += event.token;
+          // Update the last message's content — functional update to get latest index
+          setMessages((prev) => {
+            const idx = prev.length - 1;
+            if (idx < 0 || prev[idx].role !== 'assistant') return prev;
+            const updated = [...prev];
+            updated[idx] = { ...updated[idx], content: accumulated };
+            return updated;
+          });
+        } else if (event.type === 'meta') {
+          metaReceived = true;
+          const mappedDocuments = (event.documents || []).map(doc => ({
+            title: doc.title,
+            url: doc.url,
+            publish_date: doc.publish_date,
+            summary: doc.summary,
+            topics: doc.topics || [],
+            organisations: doc.organizations || [],
+            relevance_score: doc.relevance_score,
+            match_reasons: doc.match_reasons || [],
+            source: doc.source || null,
+            datasource_id: doc.datasource_id || null,
+          }));
 
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('QUERY_TIMEOUT')), QUERY_TIMEOUT_MS);
-      });
+          // Use the final answer from meta if provided (handles non-streaming fallback)
+          const finalAnswer = event.answer || accumulated;
+          const usableAnswer = hasUsableAnswer(finalAnswer)
+            ? finalAnswer
+            : mappedDocuments.length > 0
+              ? buildDocumentFallbackAnswer(mappedDocuments)
+              : 'No response was returned for this query.';
 
-      const response = await Promise.race([queryPromise, timeoutPromise]);
-      clearTimeout(timeoutId);
-
-      const mappedDocuments = response.documents?.map(doc => ({
-        title: doc.title,
-        url: doc.url,
-        publish_date: doc.publish_date,
-        summary: doc.summary,
-        topics: doc.topics || [],
-        organisations: doc.organizations || [],
-        relevance_score: doc.relevance_score,
-        match_reasons: doc.match_reasons || [],
-        source: doc.source || null,
-        datasource_id: doc.datasource_id || null,
-      })) || [];
-
-      let answerContent = response.answer;
-      let citations = response.citations || [];
-      let confidenceScore = response.confidence_score;
-      const shouldAutoEnhance = !hasUsableAnswer(answerContent) && mappedDocuments.length > 0;
-
-      if (shouldAutoEnhance || !hasUsableAnswer(answerContent)) {
-        answerContent = buildDocumentFallbackAnswer(mappedDocuments);
-      }
-
-      // Final safety net — ensure content is never empty/null (prevents silent no-op renders)
-      if (!answerContent || typeof answerContent !== 'string' || !answerContent.trim()) {
-        answerContent = mappedDocuments.length > 0
-          ? buildDocumentFallbackAnswer(mappedDocuments)
-          : 'No response was returned for this query.';
-      }
-
-      // Map Oracle response format to our message format
-      // Oracle returns: { query_id, mode, answer, citations, documents, graph_context, metadata, suggestions, confidence_score, personalization_applied, pipeline }
-      const assistantMessage = {
-        role: 'assistant',
-        content: answerContent,
-        timestamp: new Date(),
-        queryId: response.query_id, // Store for feedback
-        responseMode: 'answer',
-        personalizationApplied: response.personalization_applied || false,
-        pipeline: response.pipeline || null, // 'fast' or 'baseline' - track which pipeline was used
-        citations,
-        documents: mappedDocuments,
-        graphContext: response.graph_context,
-        metadata: response.metadata,
-        suggestions: response.suggestions || [],
-        confidenceScore,
-        originalQuery: queryText, // Store for enhance feature
-        isEnhanced: false,
-        showingEnhanced: false,
-        enhanceMetadata: null,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      if (shouldAutoEnhance) {
-        void autoEnhanceMessage(response.query_id, queryText, mappedDocuments);
+          setMessages((prev) => {
+            const idx = prev.length - 1;
+            if (idx < 0 || prev[idx].role !== 'assistant') return prev;
+            const updated = [...prev];
+            updated[idx] = {
+              ...updated[idx],
+              content: usableAnswer,
+              queryId: event.query_id || null,
+              pipeline: event.pipeline || null,
+              citations: event.citations || [],
+              documents: mappedDocuments,
+              confidenceScore: event.confidence_score ?? null,
+              personalizationApplied: event.personalization_applied ?? false,
+              metadata: event.metadata || null,
+              isStreaming: false,
+            };
+            return updated;
+          });
+        } else if (event.type === 'done') {
+          // Streaming finished — if no meta was received, finalize with what we have
+          if (!metaReceived) {
+            const usableAnswer = hasUsableAnswer(accumulated)
+              ? accumulated
+              : 'No response was returned for this query.';
+            setMessages((prev) => {
+              const idx = prev.length - 1;
+              if (idx < 0 || prev[idx].role !== 'assistant') return prev;
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], content: usableAnswer, isStreaming: false };
+              return updated;
+            });
+          }
+          break;
+        } else if (event.type === 'error') {
+          throw new Error(event.error || 'Streaming error');
+        }
       }
     } catch (err) {
-      clearTimeout(timeoutId);
       console.error('Query error:', err);
+
+      // Remove the streaming placeholder and show the error
+      setMessages((prev) => prev.filter((m) => !m.isStreaming));
 
       let userFacingMessage;
       if (err.message === 'QUERY_TIMEOUT') {

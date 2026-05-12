@@ -213,6 +213,11 @@ class RoutePlan(BaseModel):
         description="Datasource IDs to boost in results (user has joined these)"
     )
 
+    preferred_domains: List[str] = Field(
+        default_factory=list,
+        description="Networking domains to soft-boost in results (e.g. 'routing', 'wi-fi', 'security')"
+    )
+
     # Response preferences
     detail_level: DetailLevel = Field(
         default=DetailLevel.DETAILED,

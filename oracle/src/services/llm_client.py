@@ -180,6 +180,63 @@ def reset_client():
     _client = None
 
 
+async def call_llm_stream(
+    client: AzureOpenAI,
+    messages: list[dict],
+    max_tokens: int = 1024,
+    temperature: float = 0.1,
+):
+    """
+    Streaming LLM call — yields token chunks as they arrive.
+
+    Uses the synchronous AzureOpenAI client with stream=True, running the
+    blocking iteration in a thread pool so the async event loop stays free.
+
+    Yields:
+        str chunks of the assistant's response as they are generated.
+
+    Raises:
+        Exception on any API error.
+    """
+    import asyncio
+    from typing import AsyncGenerator
+
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    deployment = getattr(client, '_deployment_name', settings.azure_openai_deployment)
+
+    def _stream_in_thread():
+        try:
+            with client.chat.completions.create(
+                model=deployment,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            ) as stream:
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait, chunk.choices[0].delta.content
+                        )
+        except Exception as exc:
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
+
+    executor_task = loop.run_in_executor(None, _stream_in_thread)
+
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
+    await executor_task
+
+
 async def generate_embedding(
     text: str,
     client: Optional[AzureOpenAI] = None,

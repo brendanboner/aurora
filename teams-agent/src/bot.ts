@@ -8,10 +8,12 @@ import {
 } from 'botbuilder';
 import { FeedHandler } from './handlers/feedHandler';
 import { ChatHandler } from './handlers/chatHandler';
+import { AgentHandler } from './handlers/agentHandler';
 
 export class AuroraBot extends TeamsActivityHandler {
   private feedHandler: FeedHandler;
   private chatHandler: ChatHandler;
+  private agentHandler: AgentHandler;
   private conversationState: ConversationState;
   private userState: UserState;
 
@@ -22,29 +24,62 @@ export class AuroraBot extends TeamsActivityHandler {
     this.userState = userState;
     this.feedHandler = new FeedHandler();
     this.chatHandler = new ChatHandler();
+    this.agentHandler = new AgentHandler();
 
     // Handle incoming messages
     this.onMessage(async (context, next) => {
-      console.log(`[${new Date().toISOString()}] Received message from ${context.activity.from.name}: ${context.activity.text}`);
-      
-      const text = context.activity.text?.trim().toLowerCase() || '';
+      // Strip Teams @mention tags: "<at>Bot Name</at> actual message"
+      const rawText = context.activity.text?.trim() || '';
+      const text = rawText.replace(/<at>[^<]*<\/at>/gi, '').trim();
+      const lower = text.toLowerCase();
+
+      console.log(`[${new Date().toISOString()}] Received message from ${context.activity.from.name}: ${text}`);
 
       try {
         // Command: show feed
-        if (text === 'feed' || text === 'show feed' || text === 'my feed') {
+        if (lower === 'feed' || lower === 'show feed' || lower === 'my feed') {
           await this.feedHandler.handleShowFeedCommand(context, 5);
         }
+        // Command: list agents
+        else if (lower === 'agents' || lower === 'list agents' || lower === 'show agents') {
+          await this.agentHandler.handleListAgents(context);
+        }
+        // Command: follow <agent name>
+        else if (lower.startsWith('follow ')) {
+          await this.agentHandler.handleFollowAgent(context, text.substring(7).trim());
+        }
+        // Command: unfollow <agent name>
+        else if (lower.startsWith('unfollow ')) {
+          await this.agentHandler.handleUnfollowAgent(context, text.substring(9).trim());
+        }
+        // Command: ask <agent name> <question>
+        else if (lower.startsWith('ask ')) {
+          await this.agentHandler.handleAskAgent(context, text.substring(4).trim());
+        }
         // Command: help
-        else if (text === 'help' || text === '?') {
+        else if (lower === 'help' || lower === '?') {
           await this.sendHelpMessage(context);
         }
         // Command: about
-        else if (text === 'about' || text === 'info') {
+        else if (lower === 'about' || lower === 'info') {
           await this.sendAboutMessage(context);
+        }
+        // Command: @AgentName <question> — direct question to a named agent
+        // Also handles bare "@" or "@partial" to show agent suggestions
+        else if (text.startsWith('@')) {
+          const afterAt = text.substring(1).trim();
+          if (!afterAt) {
+            // Just "@" — show full agent list with chip suggestions
+            await this.agentHandler.handleAgentSuggestions(context);
+          } else {
+            // Try to route as "ask <name> <question>"
+            // If the name doesn't resolve, handleAskAgent will show a helpful error
+            await this.agentHandler.handleAskAgent(context, afterAt);
+          }
         }
         // Default: treat as Oracle question
         else if (text.length > 0) {
-          await this.chatHandler.handleQuestion(context, context.activity.text);
+          await this.chatHandler.handleQuestion(context, text);
         }
       } catch (error) {
         console.error('[ERROR] Error handling message:', error);
@@ -138,6 +173,23 @@ Just type your question naturally!
             {
               type: 'TextBlock',
               text: '• `feed` or `show feed` - View your personalized content feed\n• `my feed` - Same as above',
+              wrap: true,
+              spacing: 'Small'
+            }
+          ]
+        },
+        {
+          type: 'Container',
+          spacing: 'Medium',
+          items: [
+            {
+              type: 'TextBlock',
+              text: '🤖 Agent Commands',
+              weight: 'Bolder'
+            },
+            {
+              type: 'TextBlock',
+              text: '• `agents` - List all available AI content agents\n• `follow <agent name>` - Follow an agent\n• `unfollow <agent name>` - Unfollow an agent\n• `ask <agent name> <question>` - Ask from that agent\'s perspective\n• `@<agent name> <question>` - Shorthand for ask (e.g. `@TechWatcher what is Wi-Fi 7?`)\n• `@` alone — show agent list with quick-select chips',
               wrap: true,
               spacing: 'Small'
             }

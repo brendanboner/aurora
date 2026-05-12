@@ -82,10 +82,37 @@ Node Types to Extract:
 
 RESOURCE
   Fields:
-    - summary (string, required): A concise 3–5 sentence summary of the document's main purpose and content.
-    - importance (float, 0.0–1.0, required): How important or urgent the document is.
-    - importance_explanation (string, required): A brief explanation of the importance score.
-    - extreme_impact (string, optional): A brief explination on the impact and outcomes this document has on the Extreme Networks company, products, services, clients. You can leave this field null if there is no relevant impact.
+    - summary (string, required): A 3–5 sentence summary (minimum 350 characters) of the document's main
+        purpose and key technical content. Tailor by doc_type:
+        • meeting-minutes: include key decisions, action items, and main topics discussed.
+        • specification/internet-draft: include scope, key technical features, and target use case.
+        • blog/press-release: include the main announcement or argument and its significance.
+        • video-transcript: include main topics, key speakers, and organisations discussed.
+        • case-study/whitepaper: include the problem addressed, approach taken, and key findings.
+        Do NOT write "the document provides a download link" or generic filler. Extract actual content.
+    - doc_type (string, required): Classify the document into exactly one of:
+        specification, internet-draft, whitepaper, meeting-minutes, press-release, blog,
+        video-transcript, case-study, infographic, newsletter, governing-document, agenda,
+        presentation, unknown
+        Use the category field, URL, datasource, and content as signals.
+    - importance (float, 0.0–1.0, required): Relevance and significance to enterprise networking
+        professionals at Extreme Networks. Use this scale strictly — do NOT cluster at 0.8:
+        • 0.9–1.0: Foundational standard, major certification, landmark specification, or critical
+                   security advisory directly affecting Extreme Networks products or customers.
+        • 0.7–0.89: Directly relevant technical document, active WG draft with real-world impact,
+                    official industry announcement from a primary standards body or key organisation.
+        • 0.5–0.69: Useful context — vendor blogs, general industry articles, peripheral WG drafts,
+                    event recordings with relevant discussion.
+        • 0.3–0.49: Limited relevance — dated content, brief updates, meeting logistics, newsletters
+                    with no specific technical depth.
+        • 0.1–0.29: Minimal value — brand assets, membership forms, duplicate/redirect pages,
+                    content with no extractable technical information.
+        Target distribution: ~10% high (0.8+), ~50% medium (0.5–0.79), ~40% lower (<0.5).
+        Be critical. Most documents are not highly important.
+    - importance_explanation (string, required): One sentence explaining the importance score,
+        referencing specific content that justifies the band chosen.
+    - extreme_impact (string, optional): A brief explanation of the impact and outcomes this document
+        has on Extreme Networks company, products, services, or clients. Leave null if no relevant impact.
 
 Topics
   Fields:
@@ -212,7 +239,10 @@ Important guidelines:
 - Be specific and accurate but BRIEF.
 - All confidence and relevance scores must be between 0.0 and 1.0.
 - evidence is a direct quote from the content, max 240 characters. Do not go over the 240 character limit. Cut the quote short if needed.
-- Keep summaries under 3 sentences, importance_explanation under 2 sentences, extreme_impact under 2 sentences.
+- summary must be 3–5 sentences and at least 350 characters. Do not write filler like "provides a download link".
+- importance_explanation must be one sentence referencing specific content. extreme_impact under 2 sentences.
+- importance MUST use the full 0.0–1.0 range. Do not default to 0.8. Most documents should score 0.5–0.7.
+- doc_type must be one of the listed values — use "unknown" only if genuinely unclassifiable.
 - Do not add any fields not specified above.
 - For relationships, relationship_type, subject_identifier, and object_identifier are required. For the other fields refer to relationship type definitions above.
 - relationship identifiers should be the name field of the respective nodes or the URL if the node is the resource.
@@ -242,7 +272,7 @@ Return ONLY valid JSON in this exact format:
 
 {{
   "nodes": {{
-    "resource": {{ "summary": "string", "importance": 0.5, "importance_explanation": "string", "extreme_impact": "string" }},
+    "resource": {{ "summary": "string", "doc_type": "string", "importance": 0.5, "importance_explanation": "string", "extreme_impact": "string" }},
     "topics": [
       {{
         "name": "string",
@@ -326,7 +356,10 @@ Important guidelines:
 - CRITICAL: Keep your response CONCISE to stay within {max_tokens} token limit. Use short summaries and descriptions.
 - Limit topics to maximum 10 most relevant items
 - Limit relationships to maximum 15 most relevant connections
-- Keep summaries under 3 sentences, importance_explanation under 2 sentences, extreme_impact under 2 sentences
+- summary must be 3–5 sentences and at least 350 characters. Merge chunk summaries into a comprehensive whole.
+- importance_explanation must be one sentence. extreme_impact under 2 sentences.
+- importance MUST use the full 0.0–1.0 range. Do not default to 0.8. Most documents score 0.5–0.7.
+- doc_type must be one of: specification, internet-draft, whitepaper, meeting-minutes, press-release, blog, video-transcript, case-study, infographic, newsletter, governing-document, agenda, presentation, unknown
 - Ensure all confidence scores are between 0.0 and 1.0
 - For duplicate relationships, merge them and average their scores
 - evidence must be a direct quote from the content, max 240 characters. Do not go over the 240 character limit. Cut the quote short if needed.

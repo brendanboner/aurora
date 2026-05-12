@@ -349,6 +349,171 @@ class WBAScraper(BaseScraper):
         logger.debug(f"Extracted {len(resources)} resources from page")
         return resources
 
+    async def get_newsroom_articles(
+        self,
+        datasource_id: str,
+        max_articles: int = -1,
+        consecutive_duplicates_limit: int = 5,
+    ) -> List[Resource]:
+        """
+        Discover and collect articles from the WBA newsroom.
+
+        The newsroom (wballiance.com/newsroom/) is a WordPress blog listing that
+        is completely separate from the /resources/ section.  Articles include
+        press releases, partner spotlights, trial reports, and product launches
+        (e.g. Nicnet CX Suite, Wi-Fi HaLow readiness trials).
+
+        Pagination: /newsroom/page/N/
+        Each <article> element contains:
+          - <h2>/<h3> with <a href="..."> — title and permalink
+          - <time datetime="ISO8601"> — publication date (authoritative)
+          - Optional excerpt div — short description
+
+        Args:
+            datasource_id: The datasource identifier to assign to resources.
+            max_articles:  Maximum new articles to return (-1 = unlimited).
+            consecutive_duplicates_limit: Stop pagination after this many
+                already-known articles in a row (0 = no limit).
+
+        Returns:
+            List of Resource objects (new/unseen articles only).
+        """
+        import asyncio as _asyncio
+        NEWSROOM_BASE = f"{self.BASE_URL}/newsroom/"
+        resources: List[Resource] = []
+        page = 1
+        consecutive_dupes = 0
+        seen_urls: set = set()
+
+        logger.info(f"Discovering WBA newsroom articles from {NEWSROOM_BASE}")
+
+        while True:
+            if max_articles >= 0 and len(resources) >= max_articles:
+                break
+
+            page_url = NEWSROOM_BASE if page == 1 else f"{NEWSROOM_BASE}page/{page}/"
+
+            try:
+                self.update_heartbeat()
+                self.update_current_processing(
+                    Resource(title=f"Newsroom page {page}", url=page_url, category="discovery"),
+                    f"scanning newsroom page {page}",
+                )
+
+                async with self.session.get(
+                    page_url,
+                    headers=self.get_headers(referer=NEWSROOM_BASE),
+                ) as response:
+                    if response.status == 404:
+                        logger.debug(f"Newsroom page {page} returned 404 — stopping")
+                        break
+                    if response.status != 200:
+                        logger.warning(f"Newsroom page {page} returned HTTP {response.status}")
+                        break
+                    html = await response.text()
+
+            except Exception as exc:
+                logger.error(f"Error fetching newsroom page {page}: {exc}")
+                break
+
+            soup = BeautifulSoup(html, "html.parser")
+            articles = soup.find_all("article")
+
+            if not articles:
+                logger.debug(f"No <article> elements on newsroom page {page} — stopping")
+                break
+
+            # Parse all candidate articles on this page
+            candidates: List[Dict[str, Any]] = []
+            for article in articles:
+                try:
+                    heading = article.find(["h2", "h3"])
+                    if not heading:
+                        continue
+                    link_el = heading.find("a", href=True)
+                    if not link_el:
+                        continue
+
+                    url = link_el["href"]
+                    if not url.startswith("http"):
+                        url = urljoin(self.BASE_URL, url)
+
+                    if url in seen_urls:
+                        continue
+                    seen_urls.add(url)
+
+                    title = link_el.get_text(strip=True)
+                    if not title:
+                        continue
+
+                    # Publication date — prefer <time datetime="...">
+                    publish_date: Optional[str] = None
+                    time_el = article.find("time")
+                    if time_el:
+                        raw_dt = time_el.get("datetime") or time_el.get_text(strip=True)
+                        if raw_dt:
+                            try:
+                                from dateutil.parser import parse as dp
+                                parsed = dp(raw_dt)
+                                publish_date = parsed.strftime("%Y-%m-%d")
+                            except Exception:
+                                pass
+
+                    # Short excerpt
+                    description: Optional[str] = None
+                    for cls in ("post-content", "entry-content", "entry-summary", "fusion-post-content"):
+                        div = article.find("div", class_=cls)
+                        if div:
+                            description = div.get_text(" ", strip=True)[:500]
+                            break
+
+                    candidates.append({"url": url, "title": title,
+                                       "publish_date": publish_date, "description": description})
+                except Exception as exc:
+                    logger.error(f"Error parsing newsroom article element: {exc}")
+
+            if not candidates:
+                break
+
+            # Batch-check which URLs are already in the database
+            candidate_urls = [c["url"] for c in candidates]
+            existing = self.batch_check_urls_exist(candidate_urls)
+
+            page_new = 0
+            for c in candidates:
+                if existing.get(c["url"], False):
+                    consecutive_dupes += 1
+                    if consecutive_duplicates_limit > 0 and consecutive_dupes >= consecutive_duplicates_limit:
+                        logger.debug(
+                            f"Reached {consecutive_dupes} consecutive known articles — stopping newsroom scan"
+                        )
+                        return resources
+                    continue
+
+                consecutive_dupes = 0
+                resource = Resource(
+                    title=c["title"],
+                    url=c["url"],
+                    category="newsroom",
+                    publish_date=c["publish_date"],
+                    datasource_id=datasource_id,
+                )
+                if c["description"]:
+                    resource.content = c["description"]
+
+                resources.append(resource)
+                page_new += 1
+
+                if max_articles >= 0 and len(resources) >= max_articles:
+                    return resources
+
+            logger.debug(f"Newsroom page {page}: {page_new} new articles found")
+            page += 1
+            await _asyncio.sleep(0.5)
+
+        logger.info(f"Newsroom discovery complete: {len(resources)} new articles found")
+        return resources
+
     async def get_resources_for_year(
         self, 
         year: int,
@@ -523,11 +688,19 @@ class WBAScraper(BaseScraper):
         all_resources = []
         current_year = datetime.now().year
         consecutive_count = 0  # Track consecutive duplicates across all years
-        
+
+        # Cap the earliest year we'll scrape to the ingestion lookback window.
+        # Without this, every run re-scans content back to START_YEAR (2009).
+        cutoff = self._get_lookback_cutoff()
+        if cutoff is not None:
+            min_year = cutoff.year
+        else:
+            min_year = self.START_YEAR
+
         # Scrape years in reverse order (newest first)
-        years_to_scrape = list(range(current_year, self.START_YEAR - 1, -1))
+        years_to_scrape = list(range(current_year, min_year - 1, -1))
         
-        logger.info(f"Scraping WBA resources from {self.START_YEAR} to {current_year} (mode: {discovery_mode})")
+        logger.info(f"Scraping WBA resources from {min_year} to {current_year} (mode: {discovery_mode})")
         
         for year in years_to_scrape:
             if max_resources >= 0 and len(all_resources) >= max_resources:
@@ -1394,8 +1567,18 @@ class WBAScraper(BaseScraper):
                     logger.info(f"    Found {len(discovered_resources)} resources (new + changed content)")
                 else:
                     logger.info(f"    Found {len(discovered_resources)} new resources")
+            elif '/newsroom/' in resource_url or resource_url == '/newsroom/':
+                logger.info("  1.3: Discovering WBA newsroom articles")
+                remaining = max_resources - len(events) - len(resources) if max_resources >= 0 else -1
+                newsroom_articles = await self.get_newsroom_articles(
+                    datasource_id=datasource_id,
+                    max_articles=remaining,
+                    consecutive_duplicates_limit=consecutive_duplicates_limit,
+                )
+                resources.extend(newsroom_articles)
+                logger.info(f"    Found {len(newsroom_articles)} new newsroom articles")
             else:
-                logger.info(f"  1.3: Skipping resources (resource_url is not /resources/)")
+                logger.info(f"  1.3: Skipping resources (resource_url is not /resources/ or /newsroom/)")
             
             total_items = len(events) + len(resources)
             logger.info(f"Phase 1 complete: {total_items} total items discovered ({len(events)} events, {len(resources)} resources)")
@@ -1447,7 +1630,20 @@ class WBAScraper(BaseScraper):
                         else:
                             # Need to scrape the content
                             scraped_item = await self.scrape_resource(item)
-                        
+
+                        # Lookback filter — skip items older than the ingestion window.
+                        # publish_date is set to YYYY-01-01 from the year URL if not on page,
+                        # so this correctly filters e.g. 2023-01-01 < 12-month cutoff.
+                        if scraped_item.publish_date and self._should_skip_by_lookback(
+                            "resource",
+                            datasource_id,
+                            scraped_item.publish_date,
+                            scraped_item.title or "",
+                            scraped_item.url or "",
+                            allow_initial_backfill=True,
+                        ):
+                            continue
+
                         self.publish_resource(scraped_item)
                         resources_processed += 1
                         

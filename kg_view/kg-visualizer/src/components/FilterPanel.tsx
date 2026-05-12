@@ -4,6 +4,8 @@ import './FilterPanel.css';
 interface FilterPanelProps {
   hiddenNodeTypes: Set<string>;
   onNodeTypeToggle: (nodeType: string) => void;
+  hiddenLinkTypes: Set<string>;
+  onLinkTypeToggle: (linkType: string) => void;
   importanceThreshold: number;
   onImportanceThresholdChange: (threshold: number) => void;
   curatedOnly: boolean;
@@ -13,10 +15,13 @@ interface FilterPanelProps {
 }
 
 const ALL_NODE_TYPES = ['Resource', 'Topic', 'Organization', 'Person', 'Event', 'DataSource', 'IngestionBatch'];
+const ALL_LINK_TYPES = ['DISCUSSES', 'PUBLISHED_BY', 'ENCOMPASSES', 'AFFILIATED_WITH', 'PRESENTED_AT', 'HAS_SUBTOPIC', 'MENTIONS'];
 
 const FilterPanel: React.FC<FilterPanelProps> = ({
   hiddenNodeTypes,
   onNodeTypeToggle,
+  hiddenLinkTypes,
+  onLinkTypeToggle,
   importanceThreshold,
   onImportanceThresholdChange,
   curatedOnly,
@@ -42,6 +47,24 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                   disabled={isLoading}
                 />
                 <span>{nodeType}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Relationship Type Toggles */}
+        <div className="filter-group">
+          <h4>Relationship Types</h4>
+          <div className="node-type-toggles">
+            {ALL_LINK_TYPES.map((linkType) => (
+              <label key={linkType} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={!hiddenLinkTypes.has(linkType)}
+                  onChange={() => onLinkTypeToggle(linkType)}
+                  disabled={isLoading}
+                />
+                <span>{linkType}</span>
               </label>
             ))}
           </div>
@@ -92,9 +115,11 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         {/* Info Box */}
         <div className="info-box">
           <p>
-            <strong>Tip:</strong> Use these filters to focus on the most important nodes in the graph. 
-            Higher importance thresholds reduce clutter, while curated-only mode limits topic search to 
-            top-level categories.
+            <strong>Connections:</strong> Edges are hidden by default to keep the view clean.
+            Hover any node to reveal its connections. Click to lock the highlight.
+          </p>
+          <p style={{ marginTop: '6px' }}>
+            <strong>🟢 Green ring</strong> = published within the last 30 days.
           </p>
         </div>
       </div>

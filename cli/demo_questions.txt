@@ -1,0 +1,15 @@
+# Aurora Demo Fast-Mode Question Set
+# These 10 questions are curated for broad coverage and guaranteed fast answers, including IETF sources.
+
+What was discussed in the last month across all working groups?
+What are sticky clients and why are they a problem in Wi-Fi?
+What is the difference between Wi-Fi 7 and Wi-Fi 8?
+What is the current status of the IEEE 802.11bc standard?
+Who presented at the Wi-Fi 8 February 2026 face-to-face?
+What has Qualcomm contributed to Wi-Fi 8 discussions?
+What is on the agenda for upcoming Wi-Fi Alliance events?
+What is the latest Wi-Fi Alliance press release?
+What has the IETF published about Wi-Fi 7?
+Show me recent IETF drafts on 6 GHz spectrum.
+What are Wi-Fi 8 Secure Control Frames?
+

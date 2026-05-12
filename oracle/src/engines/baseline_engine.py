@@ -1,9 +1,10 @@
 """Baseline answer engine - wraps existing Oracle pipeline."""
 
 import logging
+import re
 import time
 import uuid
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from opentelemetry import trace
 
 from src.models.request import QueryRequest, QueryMode, PersonalizeMode
@@ -17,11 +18,93 @@ from src.services.confidence_scorer import calculate_confidence
 from src.services.query_suggestions import suggest_refinements, should_show_suggestions
 from src.services.ranking_explainer import add_explanations_to_documents
 from src.services.cache import OracleCache, hash_options
+from src.services.conversation_store import ConversationStore
 from src.services.personalization import decide_personalization, get_user_preferences, get_user_source_memberships
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Stop-words stripped before fuzzy topic matching
+# ---------------------------------------------------------------------------
+_STOP_WORDS = frozenset({
+    "a", "an", "the", "and", "or", "of", "in", "on", "at", "to", "for",
+    "is", "are", "was", "were", "be", "been", "being", "have", "has",
+    "do", "does", "did", "with", "what", "which", "who", "how", "when",
+    "where", "why", "latest", "new", "news", "update", "updates",
+    "recent", "current", "this", "that", "these", "those",
+})
+
+
+def _query_terms(question: str) -> List[str]:
+    """Extract meaningful terms from a question for fuzzy topic matching."""
+    tokens = re.findall(r"[a-z0-9][a-z0-9\.\-]*", question.lower())
+    return [t for t in tokens if t not in _STOP_WORDS and len(t) >= 3]
+
+
+def _find_related_topics(question: str, limit: int = 5) -> List[dict]:
+    """Query Neo4j for topics and datasources related to terms in the question.
+
+    Returns a list of dicts with keys: name, doc_count, datasource (optional).
+    Falls back to empty list on any error so the caller is never blocked.
+    """
+    try:
+        from src.services.keyword_retriever import get_repo
+        repo = get_repo()
+        terms = _query_terms(question)
+        if not terms:
+            return []
+
+        results = repo.client.execute_query(
+            """
+            UNWIND $terms AS term
+            MATCH (t:Topic)
+            WHERE toLower(t.name) CONTAINS toLower(term)
+            WITH t, count(term) AS term_hits
+            OPTIONAL MATCH (r:Resource)-[:RELATES_TO]->(t)
+            WHERE coalesce(r.archived, false) = false
+            WITH t, term_hits, count(r) AS doc_count
+            WHERE doc_count > 0
+            OPTIONAL MATCH (r2:Resource)-[:RELATES_TO]->(t)
+            WHERE coalesce(r2.archived, false) = false
+            OPTIONAL MATCH (r2)-[:INGESTED_FROM]->(ds:DataSource)
+            WITH t, term_hits, doc_count,
+                 collect(DISTINCT ds.name)[0] AS example_source
+            RETURN t.name AS name,
+                   doc_count,
+                   example_source AS datasource
+            ORDER BY term_hits DESC, doc_count DESC
+            LIMIT $limit
+            """,
+            parameters={"terms": terms, "limit": limit},
+        )
+        return results or []
+    except Exception as exc:
+        logger.warning("Fuzzy topic lookup failed (non-fatal): %s", exc)
+        return []
+
+
+def _build_no_docs_answer(question: str, related: List[dict]) -> str:
+    """Build a direct, honest answer when zero documents were retrieved."""
+    if not related:
+        return (
+            "I don't have documents in my knowledge base that match this query. "
+            "Try asking about Wi-Fi Alliance certifications, IETF working groups, "
+            "or specific Wi-Fi technologies like Wi-Fi 6, Wi-Fi 7, or Passpoint."
+        )
+
+    lines = ["I don't have documents that directly match this query. Related topics I do have coverage on:\n"]
+    for r in related:
+        source = f" — via {r['datasource']}" if r.get("datasource") else ""
+        lines.append(f"- **{r['name']}** ({r['doc_count']} documents{source})")
+
+    lines.append(
+        "\nAsk me about any of these topics for a sourced answer, "
+        "or rephrase your question to focus on one of them."
+    )
+    return "\n".join(lines)
 
 
 class BaselineEngine:
@@ -138,6 +221,8 @@ class BaselineEngine:
             
             # Decide personalization (with all required parameters)
             cache = await OracleCache.get_cache()
+            redis_client = cache._redis_client if cache.enabled else None
+            conv_store = ConversationStore(redis_client=redis_client)
             personalization_decision = None
             personalization_enabled = False
             
@@ -279,21 +364,71 @@ class BaselineEngine:
             
             if request.mode == QueryMode.ANSWER:
                 with tracer.start_as_current_span("baseline.generate_answer"):
+                    # --- Zero-doc hallucination guard ---
+                    # When the retrieval pipeline found no documents, do NOT call the LLM —
+                    # it will hallucinate from training data.  Instead, run a fuzzy topic
+                    # lookup so the user gets an honest, grounded response with related
+                    # topics they CAN ask about.
+                    if not documents:
+                        logger.info(
+                            "[%s] Zero documents retrieved — skipping LLM, returning fuzzy topic suggestions",
+                            query_id,
+                        )
+                        related = _find_related_topics(request.question)
+                        answer_text = _build_no_docs_answer(request.question, related)
+                        # Return immediately — no scoring, no caching, no LLM cost
+                        processing_time_ms = int((time.time() - start_time) * 1000)
+                        from src.models.response import RetrievalMetadata
+                        metadata = RetrievalMetadata(
+                            intent=intent,
+                            intent_confidence=intent_confidence,
+                            strategies_used=strategies_used,
+                            total_candidates=0,
+                            processing_time_ms=processing_time_ms,
+                            llm_tokens_used=None,
+                        )
+                        return QueryResponse(
+                            query_id=str(query_id),
+                            answer=answer_text,
+                            mode="answer",
+                            documents=[],
+                            citations=[],
+                            graph_context=None,
+                            confidence_score=0.0,
+                            suggestions=[],
+                            personalization_applied=False,
+                            metadata=metadata,
+                        )
+
                     # Get user context if personalization is enabled
                     user_context_str = None
                     if personalization_enabled and personalization_decision and personalization_decision.user_context:
                         user_context_str = personalization_decision.user_context.to_prompt_section()
+
+                    # Load conversation history for follow-up questions
+                    conversation_history: list[dict] = []
+                    if request.user_id:
+                        conversation_history = await conv_store.get_context(
+                            str(request.user_id), max_turns=2
+                        )
                     
                     answer_result = await self.response_generator.generate_answer(
                         question=request.question,
                         documents=documents[:10],  # Limit for context window
                         graph_context=graph_context,
                         intent=intent,
-                        user_context=user_context_str
+                        user_context=user_context_str,
+                        conversation_history=conversation_history or None,
                     )
                     
                     answer_text = answer_result.answer
                     citations = answer_result.citations
+
+                    # Persist this turn for future follow-ups
+                    if answer_text and request.user_id:
+                        await conv_store.append_turn(
+                            str(request.user_id), request.question, answer_text
+                        )
                     
                     logger.info(
                         f"[{query_id}] Generated answer: {len(answer_text)} chars, "
@@ -367,7 +502,8 @@ class BaselineEngine:
                 confidence_score=confidence_score.score if confidence_score else None,
                 suggestions=query_suggestions,
                 personalization_applied=personalization_enabled,
-                metadata=metadata
+                metadata=metadata,
+                pipeline="baseline",
             )
             
             # Cache response if not personalized

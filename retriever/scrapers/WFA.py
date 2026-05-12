@@ -27,6 +27,36 @@ class WFAScraper(BaseScraper):
     
     # Base URL for the WFA public website (domain only, resource paths come from database)
     BASE_URL = "https://www.wi-fi.org"
+
+    # Media/logo download blacklist — zero Q&A value, should never be ingested.
+    # URL patterns that match binary-asset or brand-kit download pages.
+    MEDIA_BLACKLIST_URL_PATTERNS = [
+        r'/wi-fi-download/\d+',          # WFA download-ID redirect pages
+        r'\.zip(\?|$)',                   # ZIP archives
+        r'\.(png|jpg|jpeg|svg|gif|ico|webp)(\?|$)',  # Image files
+        r'\.(mp4|mov|avi|webm)(\?|$)',   # Video files (not transcripts)
+    ]
+    # Scraper-assigned categories that are exclusively media/branding content.
+    MEDIA_BLACKLIST_CATEGORIES = frozenset({
+        'branding and media', 'media kit', 'logos and graphics',
+    })
+    # Title keywords that — combined with a media category — confirm a brand asset.
+    MEDIA_BLACKLIST_TITLE_KEYWORDS = (
+        'logo', 'graphic', 'icon', 'branding', 'ui visual', 'logo package',
+        'media kit', 'brand asset', 'visual guide',
+    )
+
+    def _is_media_blacklisted(self, url: str, category: str, title: str) -> bool:
+        """Return True if this resource is a media/brand asset with no Q&A value."""
+        for pattern in self.MEDIA_BLACKLIST_URL_PATTERNS:
+            if re.search(pattern, url, re.IGNORECASE):
+                return True
+        cat_lower = category.lower().strip()
+        if cat_lower in self.MEDIA_BLACKLIST_CATEGORIES:
+            title_lower = (title or '').lower()
+            if any(kw in title_lower for kw in self.MEDIA_BLACKLIST_TITLE_KEYWORDS):
+                return True
+        return False
     
     def __init__(self):
         super().__init__()
@@ -92,6 +122,9 @@ class WFAScraper(BaseScraper):
                     datasource_id=datasource_id or 'wfa_events'
                 ))
             else:
+                if self._is_media_blacklisted(url, category, title or ''):
+                    logger.info(f"Skipping media/brand asset (blacklisted): {url}")
+                    continue
                 items.append(Resource(
                     title=title or 'Title to be extracted',
                     url=url,

@@ -12,11 +12,11 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from settings import get_settings
-from utils.oauth import exchange_code_for_tokens, validate_jwt_token, extract_user_info, validate_user_group
+from utils.oauth import exchange_code_for_tokens, validate_jwt_token, extract_user_info, validate_user_group, validate_azure_sso_token, extract_azure_user_info
 from utils.middleware import validate_request_token
 from services.proxy import proxy_request
 from utils.logger import setup_logger
-from utils.state_storage import store_oauth_state, get_oauth_state, delete_oauth_state
+from utils.state_storage import store_oauth_state, get_oauth_state, delete_oauth_state, store_teams_session, delete_teams_session
 
 # Import OpenTelemetry instrumentation
 try:
@@ -293,11 +293,81 @@ async def logout(request: Request):
     return response
 
 
+@app.post("/api/auth/teams-sso")
+@limiter.limit("30/minute")
+async def teams_sso_exchange(request: Request):
+    """
+    Exchange a Microsoft Teams SSO token for an Aurora session.
+
+    The Teams JS SDK's authentication.getAuthToken() returns an Azure AD JWT.
+    This endpoint validates that token, extracts the user's identity, syncs them
+    to the Aurora backend, then issues a `teams_session` httpOnly cookie so the
+    user can call all /api/* endpoints without a full Cognito redirect.
+
+    Required environment variables:
+      AZURE_TENANT_ID      — Azure AD tenant GUID
+      AZURE_APP_CLIENT_ID  — Azure App Registration client ID (same as manifest webApplicationInfo.id)
+    """
+    if not settings.azure_tenant_id or not settings.azure_app_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=(
+                "Teams SSO is not configured. "
+                "Set AZURE_TENANT_ID and AZURE_APP_CLIENT_ID environment variables."
+            ),
+        )
+
+    body = await request.json()
+    sso_token = body.get("token")
+    if not sso_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing 'token' in request body")
+
+    # Validate the Azure AD token
+    claims = await validate_azure_sso_token(sso_token, settings.azure_tenant_id, settings.azure_app_client_id)
+    user_info = extract_azure_user_info(claims)
+
+    logger.info(f"Teams SSO: validated user email={user_info.get('email')}, id={user_info.get('id')}")
+
+    # Sync user to Aurora backend (Postgres + Neo4j)
+    await _sync_user_on_login(
+        user_id=user_info["id"],
+        email=user_info["email"],
+        display_name=user_info.get("display_name"),
+        given_name=user_info.get("given_name"),
+        family_name=user_info.get("family_name"),
+    )
+
+    # Create a session in Redis and return a session cookie
+    session_id = secrets.token_urlsafe(32)
+    store_teams_session(session_id, user_info)
+
+    response = JSONResponse(content={"status": "ok", "email": user_info["email"]})
+    response.set_cookie(
+        key="teams_session",
+        value=session_id,
+        httponly=True,
+        secure=settings.effective_cookie_secure,
+        # Teams iframe requires samesite=none (cross-origin) when served over HTTPS
+        samesite="none" if settings.effective_cookie_secure else "lax",
+        max_age=3600,  # 1 hour
+        domain=settings.validated_cookie_domain,
+    )
+    return response
+
+
+@app.delete("/api/auth/teams-sso")
+async def teams_sso_logout(request: Request):
+    """Clear a Teams SSO session (called when user logs out from within the Teams tab)."""
+    session_id = request.cookies.get("teams_session")
+    if session_id:
+        delete_teams_session(session_id)
+    response = JSONResponse(content={"status": "ok"})
+    response.delete_cookie(key="teams_session", domain=settings.validated_cookie_domain)
+    return response
+
+
 @app.get("/api/auth/me")
 async def get_current_user(request: Request):
-    """
-    Get current user info from token.
-    """
     user_info = await validate_request_token(request)
     
     # Create response with user info

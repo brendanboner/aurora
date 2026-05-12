@@ -51,13 +51,17 @@ function AppContent() {
   const [showNodeDetails, setShowNodeDetails] = useState(true);
   const [panelMode, setPanelMode] = useState<'stats' | 'legend' | 'off'>('stats');
   const [hiddenNodeTypes, setHiddenNodeTypes] = useState<Set<string>>(new Set(['IngestionBatch'])); // Hide IngestionBatch by default
+  const [hiddenLinkTypes, setHiddenLinkTypes] = useState<Set<string>>(new Set(['DISCUSSES'])); // Hide DISCUSSES by default (most numerous)
   const [showNavHelper, setShowNavHelper] = useState(false);
   const [nodeSize, setNodeSize] = useState<number>(100); // 0 to 100%
   const [linkSize, setLinkSize] = useState<number>(100); // 0 to 100%
   const [importanceThreshold, setImportanceThreshold] = useState<number>(0.0);
   const [curatedOnly, setCuratedOnly] = useState<boolean>(false);
   const [showFilterPanel, setShowFilterPanel] = useState<boolean>(true);
-  const [nodeLimit, setNodeLimit] = useState<number>(1000);
+  const [nodeLimit, setNodeLimit] = useState<number>(50);
+  const [is3D, setIs3D] = useState<boolean>(true);
+  const [hoveredLink, setHoveredLink] = useState<any>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Load initial graph data and stats
   useEffect(() => {
@@ -236,6 +240,15 @@ function AppContent() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Track mouse position for link hover tooltip
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
   // Handle query execution
@@ -996,6 +1009,19 @@ function AppContent() {
     });
   }, []);
 
+  // Handle link type toggle
+  const handleLinkTypeToggle = useCallback((linkType: string) => {
+    setHiddenLinkTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(linkType)) {
+        newSet.delete(linkType);
+      } else {
+        newSet.add(linkType);
+      }
+      return newSet;
+    });
+  }, []);
+
   // Handle importance threshold change
   const handleImportanceThresholdChange = useCallback((threshold: number) => {
     setImportanceThreshold(threshold);
@@ -1077,6 +1103,11 @@ function AppContent() {
   // Handle node hover
   const handleNodeHover = useCallback((_node: GraphNode | null) => {
     // Just pass through to child components if needed
+  }, []);
+
+  // Handle link hover — show tooltip
+  const handleLinkHover = useCallback((link: any) => {
+    setHoveredLink(link);
   }, []);
 
   // Handle hop selection for current node (boost on top of entity highlights)
@@ -1488,6 +1519,23 @@ function AppContent() {
         >
           ⚙️ Filters
         </button>
+        <button
+          onClick={() => setIs3D(prev => !prev)}
+          style={{
+            padding: '10px 20px',
+            background: is3D ? 'rgba(0,0,0,0.8)' : '#1976d2',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '500',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            transition: 'all 0.2s',
+          }}
+        >
+          {is3D ? '3D' : '2D'}
+        </button>
       </div>
 
       {/* Collapsible Search Panel */}
@@ -1553,6 +1601,8 @@ function AppContent() {
           <FilterPanel
             hiddenNodeTypes={hiddenNodeTypes}
             onNodeTypeToggle={handleNodeTypeToggle}
+            hiddenLinkTypes={hiddenLinkTypes}
+            onLinkTypeToggle={handleLinkTypeToggle}
             importanceThreshold={importanceThreshold}
             onImportanceThresholdChange={handleImportanceThresholdChange}
             curatedOnly={curatedOnly}
@@ -1603,14 +1653,17 @@ function AppContent() {
             onNodeClick={handleNodeClick}
             onNodeDoubleClick={handleNodeDoubleClick}
             onNodeHover={handleNodeHover}
+            onLinkHover={handleLinkHover}
             highlightNodes={highlightNodes}
             highlightLinks={highlightLinks}
             directLinks={directLinks}
             nodeDistances={nodeDistances}
             nodeConnectionCount={nodeConnectionCount}
             hiddenNodeTypes={hiddenNodeTypes}
+            hiddenLinkTypes={hiddenLinkTypes}
             nodeSize={nodeSize}
             linkSize={linkSize}
+            is3D={is3D}
           />
         )}
       </div>
@@ -2475,6 +2528,19 @@ function AppContent() {
             animation: 'spin 1s linear infinite',
           }} />
           Processing query...
+        </div>
+      )}
+
+      {/* Link hover tooltip */}
+      {hoveredLink && (
+        <div
+          className="link-hover-tooltip"
+          style={{
+            left: mousePos.x + 12,
+            top: mousePos.y + 12,
+          }}
+        >
+          {hoveredLink.type || 'LINK'}
         </div>
       )}
     </div>

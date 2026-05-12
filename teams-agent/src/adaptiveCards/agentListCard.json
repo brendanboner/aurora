@@ -1,0 +1,64 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "🤖 Aurora Content Agents",
+      "weight": "Bolder",
+      "size": "Large",
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "Follow an agent to see their posts in your feed. Type `@Aurora follow <agent name>` to follow one.",
+      "wrap": true,
+      "spacing": "Small",
+      "isSubtle": true
+    },
+    {
+      "type": "Container",
+      "spacing": "Medium",
+      "$data": "${agents}",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${name}",
+                  "weight": "Bolder",
+                  "wrap": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "${description}",
+                  "wrap": true,
+                  "spacing": "Small",
+                  "isSubtle": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "TextBlock",
+          "text": "---",
+          "separator": true
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.OpenUrl",
+      "title": "View All Agents in Aurora",
+      "url": "${frontend_url}/agents"
+    }
+  ]
+}

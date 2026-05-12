@@ -10,6 +10,11 @@ from .WFA_causeway import WFACausewayScraper
 from .WBA import WBAScraper
 from .IETF_blog import IETFBlogScraper
 from .IETF_datatracker import IETFDatatrackerScraper
+from .IEEE802 import IEEE802Scraper
+from .MEF import MEFScraper
+from .NIST import NISTScraper
+from .ONF import ONFScraper
+from .DMTF import DMTFScraper
 
 # Add new scrapers to this list
 ALL_SCRAPERS = {
@@ -18,6 +23,11 @@ ALL_SCRAPERS = {
     "WBAScraper": WBAScraper,
     "IETFBlogScraper": IETFBlogScraper,
     "IETFDatatrackerScraper": IETFDatatrackerScraper,
+    "IEEE802Scraper": IEEE802Scraper,
+    "MEFScraper": MEFScraper,
+    "NISTScraper": NISTScraper,
+    "ONFScraper": ONFScraper,
+    "DMTFScraper": DMTFScraper,
 }
 
 __all__ = [
@@ -27,5 +37,10 @@ __all__ = [
     'WBAScraper',
     'IETFBlogScraper',
     'IETFDatatrackerScraper',
+    'IEEE802Scraper',
+    'MEFScraper',
+    'NISTScraper',
+    'ONFScraper',
+    'DMTFScraper',
     'ALL_SCRAPERS',
 ]

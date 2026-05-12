@@ -480,13 +480,26 @@ class DocumentDigester:
             return default_config
 
     def _normalize_datetime(self, value: Any) -> Optional[datetime]:
-        """Convert strings/datetimes to timezone-aware datetimes."""
+        """Convert strings/datetimes to timezone-aware datetimes.
+
+        Returns None for values that are clearly invalid:
+        - year < 2000  (pre-Wi-Fi era; artefact of bad scrape)
+        - year > current_year + 1  (impossible future date; scraper parse error)
+
+        This prevents bad publish_dates (e.g. year 7542 from WFA) from
+        being treated as valid in staleness checks or temporal queries.
+        """
         if value is None:
             return None
 
         try:
             parsed = value if isinstance(value, datetime) else date_parse(str(value))
         except Exception:
+            return None
+
+        # Reject clearly invalid years — scraper artefacts, not real dates
+        current_year = datetime.now(timezone.utc).year
+        if parsed.year < 2000 or parsed.year > current_year + 1:
             return None
 
         if parsed.tzinfo is None:
@@ -620,35 +633,107 @@ class DocumentDigester:
         await self._clear_delivery_attempts(message)
         return True
 
+    async def _skip_if_duplicate_content(self, message: Dict[str, Any]) -> bool:
+        """Skip resources whose content already exists under a different URL.
+
+        The existing _skip_if_unchanged_resource check only catches the same URL
+        being re-submitted. This method catches cross-URL duplicates — e.g. a
+        paywalled download page that returns identical gated content for 35
+        different download URLs, producing 35 identical content_hash values.
+
+        Exemptions: user uploads and allow_historical_ingest are always allowed
+        through so that manual re-uploads are never silently dropped.
+        """
+        if message.get("uploaded_by") or message.get("allow_historical_ingest"):
+            return False
+
+        if message.get("message_type") != "resource" or not self.graph_repository:
+            return False
+
+        resource_data = message.get("resource_data", {})
+        content = resource_data.get("content") or ""
+        url = resource_data.get("url") or ""
+        if not content or not url:
+            return False
+
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+        try:
+            existing = self.graph_repository.client.execute_query(
+                """
+                MATCH (r:Resource {content_hash: $content_hash})
+                WHERE r.url_hash <> $url_hash
+                RETURN r.url AS existing_url
+                LIMIT 1
+                """,
+                {"content_hash": content_hash, "url_hash": url_hash},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to check for duplicate content hash for {url}: {e}")
+            return False
+
+        if not existing:
+            return False
+
+        existing_url = existing[0].get("existing_url", "unknown")
+        logger.info(
+            f"Skipping duplicate content: {self._get_message_title(message)} "
+            f"(same content already exists at {existing_url})"
+        )
+        await self.record_skipped(
+            message,
+            f"duplicate content — identical content_hash already ingested at {existing_url}",
+            stage="duplicate_content_filter",
+        )
+        await self.clear_current_processing()
+        await self._clear_delivery_attempts(message)
+        return True
+
     async def _skip_if_stale(self, message: Dict[str, Any]) -> bool:
-        """Skip stale automated scraper items before parsing/insertion."""
+        """Skip stale automated scraper items before parsing/insertion.
+
+        Applies to ALL scraped content (not just datasources with scraper_type set).
+        User uploads and allow_historical_ingest messages are always exempted.
+
+        Date logic:
+        - For events: use start_date only (do NOT fall back to scraped_at).
+        - For resources: use publish_date only (do NOT fall back to scraped_at).
+        - If no date is available, allow through but mark temporal_confidence='low'
+          so recency queries can deprioritise the resource.
+        """
         if message.get("uploaded_by") or message.get("allow_historical_ingest"):
             return False
 
         datasource_id = message.get("datasource_id")
-        datasource_config = self._get_datasource_config(datasource_id)
-        if not datasource_config.get("scraper_type"):
-            return False
-
         resource_data = message.get("resource_data", {})
         event_data = message.get("event_data", {})
         message_type = message.get("message_type")
-        reference_value = None
 
+        # Determine reference date using publish_date ONLY — do NOT fall back to
+        # scraped_at, which would make a 2016 document ingested today appear recent.
         if message_type == "event":
-            reference_value = event_data.get("start_date") or message.get("scraped_at")
+            reference_value = event_data.get("start_date")
         else:
-            reference_value = resource_data.get("publish_date") or message.get("scraped_at")
+            reference_value = resource_data.get("publish_date")
 
         reference_dt = self._normalize_datetime(reference_value)
         if reference_dt is None:
-            logger.info(
-                f"Allowing {message_type or 'message'} without temporal metadata for datasource {datasource_id or 'unknown'}"
-            )
+            # No reliable date available — allow through but flag as low confidence
+            # so oracle recency queries can deprioritise this resource.
+            if message_type != "event":
+                resource_data["temporal_confidence"] = "low"
+                logger.debug(
+                    f"No publish_date for {self._get_message_title(message)} "
+                    f"(datasource={datasource_id}) — marked temporal_confidence=low"
+                )
             return False
 
         cutoff = self._get_ingestion_cutoff()
         if reference_dt >= cutoff:
+            # Fresh content — mark high confidence (explicit publish_date present)
+            if message_type != "event":
+                resource_data.setdefault("temporal_confidence", "high")
             return False
 
         global_config = self._get_global_ingestion_config()
@@ -1150,7 +1235,9 @@ class DocumentDigester:
         if await self._skip_if_unchanged_resource(message):
             return True
 
-        logger.info("Extracting and validating metadata nodes from content...")
+        if await self._skip_if_duplicate_content(message):
+            return True
+
         await self.update_current_processing(message, "extracting metadata")
         
         # CHANGED: await the async metadata extraction

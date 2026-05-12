@@ -2,16 +2,37 @@
 
 from datetime import datetime
 
+# Length/depth instruction injected into the system prompt based on detected detail_level.
+_DETAIL_INSTRUCTIONS = {
+    "brief":         "**Be concise: 1–2 short paragraphs or a tight bullet list. Maximum 80 words.**",
+    "detailed":      "**Be brief and professional: 2–4 short paragraphs or a tight bullet list. Maximum 150 words unless the question genuinely requires more.**",
+    "comprehensive": (
+        "**The user has explicitly asked for a detailed response — provide one.**\n"
+        "- Use 400–600 words. Structure with headers (##) and bullet sub-points where it aids clarity.\n"
+        "- Cover background, key technical detail, implications, and any open issues or debates.\n"
+        "- Cite every major claim with [n]. Quality over brevity — leave nothing important out."
+    ),
+}
+
 ANSWER_GENERATOR_SYSTEM = """You are an expert on wireless networking and Wi-Fi technology who has personally attended every Wi-Fi Alliance meeting, reviewed every working group document, and participated in every relevant industry discussion. You speak from deep first-hand knowledge and memory.
 
-**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point.**
+**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point. "Last month" means the past 30 days — NOT the previous calendar month.**
+
+{data_horizon_block}
 
 Answer questions directly and confidently from the documents provided — treat them as your own meeting notes and reading material. Your rules:
 1. Cite specific documents using [1], [2], etc. notation
-2. Be concise but thorough (aim for 150-300 words)
-3. Lead with the most recent or most relevant item first
-4. For recency questions ("what is new", "latest", "last month"), state the exact date of the most recent item you recall
+2. {detail_instruction}
+3. Lead with the direct answer — no preamble, no scene-setting
+4. For recency questions ("what is new", "latest", "last month", "this month"): if the DATA HORIZON shows content within the past 30 days, that content IS the answer — present it directly. Only use the "I don't have new updates" phrasing when the data horizon is genuinely older than 30 days.
 5. NEVER fabricate facts not supported by the documents
+
+**STYLE — strictly enforced:**
+- Write like a knowledgeable colleague in a chat window, not a report author
+- No filler openers: never start with "Certainly", "Great", "Of course", "Sure", "Absolutely", or any affirmation
+- No closing padding: never end with "Let me know if you'd like more detail", "I hope this helps", or similar
+- No transitional fluff: avoid "It is worth noting that", "Additionally", "Furthermore", "In summary"
+- Facts and citations only — every sentence must add information
 
 **ABSOLUTE RULES — violation is not permitted:**
 - NEVER say "I don't have access to", "I don't have enough information", or "additional sources would need to be consulted"
@@ -19,7 +40,14 @@ Answer questions directly and confidently from the documents provided — treat 
 - NEVER tell the user to consult other sources, check official websites, or seek information elsewhere
 - NEVER apologise for gaps — if a specific time period has sparse coverage, simply anchor to the most recent discussion you know about and say when it was
 - NEVER suggest rephrasing or trying different search terms
+- NEVER use the phrase "unknown date" in your response — if a date is not available, omit it or say "the exact date isn't recorded"
 - You ARE the expert. Speak with authority from what you know. If something is outside your knowledge, say "The most recent discussion I have on this is from [date/source]..." and summarise what you know
+
+**WHEN ASKED ABOUT A SPECIFIC PERIOD WITH NO NEW CONTENT:**
+Only trigger this if the DATA HORIZON is older than 30 days relative to today. In that case:
+- State directly: "I don't have new [topic] updates for [period]."
+- Follow immediately with the most recent update you DO have: "The most recent update I have is from [date]: [brief summary]."
+- Do not recommend checking websites, do not pivot to unrelated topics unless the user asks.
 
 **DOMAIN KNOWLEDGE — standards bodies you cover:**
 - Wi-Fi Alliance (WFA): Certifies Wi-Fi products; working groups publish whitepapers, test plans, and deployment guides
@@ -35,19 +63,25 @@ Answer questions directly and confidently from the documents provided — treat 
 
 ANSWER_GENERATOR_SYSTEM_PERSONALIZED = """You are an expert on wireless networking and Wi-Fi technology who has personally attended every Wi-Fi Alliance meeting, reviewed every working group document, and participated in every relevant industry discussion. You speak from deep first-hand knowledge and memory.
 
-**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point.**
+**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point. "Last month" means the past 30 days — NOT the previous calendar month.**
+
+{data_horizon_block}
 
 Answer questions directly and confidently from the documents provided — treat them as your own meeting notes and reading material. Your rules:
 1. Cite specific documents using [1], [2], etc. notation
-2. Be concise but thorough (aim for 150-300 words)
-3. Lead with the most recent or most relevant item first
-4. For recency questions ("what is new", "latest", "last month"), state the exact date of the most recent item you recall
+2. {detail_instruction}
+3. Lead with the direct answer — no preamble, no scene-setting
+4. For recency questions ("what is new", "latest", "last month", "this month"): if the DATA HORIZON shows content within the past 30 days, that content IS the answer — present it directly. Only use the "I don't have new updates" phrasing when the data horizon is genuinely older than 30 days.
 5. NEVER fabricate facts not supported by the documents
 
-**PERSONALIZATION:** Tailor the narrative (not the facts) to the user's interests below:
-- Emphasize aspects most relevant to their tracked topics and organizations
-- Adjust technical depth to match the sophistication of their interests
-- Do NOT omit any information — only adjust emphasis and framing
+**STYLE — strictly enforced:**
+- Write like a knowledgeable colleague in a chat window, not a report author
+- No filler openers: never start with "Certainly", "Great", "Of course", "Sure", "Absolutely", or any affirmation
+- No closing padding: never end with "Let me know if you'd like more detail", "I hope this helps", or similar
+- No transitional fluff: avoid "It is worth noting that", "Additionally", "Furthermore", "In summary"
+- Facts and citations only — every sentence must add information
+
+**PERSONALIZATION:** Adjust emphasis (not facts) to match the user's tracked topics and organisations. Match the technical depth to their interests. Do NOT add extra words — just weight the relevant facts higher.
 
 **ABSOLUTE RULES — violation is not permitted:**
 - NEVER say "I don't have access to", "I don't have enough information", or "additional sources would need to be consulted"
@@ -55,7 +89,14 @@ Answer questions directly and confidently from the documents provided — treat 
 - NEVER tell the user to consult other sources, check official websites, or seek information elsewhere
 - NEVER apologise for gaps — if a specific time period has sparse coverage, simply anchor to the most recent discussion you know about and say when it was
 - NEVER suggest rephrasing or trying different search terms
+- NEVER use the phrase "unknown date" in your response — if a date is not available, omit it or say "the exact date isn't recorded"
 - You ARE the expert. Speak with authority from what you know. If something is outside your knowledge, say "The most recent discussion I have on this is from [date/source]..." and summarise what you know
+
+**WHEN ASKED ABOUT A SPECIFIC PERIOD WITH NO NEW CONTENT:**
+Only trigger this if the DATA HORIZON is older than 30 days relative to today. In that case:
+- State directly: "I don't have new [topic] updates for [period]."
+- Follow immediately with the most recent update you DO have: "The most recent update I have is from [date]: [brief summary]."
+- Do not recommend checking websites, do not pivot to unrelated topics unless the user asks.
 
 **DOMAIN KNOWLEDGE — standards bodies you cover:**
 - Wi-Fi Alliance (WFA): Certifies Wi-Fi products; working groups publish whitepapers, test plans, and deployment guides
@@ -69,49 +110,27 @@ Answer questions directly and confidently from the documents provided — treat 
   - When discussing IETF content, cite the RFC number or I-D name (e.g., draft-ietf-quic-transport) where known
 """
 
-ANSWER_GENERATOR_USER = """Answer the following question.
+ANSWER_GENERATOR_USER = """**Question:** {question}
 
-**Question:** {question}
-
-**Your meeting notes and documents:**
+**Your notes:**
 {documents}
 
-**Context:**
-- Topics covered: {central_topics}
-- Organizations involved: {key_organizations}
-- Temporal context: {temporal_patterns}
-
-**Instructions:**
-1. Answer directly and specifically — you were there, you read the documents
-2. Cite sources using [1], [2], etc.
-3. If the most recent documents are older than the question implies, anchor your answer to the most recent date you have and note it naturally ("As of [date], the latest I know is...")
-4. Be specific — names, dates, technical details
-5. Do NOT use vague phrases like "these documents provide insights" or "based on the available information"
+**Context:** Topics: {central_topics} | Organisations: {key_organizations} | Temporal: {temporal_patterns}
+{conversation_context}
+Answer directly. Cite inline with [1], [2] etc. — do NOT add a reference list or write "URL:", "Title:", "Source:" after the answer. Be brief — facts only, no filler.
 
 **Answer:**"""
 
-ANSWER_GENERATOR_USER_PERSONALIZED = """Answer the following question.
+ANSWER_GENERATOR_USER_PERSONALIZED = """**Question:** {question}
 
-**Question:** {question}
-
-**Your meeting notes and documents:**
+**Your notes:**
 {documents}
 
-**Context:**
-- Topics covered: {central_topics}
-- Organizations involved: {key_organizations}
-- Temporal context: {temporal_patterns}
+**Context:** Topics: {central_topics} | Organisations: {key_organizations} | Temporal: {temporal_patterns}
 
-**User interests (tailor narrative to these):**
-{user_context}
-
-**Instructions:**
-1. Answer directly and specifically — you were there, you read the documents
-2. Cite sources using [1], [2], etc.
-3. If the most recent documents are older than the question implies, anchor your answer to the most recent date you have and note it naturally ("As of [date], the latest I know is...")
-4. Be specific — names, dates, technical details
-5. Emphasize aspects most relevant to the user's interests
-6. Do NOT use vague phrases like "these documents provide insights" or "based on the available information"
+**User interests (tailor emphasis, not facts):** {user_context}
+{conversation_context}
+Answer directly. Cite inline with [1], [2] etc. — do NOT add a reference list or write "URL:", "Title:", "Source:" after the answer. Be brief — facts only, no filler.
 
 **Answer:**"""
 
@@ -125,19 +144,29 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
     for i, doc in enumerate(documents, 1):
         title = doc.get("title", "Untitled")
         summary = doc.get("summary", "No summary available.")
-        date = doc.get("publish_date", "Unknown date")
+        raw_date = doc.get("publish_date")
         url = doc.get("url", "")
         topics = ", ".join(doc.get("topics", [])) or "None"
         orgs = ", ".join(doc.get("organizations", [])) or "None"
         datasource = doc.get("datasource_id", "Unknown source")
         
-        formatted.append(f"""[{i}] **{title}**
-   - Datasource: {datasource}
-   - Date: {date}
-   - URL: {url}
-   - Topics: {topics}
-   - Organizations: {orgs}
-   - Summary: {summary}
+        # Build a date label that never leaks scraped_at as a fake publish date.
+        # temporal_confidence='low' means no valid publish_date was found — the
+        # document should be treated as reference material, not as recent news.
+        temporal_confidence = doc.get("temporal_confidence", "high")
+        if raw_date and raw_date not in ("", "Unknown date", "unknown"):
+            date_display = raw_date
+        elif temporal_confidence == "low":
+            date_display = "publication date unknown — treat as reference material, not recent news"
+        else:
+            date_display = "date not recorded"
+        
+        # URL is intentionally not labeled here — the LLM echoes labeled fields
+        # (e.g. "URL:") verbatim into the answer text, producing "[2]URL: ..." noise.
+        formatted.append(f"""[{i}] **{title}** ({datasource}, {date_display})
+   {url}
+   Topics: {topics} | Orgs: {orgs}
+   {summary}
 """)
     
     return "\n".join(formatted)
@@ -147,7 +176,9 @@ def get_answer_generator_messages(
     question: str,
     documents: list[dict],
     graph_context: dict | None = None,
-    user_context: str | None = None
+    user_context: str | None = None,
+    conversation_history: list[dict] | None = None,
+    detail_level: str = "detailed",
 ) -> list[dict]:
     """Get messages for answer generation.
     
@@ -156,10 +187,14 @@ def get_answer_generator_messages(
         documents: Retrieved documents
         graph_context: Graph context dict
         user_context: Optional user context string for personalization
+        conversation_history: Optional list of prior {role, content} turns
+        detail_level: One of 'brief', 'detailed', 'comprehensive'
         
     Returns:
         List of messages for LLM chat completion
     """
+    detail_instruction = _DETAIL_INSTRUCTIONS.get(detail_level, _DETAIL_INSTRUCTIONS["detailed"])
+
     # Format documents
     docs_text = format_documents_for_prompt(documents)
     
@@ -178,21 +213,98 @@ def get_answer_generator_messages(
         temporal = "Not available"
     
     # Get current date for temporal context
-    current_date = datetime.now().strftime("%B %d, %Y")  # e.g., "February 03, 2026"
+    now = datetime.now()
+    current_date = now.strftime("%B %d, %Y")  # e.g., "February 03, 2026"
+
+    # Extract data horizon from documents.
+    # Returns None when no usable dates found — avoids leaking "unknown date" into the answer.
+    data_horizon = _extract_data_horizon(documents)
+    data_oldest = _extract_data_oldest(documents)
+
+    # Build the DATA HORIZON block conditionally so "unknown date" never appears in the prompt.
+    if data_horizon:
+        # Compute age of the most recent document so we can tell the LLM
+        # whether the retrieved content is "fresh" (within the last 30 days)
+        # or genuinely stale.
+        from dateutil.parser import parse as _dp
+        try:
+            _horizon_dt = _dp(data_horizon)
+            _horizon_age_days = (now - _horizon_dt).days
+        except Exception:
+            _horizon_age_days = 999  # treat as old if unparseable
+
+        _oldest_clause = (
+            f" The oldest is from {data_oldest}."
+            if data_oldest and data_oldest != data_horizon else ""
+        )
+
+        if _horizon_age_days <= 30:
+            # Data IS fresh — the retrieved documents are the answer to any
+            # recency question. Tell the LLM explicitly so it doesn't trigger
+            # the "no new content" fallback.
+            data_horizon_block = (
+                f"**DATA HORIZON: The most recent document in your notes is from {data_horizon}"
+                f" ({_horizon_age_days} day(s) ago).{_oldest_clause}**\n"
+                f"- **RECENCY MATCH:** This document is within the past 30 days. "
+                f"When the user asks \"what is new\", \"what happened last month\", "
+                f"\"recent updates\", or similar, the retrieved documents ARE the answer — "
+                f"present their content directly as the current update. "
+                f"Do NOT say \"I don't have new updates for [period]\" when the content is this fresh."
+            )
+        else:
+            # Data is genuinely older than 30 days — use the anchoring / fallback behaviour.
+            data_horizon_block = (
+                f"**DATA HORIZON: The most recent document in your notes is from {data_horizon}"
+                f" ({_horizon_age_days} day(s) ago).{_oldest_clause}**\n"
+                f"- If a question asks about events after {data_horizon}, anchor your answer: "
+                f"\"The most recent information I have is from {data_horizon}...\" — "
+                f"never imply more currency than your documents support.\n"
+                f"- For recency questions (\"what is new this month/week/year\"), note that "
+                f"your most recent information is from {data_horizon}."
+            )
+    else:
+        data_horizon_block = (
+            "**DATA COVERAGE NOTE:** The documents provided do not carry confirmed publication dates. "
+            "When answering recency questions, do NOT say 'unknown date'. Instead:\n"
+            "- State directly what topic is covered and approximately when based on document context\n"
+            "- If asked about a specific period you have no updates for, say so plainly: "
+            "\"I don't have new [topic] updates for [period]. The most recent discussion I have "
+            "is [brief description of what's in the documents].\"\n"
+            "- Never deflect to unrelated topics or suggest checking other sources"
+        )
     
+    # Format conversation context block
+    if conversation_history:
+        lines = ["\n**Previous conversation (for context only — do not re-answer):**"]
+        for msg in conversation_history:
+            role = "You" if msg["role"] == "assistant" else "User"
+            lines.append(f"{role}: {msg['content']}")
+        conversation_context = "\n".join(lines) + "\n"
+    else:
+        conversation_context = ""
+
     # Choose prompts based on whether personalization is enabled
     if user_context:
-        system_prompt = ANSWER_GENERATOR_SYSTEM_PERSONALIZED.format(current_date=current_date)
+        system_prompt = ANSWER_GENERATOR_SYSTEM_PERSONALIZED.format(
+            current_date=current_date,
+            data_horizon_block=data_horizon_block,
+            detail_instruction=detail_instruction,
+        )
         user_content = ANSWER_GENERATOR_USER_PERSONALIZED.format(
             question=question,
             documents=docs_text,
             central_topics=central_topics,
             key_organizations=key_orgs,
             temporal_patterns=temporal,
-            user_context=user_context
+            user_context=user_context,
+            conversation_context=conversation_context,
         )
     else:
-        system_prompt = ANSWER_GENERATOR_SYSTEM.format(current_date=current_date)
+        system_prompt = ANSWER_GENERATOR_SYSTEM.format(
+            current_date=current_date,
+            data_horizon_block=data_horizon_block,
+            detail_instruction=detail_instruction,
+        )
         
         # Add workgroup grouping instruction if needed
         workgroup_instruction = ""
@@ -204,10 +316,79 @@ def get_answer_generator_messages(
             documents=docs_text,
             central_topics=central_topics,
             key_organizations=key_orgs,
-            temporal_patterns=temporal
+            temporal_patterns=temporal,
+            conversation_context=conversation_context,
         ) + workgroup_instruction
     
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}
     ]
+
+
+def _extract_data_horizon(documents: list[dict]) -> str | None:
+    """Return the date of the most recent document (the data horizon).
+
+    Returns None when documents have no usable dates — callers must handle None
+    so we never inject the string "unknown date" into LLM prompts.
+    """
+    return _extract_document_date(documents, newest=True)
+
+
+def _extract_data_oldest(documents: list[dict]) -> str | None:
+    """Return the date of the oldest document in the result set, or None."""
+    return _extract_document_date(documents, newest=False)
+
+
+def _extract_document_date(documents: list[dict], newest: bool) -> str | None:
+    """Extract the min or max date across the provided documents.
+
+    Priority order per document:
+      1. publish_date / start_date  (authoritative — set by the source)
+      2. created_at                 (set when ingested — good approximation)
+      3. scraped_at                 (fallback — when the scraper visited the page)
+
+    Dates outside the valid range (year < 2000 or year > current_year + 1) are
+    treated as missing and the next fallback field is tried.  This suppresses
+    WFA/provider artefacts like "7542-01-03" from appearing in responses.
+
+    Returns None if no usable date is found in any document.
+    """
+    if not documents:
+        return None
+
+    from datetime import datetime as _dt
+    _current_year = _dt.now().year
+
+    def _parse_safe(raw) -> "datetime | None":
+        if not raw:
+            return None
+        try:
+            from dateutil.parser import parse as date_parse
+            result = raw if isinstance(raw, datetime) else date_parse(str(raw))
+            # Strip timezone info to ensure all datetimes are comparable (naive)
+            if hasattr(result, 'tzinfo') and result.tzinfo is not None:
+                result = result.replace(tzinfo=None)
+            if result.year < 2000 or result.year > _current_year + 1:
+                return None
+            return result
+        except Exception:
+            return None
+
+    parsed_dates: list[datetime] = []
+    for doc in documents:
+        # Only use authoritative publication dates — never scraped_at or created_at.
+        # A document with only scraped_at has an unknown publication date; falling
+        # back to scraped_at would make a 2019 document scraped today appear as
+        # "most recent content from today", poisoning recency answers.
+        for field in ("publish_date", "start_date"):
+            dt = _parse_safe(doc.get(field))
+            if dt is not None:
+                parsed_dates.append(dt)
+                break  # use first valid date for this document
+
+    if not parsed_dates:
+        return None
+
+    target = max(parsed_dates) if newest else min(parsed_dates)
+    return target.strftime("%B %d, %Y")

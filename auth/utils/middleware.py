@@ -3,6 +3,7 @@
 import logging
 from fastapi import Request, HTTPException, status
 from .oauth import validate_jwt_token, refresh_access_token, extract_user_info, validate_user_group
+from .state_storage import get_teams_session
 from settings import get_settings
 
 settings = get_settings()
@@ -38,10 +39,23 @@ async def _refresh_and_get_user_info(request: Request, refresh_token: str) -> di
 async def validate_request_token(request: Request) -> dict:
     """
     Middleware function to validate JWT token from cookies.
-    Automatically refreshes token if expired or missing.
+    Checks in priority order:
+      1. teams_session cookie (Azure-AD Teams SSO session stored in Redis)
+      2. Cognito access_token / id_token cookies (standard web login)
+      3. Cognito refresh_token (silently refresh expired tokens)
     Returns user info dict.
     """
-    # Get tokens from cookies
+    # ── 1. Teams SSO session (set by /api/auth/teams-sso) ────────────────────
+    teams_session_id = request.cookies.get("teams_session")
+    if teams_session_id:
+        user_info = get_teams_session(teams_session_id)
+        if user_info:
+            logger.debug(f"Authenticated via Teams SSO session: user={user_info.get('email')}")
+            return user_info
+        # Session expired — fall through to standard Cognito auth
+        logger.info("Teams SSO session expired, falling back to Cognito auth")
+
+    # ── 2 & 3. Cognito cookies ────────────────────────────────────────────────
     access_token = request.cookies.get("access_token")
     id_token = request.cookies.get("id_token")
     refresh_token = request.cookies.get("refresh_token")

@@ -189,3 +189,109 @@ def validate_user_group(user_info: Dict[str, Any], required_groups: list[str]) -
         )
     
     logger.debug(f"Group validation passed for user {user_email}: groups={user_groups}")
+
+
+# ─── Azure AD token validation (for Teams SSO) ────────────────────────────────
+
+_azure_jwks_cache: Optional[Dict[str, Any]] = None
+_azure_jwks_cache_time: Optional[float] = None
+
+
+async def get_azure_jwks(tenant_id: str) -> Dict[str, Any]:
+    """Fetch and cache Azure AD JWKS (public keys for Teams SSO token validation)."""
+    global _azure_jwks_cache, _azure_jwks_cache_time
+
+    now = time.time()
+    if _azure_jwks_cache is None or (_azure_jwks_cache_time and (now - _azure_jwks_cache_time) > JWKS_CACHE_TTL):
+        jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(jwks_url)
+            response.raise_for_status()
+            _azure_jwks_cache = response.json()
+            _azure_jwks_cache_time = now
+
+    return _azure_jwks_cache
+
+
+async def validate_azure_sso_token(token: str, tenant_id: str, app_client_id: str) -> Dict[str, Any]:
+    """
+    Validate a Teams SSO token (Azure AD-issued JWT) and return its claims.
+
+    The Teams JS SDK's authentication.getAuthToken() returns an Azure AD access
+    token scoped to the app.  We validate it against Azure's JWKS, then extract
+    the user's email and identity.
+
+    Args:
+        token: The Azure AD JWT from Teams authentication.getAuthToken()
+        tenant_id: Azure AD tenant ID (GUID) — set AZURE_TENANT_ID in .env
+        app_client_id: Azure App Registration client ID — matches manifest webApplicationInfo.id
+
+    Returns:
+        Decoded token claims dict.
+
+    Raises:
+        HTTPException 401 if the token is invalid or untrusted.
+    """
+    try:
+        headers = jwt.get_unverified_headers(token)
+        kid = headers.get("kid")
+
+        jwks = await get_azure_jwks(tenant_id)
+        key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+
+        if not key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Azure SSO: unable to find matching signing key",
+            )
+
+        # Azure AD tokens may use the app client ID or api://<client_id> as audience
+        for audience in [app_client_id, f"api://{app_client_id}"]:
+            try:
+                claims = jwt.decode(
+                    token,
+                    key,
+                    algorithms=["RS256"],
+                    audience=audience,
+                    issuer=f"https://login.microsoftonline.com/{tenant_id}/v2.0",
+                )
+                logger.info(f"Teams SSO token validated for audience={audience}")
+                return claims
+            except JWTError:
+                continue
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Azure SSO: token audience mismatch",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Azure SSO token validation error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Azure SSO: invalid or expired token",
+        )
+
+
+def extract_azure_user_info(claims: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract Aurora-compatible user info from Azure AD token claims.
+    Maps Azure claims to the same format as extract_user_info() for Cognito tokens.
+    """
+    email = claims.get("email") or claims.get("preferred_username", "")
+    name = claims.get("name", "")
+    given_name = claims.get("given_name", "")
+    family_name = claims.get("family_name", "")
+
+    return {
+        "id": claims.get("oid") or claims.get("sub"),  # Azure OID is the stable user GUID
+        "email": email,
+        "role": "user",  # Teams SSO users default to standard role
+        "groups": [],    # Group membership checked separately via Cognito group
+        "display_name": name or f"{given_name} {family_name}".strip() or email,
+        "given_name": given_name,
+        "family_name": family_name,
+        "auth_method": "teams_sso",
+    }

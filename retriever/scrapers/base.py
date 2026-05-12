@@ -367,13 +367,53 @@ class BaseScraper:
         url: str,
         allow_initial_backfill: bool = False,
     ) -> bool:
-        """Determine whether an automated scraper item should be filtered as too old."""
+        """Determine whether an automated scraper item should be filtered as too old.
+
+        When ``allow_initial_backfill`` is True and this is the first scrape of the
+        datasource, we still apply a hard cap (``initial_backfill_max_months``, default
+        12) so that a datasource's entire history cannot flood the graph on first run.
+        """
         cutoff = self._get_lookback_cutoff()
         if cutoff is None:
             return False
 
         if allow_initial_backfill and self._is_initial_scrape(datasource_id):
-            return False
+            # Apply a capped initial-backfill window rather than allowing everything.
+            backfill_months = 12
+            if self.config_manager:
+                try:
+                    backfill_months = int(
+                        self.config_manager.get_global_config().get(
+                            "initial_backfill_max_months", 12
+                        )
+                    )
+                except Exception:
+                    pass
+
+            from dateutil.relativedelta import relativedelta
+            backfill_cutoff = datetime.now(timezone.utc) - relativedelta(months=backfill_months)
+            reference_dt = self._normalize_datetime(reference_value)
+            if reference_dt is None:
+                return False  # No date metadata — allow through
+            if reference_dt >= backfill_cutoff:
+                return False  # Within the backfill window — allow
+            # Older than the backfill cap — skip
+            logger.info(
+                "Skipping initial-backfill %s (older than %d-month cap): %s (%s)",
+                item_type,
+                backfill_months,
+                title,
+                reference_dt.isoformat(),
+            )
+            self._record_filtered_item(
+                item_type=item_type,
+                title=title,
+                url=url,
+                datasource_id=datasource_id,
+                reason=f"older than initial backfill cap ({backfill_months} months)",
+                reference_date=reference_dt.isoformat(),
+            )
+            return True
 
         reference_dt = self._normalize_datetime(reference_value)
         if reference_dt is None:

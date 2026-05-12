@@ -19,6 +19,8 @@ NC='\033[0m' # No Color
 # Configuration
 DOMAIN="${1:-localhost}"
 OUTPUT_DIR="${2:-.}"
+# BOT_ID: read from env (set in .env) or pass as BOT_ID=<id> before the script
+BOT_ID="${BOT_ID:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST_SOURCE="$REPO_ROOT/frontend/public/manifest.json"
 ICONS_SOURCE="$REPO_ROOT/frontend/public/teams/icons"
@@ -30,6 +32,7 @@ OUTPUT_DIR="$(cd "$OUTPUT_DIR" 2>/dev/null && pwd)" || OUTPUT_DIR="$(cd "$REPO_R
 echo -e "${GREEN}=== Aurora Teams App Package Builder ===${NC}"
 echo "Domain: $DOMAIN"
 echo "Output: $OUTPUT_DIR"
+echo "Bot ID: ${BOT_ID:-<not set — tab-only mode>}"
 echo "Working directory: $WORK_DIR"
 echo ""
 
@@ -69,6 +72,26 @@ if [ "$DOMAIN" != "localhost" ]; then
     echo "✓ Manifest updated for domain: $DOMAIN"
 else
     echo "✓ Using manifest with default domain"
+fi
+
+# Substitute BOT_ID placeholder in manifest
+if [ -n "$BOT_ID" ]; then
+    if command -v jq &> /dev/null; then
+        jq --arg bot_id "$BOT_ID" '
+          if .bots then .bots[0].botId = $bot_id else . end
+        ' "$WORK_DIR/manifest.json" > "$WORK_DIR/manifest.json.tmp" && mv "$WORK_DIR/manifest.json.tmp" "$WORK_DIR/manifest.json"
+    else
+        sed -i.bak "s/{{BOT_ID}}/$BOT_ID/g" "$WORK_DIR/manifest.json" && rm -f "$WORK_DIR/manifest.json.bak"
+    fi
+    echo "✓ Bot ID substituted: $BOT_ID"
+else
+    echo -e "${YELLOW}⚠️  BOT_ID not set — bot commands will not work. Pass BOT_ID=<your-bot-id> to enable.${NC}"
+    echo "   Tab-only mode: users can still use the Teams tab, but @Aurora bot won't respond."
+    # Remove the bots section if no BOT_ID provided to avoid manifest validation errors
+    if command -v jq &> /dev/null; then
+        jq 'del(.bots)' "$WORK_DIR/manifest.json" > "$WORK_DIR/manifest.json.tmp" && mv "$WORK_DIR/manifest.json.tmp" "$WORK_DIR/manifest.json"
+        echo "   (Bots section removed from manifest — tab-only package)"
+    fi
 fi
 
 # Validate manifest JSON
@@ -162,7 +185,13 @@ echo ""
 echo "3️⃣  Before final submission:"
 echo "   - Ensure icons are included (color.png 192x192, outline.png 32x32)"
 echo "   - Test the contentUrl loads: https://$DOMAIN/teams"
-echo "   - Verify icons are served at icon URLs"
+if [ -n "$BOT_ID" ]; then
+echo "   - Verify @Aurora bot responds: ensure teams-agent service is running"
+echo "   - Bot endpoint must be public HTTPS: https://$DOMAIN/bot/api/messages"
+else
+echo "   - To enable @Aurora bot: BOT_ID=<your-bot-id> $0 $DOMAIN"
+echo "   - See doc/TEAMS_IT_ADMIN_GUIDE.md for Azure Bot Registration steps"
+fi
 echo ""
 
 # Verify file exists and show full path

@@ -21,6 +21,7 @@ class Document(BaseModel):
     title: Optional[str] = Field(default=None, description="Document title")
     summary: Optional[str] = Field(default=None, description="Document summary")
     publish_date: Optional[str] = Field(default=None, description="Publication date (ISO format)")
+    temporal_confidence: Optional[str] = Field(default="high", description="'high' = valid publish_date found; 'low' = no reliable date")
     source: Optional[str] = Field(default=None, description="Source organization or website")
     category: Optional[str] = Field(default=None, description="Document category")
     datasource_id: Optional[str] = Field(default=None, description="Datasource identifier (e.g., 'wfa', 'wfa_causeway')")

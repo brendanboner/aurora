@@ -140,7 +140,7 @@ class Neo4jService:
         MATCH (n)
         {node_filter}
         {importance_filter}
-        WITH n
+        WITH n, COUNT {{ (n)--() }} as degree
         ORDER BY n.importance DESC, n.name ASC, elementId(n) ASC
         SKIP $skip
         LIMIT $limit
@@ -153,7 +153,8 @@ class Neo4jService:
                 name: COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id),
                 importance: COALESCE(n.importance, 0),
                 tier: COALESCE(n.tier, 2),
-                properties: properties(n)
+                properties: properties(n),
+                degree: degree
             }}) + 
             collect(DISTINCT {{
                 id: elementId(m),
@@ -161,7 +162,8 @@ class Neo4jService:
                 name: COALESCE(m.name, m.title, m.topic_id, m.org_id, m.person_id, m.source_id),
                 importance: COALESCE(m.importance, 0),
                 tier: COALESCE(m.tier, 2),
-                properties: properties(m)
+                properties: properties(m),
+                degree: COUNT {{ (m)--() }}
             }}) as nodes,
             collect({{
                 source: elementId(n),
@@ -240,7 +242,7 @@ class Neo4jService:
                 MATCH (n:{node_type})
                 WHERE 1=1
                 {importance_filter}
-                WITH n
+                WITH n, COUNT {{ (n)--() }} as degree
                 ORDER BY n.importance DESC, n.name ASC, elementId(n) ASC
                 LIMIT $limit
                 RETURN 
@@ -249,7 +251,8 @@ class Neo4jService:
                     COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id) as name,
                     COALESCE(n.importance, 0) as importance,
                     COALESCE(n.tier, 2) as tier,
-                    properties(n) as properties
+                    properties(n) as properties,
+                    degree
                 """
                 
                 try:
@@ -263,7 +266,8 @@ class Neo4jService:
                                 'name': record['name'],
                                 'importance': record['importance'],
                                 'tier': record['tier'],
-                                'properties': record['properties']
+                                'properties': record['properties'],
+                                'degree': record['degree']
                             })
                             node_ids.add(node_id)
                 except Exception as e:

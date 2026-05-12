@@ -82,6 +82,10 @@ class LocalRouter:
         # === ORGANIZATION PUBLICATION QUERIES (before person activity to avoid false matches) ===
         # "what has [ORG] published/released" - organization publications
         (r"what\s+(has\s+)?(the\s+)?([\w\s\-]+\s+)?(alliance|foundation|consortium|organization|institute|3gpp|ieee|ietf|etsi|wfa|oma|gsma)\s+(published|released|announced|issued)\s+(about|on|regarding)", RouteId.ORGANIZATION_ACTIVITY),
+        # "recent/latest [ORG] publications" — org between recency word and publication type
+        (r"(most\s+)?(recent|latest|new)\s+([\w\s\-]*?)(wi-fi alliance|wfa|wi-fi org|ieee|ietf|wba|3gpp|gsma|etsi)([\w\s\-]*?)(publications?|documents?|updates?|releases?|news|content)\b", RouteId.ORGANIZATION_ACTIVITY),
+        # "[ORG] has published/released recently" - org then verb
+        (r"(wi-fi alliance|wfa|ieee|ietf|wba|3gpp)\s+(has\s+)?(published|released|announced|issued|put out)", RouteId.ORGANIZATION_ACTIVITY),
         # Known company names contributing/publishing - must come BEFORE generic person_activity catch-all
         (r"what (has|did)\s+(?:qualcomm|intel|broadcom|cisco|aruba|apple|samsung|nokia|ericsson|huawei|mediatek|google|microsoft|extreme|commscope|tp-link|netgear|ubiquiti)\s+(contributed?|done|published|presented|submitted|worked on)", RouteId.ORGANIZATION_ACTIVITY),
         
@@ -651,6 +655,23 @@ class LocalRouter:
             "3gpp": "3GPP",
             "extreme": "Extreme Networks",
             "extreme networks": "Extreme Networks",
+            # Chip/tech vendors commonly mentioned in Wi-Fi discussions
+            "qualcomm": "Qualcomm",
+            "intel": "Intel",
+            "broadcom": "Broadcom",
+            "cisco": "Cisco",
+            "aruba": "Aruba",
+            "apple": "Apple",
+            "samsung": "Samsung",
+            "nokia": "Nokia",
+            "ericsson": "Ericsson",
+            "mediatek": "MediaTek",
+            "google": "Google",
+            "microsoft": "Microsoft",
+            "commscope": "CommScope",
+            "tp-link": "TP-Link",
+            "netgear": "Netgear",
+            "ubiquiti": "Ubiquiti",
         }
         
         for abbrev, full_name in org_abbreviations.items():

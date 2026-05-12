@@ -571,8 +571,12 @@ class Resource(Node):
     )
     
     doc_type: str = Field(
-        ...,
-        description="Document type (e.g., 'pdf', 'docx', 'html', 'txt')"
+        default="unknown",
+        description=(
+            "Content type taxonomy. One of: specification, internet-draft, whitepaper, "
+            "meeting-minutes, press-release, blog, video-transcript, case-study, "
+            "infographic, newsletter, governing-document, agenda, presentation, unknown"
+        )
     )
     
     category: str = Field(
@@ -646,6 +650,22 @@ class Resource(Node):
     s3_key: Optional[str] = Field(
         None,
         description="S3 object key path for generating presigned download URLs"
+    )
+
+    # Temporal confidence — set by digester based on publish_date availability.
+    # "high": publish_date was present and parsed successfully.
+    # "low":  publish_date was absent/unparseable; effective date is estimated.
+    # Recency queries deprioritise "low" confidence resources.
+    temporal_confidence: str = Field(
+        default="high",
+        description="Confidence in the resource's publish date ('high' or 'low')"
+    )
+
+    # Archival flag — set by curator for content older than the configured threshold.
+    # Archived resources are excluded from all oracle queries by default.
+    archived: bool = Field(
+        default=False,
+        description="True if the resource has been archived due to age"
     )
 
     TRUNCATE = {

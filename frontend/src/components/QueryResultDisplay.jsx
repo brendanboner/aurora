@@ -566,7 +566,9 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
             {/* Confidence on the left */}
             {message.confidenceScore !== null && message.confidenceScore !== undefined && (
               <div className="confidence-indicator">
-                <span className="confidence-label">Confidence:</span>
+                <span className="confidence-label">
+                  {message.pipeline === 'fast' ? 'Confidence:' : 'Answer confidence:'}
+                </span>
                 <div className="confidence-bar">
                   <div 
                     className="confidence-fill" 
@@ -604,7 +606,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                   const styledChildren = React.Children.map(children, (child) => {
                     return typeof child === 'string' ? renderCitationFragments(child) : child;
                   });
-                  return <p style={{ margin: '0 0 10px 0' }}>{styledChildren}</p>;
+                  return <p>{styledChildren}</p>;
                 },
                 li: ({children}) => {
                   const styledChildren = React.Children.map(children, (child) => {
@@ -616,6 +618,9 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
             >
               {message.content}
             </ReactMarkdown>
+            {message.isStreaming && (
+              <span className="streaming-cursor" aria-label="Generating response…" />
+            )}
           </div>
         )}
 

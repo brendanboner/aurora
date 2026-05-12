@@ -64,57 +64,50 @@
         {
           "type": "Container",
           "$data": "${documents}",
+          "separator": true,
+          "spacing": "Small",
           "items": [
             {
-              "type": "ColumnSet",
-              "columns": [
+              "type": "RichTextBlock",
+              "spacing": "Small",
+              "inlines": [
                 {
-                  "type": "Column",
-                  "width": "auto",
-                  "items": [
-                    {
-                      "type": "TextBlock",
-                      "text": "[${number}]",
-                      "weight": "Bolder"
-                    }
-                  ]
+                  "type": "TextRun",
+                  "text": "[${number}] ",
+                  "weight": "Bolder"
                 },
                 {
-                  "type": "Column",
-                  "width": "stretch",
-                  "items": [
-                    {
-                      "type": "TextBlock",
-                      "text": "[${title}](${url})",
-                      "wrap": true,
-                      "size": "Small"
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "${summary}",
-                      "wrap": true,
-                      "isSubtle": true,
-                      "size": "Small",
-                      "spacing": "Small"
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "📅 ${date}",
-                      "isSubtle": true,
-                      "size": "Small",
-                      "spacing": "Small"
-                    }
-                  ]
+                  "type": "TextRun",
+                  "text": "${title}",
+                  "color": "Accent",
+                  "underline": true,
+                  "selectAction": {
+                    "type": "Action.OpenUrl",
+                    "url": "${url}"
+                  }
                 }
-              ],
-              "separator": true,
-              "spacing": "Small"
+              ]
+            },
+            {
+              "type": "TextBlock",
+              "text": "${summary}",
+              "wrap": true,
+              "isSubtle": true,
+              "size": "Small",
+              "spacing": "None"
+            },
+            {
+              "type": "TextBlock",
+              "text": "📅 ${date}",
+              "isSubtle": true,
+              "size": "Small",
+              "spacing": "None"
             }
           ]
         },
         {
           "type": "Container",
-          "$when": "${topics}",
+          "$when": "${topics != ''}",
           "items": [
             {
               "type": "TextBlock",
@@ -128,7 +121,7 @@
         },
         {
           "type": "Container",
-          "$when": "${confidence_score}",
+          "$when": "${confidence_score != null}",
           "items": [
             {
               "type": "TextBlock",

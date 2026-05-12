@@ -266,6 +266,108 @@ export const sendOracleQuery = async (userId, question, options = {}) => {
   return response.data;
 };
 
+/**
+ * Streaming oracle query — returns an async iterator of events.
+ *
+ * Yields objects of one of three shapes:
+ *   { type: 'token', token: string }
+ *   { type: 'done' }
+ *   { type: 'meta', ...metadata }
+ *   { type: 'error', error: string }
+ *
+ * Usage:
+ *   for await (const event of sendOracleQueryStream(userId, question, options)) {
+ *     if (event.type === 'token') appendToAnswer(event.token);
+ *     if (event.type === 'meta')  updateMetadata(event);
+ *   }
+ */
+export async function* sendOracleQueryStream(userId, question, options = {}) {
+  const payload = {
+    user_id: userId,
+    question,
+    mode: options.mode || 'answer',
+    options: {
+      max_documents: options.maxDocuments || 20,
+      include_graph_context: options.includeGraphContext !== false,
+      date_start: options.dateStart || null,
+      date_end: options.dateEnd || null,
+      topics: options.topics || null,
+      organizations: options.organizations || null,
+      datasource_ids: options.datasourceIds || null,
+      recency_boost: options.recencyBoost !== false,
+      personalize: options.personalize || 'auto',
+      pipeline_override: options.pipelineOverride || null,
+    },
+  };
+
+  // Resolve the base URL the same way apiClient does
+  const baseURL = apiClient.defaults.baseURL || '';
+  const url = `${baseURL}/oracle/query/stream`;
+
+  // Build auth headers — mirror what axios interceptors add
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  } catch (_) { /* ignore storage errors */ }
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!resp.ok) {
+    yield { type: 'error', error: `HTTP ${resp.status}` };
+    return;
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let doneReceived = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // last incomplete line stays in buffer
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const payload_str = line.slice(6);
+
+      if (payload_str === '[DONE]') {
+        yield { type: 'done' };
+        // Don't return here — [META] arrives before [DONE] now, but guard for legacy order too
+        doneReceived = true;
+        continue;
+      }
+
+      if (payload_str.startsWith('[META] ')) {
+        try {
+          const meta = JSON.parse(payload_str.slice(7));
+          yield { type: 'meta', ...meta };
+        } catch (_) { /* ignore parse errors */ }
+        // After meta is received, if [DONE] already fired we can close cleanly
+        if (doneReceived) return;
+        continue;
+      }
+
+      try {
+        const data = JSON.parse(payload_str);
+        if (data.token !== undefined) yield { type: 'token', token: data.token };
+        else if (data.error) yield { type: 'error', error: data.error };
+      } catch (_) { /* ignore */ }
+    }
+
+    // If [DONE] received but no [META] came in this chunk, check next chunk; stream will
+    // close naturally when server ends the response
+  }
+}
+
 // Oracle Enhance - Get detailed answer by analyzing document content (Phase 5)
 export const sendEnhanceQuery = async (question, documents) => {
   // documents should be array of { url, datasource_id, title }
@@ -393,6 +495,20 @@ export const likePost = async (postId, userId) => {
 
 export const dislikePost = async (postId, userId) => {
   const response = await apiClient.post(`/content_creator_service/posts/${postId}/dislike`, { user_id: userId });
+  return response.data;
+};
+
+export const fetchPostComments = async (postId) => {
+  const response = await apiClient.get(`/content_creator_service/posts/${postId}/comments`);
+  return response.data;
+};
+
+export const addPostComment = async (postId, userId, body, userDisplayName = null) => {
+  const response = await apiClient.post(`/content_creator_service/posts/${postId}/comments`, {
+    user_id: userId,
+    body,
+    user_display_name: userDisplayName,
+  });
   return response.data;
 };
 

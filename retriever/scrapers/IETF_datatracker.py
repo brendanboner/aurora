@@ -398,6 +398,7 @@ class IETFDatatrackerScraper(BaseScraper):
             for i, (wg_acr, (wg_name, area_acr)) in enumerate(wg_map.items(), 1):
                 logger.info(f"  Scraping WG {i}/{len(wg_map)}: {wg_acr} ({wg_name})")
                 self.update_heartbeat()
+                self.update_heartbeat()
                 self.update_current_processing(
                     f"ietf_wg_{wg_acr}", f"WG {i}/{len(wg_map)}"
                 )

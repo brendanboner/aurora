@@ -264,6 +264,17 @@
   color: var(--foreground);
 }
 
+/* Override global p rule so paragraphs match list items inside answer content */
+.answer-content p {
+  font-size: 15px;
+  line-height: 1.8;
+  margin: 0 0 12px 0;
+}
+
+.answer-content p:last-child {
+  margin-bottom: 0;
+}
+
 /* Enhanced Answer Content Styling - purple accent on the answer box only */
 .answer-content.enhanced {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
@@ -1228,4 +1239,20 @@
   font-size: var(--text-sm);
   color: var(--primary);
   font-style: italic;
+}
+
+/* Streaming cursor — blinking caret shown while tokens arrive */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: var(--primary, #6366f1);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink-cursor 0.8s step-end infinite;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
 }

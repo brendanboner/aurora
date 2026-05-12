@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # RabbitMQ Async Configuration
     rabbitmq_max_concurrent: int = 10  # Max concurrent message processing (async semaphore)
     rabbitmq_message_timeout: float = 1200.0  # Message timeout in seconds (20 minutes)
-    rabbitmq_heartbeat: int = 60  # Heartbeat interval in seconds (60s recommended for async)
+    rabbitmq_heartbeat: int = 1800  # 30 min — must survive long LLM processing (was 60s, causing channel death)
     
     @property
     def rabbitmq_prefetch_count(self) -> int:
@@ -49,8 +49,9 @@ class Settings(BaseSettings):
     
     # LLM Rate Limiting (Proactive)
     llm_rate_limit_enabled: bool = True  # Enable proactive rate limiting
-    llm_max_requests_per_minute: int = 60  # RPM quota (requests per minute)
-    llm_max_tokens_per_minute: int = 10000  # TPM quota (tokens per minute)
+    llm_max_requests_per_minute: int = 25000  # RPM — override via LLM_MAX_REQUESTS_PER_MINUTE
+    llm_max_tokens_per_minute: int = 4000000  # TPM — override via LLM_MAX_TOKENS_PER_MINUTE
+    # ↑ Default was 10,000 TPM which caused 600s queue waits when processing backlogs.
     
     # Content Chunking
     max_chunk_size: int = 8000

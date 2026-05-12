@@ -135,6 +135,7 @@ class PromptBuilder:
         user_reactions: Optional[Dict[str, int]] = None,
         all_agents_recent_posts: Optional[List[Dict[str, Any]]] = None,
         template_override: Optional[str] = None,
+        freshness_note: Optional[str] = None,
     ) -> str:
         """
         Build user prompt with current context, constraints, and examples.
@@ -147,6 +148,7 @@ class PromptBuilder:
             user_reactions: Like/dislike counts from user feedback
             all_agents_recent_posts: Recent posts from all agents (for cross-agent deduplication)
             template_override: Force specific template (default: random selection)
+            freshness_note: Optional framing note when content is older than the cadence window
         """
         # Select template for variety
         template_key = template_override or self._select_template(agent)
@@ -162,6 +164,10 @@ class PromptBuilder:
             prompt += f"{i}. {instruction}\n"
         
         prompt += "\n"
+
+        # Freshness framing — prepend before context so the LLM sees it first
+        if freshness_note:
+            prompt += f"\n## IMPORTANT CONTENT FRAMING\n{freshness_note}\n\n"
 
         # Context sources
         prompt += self._format_context_section(events, documents)

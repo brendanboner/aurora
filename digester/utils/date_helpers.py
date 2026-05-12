@@ -75,7 +75,20 @@ def parse_date(date_value: Any) -> Optional[datetime]:
         
         try:
             # Use dateutil.parser which handles many formats
-            return date_parser.parse(date_str)
+            parsed = date_parser.parse(date_str)
+            # Reject future dates — cap at today to prevent data entry errors
+            # (e.g. "Oct 3 2026" scraped from a page with a typo) from poisoning
+            # recency queries.
+            from datetime import timezone as _tz
+            now = datetime.now(tz=_tz.utc).replace(tzinfo=None)
+            parsed_naive = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+            if parsed_naive > now:
+                logger.warning(
+                    f"Future publish_date '{date_str}' rejected (parsed: {parsed_naive.date()}); "
+                    "setting to None so temporal_confidence is flagged 'low'."
+                )
+                return None
+            return parsed
         except Exception as e:
             logger.warning(f"Failed to parse date string '{date_str}': {e}")
             return None

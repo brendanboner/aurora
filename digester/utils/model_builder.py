@@ -177,6 +177,10 @@ def _build_resource(data: Dict[str, Any]) -> Resource:
             datasource_id=data.get("datasource_id"),
             batch_id=data.get("batch_id"),
             workgroup_id=data.get("workgroup_id"),
+            # Temporal confidence is set by the digester's stale gate.
+            # "high" = valid publish_date present; "low" = no reliable date.
+            temporal_confidence=data.get("temporal_confidence", "high" if publish_date else "low"),
+            archived=data.get("archived", False),
         )
     except Exception as e:
         raise ValueError(f"Failed to create Resource model: {e}")

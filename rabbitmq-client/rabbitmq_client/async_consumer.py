@@ -327,7 +327,19 @@ class AsyncRabbitMQConsumer:
                 processing_duration = time.time() - start_time
                 
                 if success:
-                    await message.ack()
+                    try:
+                        await message.ack()
+                    except Exception as ack_err:
+                        # Channel died after processing completed — item is already committed to the
+                        # graph. RabbitMQ will redeliver the unacknowledged message; the digester's
+                        # duplicate-URL check will discard it quickly. Do NOT send to DLQ here.
+                        self.logger.warning(
+                            f"⚠️  [{delivery_tag}] processed OK but ACK failed "
+                            f"({ack_err.__class__.__name__}). Item is in DB; "
+                            "will be de-duped on redeliver. "
+                            f"(Increase RABBITMQ_HEARTBEAT if this recurs; "
+                            f"processing took {processing_duration:.1f}s)"
+                        )
                     self.total_messages_processed += 1
                     self.logger.info(
                         f"✅ Message [{delivery_tag}] processed successfully in {processing_duration:.1f}s "
@@ -335,7 +347,13 @@ class AsyncRabbitMQConsumer:
                     )
                 else:
                     # Callback returned False - requeue
-                    await message.nack(requeue=True)
+                    try:
+                        await message.nack(requeue=True)
+                    except Exception as nack_err:
+                        self.logger.warning(
+                            f"⚠️  [{delivery_tag}] NACK failed ({nack_err.__class__.__name__}); "
+                            "RabbitMQ will redeliver automatically"
+                        )
                     self.total_messages_failed += 1
                     self.logger.warning(
                         f"❌ Message [{delivery_tag}] processing failed after {processing_duration:.1f}s, "

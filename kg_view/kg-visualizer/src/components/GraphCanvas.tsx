@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
+import ForceGraph2D from 'react-force-graph-2d';
 import * as THREE from 'three';
 import type { GraphNode, GraphLink, GraphData } from '../types/graph';
 import { gsap } from 'gsap';
@@ -10,25 +11,28 @@ interface GraphCanvasProps {
   onNodeClick: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void; // Optional double-click handler
   onNodeHover: (node: GraphNode | null) => void;
+  onLinkHover?: (link: GraphLink | null) => void;
   highlightNodes: Set<number | string>;
   highlightLinks: Set<string>;
   directLinks: Set<string>; // Direct links between entity nodes for special animation
   nodeDistances: Map<number | string, number>; // Distance from selected entities
   nodeConnectionCount: Map<number | string, number>; // How many entities connect through this node
   hiddenNodeTypes: Set<string>;
+  hiddenLinkTypes?: Set<string>;
   nodeSize?: number; // 0 to 100% size adjustment
   linkSize?: number; // 0 to 100% size adjustment
+  is3D?: boolean;
 }
 
-// Node color mapping by type
+// Node color mapping by type — muted at rest, vivid only on interaction
 const NODE_COLORS: Record<string, string> = {
-  Resource: '#4A90E2',      // Blue
-  Topic: '#9B59B6',         // Purple
-  Organization: '#2ECC71',  // Green
-  Event: '#E67E22',         // Orange
-  Person: '#E74C3C',        // Red
-  DataSource: '#95A5A6',    // Gray
-  Default: '#34495E',       // Dark gray
+  Resource: '#3A7BD5',      // Steel blue
+  Topic: '#7D4FA0',         // Muted purple
+  Organization: '#27AE60',  // Forest green
+  Event: '#C0782A',         // Burnt orange
+  Person: '#C0392B',        // Muted red
+  DataSource: '#7F8C8D',    // Slate gray
+  Default: '#2C3E50',       // Dark navy
 };
 
 // ==============================================================================
@@ -80,7 +84,7 @@ const LINK_STYLE = {
   OPACITY_HOP_2: 0.60,       // 2-hop links
   OPACITY_HOP_3_PLUS: 0.65,  // 3+ hop links
   OPACITY_DIMMED: 0.10,      // Non-highlighted when filtering
-  OPACITY_NORMAL: 0.4,       // Normal state
+  OPACITY_NORMAL: 0,         // Hidden by default — edges only visible on hover/select
 };
 
 // Link Colors
@@ -117,14 +121,17 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     onNodeClick,
     onNodeDoubleClick,
     onNodeHover,
+    onLinkHover,
     highlightNodes,
     highlightLinks,
     directLinks,
     nodeDistances,
     nodeConnectionCount,
     hiddenNodeTypes,
+    hiddenLinkTypes = new Set(),
     nodeSize = 100,
     linkSize = 100,
+    is3D = true,
   },
   forwardedRef
 ) => {
@@ -134,10 +141,11 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
   React.useImperativeHandle(forwardedRef, () => fgRef.current);
   // hoveredNode state removed - using parent's onNodeHover callback instead
 
-  // Filter out hidden node types
+  // Filter out hidden node types and hidden link types
   const filteredData = {
     nodes: data.nodes.filter(node => !hiddenNodeTypes.has(node.label)),
     links: data.links.filter(link => {
+      if (hiddenLinkTypes.has(link.type)) return false;
       const sourceNode = data.nodes.find(n => n.id === (typeof link.source === 'object' ? link.source.id : link.source));
       const targetNode = data.nodes.find(n => n.id === (typeof link.target === 'object' ? link.target.id : link.target));
       return sourceNode && targetNode && 
@@ -235,8 +243,10 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
       return NODE_SIZE.BASE * NODE_SIZE.SELECTED * importanceFactor * sizeMultiplier;
     }
     
-    // Default size - small
-    return NODE_SIZE.BASE * 0.8 * importanceFactor * sizeMultiplier;
+    // Default size — degree-based logarithmic scaling
+    const degree = node.properties?.degree || (node as any)['degree'] || 1;
+    const degreeFactor = Math.log(degree + 1) / Math.log(10); // log10 scale
+    return NODE_SIZE.BASE * Math.max(0.4, degreeFactor) * importanceFactor * sizeMultiplier;
   }, [selectedNodes, highlightNodes, nodeDistances, nodeConnectionCount, nodeSize]);
 
   // Custom node object with glow effect
@@ -245,47 +255,68 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     const isEntity = nodeDistances.get(node.id) === 0; // Entity nodes have distance 0
     const color = getNodeColor(node);
     const size = getNodeSize(node); // This already includes importance and size multipliers
+    const importance = node.properties?.importance || 0.5;
+
+    // Detect fresh nodes (published within last 30 days)
+    const publishDate = node.properties?.publish_date;
+    const isFresh = publishDate
+      ? (Date.now() - new Date(publishDate).getTime()) < 30 * 24 * 60 * 60 * 1000
+      : false;
+    const freshColor = '#00FF88';
     
     const geometry = new THREE.SphereGeometry(size, 16, 16);
     const material = new THREE.MeshLambertMaterial({
-      color: color,
+      color,
       transparent: true,
-      opacity: isHighlighted ? 1.0 : 0.8,
+      opacity: isHighlighted ? 1.0 : 0.85,
     });
     
     const mesh = new THREE.Mesh(geometry, material);
-    
-    // Add glow ONLY for entity nodes (selected/searched topics)
-    // Glow size MUST scale proportionally with the computed node size
-    // This ensures glow matches both importance-based and distance-based sizing
-    if (isEntity) {
-      const glowSize = size * NODE_GLOW.SIZE_MULTIPLIER; // Proportional to actual node size
+
+    // Fresh-node indicator: small bright green ring (not full color override)
+    if (isFresh) {
+      const ringGeometry = new THREE.TorusGeometry(size * 1.35, size * 0.12, 8, 24);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: freshColor,
+        transparent: true,
+        opacity: 0.7,
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      gsap.to(ringMaterial, { opacity: 0.2, duration: 1.5, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      mesh.add(ring);
+    }
+
+    // Glow only for entity nodes, highlighted nodes, or high-importance (>0.7) nodes
+    if (isEntity || isHighlighted || importance > 0.7) {
+      const glowOpacity = isEntity ? NODE_GLOW.OPACITY_BASE : 0.08;
+      const glowSize = size * NODE_GLOW.SIZE_MULTIPLIER;
+
       const glowGeometry = new THREE.SphereGeometry(glowSize, 16, 16);
       const glowMaterial = new THREE.MeshBasicMaterial({
-        color: color,
+        color,
         transparent: true,
-        opacity: NODE_GLOW.OPACITY_BASE,
+        opacity: glowOpacity,
       });
       const glow = new THREE.Mesh(glowGeometry, glowMaterial);
       mesh.add(glow);
-      
-      // Pulsing animation for entity nodes
-      gsap.to(glowMaterial, {
-        opacity: NODE_GLOW.OPACITY_MAX,
-        duration: NODE_GLOW.PULSE_DURATION,
-        repeat: -1,
-        yoyo: true,
-        ease: 'sine.inOut',
-      });
-      
-      // Also pulse the main material slightly for extra emphasis
-      gsap.to(material, {
-        opacity: NODE_GLOW.ENTITY_OPACITY_MIN,
-        duration: NODE_GLOW.PULSE_DURATION,
-        repeat: -1,
-        yoyo: true,
-        ease: 'sine.inOut',
-      });
+
+      // Only pulse for entity nodes — keeps motion reserved for truly important nodes
+      if (isEntity) {
+        gsap.to(glowMaterial, {
+          opacity: NODE_GLOW.OPACITY_MAX,
+          duration: NODE_GLOW.PULSE_DURATION,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+        });
+        gsap.to(material, {
+          opacity: NODE_GLOW.ENTITY_OPACITY_MIN,
+          duration: NODE_GLOW.PULSE_DURATION,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+        });
+      }
     }
     
     return mesh;
@@ -401,10 +432,15 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     
     // Change cursor
     if (fgRef.current) {
-      const elem = fgRef.current.renderer().domElement;
-      elem.style.cursor = node ? 'pointer' : 'default';
+      const elem = fgRef.current.renderer?.()?.domElement || fgRef.current.renderer?.()?.domElement;
+      if (elem) elem.style.cursor = node ? 'pointer' : 'default';
     }
   }, [onNodeHover]);
+
+  // Handle link hover
+  const handleLinkHover = useCallback((link: GraphLink | null) => {
+    if (onLinkHover) onLinkHover(link);
+  }, [onLinkHover]);
 
   // Node label - show node information not relationship
   const nodeLabel = useCallback((node: GraphNode) => {
@@ -429,6 +465,55 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
   const linkLabel = useCallback((_link: GraphLink) => {
     return '';
   }, []);
+
+  // 2D canvas node rendering (used when is3D = false)
+  const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D) => {
+    const graphNode = node as GraphNode;
+    const size = getNodeSize(graphNode);
+    const color = getNodeColor(graphNode);
+    const importance = graphNode.properties?.importance || 0.5;
+    
+    if (node.x == null || node.y == null) return;
+
+    // Draw glow only for high-importance nodes (>0.7) — not all nodes
+    if (importance > 0.7) {
+      const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, size * 2.2);
+      gradient.addColorStop(0, color + '40');
+      gradient.addColorStop(1, color + '00');
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size * 2.2, 0, 2 * Math.PI);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+
+    // Fresh-node indicator: small green ring
+    const publishDate = graphNode.properties?.publish_date;
+    const isFresh2D = publishDate
+      ? (Date.now() - new Date(publishDate).getTime()) < 30 * 24 * 60 * 60 * 1000
+      : false;
+    if (isFresh2D) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size * 1.4, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#00FF8880';
+      ctx.lineWidth = size * 0.2;
+      ctx.stroke();
+    }
+
+    // Draw node circle
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    // Draw label for larger nodes
+    if (size > 4) {
+      ctx.font = `${Math.max(8, size * 1.5)}px Sans-Serif`;
+      ctx.fillStyle = 'white';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(graphNode.name?.slice(0, 20) || '', node.x, node.y);
+    }
+  }, [getNodeSize, getNodeColor]);
 
   // Link particles for highlighted connections (synapse effect)
   const linkDirectionalParticles = useCallback((link: GraphLink) => {
@@ -458,8 +543,9 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
     return LINK_PARTICLES.SPEED_NORMAL;
   }, [directLinks]);
 
-  // Setup camera and controls
+  // Setup camera and controls (3D only)
   useEffect(() => {
+    if (!is3D) return;
     if (fgRef.current) {
       const fg = fgRef.current;
       
@@ -482,33 +568,58 @@ const GraphCanvas = React.forwardRef<any, GraphCanvasProps>((
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
-      <ForceGraph3D
-        ref={fgRef}
-        graphData={filteredData}
-        nodeId="id"
-        nodeLabel={nodeLabel}
-        nodeColor={getNodeColor}
-        nodeThreeObject={nodeThreeObject}
-        nodeThreeObjectExtend={true}
-        onNodeClick={handleNodeClick}
-        onNodeRightClick={onNodeDoubleClick}
-        onNodeHover={handleNodeHover}
-        linkLabel={linkLabel}
-        linkColor={getLinkColor}
-        linkWidth={getLinkWidth}
-        linkOpacity={getLinkOpacity as any}
-        linkDirectionalParticles={linkDirectionalParticles}
-        linkDirectionalParticleWidth={linkDirectionalParticleWidth}
-        linkDirectionalParticleSpeed={linkDirectionalParticleSpeed}
-        linkDirectionalParticleColor={getLinkColor}
-        enableNodeDrag={true}
-        enableNavigationControls={true}
-        showNavInfo={false}
-        cooldownTicks={100}
-        warmupTicks={0}
-        d3AlphaDecay={0.02}
-        d3VelocityDecay={0.3}
-      />
+      {is3D ? (
+        <ForceGraph3D
+          ref={fgRef}
+          graphData={filteredData}
+          nodeId="id"
+          nodeLabel={nodeLabel}
+          nodeColor={getNodeColor}
+          nodeThreeObject={nodeThreeObject}
+          nodeThreeObjectExtend={true}
+          onNodeClick={handleNodeClick}
+          onNodeRightClick={onNodeDoubleClick}
+          onNodeHover={handleNodeHover}
+          onLinkHover={handleLinkHover as any}
+          linkLabel={linkLabel}
+          linkColor={getLinkColor}
+          linkWidth={getLinkWidth}
+          linkOpacity={getLinkOpacity as any}
+          linkDirectionalParticles={linkDirectionalParticles}
+          linkDirectionalParticleWidth={linkDirectionalParticleWidth}
+          linkDirectionalParticleSpeed={linkDirectionalParticleSpeed}
+          linkDirectionalParticleColor={getLinkColor}
+          enableNodeDrag={true}
+          enableNavigationControls={true}
+          showNavInfo={false}
+          cooldownTicks={100}
+          warmupTicks={0}
+          d3AlphaDecay={0.02}
+          d3VelocityDecay={0.3}
+        />
+      ) : (
+        <ForceGraph2D
+          ref={fgRef}
+          graphData={filteredData}
+          nodeId="id"
+          nodeLabel={nodeLabel}
+          nodeColor={getNodeColor}
+          nodeCanvasObject={nodeCanvasObject}
+          nodeCanvasObjectMode={() => 'replace'}
+          onNodeClick={handleNodeClick}
+          onNodeRightClick={onNodeDoubleClick}
+          onNodeHover={handleNodeHover}
+          onLinkHover={handleLinkHover as any}
+          linkLabel={linkLabel}
+          linkColor={getLinkColor}
+          linkWidth={getLinkWidth}
+          enableNodeDrag={true}
+          cooldownTicks={100}
+          warmupTicks={0}
+          d3AlphaDecay={0.02}
+          d3VelocityDecay={0.3}
+        />
+      )}
       
       {/* Stats */}
       <div style={{
@@ -543,7 +654,9 @@ export default React.memo(GraphCanvas, (prevProps, nextProps) => {
     prevProps.nodeDistances === nextProps.nodeDistances &&
     prevProps.nodeConnectionCount === nextProps.nodeConnectionCount &&
     prevProps.hiddenNodeTypes === nextProps.hiddenNodeTypes &&
+    prevProps.hiddenLinkTypes === nextProps.hiddenLinkTypes &&
     prevProps.nodeSize === nextProps.nodeSize &&
-    prevProps.linkSize === nextProps.linkSize
+    prevProps.linkSize === nextProps.linkSize &&
+    prevProps.is3D === nextProps.is3D
   );
 });

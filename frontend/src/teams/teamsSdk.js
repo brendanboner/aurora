@@ -1,7 +1,10 @@
 /**
  * Teams SDK Integration Wrapper
- * Detects Teams environment, initializes Microsoft Teams SDK, manages context
+ * Uses @microsoft/teams-js v2 SDK (promise-based API).
+ * Detects Teams environment, initializes SDK, retrieves context, and provides SSO token helper.
  */
+
+import * as microsoftTeams from '@microsoft/teams-js';
 
 let teamsContext = {
   isTeams: false,
@@ -9,66 +12,51 @@ let teamsContext = {
 };
 
 /**
- * Detect if running inside Teams iframe
+ * Detect if running inside the Microsoft Teams iframe.
+ * The v2 SDK surfaces this via app.isInitialized() after initialize() resolves,
+ * but we can do a lightweight pre-check via the parent-frame origin hint Teams injects.
  */
 export function isRunningInTeams() {
   try {
-    // Check if Teams SDK is available globally
-    return !!(window.microsoftTeams);
+    return (
+      window.parent !== window ||
+      window.navigator.userAgent.includes('Teams') ||
+      document.referrer.includes('teams.microsoft.com') ||
+      document.referrer.includes('teams.live.com')
+    );
   } catch {
     return false;
   }
 }
 
 /**
- * Initialize Teams SDK and retrieve context
- * Safe to call multiple times; only initializes once
+ * Initialize Teams SDK (v2) and retrieve context.
+ * Safe to call multiple times — returns cached context after first successful init.
  */
 export async function initializeTeamsSDK() {
-  // Return if already initialized
   if (teamsContext.initialized) {
     return teamsContext;
   }
 
-  const inTeams = isRunningInTeams();
+  try {
+    await microsoftTeams.app.initialize();
 
-  if (!inTeams) {
+    const context = await microsoftTeams.app.getContext();
+
     teamsContext = {
-      isTeams: false,
+      isTeams: true,
+      userId: context.user?.id,
+      userPrincipalName: context.user?.userPrincipalName,
+      tenantId: context.user?.tenant?.id,
+      channelId: context.channel?.id,
+      groupId: context.team?.groupId,
+      teamName: context.team?.displayName,
+      teamId: context.team?.internalId,
       initialized: true,
     };
-    return teamsContext;
-  }
-
-  try {
-    // Load Teams SDK dynamically if not already loaded
-    if (!window.microsoftTeams) {
-      await loadTeamsSDK();
-    }
-
-    const teams = window.microsoftTeams;
-
-    // Initialize Teams SDK
-    await new Promise((resolve) => {
-      teams.initialize(() => {
-        // Get context asynchronously
-        teams.getContext((context) => {
-          teamsContext = {
-            isTeams: true,
-            userId: context.userObjectId || context.userId,
-            tenantId: context.tid,
-            channelId: context.channelId,
-            groupId: context.groupId,
-            teamName: context.teamName,
-            teamId: context.teamId,
-            initialized: true,
-          };
-          resolve();
-        });
-      });
-    });
   } catch (error) {
-    console.warn('Failed to initialize Teams SDK:', error);
+    // Not running in Teams or SDK initialization failed (e.g., browser standalone)
+    console.warn('[TeamsSDK] Not running in Teams or SDK unavailable:', error?.message || error);
     teamsContext = {
       isTeams: false,
       initialized: true,
@@ -79,67 +67,78 @@ export async function initializeTeamsSDK() {
 }
 
 /**
- * Load Teams SDK script dynamically
- */
-function loadTeamsSDK() {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://res.cdn.office.net/teams-js/2.0.0/js/microsoft.teams.min.js';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Teams SDK'));
-    document.head.appendChild(script);
-  });
-}
-
-/**
- * Get current Teams context (must call initializeTeamsSDK first)
+ * Get current Teams context (must call initializeTeamsSDK first).
  */
 export function getTeamsContext() {
   return teamsContext;
 }
 
 /**
- * Notify Teams that content has loaded (for tab initialization)
+ * Silently acquire a Teams SSO token (Azure AD token for the signed-in Teams user).
+ * Returns the token string, or null if not in Teams / SSO not configured.
+ *
+ * The token can be sent to the auth service's /auth/teams-sso endpoint to exchange
+ * it for an Aurora session cookie without a browser redirect.
+ *
+ * Prerequisites (in manifest.json):
+ *   "webApplicationInfo": { "id": "<azure-app-client-id>", "resource": "https://<your-domain>" }
+ */
+export async function getTeamsSSOToken() {
+  if (!teamsContext.isTeams) {
+    return null;
+  }
+
+  try {
+    const token = await microsoftTeams.authentication.getAuthToken();
+    return token;
+  } catch (error) {
+    console.warn('[TeamsSDK] SSO token acquisition failed:', error?.message || error);
+    return null;
+  }
+}
+
+/**
+ * Notify Teams that the tab has loaded successfully.
  */
 export function notifyTeamsSuccess() {
   try {
-    const teams = window.microsoftTeams;
-    if (teams?.notifySuccess) {
-      teams.notifySuccess();
+    if (teamsContext.isTeams) {
+      microsoftTeams.app.notifySuccess();
     }
   } catch (error) {
-    console.warn('Failed to notify Teams success:', error);
+    console.warn('[TeamsSDK] notifySuccess failed:', error);
   }
 }
 
 /**
- * Notify Teams of failure (for tab initialization)
+ * Notify Teams that the tab failed to load.
  */
 export function notifyTeamsFailure(reason) {
   try {
-    const teams = window.microsoftTeams;
-    if (teams?.notifyFailure) {
-      teams.notifyFailure(reason || 'Tab initialization failed');
+    if (teamsContext.isTeams) {
+      microsoftTeams.app.notifyFailure({
+        reason: microsoftTeams.app.FailedReason.Other,
+        message: reason || 'Tab initialization failed',
+      });
     }
   } catch (error) {
-    console.warn('Failed to notify Teams failure:', error);
+    console.warn('[TeamsSDK] notifyFailure failed:', error);
   }
 }
 
 /**
- * Open URL in Teams context (uses Teams navigation if available)
+ * Navigate to a URL within Teams context.
  */
 export function navigateInTeams(url) {
   try {
-    const teams = window.microsoftTeams;
-    if (teams?.executeDeepLink) {
-      teams.executeDeepLink(url);
+    if (teamsContext.isTeams) {
+      microsoftTeams.app.openLink(url);
     } else {
       window.location.href = url;
     }
   } catch (error) {
-    console.warn('Failed to navigate in Teams:', error);
+    console.warn('[TeamsSDK] Navigation failed, falling back to window.location:', error);
     window.location.href = url;
   }
 }
+

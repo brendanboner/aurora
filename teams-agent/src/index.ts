@@ -4,9 +4,10 @@ import { BotFrameworkAdapter, ConversationState, MemoryStorage, UserState } from
 import { AuroraBot } from './bot';
 import * as dotenv from 'dotenv';
 
-// Load environment variables
-const ENV_FILE = path.join(__dirname, '..', '.env.dev');
-dotenv.config({ path: ENV_FILE });
+// Load environment variables.
+// In production (Docker), vars are injected by --env-file before Node starts;
+// dotenv fills any gaps from a local .env file without overriding existing vars.
+dotenv.config();
 
 console.log('='.repeat(80));
 console.log('Aurora Teams Agent Starting...');

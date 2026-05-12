@@ -126,6 +126,17 @@ class GenerationService:
                        agent.name, topic_scope, organisation_scope, cadence_days)
             return None
 
+        # Freshness gate: check whether the newest content is within the expected window.
+        # If it's older than the agent's cadence window, inject a framing note so the
+        # LLM presents it as background context rather than breaking news.
+        freshness_note = self._build_freshness_note(events, documents, cadence_days)
+        if freshness_note:
+            logger.info(
+                "Freshness gate triggered for agent %s: %s",
+                agent.name,
+                freshness_note,
+            )
+
         # Apply diversity filtering to prevent duplicate coverage
         events_before_diversity = len(events)
         documents_before_diversity = len(documents)
@@ -159,6 +170,7 @@ class GenerationService:
             recent_posts=recent_posts,
             user_reactions=user_reactions,
             all_agents_recent_posts=all_agents_posts,
+            freshness_note=freshness_note,
         )
 
         # Determine temperature (agent override or system default)
@@ -188,6 +200,66 @@ class GenerationService:
             "content_length": llm_response.get("content_length", agent.content_length_preference),
             "sources": sources,
         }
+
+    def _build_freshness_note(
+        self,
+        events: List[Dict[str, Any]],
+        documents: List[Dict[str, Any]],
+        cadence_days: int,
+    ) -> Optional[str]:
+        """Return a framing note when the newest available content is older than the cadence window.
+
+        This prevents the content creator from producing posts that read like breaking news
+        when the underlying articles are weeks or months old.
+
+        Returns None when content is fresh (no note needed).
+        """
+        from datetime import timezone as _tz
+
+        all_items = list(events) + list(documents)
+        if not all_items:
+            return None
+
+        dates: list[datetime] = []
+        for item in all_items:
+            raw = (
+                item.get("publish_date")
+                or item.get("start_date")
+                or item.get("last_updated")
+            )
+            if not raw:
+                continue
+            try:
+                if isinstance(raw, datetime):
+                    dates.append(raw)
+                else:
+                    from dateutil.parser import parse as _parse
+                    dates.append(_parse(str(raw)))
+            except Exception:
+                continue
+
+        if not dates:
+            return None
+
+        newest = max(dates)
+        # Ensure timezone-aware comparison
+        now = datetime.now(_tz.utc)
+        if newest.tzinfo is None:
+            newest = newest.replace(tzinfo=_tz.utc)
+
+        age_days = (now - newest).days
+        if age_days <= cadence_days:
+            return None  # Content is fresh enough — no note needed
+
+        newest_label = newest.strftime("%B %d, %Y")
+        return (
+            f"NOTE FOR LLM: The most recent content available is from {newest_label} "
+            f"({age_days} days ago — older than the {cadence_days}-day cadence window). "
+            "Frame this post as industry background, analysis, or evergreen insight — "
+            "NOT as breaking news or a recent development. Avoid phrases like 'just announced', "
+            "'this week', 'recently', or any implication of recency. Instead use framing like "
+            "'ongoing work on...', 'the industry has been exploring...', or 'a key development in...'."
+        )
 
     def _fetch_agent_recent_posts(self, agent_id: int, limit: int = 5) -> List[Dict[str, Any]]:
         """Fetch agent's recent posts for deduplication context."""

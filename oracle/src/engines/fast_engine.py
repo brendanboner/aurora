@@ -23,9 +23,11 @@ from src.services.cache import OracleCache
 from src.services.keyword_retriever import get_repo
 from src.services.personalization import decide_personalization, get_user_preferences, get_user_source_memberships
 from src.services.llm_client import get_llm_client, call_llm
+from src.services.conversation_store import ConversationStore
 from src.services.rollup_generator import RollupGenerator
 from src.services.topic_manager import initialize_topic_manager, get_topic_manager
 from src.prompts.answer_generator import get_answer_generator_messages
+
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,7 @@ class FastEngine:
         self.local_router = LocalRouter()
         self.template_registry = QueryTemplateRegistry()
         self.fast_cache: Optional[FastCache] = None
+        self.conv_store: Optional[ConversationStore] = None
         self.rollup_generator = RollupGenerator()
         
         # Initialize TopicManager with Neo4j client
@@ -81,6 +84,7 @@ class FastEngine:
         redis_client = oracle_cache._redis_client if oracle_cache.enabled else None
         
         self.fast_cache = FastCache(redis_client=redis_client)
+        self.conv_store = ConversationStore(redis_client=redis_client)
         self._initialized = True
     
     def get_name(self) -> str:
@@ -280,6 +284,7 @@ class FastEngine:
             # Load user source memberships (joined=boost, ignored=hard-exclude)
             user_excluded_datasources: list = []
             user_preferred_datasources: list = []
+            user_preferred_domains: list = []
             if request.user_id:
                 try:
                     memberships = get_user_source_memberships(str(request.user_id))
@@ -291,6 +296,14 @@ class FastEngine:
                         logger.info(f"[{query_id}] User joined datasources: {user_preferred_datasources}")
                 except Exception as e:
                     logger.warning(f"[{query_id}] Failed to fetch source memberships: {e}")
+
+                try:
+                    user_prefs_for_domains = await get_user_preferences(str(request.user_id))
+                    user_preferred_domains = user_prefs_for_domains.domains or []
+                    if user_preferred_domains:
+                        logger.info(f"[{query_id}] User domain preferences: {user_preferred_domains}")
+                except Exception as e:
+                    logger.warning(f"[{query_id}] Failed to fetch user domain preferences: {e}")
             
             # Decide personalization and capture user context for answer synthesis.
             personalization_enabled = False
@@ -322,6 +335,13 @@ class FastEngine:
             
             # Normalize query for caching
             normalized_query = normalize_query(request.question)
+
+            # Load conversation history for contextual follow-up questions
+            conversation_history: list[dict] = []
+            if self.conv_store and request.user_id:
+                conversation_history = await self.conv_store.get_context(
+                    str(request.user_id), max_turns=2
+                )
             
             # Phase 1: Routing (with plan cache)
             plan, routing_time_ms, route_cache_hit = await self._route_query(
@@ -345,6 +365,8 @@ class FastEngine:
                 # override with joined preferences. Still apply excluded filter.
                 if not datasource_ids:
                     plan.preferred_datasources = user_preferred_datasources
+            if user_preferred_domains:
+                plan.preferred_domains = user_preferred_domains
             
             # Handle route_id that might be enum or string (after cache deserialization)
             route_id_str = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
@@ -411,8 +433,15 @@ class FastEngine:
                     skip_cache=skip_answer_cache,
                     skip_cache_reason=cache_bypass_reason,
                     cache_scope=self._build_answer_cache_scope(personalization_prompt_context),
+                    conversation_history=conversation_history or None,
                 )
                 cache_bypass_reason = compose_cache_bypass_reason
+
+                # Persist this turn for future follow-up questions
+                if answer and self.conv_store and request.user_id:
+                    await self.conv_store.append_turn(
+                        str(request.user_id), request.question, answer
+                    )
             else:
                 # In retrieval mode, just convert nodes to documents without LLM synthesis
                 documents = self._nodes_to_documents(
@@ -439,6 +468,20 @@ class FastEngine:
                 cache_bypass_reason=cache_bypass_reason,
             )
             
+            # Composite confidence: routing quality + result coverage + temporal quality
+            doc_count = len(documents)
+            result_count_factor = min(doc_count / 5.0, 1.0) if doc_count > 0 else 0.0
+            temporal_factor = (
+                sum(1 for d in documents if d.publish_date) / doc_count
+                if doc_count > 0 else 0.0
+            )
+            fast_confidence = round(
+                plan.confidence * 0.4
+                + result_count_factor * 0.4
+                + temporal_factor * 0.2,
+                3,
+            )
+
             response = QueryResponse(
                 query_id=str(query_id),
                 answer=answer,
@@ -447,8 +490,9 @@ class FastEngine:
                 citations=citations,
                 metadata=metadata,
                 suggestions=[],
-                confidence_score=None,
-                personalization_applied=personalization_enabled
+                confidence_score=fast_confidence,
+                personalization_applied=personalization_enabled,
+                pipeline="fast",
             )
             
             span.set_attribute("oracle.processing_time_ms", processing_time_ms)
@@ -731,6 +775,24 @@ class FastEngine:
                 )
             except Exception:
                 pass
+
+        # Apply domain preferences boost (soft, 1.25x — weaker than datasource membership)
+        preferred_domains = params.get("preferred_domains", [])
+        if preferred_domains and processed_results:
+            for r in processed_results:
+                r_domains = r.get("domains") or []
+                if any(d in preferred_domains for d in r_domains):
+                    if "score" in r and r["score"] is not None:
+                        r["score"] = float(r["score"]) * 1.25
+                    else:
+                        r["_domain_boost"] = 1.25
+            try:
+                processed_results.sort(
+                    key=lambda r: (r.get("score") or 0.0) * r.get("_domain_boost", 1.0),
+                    reverse=True
+                )
+            except Exception:
+                pass
         
         # Fallback: If no results and query had date filters, retry without dates
         if len(processed_results) == 0 and (params.get('start_date') or params.get('end_date') or params.get('relative_days')):
@@ -937,6 +999,7 @@ class FastEngine:
         skip_cache: bool = False,
         skip_cache_reason: Optional[str] = None,
         cache_scope: Optional[str] = None,
+        conversation_history: Optional[List[dict]] = None,
     ) -> tuple[str, List[Document], List[Citation], int, bool, Optional[str]]:
         """
         Compose final answer (Phase 4).
@@ -989,12 +1052,14 @@ class FastEngine:
                     answer, documents, citations = comparison_answer
                 else:
                     answer, documents, citations = await self._compose_with_llm(
-                        plan, route_result, deep_dive_result, request, span, user_context=user_context
+                        plan, route_result, deep_dive_result, request, span,
+                        user_context=user_context, conversation_history=conversation_history
                     )
             else:
                 # LLM-based synthesis
                 answer, documents, citations = await self._compose_with_llm(
-                    plan, route_result, deep_dive_result, request, span, user_context=user_context
+                    plan, route_result, deep_dive_result, request, span,
+                    user_context=user_context, conversation_history=conversation_history
                 )
             
             answer_time_ms = int((time.time() - answer_start) * 1000)
@@ -1164,6 +1229,7 @@ class FastEngine:
         request: QueryRequest,
         span,
         user_context: Optional[str] = None,
+        conversation_history: Optional[List[dict]] = None,
     ) -> tuple[str, List[Document], List[Citation]]:
         """
         Compose answer using LLM synthesis.
@@ -1220,7 +1286,8 @@ class FastEngine:
                 {
                     "title": doc.title or "Untitled",
                     "summary": doc.summary or "No summary available",
-                    "publish_date": doc.publish_date or "Unknown date",
+                    "publish_date": doc.publish_date or "",
+                    "temporal_confidence": doc.temporal_confidence or "high",
                     "url": doc.url,
                     "topics": doc.topics,
                     "organizations": doc.organizations,
@@ -1251,21 +1318,36 @@ class FastEngine:
                     "temporal_patterns": temporal_patterns,
                 }
 
+            # Map DetailLevel enum to string for the prompt builder
+            detail_str = "detailed"
+            if plan.detail_level == DetailLevel.BRIEF:
+                detail_str = "brief"
+            elif plan.detail_level == DetailLevel.COMPREHENSIVE:
+                detail_str = "comprehensive"
+
             messages = get_answer_generator_messages(
                 request.question,
                 docs_for_prompt,
                 graph_context,
                 user_context,
+                conversation_history=conversation_history,
+                detail_level=detail_str,
             )
             
+            # Allow more tokens for comprehensive requests
+            max_tokens = settings.max_answer_tokens
+            if plan.detail_level == DetailLevel.COMPREHENSIVE:
+                max_tokens = max(max_tokens, 1500)
+
             response = await call_llm(
                 client=client,
                 messages=messages,
-                max_tokens=settings.max_answer_tokens,
+                max_tokens=max_tokens,
                 temperature=0.3
             )
             
             answer = (response.content or "").strip()
+            answer = self._strip_trailing_references(answer)
             if not answer:
                 logger.warning("LLM synthesis returned empty content, falling back to deterministic summary")
                 answer, citations = self._build_simple_summary(documents)
@@ -1291,6 +1373,39 @@ class FastEngine:
             answer, citations = self._build_simple_summary(documents)
             return answer, documents, citations
     
+    @staticmethod
+    def _strip_trailing_references(answer: str) -> str:
+        """Remove any LLM-generated reference list appended after the answer.
+
+        The LLM occasionally echoes the document metadata block at the end of
+        its answer — e.g. lines like:
+            [1] Title: Wi-Fi 8 TTG Meeting
+            [2]URL: Wi-Fi Alliance Newsroom
+            [1] https://...
+
+        These are redundant (the frontend renders its own reference list) and
+        look broken. Strip any trailing block that consists entirely of such lines.
+        """
+        import re
+        lines = answer.rstrip().splitlines()
+        # Walk backwards — drop consecutive lines that look like reference entries
+        ref_pattern = re.compile(
+            r"^\s*(\[\d+\]|\*\*\[\d+\]\*\*)"   # starts with [N] or **[N]**
+            r"(\s*(Title|URL|Source|Date|Datasource|http|https):|\s+https?://|\s*$)",
+            re.IGNORECASE,
+        )
+        cut = len(lines)
+        for i in range(len(lines) - 1, -1, -1):
+            line = lines[i].strip()
+            if not line:
+                cut = i  # skip trailing blank lines too
+                continue
+            if ref_pattern.match(lines[i]):
+                cut = i
+            else:
+                break
+        return "\n".join(lines[:cut]).rstrip()
+
     def _nodes_to_documents(self, nodes: List[Dict], max_documents: Optional[int] = None) -> List[Document]:
         """
         Convert Neo4j nodes to Document objects.
@@ -1442,6 +1557,25 @@ class FastEngine:
                     continue
                 seen_keys.add(dedupe_key)
                 summary = node.get("summary") or node.get("description", "")
+
+                # Person nodes (from ORGANIZATION_REPRESENTATIVES / PERSON_PROFILE) carry
+                # role + organization instead of a document summary.  Build a human-readable
+                # summary so the LLM has substance to work with.
+                if not summary and node.get("role") and node.get("organization"):
+                    role = node["role"]
+                    org  = node["organization"]
+                    topics_list = node.get("topics") or []
+                    topic_str = (", ".join(topics_list[:3]) + " ") if topics_list else ""
+                    email_str  = f" ({node['email']})" if node.get("email") else ""
+                    activity   = node.get("activity_count", 0)
+                    activity_str = f" — {activity} document mention(s) found" if activity else ""
+                    summary = (
+                        f"{role} at {org}{email_str}. "
+                        f"Known topics: {topic_str}in the knowledge graph{activity_str}."
+                    )
+                elif not summary and node.get("role"):
+                    summary = node["role"]
+
                 date = node.get("date") or node.get("start_time") or node.get("startTime") or node.get("publish_date")
                 
                 # Extract real metadata from Neo4j results
@@ -1449,6 +1583,8 @@ class FastEngine:
                 category = node.get("category") or node.get("event_type") or node.get("type")
                 topics = node.get("topics", []) or node.get("all_topic_names", [])
                 organizations = node.get("organizations", []) or node.get("org_names", [])
+                if node.get("organization") and not organizations:
+                    organizations = [node["organization"]]
                 relevance = node.get("relevance_score", 1.0)
                 
                 # Build source name from datasource_id or fall back to category
@@ -1458,6 +1594,8 @@ class FastEngine:
                     source = datasource_id.replace("_", " ").title()
                 elif category:
                     source = category.replace("_", " ").title()
+                elif node.get("organization"):
+                    source = node["organization"]
                 
                 doc = Document(
                     title=title,
@@ -1465,6 +1603,7 @@ class FastEngine:
                     url=url,
                     relevance_score=relevance,
                     publish_date=date,
+                    temporal_confidence=node.get("temporal_confidence") or ("high" if date else "low"),
                     source=source,
                     datasource_id=datasource_id,
                     category=category,

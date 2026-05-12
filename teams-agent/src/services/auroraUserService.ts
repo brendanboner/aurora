@@ -108,9 +108,33 @@ export class AuroraUserService {
   }
 
   /**
-   * Get or create Aurora user from Teams context
+   * Get or create Aurora user from Teams context.
+   * If extractUserEmail() returned an AAD OID placeholder, resolves it via Graph API first.
    */
-  async getOrCreateUser(email: string, displayName: string): Promise<AuroraUser> {
+  async getOrCreateUser(emailOrAadPlaceholder: string, displayName: string): Promise<AuroraUser> {
+    // Short-circuit with mock user when USE_MOCK_DATA is enabled — avoids any backend call
+    if (process.env.USE_MOCK_DATA === 'true') {
+      return this.getMockUser(emailOrAadPlaceholder.startsWith('aad:')
+        ? `${emailOrAadPlaceholder.substring(4)}@teams.aad`
+        : emailOrAadPlaceholder);
+    }
+
+    let email = emailOrAadPlaceholder;
+
+    // Resolve AAD OID placeholder via Graph API
+    if (email.startsWith('aad:')) {
+      const aadObjectId = email.substring(4);
+      const resolvedEmail = await this.lookupEmailByAadObjectId(aadObjectId);
+      if (resolvedEmail) {
+        email = resolvedEmail;
+        console.log(`[UserService] Resolved AAD OID ${aadObjectId} → ${email}`);
+      } else {
+        // Fall back to a stable synthetic identifier so the user still works
+        email = `${aadObjectId}@teams.aad`;
+        console.warn(`[UserService] Using synthetic email for AAD OID ${aadObjectId}: ${email}`);
+      }
+    }
+
     let user = await this.getUserByEmail(email);
 
     if (!user) {
@@ -122,8 +146,11 @@ export class AuroraUserService {
   }
 
   /**
-   * Extract email from Teams context
-   * Falls back to generating from AAD Object ID if email not available
+   * Extract email from Teams context.
+   * Priority:
+   *   1. activity.from.email (not always present)
+   *   2. Microsoft Graph API lookup via AAD Object ID (requires GRAPH_APP_TOKEN env var)
+   *   3. Emulator/webchat test email fallback
    */
   extractUserEmail(activity: any): string {
     // Try to get email from activity
@@ -131,11 +158,11 @@ export class AuroraUserService {
       return activity.from.email;
     }
 
-    // Try AAD Object ID
+    // Try AAD Object ID — Graph API lookup is done async in getOrCreateUser()
     if (activity.from?.aadObjectId) {
-      // In production, you might want to query Microsoft Graph API for the actual email
-      console.warn('Email not available, using AAD Object ID');
-      return `${activity.from.aadObjectId}@teams.user`;
+      // Return a placeholder that callers can enrich via lookupEmailByAadObjectId()
+      console.warn(`[UserService] Email not in activity, will attempt Graph API lookup for AAD OID: ${activity.from.aadObjectId}`);
+      return `aad:${activity.from.aadObjectId}`;
     }
 
     // For emulator testing: use a default test email
@@ -146,6 +173,53 @@ export class AuroraUserService {
     }
 
     throw new Error('Unable to extract user email from Teams context');
+  }
+
+  /**
+   * Resolve an AAD Object ID to an email address via Microsoft Graph API.
+   * Requires GRAPH_APP_TOKEN (app-level bearer token with User.Read.All permission)
+   * or GRAPH_TENANT_ID + GRAPH_CLIENT_ID + GRAPH_CLIENT_SECRET for client credentials flow.
+   * Falls back gracefully if Graph API is not configured.
+   */
+  async lookupEmailByAadObjectId(aadObjectId: string): Promise<string | null> {
+    const graphToken = process.env.GRAPH_APP_TOKEN;
+    const tenantId = process.env.GRAPH_TENANT_ID;
+    const clientId = process.env.GRAPH_CLIENT_ID;
+    const clientSecret = process.env.GRAPH_CLIENT_SECRET;
+
+    try {
+      let bearerToken = graphToken;
+
+      // Acquire token via client credentials if individual token not set
+      if (!bearerToken && tenantId && clientId && clientSecret) {
+        const tokenResponse = await axios.post(
+          `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+          new URLSearchParams({
+            grant_type: 'client_credentials',
+            client_id: clientId,
+            client_secret: clientSecret,
+            scope: 'https://graph.microsoft.com/.default',
+          }),
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        bearerToken = tokenResponse.data.access_token;
+      }
+
+      if (!bearerToken) {
+        console.warn('[UserService] Graph API not configured — set GRAPH_APP_TOKEN or GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET');
+        return null;
+      }
+
+      const graphResponse = await axios.get(
+        `https://graph.microsoft.com/v1.0/users/${aadObjectId}?$select=mail,userPrincipalName,displayName`,
+        { headers: { Authorization: `Bearer ${bearerToken}` } }
+      );
+
+      return graphResponse.data.mail || graphResponse.data.userPrincipalName || null;
+    } catch (error) {
+      console.error(`[UserService] Graph API lookup failed for AAD OID ${aadObjectId}:`, error);
+      return null;
+    }
   }
 
   /**
