@@ -44,3 +44,17 @@ code {
   background: #555;
 }
 
+
+/* Link hover tooltip */
+.link-hover-tooltip {
+  position: fixed;
+  background: rgba(0,0,0,0.8);
+  color: #00D9FF;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+  border: 1px solid #00D9FF44;
+}

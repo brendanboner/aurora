@@ -4,6 +4,8 @@ import './FilterPanel.css';
 interface FilterPanelProps {
   hiddenNodeTypes: Set<string>;
   onNodeTypeToggle: (nodeType: string) => void;
+  hiddenLinkTypes: Set<string>;
+  onLinkTypeToggle: (linkType: string) => void;
   importanceThreshold: number;
   onImportanceThresholdChange: (threshold: number) => void;
   curatedOnly: boolean;
@@ -13,10 +15,13 @@ interface FilterPanelProps {
 }
 
 const ALL_NODE_TYPES = ['Resource', 'Topic', 'Organization', 'Person', 'Event', 'DataSource', 'IngestionBatch'];
+const ALL_LINK_TYPES = ['DISCUSSES', 'PUBLISHED_BY', 'ENCOMPASSES', 'AFFILIATED_WITH', 'PRESENTED_AT', 'HAS_SUBTOPIC', 'MENTIONS'];
 
 const FilterPanel: React.FC<FilterPanelProps> = ({
   hiddenNodeTypes,
   onNodeTypeToggle,
+  hiddenLinkTypes,
+  onLinkTypeToggle,
   importanceThreshold,
   onImportanceThresholdChange,
   curatedOnly,
@@ -42,6 +47,24 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                   disabled={isLoading}
                 />
                 <span>{nodeType}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Relationship Type Toggles */}
+        <div className="filter-group">
+          <h4>Relationship Types</h4>
+          <div className="node-type-toggles">
+            {ALL_LINK_TYPES.map((linkType) => (
+              <label key={linkType} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={!hiddenLinkTypes.has(linkType)}
+                  onChange={() => onLinkTypeToggle(linkType)}
+                  disabled={isLoading}
+                />
+                <span>{linkType}</span>
               </label>
             ))}
           </div>
