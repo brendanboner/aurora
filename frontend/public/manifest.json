@@ -39,6 +39,27 @@
       "scopes": ["personal"]
     }
   ],
+  "bots": [
+    {
+      "botId": "{{BOT_ID}}",
+      "scopes": ["personal", "team", "groupchat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal", "team", "groupchat"],
+          "commands": [
+            { "title": "feed", "description": "Show your personalized content feed" },
+            { "title": "agents", "description": "List available AI content agents" },
+            { "title": "follow <agent>", "description": "Follow a content agent by name" },
+            { "title": "unfollow <agent>", "description": "Unfollow a content agent" },
+            { "title": "ask <agent> <question>", "description": "Chat with a specific agent" },
+            { "title": "help", "description": "Show available commands" }
+          ]
+        }
+      ]
+    }
+  ],
   "validDomains": [
     "aurora-octo.xcloudiq.com"
   ],

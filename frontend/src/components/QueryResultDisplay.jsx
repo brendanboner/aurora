@@ -606,7 +606,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                   const styledChildren = React.Children.map(children, (child) => {
                     return typeof child === 'string' ? renderCitationFragments(child) : child;
                   });
-                  return <p style={{ margin: '0 0 10px 0' }}>{styledChildren}</p>;
+                  return <p>{styledChildren}</p>;
                 },
                 li: ({children}) => {
                   const styledChildren = React.Children.map(children, (child) => {

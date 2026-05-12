@@ -276,6 +276,25 @@
   margin-bottom: 0;
 }
 
+/* Consistent list styling in simple message text (welcome, error messages) */
+.message-text ul,
+.message-text ol {
+  margin: 0 0 12px 0;
+  padding-left: 24px;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.message-text li {
+  margin: 6px 0;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.message-text li + li {
+  margin-top: 4px;
+}
+
 .message-text code {
   background-color: rgba(137, 129, 229, 0.2);
   padding: 2px 6px;
