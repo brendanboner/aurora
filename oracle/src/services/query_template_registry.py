@@ -407,6 +407,7 @@ class QueryTemplateRegistry:
                    AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
                    THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
               WHERE effective_date >= max_threshold
+                AND effective_date <= datetime()
 
               // Filter by organization (WFA, WBA, etc.) - this ensures "Wi-Fi Alliance updates" only returns WFA sources
               WITH r, effective_date, primary_threshold, fallback_threshold, items_per_group, group_limit, requested_days
@@ -683,9 +684,10 @@ class QueryTemplateRegistry:
               WITH r, doc_threshold, half_limit
               WITH r, doc_threshold, half_limit,
                   CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year
+                   THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
             WHERE effective_date >= doc_threshold
+              AND effective_date <= datetime()
             
             // Filter by datasource (workgroup) via INGESTED_FROM relationship
             WITH r, doc_threshold, half_limit
@@ -1151,11 +1153,12 @@ class QueryTemplateRegistry:
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
             WITH r, threshold,
-                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
-                      WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
-                      WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                      AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year
+                      THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
             WHERE toLower(r.category) = 'decision'
               AND effective_date >= threshold
+              AND effective_date <= datetime()
             
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             WHERE t.relevance >= 0.5
@@ -1845,8 +1848,11 @@ class QueryTemplateRegistry:
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
             WITH r, doc_threshold,
-                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                      AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year
+                      THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
             WHERE effective_date >= doc_threshold
+              AND effective_date <= datetime()
               AND ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
               // Exclude previously used content

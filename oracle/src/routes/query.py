@@ -929,6 +929,18 @@ async def query_stream(
                 conversation_history=conversation_history or None,
             )
 
+            client = get_llm_client()
+            if not client:
+                # LLM unavailable — fall back to the pre-generated answer
+                answer = response.answer or ""
+                meta = _build_stream_meta(response)
+                meta["answer"] = answer
+                yield f"data: [META] {json.dumps(meta)}\n\n"
+                for chunk in _split_into_chunks(answer):
+                    yield f"data: {json.dumps({'token': chunk})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
             full_answer = []
             async for token in call_llm_stream(
                 client, messages,

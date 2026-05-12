@@ -366,6 +366,9 @@ def _extract_document_date(documents: list[dict], newest: bool) -> str | None:
         try:
             from dateutil.parser import parse as date_parse
             result = raw if isinstance(raw, datetime) else date_parse(str(raw))
+            # Strip timezone info to ensure all datetimes are comparable (naive)
+            if hasattr(result, 'tzinfo') and result.tzinfo is not None:
+                result = result.replace(tzinfo=None)
             if result.year < 2000 or result.year > _current_year + 1:
                 return None
             return result
