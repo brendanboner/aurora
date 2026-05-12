@@ -112,6 +112,13 @@ export class AuroraUserService {
    * If extractUserEmail() returned an AAD OID placeholder, resolves it via Graph API first.
    */
   async getOrCreateUser(emailOrAadPlaceholder: string, displayName: string): Promise<AuroraUser> {
+    // Short-circuit with mock user when USE_MOCK_DATA is enabled — avoids any backend call
+    if (process.env.USE_MOCK_DATA === 'true') {
+      return this.getMockUser(emailOrAadPlaceholder.startsWith('aad:')
+        ? `${emailOrAadPlaceholder.substring(4)}@teams.aad`
+        : emailOrAadPlaceholder);
+    }
+
     let email = emailOrAadPlaceholder;
 
     // Resolve AAD OID placeholder via Graph API

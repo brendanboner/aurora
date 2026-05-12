@@ -132,15 +132,26 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
     for i, doc in enumerate(documents, 1):
         title = doc.get("title", "Untitled")
         summary = doc.get("summary", "No summary available.")
-        date = doc.get("publish_date", "Unknown date")
+        raw_date = doc.get("publish_date")
         url = doc.get("url", "")
         topics = ", ".join(doc.get("topics", [])) or "None"
         orgs = ", ".join(doc.get("organizations", [])) or "None"
         datasource = doc.get("datasource_id", "Unknown source")
         
+        # Build a date label that never leaks scraped_at as a fake publish date.
+        # temporal_confidence='low' means no valid publish_date was found — the
+        # document should be treated as reference material, not as recent news.
+        temporal_confidence = doc.get("temporal_confidence", "high")
+        if raw_date and raw_date not in ("", "Unknown date", "unknown"):
+            date_display = raw_date
+        elif temporal_confidence == "low":
+            date_display = "publication date unknown — treat as reference material, not recent news"
+        else:
+            date_display = "date not recorded"
+        
         # URL is intentionally not labeled here — the LLM echoes labeled fields
         # (e.g. "URL:") verbatim into the answer text, producing "[2]URL: ..." noise.
-        formatted.append(f"""[{i}] **{title}** ({datasource}, {date})
+        formatted.append(f"""[{i}] **{title}** ({datasource}, {date_display})
    {url}
    Topics: {topics} | Orgs: {orgs}
    {summary}
@@ -345,8 +356,11 @@ def _extract_document_date(documents: list[dict], newest: bool) -> str | None:
 
     parsed_dates: list[datetime] = []
     for doc in documents:
-        # Try each field in priority order, skip invalid values
-        for field in ("publish_date", "start_date", "created_at", "scraped_at"):
+        # Only use authoritative publication dates — never scraped_at or created_at.
+        # A document with only scraped_at has an unknown publication date; falling
+        # back to scraped_at would make a 2019 document scraped today appear as
+        # "most recent content from today", poisoning recency answers.
+        for field in ("publish_date", "start_date"):
             dt = _parse_safe(doc.get(field))
             if dt is not None:
                 parsed_dates.append(dt)

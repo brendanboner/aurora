@@ -1,8 +1,7 @@
-import { TurnContext, CardFactory, Attachment } from 'botbuilder';
+import { TurnContext } from 'botbuilder';
 import { AuroraUserService } from '../services/auroraUserService';
-import { AuroraOracleService, OracleResponse } from '../services/auroraOracleService';
-import * as ACData from 'adaptivecards-templating';
-import oracleResponseCardTemplate from '../adaptiveCards/oracleResponseCard.json';
+import { AuroraOracleService } from '../services/auroraOracleService';
+import { buildOracleResponseCard } from '../helpers/cardBuilder';
 import axios from 'axios';
 
 export class ChatHandler {
@@ -30,7 +29,7 @@ export class ChatHandler {
       const response = await this.oracleService.query(auroraUser.id, question);
       
       // Send response as card with text summary for emulator compatibility
-      const card = this.createOracleResponseCard(response, question);
+      const card = buildOracleResponseCard(response, question);
       const sourceCount = response.documents?.length || 0;
       
       // Format all sources as links
@@ -70,48 +69,4 @@ export class ChatHandler {
     }
   }
   
-  /**
-   * Create Adaptive Card from Oracle response
-   */
-  private createOracleResponseCard(response: OracleResponse, question: string): Attachment {
-    const template = new ACData.Template(oracleResponseCardTemplate);
-    
-    // Format citations for display
-    const citations = response.documents.slice(0, 5).map((doc, index) => ({
-      title: `[${index + 1}] ${doc.datasource_name || 'Source'}`,
-      value: doc.title
-    }));
-    
-    // Format topics if available
-    const topics = response.graph_context?.central_topics?.slice(0, 5).join(', ') || '';
-    
-    const cardData = {
-      question: question,
-      answer: response.answer || 'I found some relevant documents but couldn\'t generate a specific answer. Please review the sources below.',
-      citations: citations,
-      confidence_score: response.confidence_score ? Math.round(response.confidence_score * 100) : null,
-      topics: topics,
-      document_count: response.documents.length,
-      frontend_url: process.env.AURORA_FRONTEND_URL || 'http://localhost:3000',
-      documents: response.documents.slice(0, 5).map((doc, index) => ({
-        number: index + 1,
-        title: doc.title || 'Source',
-        url: doc.url || '',
-        summary: doc.summary
-          ? doc.summary.substring(0, 150) + (doc.summary.length > 150 ? '...' : '')
-          : '',
-        date: doc.publish_date
-          ? new Date(doc.publish_date).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })
-          : 'Unknown date',
-      }))
-    };
-    
-    const cardPayload = template.expand({ $root: cardData });
-    
-    return CardFactory.adaptiveCard(cardPayload);
-  }
 }

@@ -1286,7 +1286,8 @@ class FastEngine:
                 {
                     "title": doc.title or "Untitled",
                     "summary": doc.summary or "No summary available",
-                    "publish_date": doc.publish_date or "Unknown date",
+                    "publish_date": doc.publish_date or "",
+                    "temporal_confidence": doc.temporal_confidence or "high",
                     "url": doc.url,
                     "topics": doc.topics,
                     "organizations": doc.organizations,
@@ -1566,6 +1567,7 @@ class FastEngine:
                     url=url,
                     relevance_score=relevance,
                     publish_date=date,
+                    temporal_confidence=node.get("temporal_confidence") or ("high" if date else "low"),
                     source=source,
                     datasource_id=datasource_id,
                     category=category,

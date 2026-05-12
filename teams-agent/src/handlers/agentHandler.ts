@@ -3,6 +3,7 @@ import * as ACData from 'adaptivecards-templating';
 import { AuroraUserService } from '../services/auroraUserService';
 import { AuroraAgentService } from '../services/auroraAgentService';
 import { AuroraOracleService } from '../services/auroraOracleService';
+import { buildOracleResponseCard } from '../helpers/cardBuilder';
 import agentListCardTemplate from '../adaptiveCards/agentListCard.json';
 
 /**
@@ -208,6 +209,23 @@ export class AgentHandler {
     await context.sendActivity(`💬 Asking **${matchedAgent.name}**: *${question}*...`);
 
     const response = await this.oracleService.query(auroraUser.id, agentContext + question);
-    await context.sendActivity(response.answer || 'I could not find a relevant answer.');
+
+    if (!response.answer && (!response.documents || response.documents.length === 0)) {
+      await context.sendActivity(`**${matchedAgent.name}** could not find a relevant answer to that question.`);
+      return;
+    }
+
+    // Build the same clickable Adaptive Card used for direct Oracle queries
+    const card = buildOracleResponseCard(response, question);
+
+    let sourceLinks = '';
+    if (response.documents && response.documents.length > 0) {
+      sourceLinks = '\n\n📚 **Sources:**\n' + response.documents.slice(0, 5).map((doc, idx) =>
+        `${idx + 1}. [${doc.title}](${doc.url})`
+      ).join('\n');
+    }
+    const summary = `**${matchedAgent.name}:** ${response.answer || 'Here are the results:'}${sourceLinks}`;
+
+    await context.sendActivity({ text: summary, attachments: [card] });
   }
 }
