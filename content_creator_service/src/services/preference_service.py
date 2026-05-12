@@ -1,6 +1,7 @@
 """Deterministic preference learning and persistence."""
 from __future__ import annotations
 
+import logging
 from typing import Dict, Iterable, Optional
 
 from psycopg2.extras import Json
@@ -8,6 +9,7 @@ from psycopg2.extras import Json
 from .. import db
 from ..models.preferences import UserPreferenceProfile
 
+logger = logging.getLogger(__name__)
 _DEFAULT_TOPIC_WEIGHT = 0.5
 
 
@@ -18,6 +20,28 @@ class PreferenceService:
             (user_id,),
         )
         if not row:
+            # Verify user exists in app_users before creating profile
+            # If user doesn't exist, the auth→backend sync failed or hasn't happened yet
+            user_exists = db.fetch_one(
+                "SELECT 1 FROM app_users WHERE id = %s",
+                (user_id,),
+            )
+            if not user_exists:
+                # This should only happen if:
+                # 1. Auth service sync to backend failed during login
+                # 2. User is accessing API directly without going through auth gateway
+                # 3. Race condition between login and first content_creator_service request
+                logger.error(
+                    f"User {user_id} not found in app_users table when trying to get preference profile. "
+                    "This indicates a user sync failure during login. User should re-login."
+                )
+                raise ValueError(
+                    f"User {user_id} not found in database. "
+                    "This typically means the user login sync failed. "
+                    "Please log out and log back in to retry the sync."
+                )
+            
+            # User exists in app_users but not in user_preference_profile - create it
             self._create_default_profile(user_id)
             row = db.fetch_one(
                 "SELECT * FROM user_preference_profile WHERE user_id = %s",

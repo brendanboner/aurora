@@ -13,13 +13,45 @@ PG_DSN = os.getenv(
 )
 
 _conn = None
+_conn_lock = None
 
 def get_conn():
-    global _conn
-    if _conn is None:
-        _conn = psycopg2.connect(PG_DSN)
-        _conn.autocommit = True
-    return _conn
+    """
+    Get database connection.
+    Uses a singleton pattern with basic thread safety.
+    
+    Note: This is a simple connection pool. For production with high concurrency,
+    consider using a proper connection pool like psycopg2.pool.ThreadedConnectionPool.
+    """
+    global _conn, _conn_lock
+    
+    # Lazy initialization of lock
+    if _conn_lock is None:
+        import threading
+        _conn_lock = threading.Lock()
+    
+    with _conn_lock:
+        # Check if connection is alive
+        if _conn is not None:
+            try:
+                # Test connection with a simple query
+                with _conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                logger.warning("Database connection lost, reconnecting...")
+                try:
+                    _conn.close()
+                except:
+                    pass
+                _conn = None
+        
+        # Create new connection if needed
+        if _conn is None:
+            logger.info(f"Creating new database connection to {PG_DSN.split('@')[1] if '@' in PG_DSN else 'database'}")
+            _conn = psycopg2.connect(PG_DSN)
+            _conn.autocommit = True
+        
+        return _conn
 
 def fetchone(query, params=None):
     conn = get_conn()
@@ -45,18 +77,44 @@ def execute(query, params=None):
 def create_user(user_id: str, email: str, display_name: str) -> Dict[str, Any]:
     """
     Create a new user with Cognito UUID.
+    Handles concurrent creation attempts gracefully using ON CONFLICT.
     
     Args:
         user_id: Cognito user UUID (from sub claim)
         email: User email
         display_name: User display name
+    
+    Returns:
+        User dict (either newly created or existing if race condition occurred)
+    
+    Note:
+        Email has UNIQUE constraint. If user_id collision occurs, we update email/display_name.
+        If email collision occurs with different user_id, PostgreSQL will raise IntegrityError.
+        This shouldn't happen in normal Cognito flow (one user = one email = one sub).
     """
     query = """
         INSERT INTO app_users (id, email, display_name)
         VALUES (%s, %s, %s)
+        ON CONFLICT (id) DO UPDATE 
+        SET email = EXCLUDED.email,
+            display_name = COALESCE(EXCLUDED.display_name, app_users.display_name),
+            updated_at = NOW()
         RETURNING id, email, display_name, created_at, updated_at
     """
-    return fetchone(query, (user_id, email, display_name))
+    try:
+        return fetchone(query, (user_id, email, display_name))
+    except psycopg2.IntegrityError as e:
+        if 'app_users_email_key' in str(e) or 'duplicate key value violates unique constraint' in str(e):
+            # Email already exists with different user_id - this is a data inconsistency
+            logger.error(
+                f"Email {email} already exists with different user_id. "
+                f"Attempted user_id: {user_id}. This indicates a Cognito/database mismatch."
+            )
+            raise ValueError(
+                f"Email {email} is already registered to another user. "
+                "This should not happen with Cognito. Please contact support."
+            ) from e
+        raise
 
 def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) -> Dict[str, Any]:
     """
@@ -82,7 +140,35 @@ def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) ->
         conn.autocommit = False
         
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # Update all dependent tables first (in order of dependencies)
+            # CRITICAL: Update app_users FIRST so the new_id exists before dependent tables reference it
+            # When we UPDATE app_users SET id=new_id WHERE id=old_id:
+            #   - The row's PK changes from old_id to new_id
+            #   - Dependent tables still have old_id in their FK columns (temporarily invalid)
+            # Then we UPDATE dependent tables SET user_id=new_id WHERE user_id=old_id:
+            #   - Finds rows by their current value (old_id)
+            #   - Changes them to new_id
+            #   - FK constraint check verifies new_id exists in app_users (it does)
+            # At COMMIT, all FK constraints are satisfied.
+            cur.execute(
+                """
+                UPDATE app_users 
+                SET id = %s, display_name = COALESCE(%s, display_name), updated_at = NOW()
+                WHERE id = %s AND email = %s
+                RETURNING id, email, display_name, created_at, updated_at
+                """,
+                (new_id, display_name, old_id, email)
+            )
+            
+            user = cur.fetchone()
+            
+            if not user:
+                raise ValueError(f"Failed to migrate user {old_id} - user not found or email mismatch")
+            
+            # Now update all dependent tables - they still have old_id values
+            # The WHERE clause finds them by old_id, SET changes to new_id
+            # FK constraints check that new_id exists in app_users (it does now)
+            
+            # Backend database tables
             cur.execute(
                 "UPDATE user_preferences SET user_id = %s WHERE user_id = %s",
                 (new_id, old_id)
@@ -108,21 +194,23 @@ def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) ->
                 (new_id, old_id)
             )
             
-            # Now update the user record itself
+            # Content creator service tables (share same PostgreSQL database)
             cur.execute(
-                """
-                UPDATE app_users 
-                SET id = %s, display_name = COALESCE(%s, display_name), updated_at = NOW()
-                WHERE id = %s AND email = %s
-                RETURNING id, email, display_name, created_at, updated_at
-                """,
-                (new_id, display_name, old_id, email)
+                "UPDATE user_preference_profile SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
             )
-            
-            user = cur.fetchone()
-            
-            if not user:
-                raise ValueError(f"Failed to migrate user {old_id} - user not found or email mismatch")
+            cur.execute(
+                "UPDATE user_agent_follow SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE user_post_reaction SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE user_agent SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
             
             # Commit the transaction
             conn.commit()
@@ -184,7 +272,23 @@ def get_or_create_user(
             user = _migrate_user_id(old_id, user_id, email, display_name)
         else:
             # Create new user in Postgres if doesn't exist
+            # Note: create_user has ON CONFLICT handling for race conditions
             logger.info(f"Creating new user in Postgres: {user_id} ({email})")
+            try:
+                user = create_user(user_id, email, display_name)
+            except ValueError as e:
+                # Email already registered to different user_id (shouldn't happen with Cognito)
+                logger.error(f"Failed to create user {user_id} ({email}): {e}")
+                raise
+    else:
+        # User already exists - update email/display_name if they've changed in Cognito
+        # This handles the case where user changed email in Cognito
+        if user['email'] != email or (display_name and user['display_name'] != display_name):
+            logger.info(
+                f"Updating user {user_id}: email {user['email']}->{email}, "
+                f"display_name {user['display_name']}->{display_name}"
+            )
+            # Use create_user which has ON CONFLICT logic to update
             user = create_user(user_id, email, display_name)
     
     # Always ensure user is synced to Neo4j (function checks if already synced)
@@ -209,6 +313,7 @@ def _ensure_user_in_neo4j(user_uuid: str, email: str, full_name: str, given_name
         given_name: Optional first name (for logging/debugging)
         family_name: Optional last name (for logging/debugging)
     """
+    client = None
     try:
         from neo4j_client.client import Neo4jClient
         from neo4j_client.repository import GraphRepository
@@ -293,6 +398,28 @@ def _ensure_user_in_neo4j(user_uuid: str, email: str, full_name: str, given_name
     except Exception as e:
         logger.error(f"Failed to sync user {user_uuid} to Neo4j: {e}", exc_info=True)
         # Don't fail the request if Neo4j sync fails
+    finally:
+        # Always close Neo4j connection to prevent connection leaks
+        if client is not None:
+            try:
+                client.close()
+            except Exception as e:
+                logger.warning(f"Failed to close Neo4j connection: {e}")
+```
+                raise ValueError(f"Failed to migrate user {old_id} - user not found or email mismatch")
+            
+            # Commit the transaction
+            conn.commit()
+            logger.info(f"Successfully migrated user from {old_id} to {new_id}")
+            return user
+            
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to migrate user ID from {old_id} to {new_id}: {e}")
+        raise
+    finally:
+        # Restore original autocommit setting
+        conn.autocommit = original_autocommit
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:  # Changed from int to str
