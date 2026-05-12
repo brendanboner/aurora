@@ -25,8 +25,8 @@
 ## 🔧 Rebuild Package (if needed)
 
 ```bash
-# Default (uses d23ew7gbss3vnh.cloudfront.net)
-./scripts/create-teams-package.sh d23ew7gbss3vnh.cloudfront.net .
+# Default (uses aurora-octo.xcloudiq.com)
+./scripts/create-teams-package.sh aurora-octo.xcloudiq.com .
 
 # Custom domain
 ./scripts/create-teams-package.sh your-domain.com .
@@ -57,7 +57,7 @@
 ```
 
 ### Tab shows "Cannot reach app"
-- Check: `curl -I https://d23ew7gbss3vnh.cloudfront.net/teams`
+- Check: `curl -I https://aurora-octo.xcloudiq.com/teams`
 - Ensure HTTPS (not HTTP)
 - Verify CORS headers allow Teams
 
@@ -83,5 +83,5 @@ vim frontend/public/manifest.json
 **Package**: `aurora-teams-app.zip` (2.1 KB)  
 **Status**: ✅ All checks passed  
 **Schema**: Teams v1.16 (Office 365)  
-**Domain**: d23ew7gbss3vnh.cloudfront.net  
+**Domain**: aurora-octo.xcloudiq.com  
 **Ready**: Yes - upload now!

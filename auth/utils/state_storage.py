@@ -93,3 +93,34 @@ def cleanup_expired_states() -> int:
         count += 1
     
     return count
+
+
+# ─── Teams SSO session storage ────────────────────────────────────────────────
+# Teams SSO tokens are Azure AD tokens (not Cognito). After validating one we
+# store the user info in Redis under a session key and return a short-lived
+# cookie.  The auth middleware reads this cookie to authenticate tab requests
+# without a full Cognito redirect.
+
+TEAMS_SESSION_TTL = 3600  # 1 hour (matches Cognito access-token lifetime)
+TEAMS_SESSION_PREFIX = "teams:session:"
+
+
+def store_teams_session(session_id: str, user_info: Dict[str, Any]) -> None:
+    """Store validated Teams-SSO user info in Redis."""
+    client = get_redis_client()
+    key = f"{TEAMS_SESSION_PREFIX}{session_id}"
+    client.setex(key, TEAMS_SESSION_TTL, json.dumps(user_info))
+
+
+def get_teams_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve Teams-SSO user info from Redis. Returns None if not found / expired."""
+    client = get_redis_client()
+    key = f"{TEAMS_SESSION_PREFIX}{session_id}"
+    value = client.get(key)
+    return json.loads(value) if value else None
+
+
+def delete_teams_session(session_id: str) -> None:
+    """Remove a Teams-SSO session (e.g., on logout)."""
+    client = get_redis_client()
+    client.delete(f"{TEAMS_SESSION_PREFIX}{session_id}")

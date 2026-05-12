@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     # Supports multiple groups as comma-separated list (e.g., "aurora-users,us-east-1_xxx_Extreme-Entra-SSO")
     required_cognito_groups: str = "aurora-users"  # Users in ANY of these groups can access the app
     
+    # Azure AD / Entra ID — required for Teams SSO tab authentication
+    # azure_tenant_id: The Azure Active Directory tenant ID (GUID).
+    #   Find in: Azure Portal → Azure Active Directory → Overview → Tenant ID
+    azure_tenant_id: Optional[str] = None
+    # azure_app_client_id: Azure App Registration client ID used in manifest.json webApplicationInfo.
+    #   Should match the "id" field in frontend/public/manifest.json webApplicationInfo section.
+    azure_app_client_id: Optional[str] = None
+    
     # Service URLs
     backend_service_url: str
     curator_service_url: str
