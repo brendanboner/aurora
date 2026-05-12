@@ -1163,12 +1163,10 @@ What would you like to know?`;
             <div className="message message-assistant">
               <div className="message-avatar"><ChatIcon size={20} /></div>
               <div className="message-content">
-                <div className="message-text" style={{ display: 'inline-flex', background: 'var(--response-surface)' }}>
-                  <div className="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
                 </div>
               </div>
             </div>

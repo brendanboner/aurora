@@ -393,6 +393,10 @@
   display: flex;
   gap: 6px;
   padding: 16px;
+  background-color: var(--response-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  width: fit-content;
 }
 
 .typing-indicator span {
