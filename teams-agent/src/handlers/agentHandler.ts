@@ -3,6 +3,7 @@ import { AuroraUserService } from '../services/auroraUserService';
 import { AuroraAgentService } from '../services/auroraAgentService';
 import { AuroraOracleService } from '../services/auroraOracleService';
 import { buildOracleResponseCard } from '../helpers/cardBuilder';
+import { getWorkingGroupBySlug, listWorkingGroupSlugs } from '../services/workingGroupResolver';
 
 /**
  * Handles agent-related commands:
@@ -74,22 +75,24 @@ export class AgentHandler {
     const agentService = new AuroraAgentService(auroraUser.id, email);
     const agents = await agentService.listAgents();
 
-    if (agents.length === 0) {
-      await context.sendActivity('No content agents are currently available.');
-      return;
-    }
-
-    const lines = agents.map((a) => {
-      const desc = (a.description || a.persona || '').slice(0, 100);
-      const slug = (a as any).teams_slug ? ` — \`@${(a as any).teams_slug}\`` : '';
-      return `• **${a.name}**${slug}\n  ${desc}`;
-    });
+    const agentLines = agents.length > 0
+      ? agents.map((a) => {
+          const desc = (a.description || a.persona || '').slice(0, 80);
+          const slug = a.teams_slug ? ` — \`@${a.teams_slug}\`` : '';
+          return `• **${a.name}**${slug}\n  ${desc}`;
+        }).join('\n\n')
+      : '_(none configured)_';
 
     const msg = [
-      `🤖 **Aurora Content Agents** (${agents.length} available)\n`,
-      lines.join('\n\n'),
-      `\n💡 Ask one: \`@aurora-<slug> your question\``,
-      `📰 Follow one: \`follow <name>\``,
+      `🤖 **Aurora Agents — Who can you talk to?**\n`,
+      `**📝 Creator Agents** (personalised personas)`,
+      agentLines,
+      ``,
+      `**🏛 Working Groups & Organisations** (knowledge graph)`,
+      listWorkingGroupSlugs(),
+      ``,
+      `💡 Use: \`@aurora-<slug> your question\``,
+      `📰 Subscribe to updates: \`subscribe @aurora-<slug>\``,
     ].join('\n');
 
     await context.sendActivity(msg);
@@ -243,42 +246,68 @@ export class AgentHandler {
     const auroraUser = await this.userService.getOrCreateUser(email, displayName);
     const agentService = new AuroraAgentService(auroraUser.id, email);
 
+    // 1. Try creator agent first
     const agent = await agentService.getAgentBySlug(teamsSlug);
-    if (!agent) {
-      await context.sendActivity(
-        `❌ No agent found with Teams slug \`@${teamsSlug}\`. Type \`agents\` to see available agents.`
-      );
+    if (agent) {
+      const agentPersona = {
+        name: agent.name,
+        persona: agent.persona,
+        tone_style: agent.tone_style || 'analytical',
+        content_length_preference: agent.content_length_preference || 'medium',
+        expertise_topics: agent.expertise_topics || [],
+        expertise_organisations: agent.expertise_organisations || [],
+        expertise_standards: agent.expertise_standards || [],
+        llm_temperature_override: agent.llm_temperature_override ?? null,
+      };
+      await context.sendActivity(`💬 Asking **${agent.name}** (\`@${teamsSlug}\`): *${question}*...`);
+      const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
+      await this.sendOracleResponse(context, agent.name, response, question);
       return;
     }
 
-    const agentPersona = {
-      name: agent.name,
-      persona: agent.persona,
-      tone_style: agent.tone_style || 'analytical',
-      content_length_preference: agent.content_length_preference || 'medium',
-      expertise_topics: agent.expertise_topics || [],
-      expertise_organisations: agent.expertise_organisations || [],
-      expertise_standards: agent.expertise_standards || [],
-      llm_temperature_override: agent.llm_temperature_override ?? null,
-    };
+    // 2. Fall back to working group persona from registry
+    const wg = getWorkingGroupBySlug(teamsSlug);
+    if (wg) {
+      const wgPersona = {
+        name: wg.name,
+        persona: wg.persona,
+        tone_style: wg.tone_style,
+        content_length_preference: 'medium',
+        expertise_topics: wg.expertise_topics,
+        expertise_organisations: wg.expertise_organisations,
+        expertise_standards: [],
+        llm_temperature_override: null,
+      };
+      await context.sendActivity(`🏛 Asking **${wg.name}** (\`@${teamsSlug}\`): *${question}*...`);
+      const response = await this.oracleService.query(auroraUser.id, question, wgPersona);
+      await this.sendOracleResponse(context, wg.name, response, question);
+      return;
+    }
 
-    await context.sendActivity(`💬 Asking **${agent.name}** (@${teamsSlug}): *${question}*...`);
+    // 3. Nothing matched
+    await context.sendActivity(
+      `❌ No agent or working group found for \`@${teamsSlug}\`.\n\nType \`agents\` to see all available slugs.`
+    );
+  }
 
-    const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
-
+  private async sendOracleResponse(
+    context: TurnContext,
+    speakerName: string,
+    response: any,
+    question: string
+  ): Promise<void> {
     if (!response.answer && (!response.documents || response.documents.length === 0)) {
-      await context.sendActivity(`**${agent.name}** could not find a relevant answer to that question.`);
+      await context.sendActivity(`**${speakerName}** couldn't find relevant information for that question.`);
       return;
     }
 
-    const card = buildOracleResponseCard(response, question);
     const sourceLinks = response.documents?.length
-      ? '\n\n📚 **Sources:**\n' + response.documents.slice(0, 5).map((doc, idx) =>
+      ? '\n\n📚 **Sources:**\n' + response.documents.slice(0, 5).map((doc: any, idx: number) =>
           `${idx + 1}. [${doc.title}](${doc.url})`
         ).join('\n')
       : '';
-    const summary = `**${agent.name}:** ${response.answer || 'Here are the results:'}${sourceLinks}`;
 
-    await context.sendActivity({ text: summary, attachments: [card] });
+    const answer = response.answer || 'Here are the relevant results:';
+    await context.sendActivity(`**${speakerName}:** ${answer}${sourceLinks}`);
   }
 }
