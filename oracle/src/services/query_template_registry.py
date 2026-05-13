@@ -240,6 +240,8 @@ class QueryTemplate:
             # Without this, ALL events are returned and the LLM can't isolate the one asked about.
             if route_id_val in ("upcoming_events", "past_events") and plan.raw_query:
                 _event_name_patterns = [
+                    # "when is wireless japan" / "when is the member meeting" (bare name, no qualifier)
+                    r'when\s+(?:is|are)\s+(?:the\s+)?([\w][\w\s\-]{2,40}?)(?:\s+\d{4})?$',
                     # "when is the next wgc emea" / "when is the upcoming wifi 7 summit"
                     r'when\s+(?:is|was|will\s+be)\s+(?:the\s+)?(?:next|last|upcoming|previous|latest)\s+([\w\s\-]+?)(?:\s+(?:event|conference|meeting|summit|workshop|webinar|session))?(?:\s+\d{4})?$',
                     # "next wgc emea" / "upcoming wgc emea event"
@@ -253,10 +255,19 @@ class QueryTemplate:
                     em = re.search(ep, query_for_event, re.IGNORECASE)
                     if em:
                         candidate = em.group(1).strip()
-                        # Skip if it's purely a generic temporal word
+                        c_lower = candidate.lower()
+                        # Skip if it's a generic category or temporal phrase
                         _generic = {"event", "events", "meeting", "meetings", "conference",
-                                    "conferences", "summit", "workshop", "year", "quarter", "month"}
-                        if candidate.lower() not in _generic and len(candidate) > 2:
+                                    "conferences", "summit", "workshop", "year", "quarter",
+                                    "month", "week", "day", "today"}
+                        # Skip if starts with a preposition/temporal indicator
+                        _time_starters = ("for ", "in ", "on ", "at ", "this ", "next ", "last ",
+                                          "the ", "any ", "all ")
+                        is_time_phrase = any(c_lower.startswith(p) for p in _time_starters)
+                        has_time_word = any(w in c_lower for w in ("this week", "next week",
+                                            "this month", "this year", "today", "tomorrow"))
+                        if (c_lower not in _generic and len(candidate) > 2
+                                and not is_time_phrase and not has_time_word):
                             event_name_extracted = candidate
                             break
                 params["event_name"] = event_name_extracted
@@ -267,6 +278,34 @@ class QueryTemplate:
                     # Clear topics so the event_name match is the only constraint.
                     params["topics"] = []
                     params["workgroups"] = []
+
+            # For UPCOMING_EVENTS, expand recognised org shortcodes to datasource prefixes
+            # so "wfa" matches wfa_*, "wba" matches wba_*, etc.
+            # Also: when "this week" query has end_date = today, extend to Sunday.
+            if route_id_val == "upcoming_events":
+                _ORG_PREFIXES = {"wfa", "wba", "ietf", "ieee", "ieee802", "mef", "nist", "onf", "dmtf"}
+                raw_wgs = params.get("workgroups") or []
+                expanded = []
+                for wg in raw_wgs:
+                    wg_lower = wg.lower().strip()
+                    if wg_lower in _ORG_PREFIXES:
+                        expanded.append(wg_lower)   # Cypher STARTS WITH handles prefix match
+                    else:
+                        expanded.append(wg)
+                params["workgroups"] = expanded
+
+                # "this week" — if end_date was capped at today, extend to end of week (Sunday)
+                from datetime import date, timedelta
+                if params.get("start_date") and params.get("end_date"):
+                    try:
+                        start_d = date.fromisoformat(params["start_date"])
+                        end_d = date.fromisoformat(params["end_date"])
+                        today_d = date.today()
+                        # If end_date is today and start_date is this week's Monday, extend to Sunday
+                        if end_d == today_d and start_d == today_d - timedelta(days=today_d.weekday()):
+                            params["end_date"] = (start_d + timedelta(days=6)).isoformat()
+                    except (ValueError, TypeError):
+                        pass
 
             # ORGANIZATION_REPRESENTATIVES - "who represents X in Y"
             # Split organizations into (a) the company whose people we want and
@@ -384,7 +423,48 @@ class QueryTemplate:
                 params["limit"] = settings.fast_template_max_nodes
         else:
             params["limit"] = settings.fast_template_max_nodes
-        
+
+        # WBA-specific template parameters.
+        # These templates need $workgroup_name, $days, $programme_name, and
+        # $datasource_ids rather than the standard RECENT_CONTENT set.
+        # Build them from the plan fields that the local router did populate so
+        # that prewarm re-runs and direct calls to these routes never crash with
+        # "Expected parameter(s): workgroup_name, days".
+        if hasattr(plan, 'route_id'):
+            route_id_val = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+
+            if route_id_val in ('wba_recent_activity', 'wba_last_meeting'):
+                # Derive workgroup_name from the first workgroup or topic available.
+                wg_name = ''
+                if plan.workgroups:
+                    wg_name = plan.workgroups[0]
+                elif plan.topics:
+                    wg_name = plan.topics[0]
+                elif plan.raw_query:
+                    wg_name = plan.raw_query  # last resort — fuzzy match in Cypher
+                params['workgroup_name'] = wg_name
+                params['days'] = plan.relative_days or 30
+
+            elif route_id_val == 'wba_workgroups_of':
+                programme_name = ''
+                if plan.workgroups:
+                    programme_name = plan.workgroups[0]
+                elif plan.topics:
+                    programme_name = plan.topics[0]
+                elif plan.raw_query:
+                    programme_name = plan.raw_query
+                params['programme_name'] = programme_name
+
+            elif route_id_val in ('my_groups_digest', 'datasource_latest'):
+                # MY_GROUPS_DIGEST and DATASOURCE_LATEST use $datasource_ids
+                # (populated by fast_engine from user memberships / explicit filter).
+                params['datasource_ids'] = (
+                    plan.preferred_datasources
+                    or plan.workgroups
+                    or params.get('workgroups', [])
+                )
+                params['days'] = plan.relative_days or 30
+
         return params
     
     def execute_post_process(self, results: List[Dict]) -> List[Dict]:
@@ -1119,17 +1199,15 @@ class QueryTemplateRegistry:
               AND ($event_name IS NULL OR toLower(coalesce(e.name, '')) CONTAINS toLower($event_name)
                    OR toLower(coalesce(e.description, '')) CONTAINS toLower($event_name))
 
-            // Workgroup filter: match via document mentions OR event name/description contains org term
-            // (Events are often standalone calendar entries not linked through documents)
+            // Org/workgroup filter: use e.datasource_id directly (all events carry this property).
+            // $workgroups may contain exact datasource IDs (wfa_causeway_wifi8mtg) OR
+            // org prefixes (wfa, wba) that should match any datasource starting with that prefix.
             WITH e
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
-                   OR EXISTS {
-                       MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
-                       WHERE coalesce(r.archived, false) = false
-                         AND ds.datasource_id IN $workgroups
-                   }
                    OR any(wg IN $workgroups
-                          WHERE toLower(coalesce(e.name, '')) CONTAINS toLower(wg)
+                          WHERE e.datasource_id = wg
+                             OR e.datasource_id STARTS WITH (wg + '_')
+                             OR toLower(coalesce(e.name, '')) CONTAINS toLower(wg)
                              OR toLower(coalesce(e.description, '')) CONTAINS toLower(wg)))
 
             // Topic filter — skip entirely when searching by event name
@@ -1164,6 +1242,7 @@ class QueryTemplateRegistry:
                 e.event_type as event_type,
                 e.description as description,
                 e.status as status,
+                e.datasource_id as datasource_id,
                 null as workgroup,
                 topics
             LIMIT $limit
@@ -1214,6 +1293,7 @@ class QueryTemplateRegistry:
                 e.event_type as event_type,
                 e.description as description,
                 e.status as status,
+                e.datasource_id as datasource_id,
                 null as workgroup
             LIMIT $limit
             """

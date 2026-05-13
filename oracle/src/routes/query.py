@@ -887,7 +887,22 @@ async def query_stream(
             else:
                 engine = BaselineEngine()
 
-            response = await engine.query(request, user=user, query_id=query_id)
+            try:
+                response = await engine.query(request, user=user, query_id=query_id)
+            except Exception as fast_err:
+                # Streaming path needs the same fast→baseline fallback as the
+                # non-streaming path.  Without this, any fast-engine failure
+                # (zero_docs_fallback, Cypher error, etc.) surfaces as
+                # "Unable to get a response" instead of trying the baseline.
+                if use_fast and settings.fast_fallback_to_baseline:
+                    logger.warning(
+                        f"[{query_id}] Stream: fast engine failed, falling back to baseline: {fast_err}"
+                    )
+                    engine = BaselineEngine()
+                    use_fast = False
+                    response = await engine.query(request, user=user, query_id=query_id)
+                else:
+                    raise
 
             # Fast pipeline: answer is already fully synthesised — stream the pre-generated
             # text as word chunks rather than calling the LLM a second time.
