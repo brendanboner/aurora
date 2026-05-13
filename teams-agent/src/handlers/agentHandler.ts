@@ -4,6 +4,7 @@ import { AuroraAgentService } from '../services/auroraAgentService';
 import { AuroraOracleService } from '../services/auroraOracleService';
 import { buildOracleResponseCard } from '../helpers/cardBuilder';
 import { getWorkingGroupBySlug, listWorkingGroupSlugs } from '../services/workingGroupResolver';
+import { conversationReferenceStore } from '../services/conversationReferenceStore';
 
 /**
  * Handles agent-related commands:
@@ -73,29 +74,63 @@ export class AgentHandler {
     const auroraUser = await this.userService.getOrCreateUser(email, displayName);
 
     const agentService = new AuroraAgentService(auroraUser.id, email);
-    const agents = await agentService.listAgents();
+    const convId = context.activity.conversation.id;
 
+    // Fetch all data in parallel
+    const [agents, convRef, followedAgents] = await Promise.all([
+      agentService.listAgents(),
+      conversationReferenceStore.get(convId),
+      agentService.listFollowedAgents(auroraUser.id).catch(() => [] as any[]),
+    ]);
+
+    const subscribedSlugs = new Set(convRef?.subscribed_agent_slugs ?? []);
+    const followedIds = new Set((followedAgents || []).map((a: any) => a.id));
+
+    // ── My Agents section ────────────────────────────────────────────────────
+    const myAgentLines: string[] = [];
+    for (const a of agents) {
+      const isSubscribed = a.teams_slug && subscribedSlugs.has(a.teams_slug);
+      const isFollowed = followedIds.has(a.id);
+      if (isSubscribed || isFollowed) {
+        const badges = [isSubscribed ? '🔔' : '', isFollowed ? '⭐' : ''].filter(Boolean).join(' ');
+        const slug = a.teams_slug ? ` — \`@${a.teams_slug}\`` : '';
+        myAgentLines.push(`• ${badges} **${a.name}**${slug}`);
+      }
+    }
+
+    // ── All agents section ───────────────────────────────────────────────────
     const agentLines = agents.length > 0
       ? agents.map((a) => {
           const desc = (a.description || a.persona || '').slice(0, 80);
           const slug = a.teams_slug ? ` — \`@${a.teams_slug}\`` : '';
-          return `• **${a.name}**${slug}\n  ${desc}`;
+          const badges = [
+            a.teams_slug && subscribedSlugs.has(a.teams_slug) ? '🔔' : '',
+            followedIds.has(a.id) ? '⭐' : '',
+          ].filter(Boolean).join(' ');
+          const badgeStr = badges ? ` ${badges}` : '';
+          return `• **${a.name}**${badgeStr}${slug}\n  ${desc}`;
         }).join('\n\n')
       : '_(none configured)_';
 
-    const msg = [
-      `🤖 **Aurora Agents — Who can you talk to?**\n`,
-      `**📝 Creator Agents** (personalised personas)`,
-      agentLines,
-      ``,
-      `**🏛 Working Groups & Organisations** (knowledge graph)`,
-      listWorkingGroupSlugs(),
-      ``,
-      `💡 Use: \`@aurora-<slug> your question\``,
-      `📰 Subscribe to updates: \`subscribe @aurora-<slug>\``,
-    ].join('\n');
+    const parts = [`🤖 **Aurora Agents — Who can you talk to?**\n`];
 
-    await context.sendActivity(msg);
+    if (myAgentLines.length > 0) {
+      parts.push(`**⭐ My Agents** (following or subscribed)`);
+      parts.push(myAgentLines.join('\n'));
+      parts.push(`_🔔 = push subscribed  ⭐ = feed following_\n`);
+    } else {
+      parts.push(`_No agents followed yet. Use \`follow <name>\` or \`subscribe @aurora-<slug>\`._\n`);
+    }
+
+    parts.push(`**📝 All Creator Agents**`);
+    parts.push(agentLines);
+    parts.push(``);
+    parts.push(`**🏛 Working Groups & Organisations**`);
+    parts.push(listWorkingGroupSlugs());
+    parts.push(``);
+    parts.push(`💡 \`@aurora-<slug> question\` · \`subscribe @aurora-<slug>\` · \`follow <name>\``);
+
+    await context.sendActivity(parts.join('\n'));
   }
 
   /** Follow an agent by name. */
