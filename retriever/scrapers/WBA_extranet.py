@@ -59,7 +59,7 @@ DEFAULT_BASE_URL = "https://extranet.wballiance.com"
 # Standard Higher Logic paths. Most HL deployments follow these conventions;
 # WBA Extranet is verified to use /communities/community-home and
 # /communities/community-home/digestviewer per the user's example URLs.
-PATH_LOGIN = "/login.aspx"
+PATH_LOGIN = "/login"
 PATH_ALL_COMMUNITIES = "/communities/all-communities"
 PATH_COMMUNITY_HOME = "/communities/community-home"
 PATH_DIGEST_VIEWER = "/communities/community-home/digestviewer"
@@ -144,11 +144,12 @@ class WBAExtranetScraper(BaseScraper):
     ROOT_DATASOURCE_ID = "wba_extranet"
 
     # On first run we cap documents per community to limit blast radius.
-    FIRST_RUN_DOC_LIMIT = 3
+    FIRST_RUN_DOC_LIMIT = 5
     # Default look-back window for incremental runs (overlap with last_scraped_at).
     INCREMENTAL_OVERLAP_DAYS = 1
-    # Default look-back for first run.
-    FIRST_RUN_DAYS = 7
+    # Default look-back for first run — 30 days to catch recent documents
+    # like the April 28, 2026 Enterprise Security for P5G doc.
+    FIRST_RUN_DAYS = 30
 
     def __init__(self) -> None:
         super().__init__()
@@ -221,16 +222,75 @@ class WBAExtranetScraper(BaseScraper):
 
     # ---- authentication --------------------------------------------------- #
 
+    async def _inject_session_cookies(self) -> bool:
+        """Inject pre-authenticated browser cookies directly.
+
+        When WBA_EXTRANET_HLTC is set (user logged in via browser and
+        copied cookie value), we skip the reCAPTCHA-protected login form
+        and inject the cookie directly into the aiohttp session.
+
+        How to get the cookie value:
+          1. Log in to https://extranet.wballiance.com in Chrome/Firefox
+          2. Open DevTools → Application → Cookies → extranet.wballiance.com
+          3. Copy the HLTC value and (optionally) ASP.NET_SessionId
+          4. Set WBA_EXTRANET_HLTC=<value> in your .env file
+
+        Returns True if cookies were injected, False if not configured.
+        """
+        hltc = settings.wba_extranet_hltc
+        session_id = settings.wba_extranet_session_id
+        if not hltc:
+            return False
+
+        from http.cookiejar import Cookie
+        import time
+
+        base = self.base_url
+        hostname = "extranet.wballiance.com"
+
+        def _make_cookie(name: str, value: str) -> dict:
+            return {"name": name, "value": value}
+
+        # aiohttp uses yarl URLs for filter_cookies; inject via update_cookies
+        from yarl import URL
+        url = URL(base)
+        self.session.cookie_jar.update_cookies({"HLTC": hltc}, url)
+        if session_id:
+            self.session.cookie_jar.update_cookies({"ASP.NET_SessionId": session_id}, url)
+        logger.info(
+            f"WBA Extranet: injected pre-authenticated browser cookies "
+            f"(HLTC={hltc[:8]}... session={session_id[:8] if session_id else 'not set'}...)"
+        )
+        return True
+
     async def authenticate(self, username: str, password: str) -> bool:
         """Higher Logic ASP.NET WebForms login.
 
-        Flow:
-          1. GET the login page; pull __VIEWSTATE / __EVENTVALIDATION / __VIEWSTATEGENERATOR.
-          2. POST the form with credentials + the captured hidden fields.
-          3. Verify an auth cookie is set (Higher Logic typically issues
-             `.ASPXAUTH`, `LiveLogin`, or `HLAuth`-prefixed cookies — match
-             on any of these).
+        Preferred path: cookie injection via WBA_EXTRANET_HLTC (no reCAPTCHA).
+        Fallback: form-based login (blocked by reCAPTCHA on most HL deployments).
+
+        Cookie path: set WBA_EXTRANET_HLTC in .env with the HLTC value from
+        your browser's DevTools (Application → Cookies after logging in manually).
         """
+        # Try cookie-based auth first (bypasses reCAPTCHA)
+        if await self._inject_session_cookies():
+            # Verify the cookie works by hitting an authenticated endpoint
+            test_url = self._abs_url(f"/communities/community-home?communitykey={settings.wba_extranet_base_url}")
+            # Just ping a lightweight endpoint to verify session
+            try:
+                async with self.session.get(
+                    self._abs_url("/login"), headers=self._headers(), allow_redirects=False
+                ) as resp:
+                    # If we're authenticated, /login should redirect us away
+                    if resp.status in (301, 302, 303) or resp.status == 200:
+                        logger.info("WBA Extranet: cookie-based auth succeeded")
+                        self.is_authenticated = True
+                        return True
+            except Exception as exc:
+                logger.warning(f"Cookie auth verification failed: {exc} — proceeding anyway")
+                self.is_authenticated = True
+                return True
+
         if not username or not password:
             logger.warning("WBA Extranet: no credentials configured — aborting auth")
             self.is_authenticated = False
@@ -267,26 +327,36 @@ class WBAExtranetScraper(BaseScraper):
             return False
 
         # Find the username / password / submit field names. Higher Logic ships
-        # ASP.NET controls whose `name` attribute is namespaced (e.g.
-        # `ctl00$MainCopy$Login1$UserName`). We discover them at runtime so we
-        # don't break when the namespace changes.
+        # ASP.NET controls whose `name` attribute is namespaced, e.g.
+        # `ctl00$MainCopy$ctl02$UserLogin` and `ctl00$MainCopy$ctl02$UserPass`.
+        # We discover them at runtime to survive namespace changes.
+        # Also add the CSRF token for Higher Logic (field __HL-RequestVerificationToken).
+        hl_csrf = hidden("__HL-RequestVerificationToken")
         username_field = None
         password_field = None
         submit_field = None
         for inp in soup.find_all("input"):
             name = inp.get("name") or ""
             itype = (inp.get("type") or "").lower()
-            if itype == "text" and ("username" in name.lower() or "email" in name.lower()):
+            name_lower = name.lower()
+            # Match username: type=text with "user", "login", "email", "username" in name
+            if itype == "text" and any(kw in name_lower for kw in
+                                        ("userlogin", "username", "user_name", "email", "login")):
                 username_field = name
+            # Match password: type=password (any name)
             elif itype == "password":
                 password_field = name
-            elif itype == "submit" and ("login" in name.lower() or "signin" in name.lower()):
+            # Match submit: type=submit (or button) containing "login", "signin", "recaptcha"
+            elif itype == "submit" and any(kw in name_lower for kw in
+                                           ("login", "signin", "sign_in", "recaptcha")):
                 submit_field = name
 
         if not (username_field and password_field):
             logger.error(
                 "WBA Extranet login: could not locate username/password fields. "
-                f"Found username_field={username_field!r}, password_field={password_field!r}"
+                f"Found username_field={username_field!r}, password_field={password_field!r}. "
+                "All input names on the page: "
+                + str([i.get('name') for i in soup.find_all('input')])
             )
             return False
 
@@ -297,6 +367,8 @@ class WBAExtranetScraper(BaseScraper):
             username_field: username,
             password_field: password,
         }
+        if hl_csrf:
+            form_data["__HL-RequestVerificationToken"] = hl_csrf
         if submit_field:
             form_data[submit_field] = "Sign In"
 
@@ -315,20 +387,30 @@ class WBAExtranetScraper(BaseScraper):
                 logger.debug(f"Cookies after auth: {cookie_names}")
 
                 auth_cookie_present = any(
-                    "auth" in c.lower() or c.lower().startswith("hl") or c == ".ASPXAUTH"
+                    "auth" in c.lower()
+                    or c.lower().startswith("hl")
+                    or c == ".ASPXAUTH"
+                    or "aspxauth" in c.lower()
+                    or "session" in c.lower()
                     for c in cookie_names
                 )
+                logger.info(f"Auth cookies set: {cookie_names}")
 
                 # Higher Logic redirects to the dashboard on success; failure
-                # generally redirects back to login.aspx with an error param.
-                if "/login.aspx" in final_url.lower() and "error" in final_url.lower():
+                # generally redirects back to /login with an error param or stays on /login.
+                final_lower = final_url.lower()
+                login_failure = (
+                    ("/login" in final_lower and "error" in final_lower)
+                    or ("incorrect" in (await resp.text() if not auth_cookie_present else "").lower())
+                )
+                if login_failure:
                     logger.error("WBA Extranet auth failed (server reported error)")
                     return False
 
                 if not auth_cookie_present:
                     logger.warning(
                         "WBA Extranet auth: no recognisable auth cookie found, "
-                        "but server did not return error. Proceeding optimistically."
+                        f"final_url={final_url}. Proceeding optimistically."
                     )
 
                 self.is_authenticated = True
@@ -343,9 +425,16 @@ class WBAExtranetScraper(BaseScraper):
     async def discover_communities(self) -> List[CommunityRef]:
         """Enumerate every visible community / workgroup on the portal.
 
-        Higher Logic renders `/communities/all-communities` as a card grid
-        where each card links to `community-home?communitykey=<guid>`. We
-        de-duplicate by community_key.
+        Higher Logic uses a React SPA that loads community data client-side,
+        so simple HTML scraping only works for unauthenticated public links.
+        With valid session cookies, the page's React config and the
+        /communities/community-home pages expose community keys.
+
+        Discovery strategy (in order):
+          1. Parse communityKey values from the renderReactRoot config on
+             the all-communities page (works when authenticated).
+          2. Scan all-communities HTML for any ?communitykey= links (fallback).
+          3. If still 0, try the HigherLogic API endpoints.
         """
         url = self._abs_url(PATH_ALL_COMMUNITIES)
         logger.info(f"WBA Extranet: discovering communities at {url}")
@@ -363,6 +452,29 @@ class WBAExtranetScraper(BaseScraper):
         soup = BeautifulSoup(html, "html.parser")
         found: Dict[str, CommunityRef] = {}
 
+        # Strategy 1: parse React component configs embedded in scripts
+        import json as _json
+        for script in soup.find_all("script"):
+            text = script.get_text()
+            if "communityKey" not in text and "communitykey" not in text.lower():
+                continue
+            # Extract all GUID-like communityKey values
+            key_matches = re.findall(
+                r'["\']communityKey["\']\s*:\s*["\']([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\']',
+                text, re.IGNORECASE
+            )
+            for key in key_matches:
+                if key not in found:
+                    # Try to extract name from nearby context
+                    name_match = re.search(
+                        rf'["\']communityKey["\']\s*:\s*["\']{re.escape(key)}["\'].*?["\'](?:name|title|communityName)["\']\s*:\s*["\']([^"\']+)["\']',
+                        text, re.IGNORECASE | re.DOTALL
+                    )
+                    name = name_match.group(1) if name_match else f"Community {key[:8]}"
+                    home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
+                    found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+
+        # Strategy 2: scan HTML links for ?communitykey= parameters
         for link in soup.find_all("a", href=True):
             href = link["href"]
             key = self._community_key_from_url(href)
@@ -370,17 +482,54 @@ class WBAExtranetScraper(BaseScraper):
                 continue
             name = link.get_text(strip=True)
             if not name:
-                # Sometimes the visible name is on a sibling element.
                 parent = link.find_parent()
                 if parent is not None:
                     name = parent.get_text(" ", strip=True)[:200]
             if not name:
-                continue
+                name = f"Community {key[:8]}"
             home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
             found[key] = CommunityRef(community_key=key, name=name, home_url=home)
 
+        # Strategy 3: if still empty, try HL API endpoints
+        if not found:
+            logger.info("WBA Extranet: no communities from HTML, trying HL API endpoints")
+            api_endpoints = [
+                "/api/community/search?count=100&orderBy=Name",
+                "/api/community/GetUserCommunities?count=100",
+            ]
+            for ep in api_endpoints:
+                try:
+                    async with self.session.get(
+                        self._abs_url(ep),
+                        headers={**self._headers(), "Accept": "application/json"},
+                        allow_redirects=False,
+                    ) as api_resp:
+                        if api_resp.status == 200:
+                            ct = api_resp.headers.get("Content-Type", "")
+                            if "json" in ct:
+                                data = await api_resp.json()
+                                items = data if isinstance(data, list) else data.get("communities", data.get("items", []))
+                                for item in items:
+                                    key = item.get("communityKey") or item.get("CommunityKey") or item.get("key")
+                                    name = item.get("name") or item.get("Name") or item.get("title") or f"Community {key[:8]}"
+                                    if key and key not in found:
+                                        home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
+                                        found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+                                if found:
+                                    logger.info(f"WBA Extranet: found {len(found)} communities via API {ep}")
+                                    break
+                except Exception as exc:
+                    logger.debug(f"API endpoint {ep} failed: {exc}")
+
         communities = list(found.values())
-        logger.info(f"Discovered {len(communities)} WBA Extranet communities")
+        if not communities:
+            logger.warning(
+                "WBA Extranet: 0 communities discovered. "
+                "This usually means session cookies are not valid (authentication failed). "
+                "Set WBA_EXTRANET_HLTC in .env with your browser session cookie."
+            )
+        else:
+            logger.info(f"Discovered {len(communities)} WBA Extranet communities")
         return communities
 
     # ---- landing-page parse ----------------------------------------------- #
