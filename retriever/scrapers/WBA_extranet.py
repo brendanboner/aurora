@@ -1159,14 +1159,12 @@ class WBAExtranetScraper(BaseScraper):
             d.name                  = $name,
             d.display_name          = $display_name,
             d.source_type           = 'authenticated_portal',
-            d.scraper_type          = 'wba_extranet',
             d.fetch_url             = $home_url,
             d.resource_url          = $home_url,
             d.has_events            = false,
             d.check_content_hash    = true,
             d.discovery_mode        = 'incremental',
             d.consecutive_duplicates_limit = 5,
-            d.scrape_schedule       = '0 2 * * 1',
             d.run_on_startup        = false,
             d.publish_weight        = 1.0,
             d.update_weight         = 0.9,
@@ -1181,6 +1179,11 @@ class WBAExtranetScraper(BaseScraper):
             d.fetch_url             = $home_url,
             d.resource_url          = $home_url
         """
+        # NOTE: child datasources intentionally have NO scraper_type and NO scrape_schedule.
+        # Only the root 'wba_extranet' node is scheduled. The root run discovers all
+        # communities internally, so children must not appear in the scheduler's due list
+        # (which would cause N+1 redundant full scrapes and auth failures on children
+        # that don't carry auth_token).
         try:
             self.neo4j_client.execute_query(
                 query,

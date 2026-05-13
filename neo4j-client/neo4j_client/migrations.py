@@ -38,6 +38,7 @@ class Migrations:
             Migrations.add_dmtf_datasources,
             Migrations.add_datasource_parent_index,
             Migrations.add_wba_extranet_root_datasource,
+            Migrations.fix_wba_extranet_child_scraper_type,
         ]
         
         for migration_func in migrations:
@@ -1400,6 +1401,34 @@ class Migrations:
             return True
         except Exception as e:
             logger.error(f"Error creating datasource_parent_id index: {e}")
+            return False
+
+    @staticmethod
+    def fix_wba_extranet_child_scraper_type(session: Session) -> bool:
+        """
+        Remove scraper_type and scrape_schedule from WBA Extranet child DataSource nodes.
+
+        Child community nodes (datasource_id STARTS WITH 'wba_extranet_') were
+        incorrectly created with scraper_type='wba_extranet' and a weekly cron.
+        This caused the scheduler to trigger N+1 independent full scrapes (one per
+        community) instead of a single root-driven run.  Child nodes exist only for
+        document and event attribution — they should never be scheduled directly.
+
+        Idempotent: REMOVE on properties that may not exist is a no-op in Cypher.
+        """
+        try:
+            result = session.run("""
+                MATCH (d:DataSource)
+                WHERE d.datasource_id STARTS WITH 'wba_extranet_'
+                REMOVE d.scraper_type, d.scrape_schedule
+                RETURN count(d) AS fixed
+            """)
+            record = result.single()
+            fixed = record["fixed"] if record else 0
+            logger.info(f"fix_wba_extranet_child_scraper_type: cleared {fixed} child node(s)")
+            return True
+        except Exception as e:
+            logger.error(f"Error in fix_wba_extranet_child_scraper_type: {e}")
             return False
 
     @staticmethod

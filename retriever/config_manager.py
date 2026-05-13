@@ -135,6 +135,22 @@ class ConfigManager:
             resolved = result if result else default_config
             resolved.setdefault("ingestion_lookback_value", 12)
             resolved.setdefault("ingestion_lookback_unit", "months")
+
+            # If this child datasource has no auth_token but has a parent, inherit
+            # the parent's auth_token. This covers WBA Extranet community nodes.
+            if not resolved.get("auth_token") and resolved.get("parent_datasource_id"):
+                parent_id = resolved["parent_datasource_id"]
+                try:
+                    parent = self.graph_repository.get_datasource_config(parent_id)
+                    if parent and parent.get("auth_token"):
+                        resolved["auth_token"] = parent["auth_token"]
+                        logger.debug(
+                            f"Inherited auth_token from parent datasource '{parent_id}' "
+                            f"for '{datasource_id}'"
+                        )
+                except Exception as pe:
+                    logger.debug(f"Could not inherit auth_token from parent '{parent_id}': {pe}")
+
             self._config_cache[datasource_id] = resolved.copy()
             return resolved
         except Exception as e:
