@@ -1150,3 +1150,33 @@ button.sc-meta-chip:hover { opacity: 0.75; }
 
 .credentials-set { color: #059669; }
 .credentials-missing { color: var(--muted-foreground, #9ca3af); }
+
+/* ── Group header with Run All button ── */
+.sc-group-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sc-group-header-row .sc-group-header {
+  flex: 1;
+}
+
+.btn-run-group {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #d1d5db);
+  background: var(--card, #fff);
+  color: var(--foreground, #374151);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.btn-run-group:hover {
+  background: #d1fae5;
+  border-color: #10b981;
+  color: #065f46;
+}

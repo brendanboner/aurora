@@ -516,6 +516,8 @@ class RetrieverService:
             "scheduler_running": self.scheduler_task is not None and not self.scheduler_task.done(),
             "poll_interval_seconds": poll_interval,
             "active_scrapes": len(self.active_scrapes),
+            # Per-datasource IDs for fine-grained UI disable logic
+            "active_datasource_ids": list(self.scraping_datasources),
             "total_scrapes_today": self.scrapes_today,
             "available_scraper_types": list(SCRAPER_CLASSES.keys()),
             "active_scraper_types": list(grouped_datasources.keys()),

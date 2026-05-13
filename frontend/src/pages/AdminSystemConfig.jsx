@@ -249,9 +249,30 @@ const AdminSystemConfig = () => {
     }
   };
 
+  // True only when THIS specific datasource is being scraped right now.
+  // Uses the per-datasource list returned by the retriever (not the global count).
   const isScraperRunning = (datasourceId) => {
-    if (!scraperStatus || !scraperStatus.active_scrapes) return false;
-    return scraperStatus.active_scrapes > 0;
+    const activeDsIds = scraperStatus?.active_datasource_ids;
+    if (Array.isArray(activeDsIds)) return activeDsIds.includes(datasourceId);
+    // Fallback: old API without active_datasource_ids — use global count but only
+    // block if count is very high so we don't freeze everything for one scrape.
+    return false;
+  };
+
+  const handleTriggerGroup = async (groupConfigs) => {
+    const withScraper = groupConfigs.filter(c => c.scraper_type);
+    if (!withScraper.length) return;
+    const names = withScraper.map(c => c.name).join(', ');
+    if (!window.confirm(`▶ Run all ${withScraper.length} scrapers in this group?\n\n${names}\n\nEach will fetch since its last run (or 30 days on first run). Proceed?`)) return;
+    let started = 0;
+    for (const cfg of withScraper) {
+      try {
+        const resp = await fetch(`/api/retriever/scrape/datasource/${cfg.datasource_id}`, { method: 'POST' });
+        if (resp.ok) started++;
+      } catch {}
+    }
+    fetchScraperStatus();
+    if (started) fetchConfigurations();
   };
 
   const handleShowFolders = (config, event) => {
@@ -363,8 +384,12 @@ const AdminSystemConfig = () => {
           </div>
         </div>
         <div className="header-actions">
-          <button className="btn-scrape-all" onClick={handleScrapeAllSources}>
-            ▶ Scrape All
+          <button
+            className="btn-scrape-all"
+            onClick={handleScrapeAllSources}
+            title="Trigger all configured scrapers (each fetches since its last run)"
+          >
+            ▶ Run All Sources
           </button>
           <button className="btn-purge" onClick={handlePurgeQueue}>
             🗑 Purge Queue
@@ -497,12 +522,23 @@ const AdminSystemConfig = () => {
             const isCollapsed = !!collapsedGroups[key];
             return (
               <div key={key} className="sc-group">
-                <button className="sc-group-header" onClick={() => toggleGroup(key)}>
-                  <span className="sc-chevron">{isCollapsed ? '▶' : '▼'}</span>
-                  <span className="sc-type-dot" style={{ background: color }} />
-                  <span className="sc-group-label">{label}</span>
-                  <span className="sc-group-count">{configs.length}</span>
-                </button>
+                <div className="sc-group-header-row">
+                  <button className="sc-group-header" onClick={() => toggleGroup(key)}>
+                    <span className="sc-chevron">{isCollapsed ? '▶' : '▼'}</span>
+                    <span className="sc-type-dot" style={{ background: color }} />
+                    <span className="sc-group-label">{label}</span>
+                    <span className="sc-group-count">{configs.length}</span>
+                  </button>
+                  {configs.some(c => c.scraper_type) && (
+                    <button
+                      className="btn-run-group"
+                      title={`Run all ${label} scrapers now`}
+                      onClick={() => handleTriggerGroup(configs)}
+                    >
+                      ▶ Run all
+                    </button>
+                  )}
+                </div>
                 {!isCollapsed && (
                   <div className="sc-cards-grid">
                     {configs.map(config => {
