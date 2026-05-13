@@ -1626,47 +1626,6 @@ class DocumentDigester:
 
         return True
     
-    def _cleanup_stalled_batches_on_startup(self) -> int:
-        """Mark any in-progress batches as failed on startup.
-
-        When the digester restarts mid-run (crash, deploy, OOM kill) it leaves
-        IngestionBatch nodes stuck forever in 'retrieving' or 'digesting' status.
-        This one-time cleanup at startup prevents that accumulation and ensures
-        the monitoring page shows an accurate view of active work.
-
-        Returns the number of batches cleaned up.
-        """
-        if not self.graph_repository:
-            return 0
-        stall_hours = 2  # anything older than this is definitely abandoned
-        try:
-            result = self.graph_repository.client.execute_write(
-                f"""
-                MATCH (b:IngestionBatch)
-                WHERE b.status IN ['retrieving', 'digesting', 'scraping']
-                  AND b.scrape_started_at < datetime() - duration('PT{stall_hours}H')
-                SET b.status        = 'failed',
-                    b.error_message = 'Auto-cleaned on digester startup: batch was '
-                                      + b.status + ' for over {stall_hours}h (service restart)',
-                    b.digest_completed_at = datetime()
-                RETURN count(b) AS fixed
-                """,
-                {},
-            )
-            fixed = result[0]["fixed"] if result else 0
-            if fixed > 0:
-                logger.warning(
-                    f"Startup cleanup: marked {fixed} stalled IngestionBatch node(s) as "
-                    f"failed (were stuck in retrieving/digesting for >{stall_hours}h). "
-                    f"This is normal after a service restart mid-run."
-                )
-            else:
-                logger.info("Startup cleanup: no stalled batches found — clean state.")
-            return fixed
-        except Exception as exc:
-            logger.error(f"Startup batch cleanup failed (non-fatal): {exc}")
-            return 0
-
     async def run(self):
         """Run the document digester service (ASYNC VERSION)."""
         try:
@@ -1674,14 +1633,10 @@ class DocumentDigester:
 
             # Start lightweight health server in background (port 8080)
             self.start_health_server()
-
+            
             # Initialize graph
             self.initialize_graph()
-
-            # Clean up any batches left stuck from a previous run before we
-            # start consuming new messages — prevents monitoring noise.
-            self._cleanup_stalled_batches_on_startup()
-
+            
             # Start consuming messages
             logger.info("Starting async message consumption from RabbitMQ...")
             
