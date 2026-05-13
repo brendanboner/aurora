@@ -21,7 +21,7 @@
 #   VERSION is automatically determined from git SHA
 # =============================================================================
 
-.PHONY: help test-all build-push-all build-push-parallel ship-all aws-login connect_aurora_ec2clean-all \
+.PHONY: help test-all build-push-all build-push-parallel ship-all aws-login gh-secrets connect_aurora_ec2clean-all \
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
@@ -55,7 +55,8 @@ help:
 	@echo "  make test-all          - Run tests for all services"
 	@echo "  make build-push-all    - Build and push all service images to ECR"
 	@echo "  make ship-all          - Test, build, and ship all services to ECR"
-	@echo "  make aws-login             - Login to AWS ECR"
+	@echo "  make aws-login             - Login to AWS ECR (opens browser SSO)"
+	@echo "  make gh-secrets            - Push AWS credentials + ECR/EC2 IDs to GitHub Actions secrets"
 	@echo "  make connect_aurora_ec2 - Connect to Aurora EC2 instance via SSM"
 	@echo ""
 	@echo "$(GREEN)Service-Specific Commands:$(NC)"
@@ -269,6 +270,38 @@ aws-login:
 	@echo "$(CYAN)Logging into AWS ECR...$(NC)"
 	@aws ecr get-login-password --region $(AWS_REGION) --profile $(AWS_SSO_PROFILE) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 	@echo "$(GREEN)✓ Successfully logged into ECR$(NC)"
+
+# Extract current AWS credentials from SSO session and push them to GitHub Actions secrets.
+# Run 'make aws-login' first so the SSO session is active, then run this target.
+gh-secrets:
+	@echo "$(CYAN)Reading AWS credentials from SSO session...$(NC)"
+	@CREDS=$$(aws configure export-credentials --profile $(AWS_SSO_PROFILE) --format env 2>/dev/null) || \
+	 CREDS=$$(aws configure export-credentials --format env 2>/dev/null); \
+	if [ -z "$$CREDS" ]; then \
+		echo "$(RED)✗ Could not read credentials — run 'make aws-login' first$(NC)"; exit 1; \
+	fi; \
+	KEY_ID=$$(echo "$$CREDS" | grep AWS_ACCESS_KEY_ID | cut -d= -f2 | tr -d '"' | tr -d "'"); \
+	SECRET=$$(echo "$$CREDS" | grep AWS_SECRET_ACCESS_KEY | cut -d= -f2 | tr -d '"' | tr -d "'"); \
+	SESSION=$$(echo "$$CREDS" | grep AWS_SESSION_TOKEN | cut -d= -f2 | tr -d '"' | tr -d "'"); \
+	if [ -z "$$KEY_ID" ]; then \
+		echo "$(RED)✗ No credentials found — run 'make aws-login' first$(NC)"; exit 1; \
+	fi; \
+	echo "$(CYAN)Setting GitHub Actions secrets...$(NC)"; \
+	echo "$$KEY_ID"    | gh secret set AWS_ACCESS_KEY_ID    --repo $(shell git remote get-url origin | sed 's|.*github.com/||' | sed 's|\.git||'); \
+	echo "$$SECRET"    | gh secret set AWS_SECRET_ACCESS_KEY --repo $(shell git remote get-url origin | sed 's|.*github.com/||' | sed 's|\.git||'); \
+	if [ -n "$$SESSION" ]; then \
+		echo "$$SESSION" | gh secret set AWS_SESSION_TOKEN --repo $(shell git remote get-url origin | sed 's|.*github.com/||' | sed 's|\.git||'); \
+		echo "$(YELLOW)⚠  SSO session token set — expires in ~1hr. Re-run after next 'make aws-login'.$(NC)"; \
+	fi; \
+	echo "$(ECR_REGISTRY)" | gh secret set ECR_REGISTRY --repo $(shell git remote get-url origin | sed 's|.*github.com/||' | sed 's|\.git||'); \
+	echo "$(EC2_INSTANCE_ID)" | gh secret set EC2_INSTANCE_ID --repo $(shell git remote get-url origin | sed 's|.*github.com/||' | sed 's|\.git||'); \
+	echo "$(GREEN)✓ Secrets pushed to GitHub Actions$(NC)"; \
+	echo ""; \
+	echo "  AWS_ACCESS_KEY_ID      ✓"; \
+	echo "  AWS_SECRET_ACCESS_KEY  ✓"; \
+	[ -n "$$SESSION" ] && echo "  AWS_SESSION_TOKEN      ✓ (expires ~1hr)" || true; \
+	echo "  ECR_REGISTRY           ✓ ($(ECR_REGISTRY))"; \
+	echo "  EC2_INSTANCE_ID        ✓ ($(EC2_INSTANCE_ID))"
 
 connect_aurora_ec2:
 	@echo "$(CYAN)Connecting to Aurora EC2 instance...$(NC)"
