@@ -4,6 +4,60 @@ import IETFGroupsModal from '../components/IETFGroupsModal';
 
 const DEFAULT_LOOKBACK_VALUES = [1, 2, 4, 8, 12, 26, 52];
 const LOOKBACK_UNITS = ['days', 'weeks', 'months', 'years'];
+
+// Ordered groups — anything not matched falls into the last catch-all
+const TYPE_GROUPS = [
+  { key: 'wfa_causeway',      label: 'WFA Causeway',      color: '#a855f7' },
+  { key: 'wfa',               label: 'WFA Public',         color: '#3b82f6' },
+  { key: 'wba_extranet',      label: 'WBA Extranet',       color: '#f43f5e' },
+  { key: 'wba',               label: 'WBA',                color: '#ec4899' },
+  { key: 'ietf_datatracker',  label: 'IETF Datatracker',   color: '#f97316' },
+  { key: 'ietf_blog',         label: 'IETF Blog',          color: '#fb923c' },
+  { key: '__manual__',        label: 'Manual / No Scraper', color: '#94a3b8' },
+];
+
+function groupByType(configs) {
+  const buckets = {};
+  TYPE_GROUPS.forEach(g => { buckets[g.key] = []; });
+  configs.forEach(c => {
+    const type = c.scraper_type || '__manual__';
+    if (buckets[type] !== undefined) {
+      buckets[type].push(c);
+    } else {
+      // Unknown type — add a dynamic bucket
+      if (!buckets[type]) buckets[type] = [];
+      buckets[type].push(c);
+    }
+  });
+  return TYPE_GROUPS
+    .filter(g => buckets[g.key]?.length > 0)
+    .map(g => ({ ...g, configs: buckets[g.key] }));
+}
+
+function friendlySchedule(cron) {
+  if (!cron) return null;
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return cron;
+  const [min, hour, dom, month, dow] = parts;
+  if (dom === '*' && month === '*') {
+    if (dow === '*') {
+      if (hour.startsWith('*/')) return `Every ${hour.slice(2)}h`;
+      return `Daily ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+    }
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    if (/^\d$/.test(dow)) return `Weekly ${days[+dow]} ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+  }
+  return cron;
+}
+
+function timeAgoShort(iso) {
+  if (!iso) return null;
+  const secs = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (secs < 60)   return `${secs}s ago`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
 const DEFAULT_GLOBAL_CONFIG = {
   datasource_id: 'default',
   name: 'System Defaults',
@@ -22,6 +76,10 @@ const AdminSystemConfig = () => {
   const [editingConfig, setEditingConfig] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showIETFGroupsModal, setShowIETFGroupsModal] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const toggleGroup = (key) =>
+    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
   const [hoveredFolder, setHoveredFolder] = useState(null);
   const [folderPosition, setFolderPosition] = useState({ x: 0, y: 0 });
   const [hoveredUrl, setHoveredUrl] = useState(null);
@@ -167,7 +225,14 @@ const AdminSystemConfig = () => {
     }
   };
 
-  const handleTriggerScraper = async (datasourceId, datasourceName) => {
+  const handleTriggerScraper = async (datasourceId, datasourceName, lastScrapedAt) => {
+    // Tell the user what the scraper will actually do before proceeding
+    const isFirstRun = !lastScrapedAt;
+    const sinceTxt = isFirstRun
+      ? 'first run — will fetch up to 30 days of history'
+      : `incremental — fetching since ${new Date(lastScrapedAt).toLocaleDateString()}`;
+    if (!window.confirm(`▶ Run scraper for: ${datasourceName || datasourceId}\n\nMode: ${sinceTxt}\n\nProceed?`)) return;
+
     try {
       const response = await fetch(`/api/retriever/scrape/datasource/${datasourceId}`, {
         method: 'POST',
@@ -175,8 +240,6 @@ const AdminSystemConfig = () => {
       if (!response.ok) throw new Error('Failed to trigger scraper');
       const data = await response.json();
       if (data.status === 'started') {
-        alert(`✅ Scraper started for ${datasourceName || datasourceId}`);
-        // Refresh status immediately
         fetchScraperStatus();
       } else {
         alert(`⚠️ ${data.message}`);
@@ -188,8 +251,6 @@ const AdminSystemConfig = () => {
 
   const isScraperRunning = (datasourceId) => {
     if (!scraperStatus || !scraperStatus.active_scrapes) return false;
-    // Check if this datasource is in active scrapes
-    // This is a simplified check - we'd need the backend to provide more detail
     return scraperStatus.active_scrapes > 0;
   };
 
@@ -375,10 +436,13 @@ const AdminSystemConfig = () => {
 
       <section className="global-ingestion-card">
         <div className="global-ingestion-copy">
-          <h3>Ingestion Lookback</h3>
+          <h3>Manual &amp; First-Run Lookback</h3>
           <p>
-            Block automated scraper items older than the selected window. First-time
-            document scrapes can still backfill history.
+            Maximum period to look back when scraping a source for the <strong>first time</strong>,
+            or when content history is reset. <br />
+            <strong>Incremental scrapes always use the last run date</strong> — this setting
+            does not affect automated weekly runs. Portal sources like WBA Extranet use
+            their own first-run window (30 days) regardless of this value.
           </p>
         </div>
 
@@ -425,113 +489,96 @@ const AdminSystemConfig = () => {
         </div>
       </section>
 
-      <div className="scrapers-table-container">
-        {configurations.length === 0 ? (
-          <p className="no-configs">No scrapers configured. Create your first scraper above.</p>
-        ) : (
-          <table className="scrapers-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Auto Start</th>
-                <th>Last Run</th>
-                <th>Info</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {configurations.map((config) => {
-                const hasScraperType = !!config.scraper_type;
-                const isCausewayDatasource = config.scraper_type === 'wfa_causeway';
-                const hasFolders = isCausewayDatasource && config.folders && config.folders.length > 0;
-                const running = isScraperRunning(config.datasource_id);
-                
-                return (
-                  <tr key={config.datasource_id} className={running ? 'running' : ''}>
-                    <td className="name-cell">
-                      <div className="name-wrapper">
-                        <span className="config-name">{config.name}</span>
-                        <span className="config-id">{config.datasource_id}</span>
-                      </div>
-                    </td>
-                    <td>
-                      {config.scraper_type ? (
-                        <span 
-                          className={`type-badge ${config.scraper_type} ${config.resource_url ? 'has-url' : ''}`}
-                          onMouseEnter={(e) => config.resource_url && handleShowUrl(config.resource_url, e)}
-                          onMouseLeave={handleHideUrl}
-                          title={config.resource_url ? 'Hover to see URL' : ''}
-                        >
-                          {config.scraper_type}
-                        </span>
-                      ) : (
-                        <em className="no-type">Manual</em>
-                      )}
-                    </td>
-                    <td className="center-cell">
-                      {config.run_on_startup ? (
-                        <span className="auto-yes">✓</span>
-                      ) : (
-                        <span className="auto-no">—</span>
-                      )}
-                    </td>
-                    <td className="last-run-cell">
-                      {config.last_scraped_at ? (
-                        <span className="last-run-time">
-                          {new Date(config.last_scraped_at).toLocaleString()}
-                        </span>
-                      ) : (
-                        <em className="never-run">Never</em>
-                      )}
-                    </td>
-                    <td className="center-cell">
-                      {hasFolders && (
-                        <button
-                          className="btn-info"
-                          onMouseEnter={(e) => handleShowFolders(config, e)}
-                          onMouseLeave={handleHideFolders}
-                          title="View allowed folders"
-                        >
-                          ⓘ
-                        </button>
-                      )}
-                    </td>
-                    <td className="actions-cell">
-                      <div className="action-buttons">
-                        {hasScraperType && (
-                          <button
-                            className={`btn-action ${running ? 'btn-stop' : 'btn-run'}`}
-                            onClick={() => handleTriggerScraper(config.datasource_id, config.name)}
-                            title={running ? 'Stop scraper' : 'Run scraper'}
-                            disabled={running}
-                          >
-                            {running ? '⏸ Stop' : '▶ Run'}
-                          </button>
-                        )}
-                        <button
-                          className="btn-action btn-edit"
-                          onClick={() => setEditingConfig(config.datasource_id)}
-                          title="Edit configuration"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          className="btn-action btn-delete"
-                          onClick={() => handleDelete(config.datasource_id)}
-                          title="Delete configuration"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {configurations.length === 0 ? (
+        <p className="no-configs">No scrapers configured. Create your first scraper above.</p>
+      ) : (
+        <div className="sc-groups">
+          {groupByType(configurations).map(({ key, label, color, configs }) => {
+            const isCollapsed = !!collapsedGroups[key];
+            return (
+              <div key={key} className="sc-group">
+                <button className="sc-group-header" onClick={() => toggleGroup(key)}>
+                  <span className="sc-chevron">{isCollapsed ? '▶' : '▼'}</span>
+                  <span className="sc-type-dot" style={{ background: color }} />
+                  <span className="sc-group-label">{label}</span>
+                  <span className="sc-group-count">{configs.length}</span>
+                </button>
+                {!isCollapsed && (
+                  <div className="sc-cards-grid">
+                    {configs.map(config => {
+                      const running = isScraperRunning(config.datasource_id);
+                      const sched = friendlySchedule(config.scrape_schedule);
+                      const lastRun = timeAgoShort(config.last_scraped_at);
+                      const hasFolders = config.scraper_type === 'wfa_causeway' && config.folders?.length > 0;
+                      return (
+                        <div key={config.datasource_id} className={`sc-card ${running ? 'running' : ''}`}>
+                          <div className="sc-card-top">
+                            <div className="sc-card-name">{config.name}</div>
+                            <div className="sc-card-id">{config.datasource_id}</div>
+                          </div>
+                          <div className="sc-card-meta">
+                            {sched ? (
+                              <span className="sc-meta-chip sched" title={config.scrape_schedule}>{sched}</span>
+                            ) : (
+                              <span className="sc-meta-chip manual">Manual</span>
+                            )}
+                            {config.run_on_startup && (
+                              <span className="sc-meta-chip auto">Auto-start</span>
+                            )}
+                            {lastRun ? (
+                              <span className="sc-meta-chip last">↻ {lastRun}</span>
+                            ) : (
+                              <span className="sc-meta-chip never">Never run</span>
+                            )}
+                            {hasFolders && (
+                              <button
+                                className="sc-meta-chip folders"
+                                onMouseEnter={(e) => handleShowFolders(config, e)}
+                                onMouseLeave={handleHideFolders}
+                              >
+                                {config.folders.length} folder{config.folders.length !== 1 ? 's' : ''}
+                              </button>
+                            )}
+                            {config.resource_url && (
+                              <button
+                                className="sc-meta-chip url"
+                                onMouseEnter={(e) => handleShowUrl(config.resource_url, e)}
+                                onMouseLeave={handleHideUrl}
+                              >
+                                URL
+                              </button>
+                            )}
+                          </div>
+                          <div className="sc-card-actions">
+                            {config.scraper_type && (
+                              <button
+                                className={`btn-action ${running ? 'btn-stop' : 'btn-run'}`}
+                                onClick={() => handleTriggerScraper(config.datasource_id, config.name, config.last_scraped_at)}
+                                disabled={running}
+                                title={running ? 'Scraper is running' : config.last_scraped_at ? `Run now — fetch since ${new Date(config.last_scraped_at).toLocaleDateString()}` : 'Run now — first run, fetches up to 30 days'}
+                              >
+                                {running ? '⏸' : '▶'}
+                              </button>
+                            )}
+                            <button
+                              className="btn-action btn-edit"
+                              onClick={() => setEditingConfig(config.datasource_id)}
+                            >✎</button>
+                            <button
+                              className="btn-action btn-delete"
+                              onClick={() => handleDelete(config.datasource_id)}
+                            >✕</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -556,6 +603,7 @@ const ConfigForm = ({ config, onSubmit, onCancel, onOpenIETFGroups }) => {
     consecutive_duplicates_limit: config?.consecutive_duplicates_limit ?? 5,
     full_refresh_schedule: config?.full_refresh_schedule || '',
     folders: config?.folders || [],
+    auth_token: config?.auth_token || '',
   });
   
   const [folderInput, setFolderInput] = useState('');
@@ -726,6 +774,43 @@ const ConfigForm = ({ config, onSubmit, onCancel, onOpenIETFGroups }) => {
           <small className="form-hint">Run immediately when retriever service starts</small>
         </div>
       </div>
+
+      {/* Credentials — shown for authenticated portal scrapers */}
+      {formData.scraper_type === 'wba_extranet' && (
+        <div className="credentials-section">
+          <h4 className="credentials-title">🔑 Authentication Token</h4>
+          <p className="credentials-hint">
+            Enter the <strong>HLLogin</strong> cookie value from your browser
+            (DevTools → Application → Cookies → <code>extranet.wballiance.com</code> →{' '}
+            <code>HLLogin</code>). This token expires after ~7 days — refresh it when
+            scraping stops working.
+          </p>
+          <div className="form-group">
+            <label htmlFor="auth_token">HLLogin Token:</label>
+            <textarea
+              id="auth_token"
+              name="auth_token"
+              className="auth-token-input"
+              value={formData.auth_token}
+              onChange={handleChange}
+              rows={3}
+              placeholder="Paste HLLogin cookie value here (975-char hex string)…"
+              spellCheck={false}
+            />
+            {formData.auth_token && (
+              <small className="credentials-status credentials-set">
+                ✓ Token set ({formData.auth_token.length} chars)
+                {formData.auth_token.length < 900 && ' — looks short, double-check the value'}
+              </small>
+            )}
+            {!formData.auth_token && (
+              <small className="credentials-status credentials-missing">
+                No token — scraper will use env var WBA_EXTRANET_HLLOGIN if set
+              </small>
+            )}
+          </div>
+        </div>
+      )}
 
       <details className="advanced-section">
         <summary>Advanced Settings</summary>

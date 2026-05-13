@@ -905,7 +905,8 @@ def upsert_datasource_configuration(
     consecutive_duplicates_limit: int | None = None,
     full_refresh_schedule: str | None = None,
     ingestion_lookback_value: int | None = None,
-    ingestion_lookback_unit: str | None = None
+    ingestion_lookback_unit: str | None = None,
+    auth_token: str | None = None
 ) -> Dict[str, Any]:
     """
     Create or update a datasource configuration in Neo4j.
@@ -942,7 +943,8 @@ def upsert_datasource_configuration(
         "consecutive_duplicates_limit": consecutive_duplicates_limit,
         "full_refresh_schedule": full_refresh_schedule,
         "ingestion_lookback_value": ingestion_lookback_value,
-        "ingestion_lookback_unit": ingestion_lookback_unit
+        "ingestion_lookback_unit": ingestion_lookback_unit,
+        "auth_token": auth_token,
     }
     
     for field, value in field_map.items():

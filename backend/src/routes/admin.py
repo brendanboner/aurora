@@ -82,13 +82,32 @@ class BatchProgress(BaseModel):
     """Ingestion batch progress information."""
     batch_id: str
     datasource_id: str
-    display_name: Optional[str] = None   # Human-readable source name from DataSource node
-    status: str  # "scraping", "scraped", "digesting", "completed", "failed"
+    display_name: Optional[str] = None
+    status: str  # "scraping", "digesting"
     items_scraped: int
     items_digested: int
     started_at: Optional[str] = None
     updated_at: Optional[str] = None
     progress_percent: float
+    stalled: bool = False  # True when running > STALL_THRESHOLD_HOURS with no completion
+
+
+class DatasourceSchedule(BaseModel):
+    datasource_id: Optional[str] = None
+    name: Optional[str] = None
+    schedule: Optional[str] = None
+    last_scraped_at: Optional[str] = None
+    overdue: bool = False
+
+
+class SchedulerInfo(BaseModel):
+    scheduler_running: bool
+    dev_mode: bool = False
+    active_scrapes: int = 0
+    total_scrapes_today: int = 0
+    total_datasources: int = 0
+    datasource_schedules: List[DatasourceSchedule] = []
+    error: Optional[str] = None
 
 
 class AdminDashboard(BaseModel):
@@ -96,7 +115,12 @@ class AdminDashboard(BaseModel):
     queue_status: QueueStatus
     processing_status: ProcessingStatus
     active_batches: List[BatchProgress]
+    scheduler: Optional[SchedulerInfo] = None
     timestamp: str
+
+
+# Batches stuck longer than this are considered stalled
+STALL_THRESHOLD_HOURS = 2
 
 
 def get_rabbitmq_connection():
@@ -439,23 +463,88 @@ async def get_processing_status():
         raise HTTPException(status_code=500, detail="Failed to retrieve processing status")
 
 
+async def _get_scheduler_info() -> Optional[SchedulerInfo]:
+    """Fetch scheduler status from the retriever service."""
+    import httpx
+    retriever_url = os.getenv("RETRIEVER_SERVICE_URL", "http://retriever:8000")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{retriever_url}/status")
+            if resp.status_code != 200:
+                return SchedulerInfo(scheduler_running=False, error=f"HTTP {resp.status_code}")
+            data = resp.json()
+
+        dev_mode = not data.get("scheduler_running", False) and data.get("active_scrapes", 0) == 0
+
+        # Build per-datasource schedule info
+        # Mark overdue if never scraped, or last scrape was > 48 hours ago and has a schedule
+        schedules = []
+        for ds in data.get("datasource_schedules") or []:
+            last = ds.get("last_scraped_at")
+            sched = ds.get("schedule")
+            overdue = False
+            if sched:  # only flag sources that have a defined schedule
+                if not last:
+                    overdue = True
+                else:
+                    try:
+                        age_hours = (datetime.now() - datetime.fromisoformat(last.replace('Z', ''))).total_seconds() / 3600
+                        overdue = age_hours > 48
+                    except Exception:
+                        pass
+            schedules.append(DatasourceSchedule(
+                datasource_id=ds.get("datasource_id"),
+                name=ds.get("name"),
+                schedule=sched,
+                last_scraped_at=last,
+                overdue=overdue,
+            ))
+
+        return SchedulerInfo(
+            scheduler_running=data.get("scheduler_running", False),
+            dev_mode=dev_mode,
+            active_scrapes=data.get("active_scrapes", 0),
+            total_scrapes_today=data.get("total_scrapes_today", 0),
+            total_datasources=data.get("total_datasources", 0),
+            datasource_schedules=schedules,
+        )
+    except Exception as e:
+        logger.warning(f"Could not fetch retriever scheduler status: {e}")
+        return SchedulerInfo(scheduler_running=False, error=str(e))
+
+
 @router.get("/dashboard", response_model=AdminDashboard)
 async def get_admin_dashboard():
     """
-    Get complete admin dashboard data combining queue and processing status.
+    Get complete admin dashboard data combining queue, processing, batch, and scheduler status.
     """
     try:
-        queue_status = await get_queue_status()
-        processing_status = await get_processing_status()
-        active_batches = await get_active_batches()
-        
+        queue_status, processing_status, active_batches, scheduler = await asyncio.gather(
+            get_queue_status(),
+            get_processing_status(),
+            get_active_batches(),
+            _get_scheduler_info(),
+            return_exceptions=True,
+        )
+
+        # If any sub-call raised, keep a safe default
+        if isinstance(queue_status, Exception):
+            queue_status = await get_queue_status()  # retry once or propagate
+        if isinstance(processing_status, Exception):
+            processing_status = ProcessingStatus(retriever_active=False, digester_active=False, recent_completed=[], recent_failed=[])
+        if isinstance(active_batches, Exception):
+            active_batches = []
+        if isinstance(scheduler, Exception):
+            scheduler = None
+
         return AdminDashboard(
             queue_status=queue_status,
             processing_status=processing_status,
             active_batches=active_batches,
+            scheduler=scheduler,
             timestamp=datetime.now().isoformat()
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to get dashboard data: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to load monitoring dashboard")
@@ -464,58 +553,65 @@ async def get_admin_dashboard():
 @router.get("/active-batches", response_model=List[BatchProgress])
 async def get_active_batches():
     """
-    Get currently active ingestion batches from Neo4j.
+    Get currently active ingestion batches from Neo4j, flagging stalled ones.
+    A batch is stalled if it has been in-progress longer than STALL_THRESHOLD_HOURS.
     """
     try:
-        # Get Neo4j connection details from environment
         uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
         user = os.getenv("NEO4J_USER", "neo4j")
         password = os.getenv("NEO4J_PASSWORD", "password")
         database = os.getenv("NEO4J_DATABASE", "neo4j")
-        
-        # Create client and connect
+
         neo4j_client = Neo4jClient(uri=uri, user=user, password=password, database=database)
         neo4j_client.connect()
-        
-        # Query for batches that are not completed or failed, join DataSource for display name
+
+        # 'scraping' is the correct in-progress status (not 'retrieving')
+        # Use scrape_completed_at as the best available "last update" time
         query = """
         MATCH (b:IngestionBatch)
-        WHERE b.status IN ['retrieving', 'digesting']
+        WHERE b.status IN ['scraping', 'digesting']
         OPTIONAL MATCH (ds:DataSource {datasource_id: b.datasource_id})
         RETURN b.batch_id AS batch_id,
                b.datasource_id AS datasource_id,
                coalesce(ds.display_name, ds.name, b.datasource_id) AS display_name,
                b.status AS status,
-               b.items_scraped AS items_scraped,
-               b.items_digested AS items_digested,
+               coalesce(b.items_scraped, 0) AS items_scraped,
+               coalesce(b.items_digested, 0) AS items_digested,
                b.scrape_started_at AS started_at,
-               b.digest_completed_at AS updated_at
+               coalesce(b.scrape_completed_at, b.scrape_started_at) AS updated_at
         ORDER BY b.scrape_started_at DESC
-        LIMIT 20
+        LIMIT 50
         """
-        
+
         results = neo4j_client.execute_query(query)
-        
+        neo4j_client.close()
+
+        now = datetime.now()
         batches = []
         for record in results:
-            items_scraped = record.get("items_scraped", 0)
-            items_digested = record.get("items_digested", 0)
+            items_scraped = record.get("items_scraped") or 0
+            items_digested = record.get("items_digested") or 0
             progress_percent = (items_digested / items_scraped * 100) if items_scraped > 0 else 0
-            
-            # Convert datetime objects to ISO strings if present
-            started_at = record.get("started_at")
-            updated_at = record.get("updated_at")
-            
-            if started_at and hasattr(started_at, 'isoformat'):
-                started_at = started_at.isoformat()
-            elif started_at:
-                started_at = str(started_at)
-                
-            if updated_at and hasattr(updated_at, 'isoformat'):
-                updated_at = updated_at.isoformat()
-            elif updated_at:
-                updated_at = str(updated_at)
-            
+
+            def _to_iso(val):
+                if val is None:
+                    return None
+                if hasattr(val, 'isoformat'):
+                    return val.isoformat()
+                return str(val)
+
+            started_at = _to_iso(record.get("started_at"))
+            updated_at = _to_iso(record.get("updated_at"))
+
+            # A batch is stalled if it has been running longer than the threshold
+            stalled = False
+            if started_at:
+                try:
+                    age_hours = (now - datetime.fromisoformat(started_at.replace('Z', '+00:00').replace('+00:00', ''))).total_seconds() / 3600
+                    stalled = age_hours > STALL_THRESHOLD_HOURS
+                except Exception:
+                    pass
+
             batches.append(BatchProgress(
                 batch_id=record["batch_id"],
                 datasource_id=record["datasource_id"],
@@ -525,18 +621,50 @@ async def get_active_batches():
                 items_digested=items_digested,
                 started_at=started_at,
                 updated_at=updated_at,
-                progress_percent=round(progress_percent, 1)
+                progress_percent=round(progress_percent, 1),
+                stalled=stalled,
             ))
-        
-        # Close connection
-        neo4j_client.close()
-        
+
         return batches
-        
+
     except Exception as e:
         logger.error(f"Failed to get active batches: {e}", exc_info=True)
-        # Return empty list instead of error to not break dashboard
         return []
+
+
+@router.post("/fix-stalled-batches")
+async def fix_stalled_batches():
+    """
+    Mark all stalled ingestion batches (stuck > STALL_THRESHOLD_HOURS) as failed.
+    """
+    try:
+        uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
+        user = os.getenv("NEO4J_USER", "neo4j")
+        password = os.getenv("NEO4J_PASSWORD", "password")
+        database = os.getenv("NEO4J_DATABASE", "neo4j")
+
+        neo4j_client = Neo4jClient(uri=uri, user=user, password=password, database=database)
+        neo4j_client.connect()
+
+        cutoff = datetime.now().isoformat()
+        query = f"""
+        MATCH (b:IngestionBatch)
+        WHERE b.status IN ['scraping', 'digesting']
+          AND b.scrape_started_at < datetime() - duration('PT{STALL_THRESHOLD_HOURS}H')
+        SET b.status = 'failed',
+            b.error_message = 'Marked failed by admin: stalled for over {STALL_THRESHOLD_HOURS} hours'
+        RETURN count(b) AS fixed
+        """
+
+        results = neo4j_client.execute_query(query)
+        neo4j_client.close()
+
+        fixed = results[0].get("fixed", 0) if results else 0
+        return {"status": "success", "batches_fixed": fixed}
+
+    except Exception as e:
+        logger.error(f"Failed to fix stalled batches: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/clear-completed")
@@ -689,6 +817,7 @@ class SystemConfigurationResponse(BaseModel):
     full_refresh_schedule: Optional[str] = Field(default=None, description="Cron expression for full refresh (incremental mode only)")
     ingestion_lookback_value: int = Field(default=12, ge=1, description="Global ingestion lookback amount for automated scraper ingestion")
     ingestion_lookback_unit: Literal["days", "weeks", "months", "years"] = Field(default="months", description="Global ingestion lookback unit for automated scraper ingestion")
+    auth_token: Optional[str] = Field(default=None, description="Authentication token for private portals (e.g. WBA Extranet HLLogin cookie)")
     last_scraped_at: Optional[str] = None  # ISO format string from Neo4j
     created_at: Optional[str] = None  # ISO format string from Neo4j
     updated_at: Optional[str] = None  # ISO format string from Neo4j
@@ -716,7 +845,7 @@ class SystemConfigurationCreate(BaseModel):
     full_refresh_schedule: Optional[str] = Field(default=None, max_length=100, description="Cron expression for full refresh (incremental mode only)")
     ingestion_lookback_value: int = Field(default=12, ge=1, description="Global ingestion lookback amount for automated scraper ingestion")
     ingestion_lookback_unit: Literal["days", "weeks", "months", "years"] = Field(default="months", description="Global ingestion lookback unit for automated scraper ingestion")
-
+    auth_token: Optional[str] = Field(default=None, description="Authentication token for private portals (e.g. WBA Extranet HLLogin cookie)")
 
 
 class SystemConfigurationUpdate(BaseModel):
@@ -740,6 +869,7 @@ class SystemConfigurationUpdate(BaseModel):
     full_refresh_schedule: Optional[str] = Field(None, max_length=100, description="Cron expression for full refresh (incremental mode only)")
     ingestion_lookback_value: Optional[int] = Field(None, ge=1, description="Global ingestion lookback amount for automated scraper ingestion")
     ingestion_lookback_unit: Optional[Literal["days", "weeks", "months", "years"]] = Field(None, description="Global ingestion lookback unit for automated scraper ingestion")
+    auth_token: Optional[str] = Field(None, description="Authentication token for private portals (e.g. WBA Extranet HLLogin cookie)")
 
 
 
@@ -799,7 +929,8 @@ async def create_system_configuration(config: SystemConfigurationCreate):
             consecutive_duplicates_limit=config.consecutive_duplicates_limit,
             full_refresh_schedule=config.full_refresh_schedule,
             ingestion_lookback_value=config.ingestion_lookback_value,
-            ingestion_lookback_unit=config.ingestion_lookback_unit
+            ingestion_lookback_unit=config.ingestion_lookback_unit,
+            auth_token=config.auth_token,
         )
         return result
     except Exception as e:
@@ -839,7 +970,8 @@ async def update_system_configuration(datasource_id: str, config: SystemConfigur
             consecutive_duplicates_limit=config.consecutive_duplicates_limit,
             full_refresh_schedule=config.full_refresh_schedule,
             ingestion_lookback_value=config.ingestion_lookback_value,
-            ingestion_lookback_unit=config.ingestion_lookback_unit
+            ingestion_lookback_unit=config.ingestion_lookback_unit,
+            auth_token=config.auth_token,
         )
         return result
     except HTTPException:

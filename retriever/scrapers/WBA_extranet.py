@@ -1235,11 +1235,36 @@ class WBAExtranetScraper(BaseScraper):
         root_id = datasource_config.get("datasource_id", self.ROOT_DATASOURCE_ID)
         logger.info(f"WBA Extranet: starting scrape (root datasource={root_id})")
 
-        if not (settings.wba_extranet_username and settings.wba_extranet_password):
-            raise Exception(
-                "WBA Extranet credentials missing. Set WBA_EXTRANET_USERNAME and "
-                "WBA_EXTRANET_PASSWORD in .env to enable this scraper."
+        # auth_token from datasource config (set via admin UI) takes precedence
+        # over the env var. This allows remote configuration without SSH.
+        config_auth_token = datasource_config.get("auth_token") or ""
+        if config_auth_token:
+            # Inject directly without needing username/password
+            from yarl import URL as _URL
+            self.session.cookie_jar.update_cookies(
+                {"HLLogin": config_auth_token}, _URL(self.base_url)
             )
+            try:
+                async with self.session.get(
+                    self._abs_url("/"), headers=self._headers(), allow_redirects=True,
+                    timeout=aiohttp.ClientTimeout(total=20)
+                ) as _r:
+                    if "/login" not in str(_r.url).lower():
+                        logger.info("WBA Extranet: auth via datasource auth_token succeeded")
+                        self.is_authenticated = True
+                    else:
+                        logger.warning("WBA Extranet: datasource auth_token rejected — may be expired")
+            except Exception as _e:
+                logger.warning(f"WBA Extranet: datasource auth_token warm-up failed: {_e}")
+                self.is_authenticated = True  # proceed optimistically
+
+        if not self.is_authenticated:
+            if not (settings.wba_extranet_username and settings.wba_extranet_password):
+                raise Exception(
+                    "WBA Extranet credentials missing. Set WBA_EXTRANET_USERNAME and "
+                    "WBA_EXTRANET_PASSWORD in .env, or set auth_token on the DataSource "
+                    "via the system config admin page."
+                )
 
         # Auth strategy:
         # 1. HLIAMKey API (best — no reCAPTCHA, structured JSON, set WBA_EXTRANET_IAM_KEY)
@@ -1256,7 +1281,7 @@ class WBAExtranetScraper(BaseScraper):
                 logger.warning("WBA Extranet IAM key test failed — falling back to form/cookie auth")
                 use_api = False
 
-        if not use_api:
+        if not use_api and not self.is_authenticated:
             auth_ok = await self.authenticate(
                 settings.wba_extranet_username, settings.wba_extranet_password
             )

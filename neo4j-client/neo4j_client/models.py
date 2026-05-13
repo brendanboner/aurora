@@ -446,6 +446,15 @@ class DataSource(Node):
         description="datasource_id of the parent DataSource (e.g., a programme that contains this workgroup). NULL for top-level sources."
     )
 
+    # Authentication token for private portals (e.g. WBA Extranet HLLogin cookie).
+    # Stored in Neo4j so it can be set from the admin UI without server access.
+    # For WBA Extranet: paste the HLLogin cookie value from browser DevTools.
+    # Treat as sensitive — never log this value.
+    auth_token: Optional[str] = Field(
+        None,
+        description="Authentication token for private portals (e.g. WBA Extranet HLLogin cookie). Set via admin UI."
+    )
+
     NORMALIZE = {
         "name": "title",
         "source_type": "lower",
