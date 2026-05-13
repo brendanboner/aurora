@@ -281,91 +281,34 @@ Or use a channel webhook for named delivery: \`setAgentWebhook @aurora-<slug> ht
   }
 
   private async sendHelpMessage(context: TurnContext): Promise<void> {
-    const helpCard = CardFactory.adaptiveCard({
-      type: 'AdaptiveCard',
-      version: '1.4',
-      body: [
-        {
-          type: 'TextBlock',
-          text: '📚 Aurora Bot Help',
-          weight: 'Bolder',
-          size: 'Large'
-        },
-        {
-          type: 'TextBlock',
-          text: 'Here\'s what I can help you with:',
-          wrap: true,
-          spacing: 'Medium'
-        },
-        {
-          type: 'Container',
-          spacing: 'Medium',
-          items: [
-            { type: 'TextBlock', text: '📰 Content Feed Commands', weight: 'Bolder' },
-            {
-              type: 'TextBlock',
-              text: '• `feed` or `show feed` - View your personalized content feed\n• `my feed` - Same as above',
-              wrap: true,
-              spacing: 'Small'
-            }
-          ]
-        },
-        {
-          type: 'Container',
-          spacing: 'Medium',
-          items: [
-            { type: 'TextBlock', text: '🤖 Agent Commands', weight: 'Bolder' },
-            {
-              type: 'TextBlock',
-              text: '• `agents` - List available AI content agents\n• `follow <agent name>` - Follow an agent\n• `unfollow <agent name>` - Unfollow an agent\n• `ask <agent name> <question>` - Ask from that agent\'s perspective\n• `@<agent name> <question>` - Shorthand for ask\n• `@aurora-<slug> <question>` - Ask by Teams slug (e.g. `@aurora-ietf What\'s new?`)\n• `setChannelAgent @aurora-<slug>` - Route ALL messages in this chat through one agent\n• `clearChannelAgent` - Remove channel-scoped agent\n• `setAgentWebhook @aurora-<slug> https://...` - Use a channel webhook for that agent\'s updates (custom name + icon)\n• `removeAgentWebhook @aurora-<slug>` - Remove the webhook',
-              wrap: true,
-              spacing: 'Small'
-            }
-          ]
-        },
-        {
-          type: 'Container',
-          spacing: 'Medium',
-          items: [
-            { type: 'TextBlock', text: '🔔 Proactive Notifications', weight: 'Bolder' },
-            {
-              type: 'TextBlock',
-              text: '• `subscribe @aurora-<slug>` - Get pushed updates from an agent\n• `unsubscribe @aurora-<slug>` - Stop pushed updates',
-              wrap: true,
-              spacing: 'Small'
-            }
-          ]
-        },
-        {
-          type: 'Container',
-          spacing: 'Medium',
-          items: [
-            { type: 'TextBlock', text: '🔮 Ask Questions', weight: 'Bolder' },
-            {
-              type: 'TextBlock',
-              text: 'Just type your question naturally! I\'ll search Aurora\'s knowledge base for answers.',
-              wrap: true,
-              spacing: 'Small'
-            }
-          ]
-        },
-        {
-          type: 'Container',
-          spacing: 'Medium',
-          items: [
-            { type: 'TextBlock', text: 'ℹ️ Other Commands', weight: 'Bolder' },
-            {
-              type: 'TextBlock',
-              text: '• `help` or `?` - Show this help message\n• `about` - Learn about Aurora',
-              wrap: true,
-              spacing: 'Small'
-            }
-          ]
-        }
-      ]
-    });
+    const help = `📚 **Aurora Bot — Commands**
 
-    await context.sendActivity({ attachments: [helpCard] });
+**📰 Feed**
+• \`feed\` — Your personalised content feed
+
+**🤖 Agents**
+• \`agents\` — List all AI creator agents with their slugs
+• \`follow <name>\` / \`unfollow <name>\` — Follow or unfollow an agent
+• \`ask <name> <question>\` — Ask a specific agent
+
+**💬 Slug Routing**
+• \`@aurora-<slug> <question>\` — Ask by slug (e.g. \`@aurora-alex-wireless What is Wi-Fi 7?\`)
+• \`setChannelAgent @aurora-<slug>\` — Lock this channel to one agent permanently
+• \`clearChannelAgent\` — Remove the channel lock
+
+**🔔 Proactive Updates**
+• \`subscribe @aurora-<slug>\` — Get push notifications when an agent posts
+• \`unsubscribe @aurora-<slug>\` — Stop notifications
+• \`setAgentWebhook @aurora-<slug> https://...\` — Use a Teams Incoming Webhook for branded delivery
+• \`removeAgentWebhook @aurora-<slug>\` — Remove the webhook
+
+**ℹ️ Other**
+• \`about\` — About Aurora
+• \`help\` or \`?\` — This message
+
+💡 Or just type any question — Aurora will search its knowledge base.`;
+
+    await context.sendActivity(help);
   }
 
   private async sendAboutMessage(context: TurnContext): Promise<void> {

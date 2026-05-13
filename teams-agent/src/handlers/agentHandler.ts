@@ -1,10 +1,8 @@
-import { TurnContext, CardFactory } from 'botbuilder';
-import * as ACData from 'adaptivecards-templating';
+import { TurnContext } from 'botbuilder';
 import { AuroraUserService } from '../services/auroraUserService';
 import { AuroraAgentService } from '../services/auroraAgentService';
 import { AuroraOracleService } from '../services/auroraOracleService';
 import { buildOracleResponseCard } from '../helpers/cardBuilder';
-import agentListCardTemplate from '../adaptiveCards/agentListCard.json';
 
 /**
  * Handles agent-related commands:
@@ -81,21 +79,20 @@ export class AgentHandler {
       return;
     }
 
-    const template = new ACData.Template(agentListCardTemplate);
-    const cardPayload = template.expand({
-      $root: {
-        agents: agents.map((a) => ({
-          name: a.name,
-          description: a.description || a.persona || 'No description available.',
-        })),
-        frontend_url: process.env.AURORA_FRONTEND_URL || 'http://localhost:3000',
-      },
+    const lines = agents.map((a) => {
+      const desc = (a.description || a.persona || '').slice(0, 100);
+      const slug = (a as any).teams_slug ? ` — \`@${(a as any).teams_slug}\`` : '';
+      return `• **${a.name}**${slug}\n  ${desc}`;
     });
 
-    await context.sendActivity({
-      text: `📋 Found **${agents.length}** content agents. Type \`@Aurora follow <name>\` to follow one.`,
-      attachments: [CardFactory.adaptiveCard(cardPayload)],
-    });
+    const msg = [
+      `🤖 **Aurora Content Agents** (${agents.length} available)\n`,
+      lines.join('\n\n'),
+      `\n💡 Ask one: \`@aurora-<slug> your question\``,
+      `📰 Follow one: \`follow <name>\``,
+    ].join('\n');
+
+    await context.sendActivity(msg);
   }
 
   /** Follow an agent by name. */
