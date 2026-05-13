@@ -21,7 +21,7 @@
 #   VERSION is automatically determined from git SHA
 # =============================================================================
 
-.PHONY: help test-all build-push-all build-push-parallel ship-all aws-login gh-secrets connect_aurora_ec2clean-all \
+.PHONY: help test-all build-push-all build-push-parallel ship-all aws-login setup-oidc gh-secrets connect_aurora_ec2clean-all \
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
@@ -56,7 +56,8 @@ help:
 	@echo "  make build-push-all    - Build and push all service images to ECR"
 	@echo "  make ship-all          - Test, build, and ship all services to ECR"
 	@echo "  make aws-login             - Login to AWS ECR (opens browser SSO)"
-	@echo "  make gh-secrets            - Push AWS credentials + ECR/EC2 IDs to GitHub Actions secrets"
+	@echo "  make setup-oidc            - One-time OIDC setup for GitHub Actions (needs admin AWS profile)"
+	@echo "  make gh-secrets            - Fallback: push SSO credentials to GitHub secrets (expires ~1hr)"
 	@echo "  make connect_aurora_ec2 - Connect to Aurora EC2 instance via SSM"
 	@echo ""
 	@echo "$(GREEN)Service-Specific Commands:$(NC)"
@@ -270,6 +271,16 @@ aws-login:
 	@echo "$(CYAN)Logging into AWS ECR...$(NC)"
 	@aws ecr get-login-password --region $(AWS_REGION) --profile $(AWS_SSO_PROFILE) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 	@echo "$(GREEN)✓ Successfully logged into ECR$(NC)"
+
+# One-time OIDC setup — requires AdministratorAccess (not PowerUserAccess)
+# Creates an IAM OIDC provider + deploy role scoped to this repo's main branch.
+# After this runs once, GitHub Actions authenticates automatically — no stored keys.
+setup-oidc:
+	@echo "$(CYAN)Setting up GitHub Actions OIDC authentication...$(NC)"
+	@echo "$(YELLOW)Note: requires AdministratorAccess or IAM write permissions$(NC)"
+	@echo "$(YELLOW)      Run: AWS_PROFILE=<admin-profile> make setup-oidc$(NC)"
+	@chmod +x scripts/setup-oidc.sh
+	@./scripts/setup-oidc.sh
 
 # Extract current AWS credentials from SSO session and push them to GitHub Actions secrets.
 # Run 'make aws-login' first so the SSO session is active, then run this target.
