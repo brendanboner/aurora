@@ -27,6 +27,8 @@ class QueueResource(BaseModel):
     publish_date: Optional[str]
     scraped_at: float
     position: int  # Position in queue
+    datasource_id: Optional[str] = None
+    message_type: Optional[str] = None
 
 
 class ProcessingResource(BaseModel):
@@ -80,6 +82,7 @@ class BatchProgress(BaseModel):
     """Ingestion batch progress information."""
     batch_id: str
     datasource_id: str
+    display_name: Optional[str] = None   # Human-readable source name from DataSource node
     status: str  # "scraping", "scraped", "digesting", "completed", "failed"
     items_scraped: int
     items_digested: int
@@ -297,6 +300,9 @@ async def get_queue_status():
                         publish_date = resource_data.get("publish_date")
                         scraped_at = message.get("scraped_at", 0)
                         
+                        datasource_id = message.get("datasource_id")
+                        message_type = message.get("message_type", "resource")
+
                         # Only add if we haven't seen this URL yet
                         if url and url not in seen_urls:
                             resources.append(QueueResource(
@@ -305,7 +311,9 @@ async def get_queue_status():
                                 category=category,
                                 publish_date=publish_date,
                                 scraped_at=scraped_at,
-                                position=position
+                                position=position,
+                                datasource_id=datasource_id,
+                                message_type=message_type,
                             ))
                             seen_urls.add(url)
                             position += 1
@@ -469,19 +477,21 @@ async def get_active_batches():
         neo4j_client = Neo4jClient(uri=uri, user=user, password=password, database=database)
         neo4j_client.connect()
         
-        # Query for batches that are not completed or failed
+        # Query for batches that are not completed or failed, join DataSource for display name
         query = """
         MATCH (b:IngestionBatch)
         WHERE b.status IN ['retrieving', 'digesting']
+        OPTIONAL MATCH (ds:DataSource {datasource_id: b.datasource_id})
         RETURN b.batch_id AS batch_id,
                b.datasource_id AS datasource_id,
+               coalesce(ds.display_name, ds.name, b.datasource_id) AS display_name,
                b.status AS status,
                b.items_scraped AS items_scraped,
                b.items_digested AS items_digested,
                b.scrape_started_at AS started_at,
                b.digest_completed_at AS updated_at
         ORDER BY b.scrape_started_at DESC
-        LIMIT 10
+        LIMIT 20
         """
         
         results = neo4j_client.execute_query(query)
@@ -509,6 +519,7 @@ async def get_active_batches():
             batches.append(BatchProgress(
                 batch_id=record["batch_id"],
                 datasource_id=record["datasource_id"],
+                display_name=record.get("display_name"),
                 status=record["status"],
                 items_scraped=items_scraped,
                 items_digested=items_digested,
