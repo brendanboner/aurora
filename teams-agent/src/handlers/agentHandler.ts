@@ -201,14 +201,21 @@ export class AgentHandler {
       return;
     }
 
-    // Augment the question with agent persona context for Oracle
-    const agentContext = matchedAgent.persona
-      ? `[Context: Responding as ${matchedAgent.name} — ${matchedAgent.persona}]\n\n`
-      : `[Context: From the perspective of ${matchedAgent.name}]\n\n`;
+    // Build the AgentPersona payload so oracle responds in the agent's voice
+    const agentPersona = {
+      name: matchedAgent.name,
+      persona: matchedAgent.persona,
+      tone_style: matchedAgent.tone_style || 'analytical',
+      content_length_preference: matchedAgent.content_length_preference || 'medium',
+      expertise_topics: matchedAgent.expertise_topics || [],
+      expertise_organisations: matchedAgent.expertise_organisations || [],
+      expertise_standards: matchedAgent.expertise_standards || [],
+      llm_temperature_override: matchedAgent.llm_temperature_override ?? null,
+    };
 
     await context.sendActivity(`💬 Asking **${matchedAgent.name}**: *${question}*...`);
 
-    const response = await this.oracleService.query(auroraUser.id, agentContext + question);
+    const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
 
     if (!response.answer && (!response.documents || response.documents.length === 0)) {
       await context.sendActivity(`**${matchedAgent.name}** could not find a relevant answer to that question.`);

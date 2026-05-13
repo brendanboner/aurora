@@ -1332,6 +1332,7 @@ class FastEngine:
                 user_context,
                 conversation_history=conversation_history,
                 detail_level=detail_str,
+                agent_persona=getattr(request, 'agent_persona', None),
             )
             
             # Allow more tokens for comprehensive requests
@@ -1339,11 +1340,12 @@ class FastEngine:
             if plan.detail_level == DetailLevel.COMPREHENSIVE:
                 max_tokens = max(max_tokens, 1500)
 
+            _agent_temp = getattr(getattr(request, 'agent_persona', None), 'llm_temperature_override', None)
             response = await call_llm(
                 client=client,
                 messages=messages,
                 max_tokens=max_tokens,
-                temperature=0.3
+                temperature=_agent_temp if _agent_temp is not None else 0.3
             )
             
             answer = (response.content or "").strip()

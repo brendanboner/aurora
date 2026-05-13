@@ -64,6 +64,7 @@ class ResponseGenerator:
         intent: QueryIntent,
         user_context: Optional[str] = None,
         conversation_history: Optional[list[dict]] = None,
+        agent_persona=None,
     ) -> AnswerResult:
         """
         Generate an LLM answer with citations.
@@ -74,6 +75,7 @@ class ResponseGenerator:
             graph_context: Graph context information
             intent: Classified query intent
             user_context: Optional user preferences context string for personalization
+            agent_persona: Optional AgentPersona — when set, answer is in the agent's voice
             
         Returns:
             AnswerResult with answer, citations, and confidence
@@ -115,12 +117,13 @@ class ResponseGenerator:
             messages = get_answer_generator_messages(
                 question, docs_for_prompt, gc_dict, user_context,
                 conversation_history=conversation_history,
+                agent_persona=agent_persona,
             )
             response = await call_llm(
                 client=client,
                 messages=messages,
                 max_tokens=settings.max_answer_tokens,
-                temperature=0.3  # Slightly higher for more natural responses
+                temperature=agent_persona.llm_temperature_override if (agent_persona and agent_persona.llm_temperature_override is not None) else 0.3
             )
             
             # Extract citations from answer

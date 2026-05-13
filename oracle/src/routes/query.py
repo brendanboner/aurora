@@ -605,7 +605,8 @@ async def query(
                     documents=documents,
                     graph_context=graph_context,
                     intent=intent,
-                    user_context=user_context_for_prompt
+                    user_context=user_context_for_prompt,
+                    agent_persona=request.agent_persona,
                 )
                 answer = response_result.answer
                 citations = response_result.citations

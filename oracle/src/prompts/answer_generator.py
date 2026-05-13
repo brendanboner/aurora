@@ -134,6 +134,94 @@ Answer directly. Cite inline with [1], [2] etc. — do NOT add a reference list 
 
 **Answer:**"""
 
+# Agent persona system prompt — injected when a creator agent @-mentions a question.
+# Replaces the generic "meeting attendee" identity while preserving all factual/citation rules.
+ANSWER_GENERATOR_SYSTEM_AGENT = """You are {agent_name}, an industry expert and thought leader in wireless networking and Wi-Fi technology. You have personally attended every Wi-Fi Alliance meeting, reviewed every working group document, and participated in every relevant industry discussion — and you answer questions in your distinctive voice and style.
+
+**IMPORTANT: Today's date is {current_date}. When users ask about "this month", "this quarter", "upcoming", or "recent" events, use this date as your reference point.**
+
+{data_horizon_block}
+
+{detail_instruction}
+
+{persona_block}
+
+**Your Writing Style:** {tone_guidance}
+
+**Your Length Preference:** {length_guidance}
+
+{expertise_block}
+
+**FACTUAL RULES — never break these:**
+1. Cite specific documents using [1], [2], etc. notation
+2. Lead with the direct answer — no preamble
+3. For recency questions: if the DATA HORIZON shows content within the past 30 days, present it directly as the current update
+4. NEVER fabricate facts not supported by the documents
+
+**STYLE — strictly enforced:**
+- Write in your distinctive voice — not a generic analyst
+- No filler openers: never start with "Certainly", "Great", "Of course", "Sure", "Absolutely"
+- No closing padding: never end with "Let me know if you'd like more detail"
+- Facts and citations only — every sentence must add information
+
+**ABSOLUTE RULES:**
+- NEVER say "I don't have access to" or reveal internal retrieval
+- NEVER tell the user to consult other sources
+- NEVER use the phrase "unknown date"
+- You ARE the expert — speak with authority from what you know
+"""
+
+
+def _build_agent_persona_system_prompt(
+    agent_persona,
+    current_date: str,
+    data_horizon_block: str,
+    detail_instruction: str,
+) -> str:
+    """Build a system prompt flavoured with the creator agent's persona and style."""
+    tone_guidance_map = {
+        "analytical": "Provide data-driven insights with clear reasoning. Use numbers, comparisons, and evidence-based conclusions.",
+        "conversational": "Share insights like explaining to a colleague. Be approachable, use personal observations, keep jargon minimal.",
+        "technical": "Dive deep into technical details while staying readable. Use specific terminology correctly and explain implications.",
+        "journalistic": "Report on developments objectively, then add your expert take. Separate facts from interpretation clearly.",
+        "opinion": "Lead with your distinctive perspective, back it up with facts. Own your viewpoint while acknowledging complexity.",
+    }
+    length_guidance_map = {
+        "short": "Keep responses concise: 2–3 short paragraphs. Get to the point quickly.",
+        "medium": "Write 3–5 paragraphs. Balance depth with readability.",
+        "long": "Develop comprehensive answers. Include examples, nuances, and thorough analysis.",
+    }
+
+    persona_block = ""
+    if agent_persona.persona:
+        persona_block = (
+            f"{'=' * 60}\n"
+            f"YOUR UNIQUE PROFESSIONAL IDENTITY:\n"
+            f"{'=' * 60}\n"
+            f"{agent_persona.persona}\n"
+            f"{'=' * 60}"
+        )
+
+    expertise_parts = []
+    if agent_persona.expertise_topics:
+        expertise_parts.append(f"**Topic specialisms:** {', '.join(agent_persona.expertise_topics)}")
+    if agent_persona.expertise_organisations:
+        expertise_parts.append(f"**Organisations you follow closely:** {', '.join(agent_persona.expertise_organisations)}")
+    if agent_persona.expertise_standards:
+        expertise_parts.append(f"**Standards bodies you cover:** {', '.join(agent_persona.expertise_standards)}")
+    expertise_block = "\n".join(expertise_parts) if expertise_parts else ""
+
+    return ANSWER_GENERATOR_SYSTEM_AGENT.format(
+        agent_name=agent_persona.name,
+        current_date=current_date,
+        data_horizon_block=data_horizon_block,
+        detail_instruction=detail_instruction,
+        persona_block=persona_block,
+        tone_guidance=tone_guidance_map.get(agent_persona.tone_style, "Maintain a professional, thoughtful tone."),
+        length_guidance=length_guidance_map.get(agent_persona.content_length_preference, "Write 3–5 balanced paragraphs."),
+        expertise_block=expertise_block,
+    )
+
 
 def format_documents_for_prompt(documents: list[dict]) -> str:
     """Format documents for inclusion in the answer generation prompt."""
@@ -179,6 +267,7 @@ def get_answer_generator_messages(
     user_context: str | None = None,
     conversation_history: list[dict] | None = None,
     detail_level: str = "detailed",
+    agent_persona=None,
 ) -> list[dict]:
     """Get messages for answer generation.
     
@@ -189,6 +278,7 @@ def get_answer_generator_messages(
         user_context: Optional user context string for personalization
         conversation_history: Optional list of prior {role, content} turns
         detail_level: One of 'brief', 'detailed', 'comprehensive'
+        agent_persona: Optional AgentPersona — when set, answer is generated in the agent's voice
         
     Returns:
         List of messages for LLM chat completion
@@ -283,8 +373,24 @@ def get_answer_generator_messages(
     else:
         conversation_context = ""
 
-    # Choose prompts based on whether personalization is enabled
-    if user_context:
+    # Choose prompts: agent persona > personalization > generic
+    if agent_persona is not None:
+        # Agent voice mode — use the creator agent's persona, tone and expertise
+        system_prompt = _build_agent_persona_system_prompt(
+            agent_persona=agent_persona,
+            current_date=current_date,
+            data_horizon_block=data_horizon_block,
+            detail_instruction=detail_instruction,
+        )
+        user_content = ANSWER_GENERATOR_USER.format(
+            question=question,
+            documents=docs_text,
+            central_topics=central_topics,
+            key_organizations=key_orgs,
+            temporal_patterns=temporal,
+            conversation_context=conversation_context,
+        )
+    elif user_context:
         system_prompt = ANSWER_GENERATOR_SYSTEM_PERSONALIZED.format(
             current_date=current_date,
             data_horizon_block=data_horizon_block,

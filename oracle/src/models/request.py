@@ -87,12 +87,25 @@ class QueryOptions(BaseModel):
     )
 
 
+class AgentPersona(BaseModel):
+    """Persona details for a content creator agent, used to style oracle responses."""
+    name: str = Field(..., description="Agent handle/name")
+    persona: Optional[str] = Field(default=None, description="Full character/persona script")
+    tone_style: str = Field(default="analytical", description="analytical | conversational | technical | journalistic | opinion")
+    content_length_preference: str = Field(default="medium", description="short | medium | long")
+    expertise_topics: list[str] = Field(default_factory=list, description="Topics this agent specialises in")
+    expertise_organisations: list[str] = Field(default_factory=list, description="Organisations this agent focuses on")
+    expertise_standards: list[str] = Field(default_factory=list, description="Standards bodies this agent covers")
+    llm_temperature_override: Optional[float] = Field(default=None, description="Optional LLM temperature override (0.0–1.0)")
+
+
 class QueryRequest(BaseModel):
     """Request model for /oracle/query endpoint."""
     user_id: str = Field(..., description="User ID (Cognito UUID)")
     question: str = Field(..., min_length=1, max_length=2000, description="The question to answer")
     mode: QueryMode = Field(default=QueryMode.ANSWER, description="Response mode: 'retrieval', 'answer', or 'auto'")
     options: Optional[QueryOptions] = Field(default=None, description="Optional query settings")
+    agent_persona: Optional[AgentPersona] = Field(default=None, description="When set, answer is generated in the voice/style of this creator agent")
     
     class Config:
         json_schema_extra = {

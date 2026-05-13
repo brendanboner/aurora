@@ -1,9 +1,21 @@
 import axios, { AxiosInstance } from 'axios';
 
+export interface AgentPersona {
+  name: string;
+  persona: string | null;
+  tone_style: string;
+  content_length_preference: string;
+  expertise_topics: string[];
+  expertise_organisations: string[];
+  expertise_standards: string[];
+  llm_temperature_override: number | null;
+}
+
 export interface OracleQuery {
   user_id: string;
   question: string;
   mode: 'retrieval' | 'answer' | 'auto';
+  agent_persona?: AgentPersona;
   options?: {
     max_documents?: number;
     include_graph_context?: boolean;
@@ -85,14 +97,15 @@ export class AuroraOracleService {
   /**
    * Send query to Oracle service
    */
-  async query(userId: string, question: string): Promise<OracleResponse> {
+  async query(userId: string, question: string, agentPersona?: AgentPersona): Promise<OracleResponse> {
     try {
-      console.log(`Oracle query from user ${userId}: "${question}"`);
+      console.log(`Oracle query from user ${userId}: "${question}"${agentPersona ? ` [as ${agentPersona.name}]` : ''}`);
       
       const payload: OracleQuery = {
         user_id: userId,
         question: question,
         mode: 'answer',
+        ...(agentPersona && { agent_persona: agentPersona }),
         options: {
           max_documents: 5,
           include_graph_context: true

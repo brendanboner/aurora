@@ -5,6 +5,12 @@ export interface CreatorAgent {
   name: string;
   description: string | null;
   persona: string | null;
+  tone_style: string;
+  content_length_preference: string;
+  expertise_topics: string[];
+  expertise_organisations: string[];
+  expertise_standards: string[];
+  llm_temperature_override: number | null;
   enabled: boolean;
   follower_count?: number;
 }
