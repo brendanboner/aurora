@@ -82,7 +82,7 @@ export class ProactiveMessenger {
   }
 
   private async botPush(
-    row: { service_url: string; conversation_id: string; bot_id: string | null } | undefined,
+    row: { service_url: string; conversation_id: string; bot_id: string | null; channel_id?: string | null } | undefined,
     activity: ReturnType<typeof MessageFactory.attachment>,
     convId: string
   ): Promise<boolean> {
@@ -92,13 +92,23 @@ export class ProactiveMessenger {
     }
     const ref: Partial<ConversationReference> = {
       serviceUrl: row.service_url,
-      conversation: { id: row.conversation_id, isGroup: true } as any,
+      channelId:  row.channel_id ?? 'msteams',
+      conversation: { id: row.conversation_id, isGroup: false, tenantId: undefined } as any,
       bot: row.bot_id ? { id: row.bot_id, name: 'Aurora' } : undefined,
     };
     try {
-      await this.adapter.continueConversation(ref as ConversationReference, async (ctx) => {
-        await ctx.sendActivity(activity);
-      });
+      // Wrap with a 10-second timeout — stale serviceUrls (e.g. closed emulator sessions)
+      // hang indefinitely without this, blocking all subsequent push deliveries.
+      const TIMEOUT_MS = 10_000;
+      await Promise.race([
+        this.adapter.continueConversation(ref as ConversationReference, async (ctx) => {
+          await ctx.sendActivity(activity);
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`timeout after ${TIMEOUT_MS}ms`)), TIMEOUT_MS)
+        ),
+      ]);
+      console.log(`[ProactiveMessenger] Bot push delivered to ${convId}`);
       return true;
     } catch (err) {
       console.error(`[ProactiveMessenger] Bot push failed for ${convId}:`, (err as Error).message);

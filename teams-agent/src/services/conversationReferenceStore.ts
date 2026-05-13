@@ -99,13 +99,11 @@ export class ConversationReferenceStore {
 
   /**
    * Retrieve all conversations subscribed to a given agent slug.
-   * Includes conversations where subscribed_agent_slugs contains the slug,
-   * OR where subscribed_agent_slugs is empty (meaning "all agents").
    */
   async getSubscribed(agentSlug: string): Promise<StoredConversationReference[]> {
     const res = await getPool().query<StoredConversationReference>(
       `SELECT * FROM teams_conversation_references
-       WHERE $1 = ANY(subscribed_agent_slugs) OR array_length(subscribed_agent_slugs, 1) IS NULL`,
+       WHERE $1 = ANY(subscribed_agent_slugs)`,
       [agentSlug]
     );
     return res.rows;

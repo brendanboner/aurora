@@ -131,28 +131,29 @@ server.post('/internal/push-feed-update', async (req, res) => {
 
   if (!body?.agent_slug || !body?.title) {
     res.json({ error: 'agent_slug and title are required' });
-    (res as any).status = 400;
     return;
   }
 
   console.log(`[${new Date().toISOString()}] Proactive push: agent_slug=${body.agent_slug} title="${body.title}"`);
 
-  try {
-    const result = await proactiveMessenger.pushFeedUpdate({
-      agent_slug:    body.agent_slug,
-      agent_name:    body.agent_name   || body.agent_slug,
-      post_id:       body.post_id      || 0,
-      title:         body.title,
-      summary:       body.summary      || '',
-      tags:          body.tags         || [],
-      source_url:    body.source_url,
-      published_at:  body.published_at,
-    });
-    res.json({ status: 'ok', ...result });
-  } catch (err) {
-    console.error('[internal/push-feed-update] Error:', err);
-    res.json({ error: (err as Error).message });
-  }
+  // Respond immediately — delivery is fire-and-forget so slow/dead serviceUrls
+  // don't block the caller (content_creator_service has a 5s timeout).
+  res.json({ status: 'queued' });
+
+  const payload = {
+    agent_slug:    body.agent_slug,
+    agent_name:    body.agent_name   || body.agent_slug,
+    post_id:       body.post_id      || 0,
+    title:         body.title,
+    summary:       body.summary      || '',
+    tags:          body.tags         || [],
+    source_url:    body.source_url,
+    published_at:  body.published_at,
+  };
+
+  proactiveMessenger.pushFeedUpdate(payload).catch((err) => {
+    console.error('[internal/push-feed-update] Delivery error:', err);
+  });
 });
 
 // Graceful shutdown
