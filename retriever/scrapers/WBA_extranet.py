@@ -222,6 +222,157 @@ class WBAExtranetScraper(BaseScraper):
 
     # ---- authentication --------------------------------------------------- #
 
+    # HL API auth headers for HLIAMKey-based access (no browser, no reCAPTCHA) ---
+
+    def _hl_api_headers(self) -> Optional[Dict[str, str]]:
+        """Return Higher Logic API auth headers if HLIAMKey is configured.
+
+        The HLIAMKey is an organisation-level key set in the Higher Logic admin
+        portal under Settings → Integrations → API Settings → IAM Key.
+        Combined with the user's password it gives access to the
+        /higherlogic/external/api/v2.0/ REST API without any reCAPTCHA.
+        """
+        iam_key = settings.wba_extranet_iam_key
+        username = settings.wba_extranet_username
+        password = settings.wba_extranet_password
+        if not (iam_key and username and password):
+            return None
+        return {
+            "HLIAMKey": iam_key,
+            "HLUserLogin": username,
+            "HLPassword": password,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": BROWSER_HEADERS["User-Agent"],
+        }
+
+    async def _api_get(self, path: str) -> Optional[Any]:
+        """GET from the Higher Logic external REST API. Returns parsed JSON or None."""
+        headers = self._hl_api_headers()
+        if not headers:
+            return None
+        url = self._abs_url(f"/higherlogic/external/api/v2.0/{path.lstrip('/')}")
+        try:
+            async with self.session.get(url, headers=headers,
+                                         timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                logger.debug(f"HL API {path}: HTTP {resp.status}")
+                return None
+        except Exception as exc:
+            logger.debug(f"HL API GET {path} failed: {exc}")
+            return None
+
+    async def discover_communities_via_api(self) -> List[CommunityRef]:
+        """Enumerate communities via the Higher Logic REST API (no reCAPTCHA).
+
+        Requires WBA_EXTRANET_IAM_KEY to be set.
+        API endpoint: GET /higherlogic/external/api/v2.0/Communities/GetAll
+        """
+        data = await self._api_get("Communities/GetAll?pageSize=200&pageIndex=0")
+        if not data:
+            return []
+
+        communities = []
+        items = data if isinstance(data, list) else data.get("Items") or data.get("items") or []
+        for item in items:
+            key = (item.get("CommunityKey") or item.get("communityKey") or "").lower()
+            name = item.get("Name") or item.get("name") or item.get("CommunityName") or key
+            if not key:
+                continue
+            home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
+            communities.append(CommunityRef(community_key=key, name=name, home_url=home,
+                                             description=item.get("Description")))
+
+        logger.info(f"HL API discovered {len(communities)} communities")
+        return communities
+
+    async def get_community_threads_via_api(
+        self, community_key: str, community_datasource_id: str,
+        since: Optional[datetime], limit: int = 20
+    ) -> List[Resource]:
+        """Get discussion threads for a community via HL REST API."""
+        since_str = since.strftime("%Y-%m-%dT%H:%M:%S") if since else ""
+        path = (
+            f"Communities/{community_key}/Threads?pageSize={limit}&pageIndex=0"
+            + (f"&startDate={since_str}" if since_str else "")
+        )
+        data = await self._api_get(path)
+        if not data:
+            return []
+
+        out = []
+        items = data if isinstance(data, list) else data.get("Items") or []
+        for item in items:
+            title = item.get("Subject") or item.get("Title") or ""
+            url = item.get("Permalink") or item.get("Url") or self._abs_url(f"/discussion/{item.get('ThreadKey','')}")
+            body = sanitize_text(item.get("Body") or item.get("Content") or "")
+            pub_date = None
+            for date_field in ("PostDate", "CreatedDate", "ModifiedDate"):
+                if item.get(date_field):
+                    try:
+                        pub_date = date_parse(str(item[date_field])).strftime("%Y-%m-%d")
+                        break
+                    except Exception:
+                        pass
+            if not title:
+                continue
+            out.append(Resource(
+                title=title,
+                url=url,
+                category="discussion",
+                content=body or None,
+                summary=body[:500] if body else None,
+                publish_date=pub_date,
+                datasource_id=community_datasource_id,
+                doc_type="meeting-prep-call" if PREP_CALL_PATTERN.search(url) else "digest-post",
+            ))
+        return out
+
+    async def get_community_library_via_api(
+        self, community_key: str, community_datasource_id: str, limit: int = 10
+    ) -> List[Resource]:
+        """Get library documents for a community via HL REST API."""
+        data = await self._api_get(
+            f"Communities/{community_key}/LibraryEntries?pageSize={limit}&pageIndex=0"
+        )
+        if not data:
+            return []
+
+        out = []
+        items = data if isinstance(data, list) else data.get("Items") or []
+        for item in items:
+            title = item.get("Title") or item.get("Name") or ""
+            doc_url = (item.get("DownloadUrl") or item.get("Url") or
+                       self._abs_url(f"/higherlogic/ws/groups/{community_key}/download/{item.get('LibraryEntryKey','')}/latest"))
+            uploader = item.get("Poster") or item.get("OwnerName") or ""
+            upload_date = None
+            for df in ("PostDate", "CreatedDate"):
+                if item.get(df):
+                    try:
+                        upload_date = date_parse(str(item[df])).strftime("%Y-%m-%d")
+                        break
+                    except Exception:
+                        pass
+            if not title:
+                continue
+            metadata_hash = self._metadata_hash(
+                community_key, title, uploader, upload_date, None, None
+            )
+            out.append(Resource(
+                title=title,
+                url=doc_url,
+                category="library",
+                content="",
+                publish_date=upload_date,
+                datasource_id=community_datasource_id,
+                doc_type=self._guess_doc_type(title, None),
+                access_notes="WBA Extranet — login required",
+                content_hash=metadata_hash,
+                summary=f"Uploaded by {uploader}" if uploader else None,
+            ))
+        return out
+
     async def _inject_session_cookies(self) -> bool:
         """Inject pre-authenticated browser cookies directly.
 
@@ -1068,18 +1219,38 @@ class WBAExtranetScraper(BaseScraper):
                 "WBA_EXTRANET_PASSWORD in .env to enable this scraper."
             )
 
-        auth_ok = await self.authenticate(
-            settings.wba_extranet_username, settings.wba_extranet_password
-        )
-        if not auth_ok:
-            raise Exception("WBA Extranet authentication failed — aborting")
+        # Auth strategy:
+        # 1. HLIAMKey API (best — no reCAPTCHA, structured JSON, set WBA_EXTRANET_IAM_KEY)
+        # 2. Cookie injection (if WBA_EXTRANET_HLTC is set — user provides browser cookie)
+        # 3. Form-based login (blocked by reCAPTCHA on some deployments)
+        use_api = bool(settings.wba_extranet_iam_key)
+        if use_api:
+            # Verify the IAM key works before proceeding
+            test = await self._api_get("Contacts/GetWhoAmI")
+            if test:
+                logger.info(f"WBA Extranet IAM key authentication OK — user: {test.get('EmailAddress','?')}")
+                self.is_authenticated = True
+            else:
+                logger.warning("WBA Extranet IAM key test failed — falling back to form/cookie auth")
+                use_api = False
+
+        if not use_api:
+            auth_ok = await self.authenticate(
+                settings.wba_extranet_username, settings.wba_extranet_password
+            )
+            if not auth_ok:
+                raise Exception("WBA Extranet authentication failed — aborting")
 
         batch_id = self.start_batch(root_id)
         logger.info(f"WBA Extranet batch_id={batch_id}")
 
         items_processed = 0
         try:
-            communities = await self.discover_communities()
+            # Discover communities via API (preferred) or HTML scraping
+            if use_api:
+                communities = await self.discover_communities_via_api()
+            if not use_api or not communities:
+                communities = await self.discover_communities()
             if not communities:
                 logger.warning("WBA Extranet: no communities discovered — exiting")
                 return
@@ -1148,10 +1319,17 @@ class WBAExtranetScraper(BaseScraper):
                         f"  {community.name}: incremental — since {since.date().isoformat()}"
                     )
 
-                # Digest threads (the textual "what happened" signal).
-                threads = await self.parse_digest_threads(
-                    community, community_datasource_id, since=since
-                )
+                # Digest threads — prefer structured API, fall back to HTML scraping.
+                threads = []
+                if use_api:
+                    threads = await self.get_community_threads_via_api(
+                        community.community_key, community_datasource_id,
+                        since=since, limit=30
+                    )
+                if not threads:
+                    threads = await self.parse_digest_threads(
+                        community, community_datasource_id, since=since
+                    )
                 # Filter against already-known URLs to avoid re-publishing.
                 threads = self.filter_new_urls(threads)
                 for r in threads:
@@ -1162,12 +1340,19 @@ class WBAExtranetScraper(BaseScraper):
                 # doc (or whenever metadata_hash flips) so the digester can
                 # produce a synopsis; we never persist the raw body
                 # (Resource node has no content field).
-                docs = await self.capture_document_metadata(
-                    community,
-                    community_datasource_id,
-                    limit=doc_limit,
-                    since=None if first_run else since,
-                )
+                docs = []
+                if use_api:
+                    docs = await self.get_community_library_via_api(
+                        community.community_key, community_datasource_id,
+                        limit=doc_limit or 10
+                    )
+                if not docs:
+                    docs = await self.capture_document_metadata(
+                        community,
+                        community_datasource_id,
+                        limit=doc_limit,
+                        since=None if first_run else since,
+                    )
                 if docs:
                     urls = [d.url for d in docs]
                     existing = self.batch_check_urls_exist(urls)

@@ -59,12 +59,18 @@ class Settings(BaseSettings):
     wba_extranet_username: str = ""
     wba_extranet_password: str = ""
     wba_extranet_base_url: str = "https://extranet.wballiance.com"
-    # Cookie-based auth (preferred when login form has reCAPTCHA):
+    # Cookie-based auth (when login form has reCAPTCHA):
     # Paste the HLTC and ASP.NET_SessionId values from your browser DevTools
     # after logging in to https://extranet.wballiance.com manually.
     # Application → Cookies → extranet.wballiance.com
     wba_extranet_hltc: str = ""
     wba_extranet_session_id: str = ""
+    # IAM Key-based auth (preferred for automated access — no reCAPTCHA):
+    # Obtain the HLIAMKey from the WBA admin portal under:
+    #   Settings → Integrations → API Settings → IAM Key
+    # Used with HLIAMKey + HLPassword + HLUserLogin headers for the
+    # /higherlogic/external/api/v2.0/ REST API endpoints.
+    wba_extranet_iam_key: str = ""
     
     # Event Sanitization Configuration
     sanitize_events: bool = True  # Enable/disable sensitive info sanitization
