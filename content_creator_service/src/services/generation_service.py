@@ -103,6 +103,20 @@ class GenerationService:
                 # Transform Oracle content items to events/documents format
                 events, documents = self._transform_oracle_content(oracle_result.get("content_items", []))
                 
+                # Fall back to Neo4j if Oracle returned nothing
+                if not events and not documents:
+                    logger.info(
+                        "Oracle discovery returned 0 items for agent %s (route=%s) — falling back to Neo4j",
+                        agent.name,
+                        oracle_result.get("route_used"),
+                    )
+                    events, documents = self._fetch_from_neo4j(
+                        agent,
+                        topic_scope,
+                        organisation_scope,
+                        cadence_days,
+                    )
+                
             except Exception as e:
                 logger.warning("Oracle discovery failed for agent %s: %s - falling back to Neo4j", agent.name, e)
                 # Fall through to Neo4j fallback
@@ -241,11 +255,10 @@ class GenerationService:
         if not dates:
             return None
 
+        # Normalize all to UTC before comparison — mixing tz-aware and naive raises TypeError
+        dates = [d.replace(tzinfo=_tz.utc) if d.tzinfo is None else d for d in dates]
         newest = max(dates)
-        # Ensure timezone-aware comparison
         now = datetime.now(_tz.utc)
-        if newest.tzinfo is None:
-            newest = newest.replace(tzinfo=_tz.utc)
 
         age_days = (now - newest).days
         if age_days <= cadence_days:
@@ -551,12 +564,13 @@ class GenerationService:
             min_relevance_score=min_relevance,
         )
         
-        # Fetch documents
+        # Fetch documents (with topics as fallback when no org scope)
         documents = self._context.fetch_recent_documents(
             organisations,
             limit=30,
             window_days=window_days,
             min_relevance_score=min_relevance,
+            topics=topics,
         )
         
         logger.info(

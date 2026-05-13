@@ -83,10 +83,17 @@ class Neo4jContextGateway:
                 WHERE toLower(org.name) IN [x IN $organisations | toLower(x)]
             })
         )
-        // Temporal filter: only recent content within window
-        AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
-        // Date validation: exclude invalid future dates (beyond year 2100)
-        AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
+        // Temporal filter: use publish_date when valid, fall back to created_at
+        WITH r,
+            CASE
+              WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date) >= datetime('2000-01-01')
+                THEN datetime(r.publish_date)
+              WHEN r.created_at IS NOT NULL THEN r.created_at
+              ELSE datetime('1970-01-01')
+            END AS effective_date
+        WHERE effective_date >= datetime() - duration({days: $window_days})
+          AND effective_date <= datetime('2100-12-31T23:59:59Z')
         // Exclude datasources the user has ignored
         AND ($excluded_datasources IS NULL OR size($excluded_datasources) = 0
              OR NOT r.datasource_id IN $excluded_datasources)
@@ -213,16 +220,20 @@ class Neo4jContextGateway:
         min_relevance_score: Optional[float] = None,
         excluded_datasources: Optional[List[str]] = None,
         preferred_datasources: Optional[List[str]] = None,
+        topics: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch recent documents mentioning specific organisations.
+        Fetch recent documents mentioning specific organisations or topics.
         
+        Accepts topics as a fallback when organisations list is empty.
         Applies similar relevance scoring as fetch_recent_events:
         - Organization specificity: fewer orgs = more focused (50% weight)
         - Recency: newer content scores higher (30% weight)
         - Title match: org names in title indicate primary focus (20% weight)
         """
-        if not organisations:
+        topics = [t for t in (topics or []) if t]
+        organisations = [o for o in organisations if o]
+        if not organisations and not topics:
             return []
         
         # Use settings defaults if not provided
@@ -236,8 +247,9 @@ class Neo4jContextGateway:
         max_orgs = max_topics // 2
         
         logger.info(
-            "Fetching documents for organisations=%s (limit=%s, window=%dd, min_score=%.2f, max_topics=%d)",
+            "Fetching documents for organisations=%s topics=%s (limit=%s, window=%dd, min_score=%.2f, max_topics=%d)",
             organisations,
+            topics,
             limit,
             window_days,
             min_relevance_score,
@@ -245,43 +257,65 @@ class Neo4jContextGateway:
         )
         
         query = """
-        MATCH (r:Resource)-[:MENTIONS]->(o:Organization)
-        WHERE toLower(o.name) IN [x IN $orgs | toLower(x)]
-        // Temporal filter
-        AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
-        // Date validation: exclude invalid future dates (beyond year 2100)
-        AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
+        MATCH (r:Resource)
+        WHERE (
+            ($has_orgs AND EXISTS {
+                MATCH (r)-[:MENTIONS]->(o:Organization)
+                WHERE toLower(o.name) IN [x IN $orgs | toLower(x)]
+            }) OR
+            ($has_topics AND EXISTS {
+                MATCH (r)-[:RELATES_TO]->(t:Topic)
+                WHERE toLower(t.name) IN [x IN $topics | toLower(x)]
+            })
+        )
+        // Temporal filter: use publish_date when valid, fall back to created_at
+        WITH r,
+            CASE
+              WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                   AND datetime(r.publish_date) >= datetime('2000-01-01')
+                THEN datetime(r.publish_date)
+              WHEN r.created_at IS NOT NULL THEN r.created_at
+              ELSE datetime('1970-01-01')
+            END AS effective_date
+        WHERE effective_date >= datetime() - duration({days: $window_days})
+          AND effective_date <= datetime('2100-12-31T23:59:59Z')
         // Exclude datasources the user has ignored
         AND ($excluded_datasources IS NULL OR size($excluded_datasources) = 0
              OR NOT r.datasource_id IN $excluded_datasources)
         
-        WITH r, collect(DISTINCT o.name) AS all_organisations
+        // Collect orgs and topics for scoring
+        OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+        WITH r, effective_date, collect(DISTINCT o.name) AS all_organisations
         
-        // Filter out generic aggregators (configurable max_orgs)
-        WHERE size(all_organisations) <= $max_orgs
+        // Filter out generic aggregators (configurable max_orgs) only when org-scoped
+        WHERE $has_orgs = false OR size(all_organisations) <= $max_orgs
         
         // Calculate relevance score
-        WITH r, all_organisations,
+        WITH r, effective_date, all_organisations,
              // Organization specificity: fewer orgs = more focused
              CASE
-                WHEN size(all_organisations) = 0 THEN 0.0
+                WHEN size(all_organisations) = 0 THEN 0.5
                 WHEN size(all_organisations) <= 2 THEN 1.0
                 WHEN size(all_organisations) <= 4 THEN 0.7
                 WHEN size(all_organisations) <= 6 THEN 0.4
                 ELSE 0.2
              END AS specificity_score,
              
-             // Recency score
-             CASE
-                WHEN r.publish_date IS NULL THEN 0.5
-                ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 30.0)
-             END AS recency_score,
+             // Recency score using effective_date
+             exp(-duration.between(effective_date, datetime()).days / 30.0) AS recency_score,
              
              // Title match bonus
-             toFloat(size([org IN $orgs WHERE toLower(r.title) CONTAINS toLower(org)])) /
-             toFloat(size($orgs)) AS title_match_score
+             CASE
+               WHEN $has_orgs AND size($orgs) > 0
+                 THEN toFloat(size([org IN $orgs WHERE toLower(r.title) CONTAINS toLower(org)])) /
+                      toFloat(size($orgs))
+               WHEN $has_topics AND size($topics) > 0
+                 THEN toFloat(size([t IN $topics WHERE toLower(r.title) CONTAINS toLower(t)])) /
+                      toFloat(size($topics))
+               ELSE 0.0
+             END AS title_match_score
         
-        WITH r, all_organisations,
+        WITH r, effective_date, all_organisations,
              (specificity_score * 0.5 + 
               recency_score * 0.3 + 
               title_match_score * 0.2) AS relevance_score
@@ -291,17 +325,20 @@ class Neo4jContextGateway:
         RETURN r.title AS title,
                r.summary AS summary,
                r.url AS url,
-               r.publish_date AS publish_date,
+               coalesce(r.publish_date, toString(effective_date)) AS publish_date,
                r.datasource_id AS datasource_id,
                all_organisations AS organisations,
                relevance_score
         
-        ORDER BY relevance_score DESC, r.publish_date DESC
+        ORDER BY relevance_score DESC, effective_date DESC
         LIMIT $limit
         """
         
         params = {
-            "orgs": organisations, 
+            "orgs": organisations,
+            "topics": topics,
+            "has_orgs": bool(organisations),
+            "has_topics": bool(topics),
             "limit": limit,
             "window_days": window_days,
             "min_relevance_score": min_relevance_score,
@@ -320,8 +357,8 @@ class Neo4jContextGateway:
                            min(relevance_scores), max(relevance_scores), 
                            sum(relevance_scores) / len(relevance_scores))
         else:
-            logger.warning("No documents found matching filters: orgs=%s, window=%dd",
-                          organisations, window_days)
+            logger.warning("No documents found matching filters: orgs=%s, topics=%s, window=%dd",
+                          organisations, topics, window_days)
         
         # Log relevance scores
         if results:

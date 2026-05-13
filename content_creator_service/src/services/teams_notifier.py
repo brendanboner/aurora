@@ -5,7 +5,7 @@ import logging
 import os
 from typing import List, Optional
 
-import requests
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +43,8 @@ def push_feed_update(
     }
 
     try:
-        resp = requests.post(url, json=payload, timeout=5)
-        if resp.ok:
+        resp = httpx.post(url, json=payload, timeout=5)
+        if resp.is_success:
             logger.info(
                 "Teams push sent for post %d (%s → %d conversations)",
                 post_id,

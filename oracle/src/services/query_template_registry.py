@@ -235,6 +235,39 @@ class QueryTemplate:
                             logger.info(f"Extracted person '{person_name}' and event '{event_name}' from query")
                             break
             
+            # UPCOMING_EVENTS / PAST_EVENTS — extract a specific event name when the
+            # user asks "when is the next X" or "when was the last X".
+            # Without this, ALL events are returned and the LLM can't isolate the one asked about.
+            if route_id_val in ("upcoming_events", "past_events") and plan.raw_query:
+                _event_name_patterns = [
+                    # "when is the next wgc emea" / "when is the upcoming wifi 7 summit"
+                    r'when\s+(?:is|was|will\s+be)\s+(?:the\s+)?(?:next|last|upcoming|previous|latest)\s+([\w\s\-]+?)(?:\s+(?:event|conference|meeting|summit|workshop|webinar|session))?(?:\s+\d{4})?$',
+                    # "next wgc emea" / "upcoming wgc emea event"
+                    r'(?:next|upcoming|future|scheduled)\s+([\w\s\-]+?)(?:\s+(?:event|conference|meeting|summit|workshop|webinar|session))?(?:\s+\d{4})?$',
+                    # "when does the wgc emea start" / "when does wgc emea take place"
+                    r'when\s+(?:does|did)\s+(?:the\s+)?([\w\s\-]+?)\s+(?:start|happen|take\s+place|occur)',
+                ]
+                event_name_extracted = None
+                query_for_event = plan.raw_query.strip()
+                for ep in _event_name_patterns:
+                    em = re.search(ep, query_for_event, re.IGNORECASE)
+                    if em:
+                        candidate = em.group(1).strip()
+                        # Skip if it's purely a generic temporal word
+                        _generic = {"event", "events", "meeting", "meetings", "conference",
+                                    "conferences", "summit", "workshop", "year", "quarter", "month"}
+                        if candidate.lower() not in _generic and len(candidate) > 2:
+                            event_name_extracted = candidate
+                            break
+                params["event_name"] = event_name_extracted
+                if event_name_extracted:
+                    logger.info(f"Extracted event name '{event_name_extracted}' for {route_id_val}")
+                    # Event nodes rarely have RELATES_TO topic edges — the topic filter from
+                    # TopicManager kills the query when a specific event name is provided.
+                    # Clear topics so the event_name match is the only constraint.
+                    params["topics"] = []
+                    params["workgroups"] = []
+
             # ORGANIZATION_REPRESENTATIVES - "who represents X in Y"
             # Split organizations into (a) the company whose people we want and
             # (b) the standards body / forum that provides context.
@@ -605,11 +638,15 @@ class QueryTemplateRegistry:
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             WHERE coalesce(r.archived, false) = false
-            WITH ds, r
             WITH ds, r,
-                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
+                CASE
+                  WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                       AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
+                    THEN datetime(r.publish_date)
+                  WHEN r.created_at IS NOT NULL
+                    THEN r.created_at
+                  ELSE datetime('1970-01-01')
+                END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -627,7 +664,7 @@ class QueryTemplateRegistry:
                 r.url_hash as id,
                 r.title as title,
                 r.summary as summary,
-                r.publish_date as date,
+                coalesce(r.publish_date, toString(effective_date)) as date,
                 r.url as url,
                 r.category as type,
                 topics,
@@ -657,9 +694,14 @@ class QueryTemplateRegistry:
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
             WHERE coalesce(r.archived, false) = false
             WITH ds, r,
-                CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
+                CASE
+                  WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                       AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
+                    THEN datetime(r.publish_date)
+                  WHEN r.created_at IS NOT NULL
+                    THEN r.created_at
+                  ELSE datetime('1970-01-01')
+                END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -677,7 +719,7 @@ class QueryTemplateRegistry:
                 r.url_hash as id,
                 r.title as title,
                 r.summary as summary,
-                r.publish_date as date,
+                coalesce(r.publish_date, toString(effective_date)) as date,
                 r.url as url,
                 r.category as type,
                 topics,
@@ -1055,8 +1097,9 @@ class QueryTemplateRegistry:
         # UPCOMING_EVENTS - future events
         self.templates[RouteId.UPCOMING_EVENTS] = QueryTemplate(
             route_id=RouteId.UPCOMING_EVENTS,
-            description="Get upcoming events (excluding meetings when conferences are requested)",
+            description="Get upcoming events, optionally filtered by event name, workgroup, or topic",
             param_schema={
+                "event_name": "str (substring match on event name, e.g. 'wgc emea')",
                 "workgroups": "list[str]",
                 "topics": "list[str]",
                 "start_date": "str (ISO date)",
@@ -1065,47 +1108,53 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Find Event nodes: upcoming events OR recent past events (last 30 days)
-            // This ensures results even when no future events are scheduled
+            // Find Event nodes: upcoming + recent past (last 60 days covers "just happened")
             MATCH (e:Event)
-            WHERE datetime(e.start_date) >= datetime() - duration({days: 30})
+            WHERE datetime(e.start_date) >= datetime() - duration({days: 60})
               AND ($start_date IS NULL OR datetime(e.start_date) >= datetime($start_date))
-              // Extend "this quarter" to 90 days ahead
               AND ($end_date IS NULL OR datetime(e.start_date) <= datetime($end_date))
-              // Exclude meetings if conferences specifically requested
-              AND ($exclude_meetings IS NULL OR $exclude_meetings = false OR NOT toLower(coalesce(e.event_type, '')) IN ['meeting', 'workgroup meeting', 'task group meeting'])
-            
-            // Optional workgroup filter (only apply if workgroups specified)
+              AND ($exclude_meetings IS NULL OR $exclude_meetings = false
+                   OR NOT toLower(coalesce(e.event_type, '')) IN ['meeting', 'workgroup meeting', 'task group meeting'])
+              // Event name filter: when user asks "when is the next X", X is matched here
+              AND ($event_name IS NULL OR toLower(coalesce(e.name, '')) CONTAINS toLower($event_name)
+                   OR toLower(coalesce(e.description, '')) CONTAINS toLower($event_name))
+
+            // Workgroup filter: match via document mentions OR event name/description contains org term
+            // (Events are often standalone calendar entries not linked through documents)
             WITH e
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
                        MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
                        WHERE coalesce(r.archived, false) = false
                          AND ds.datasource_id IN $workgroups
-                   })
-            
-            // Optional topic filter (topics mentioned in event or related documents)
+                   }
+                   OR any(wg IN $workgroups
+                          WHERE toLower(coalesce(e.name, '')) CONTAINS toLower(wg)
+                             OR toLower(coalesce(e.description, '')) CONTAINS toLower(wg)))
+
+            // Topic filter — skip entirely when searching by event name
+            // (Event nodes rarely carry RELATES_TO topic edges, so topic filter returns 0)
             WITH e
-            WHERE ($topics IS NULL OR size($topics) = 0
+            WHERE ($event_name IS NOT NULL OR $topics IS NULL OR size($topics) = 0
                    OR EXISTS {
                        MATCH (e)-[:RELATES_TO]->(t:Topic)
-                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic)
+                                 OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
                    }
                    OR EXISTS {
-                       // Check if recent documents mention both the event and the topic
                        MATCH (r:Resource)-[:MENTIONS]->(e)
                        WHERE coalesce(r.archived, false) = false
                        MATCH (r)-[:RELATES_TO]->(t:Topic)
-                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
+                       WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic)
+                                 OR any(alias IN t.aliases WHERE toLower(alias) = toLower(topic)))
                    })
-            
+
             OPTIONAL MATCH (e)-[:RELATES_TO]->(t:Topic)
-            
-            WITH e,
-                 collect(DISTINCT t.name)[..5] as topics
+
+            WITH e, collect(DISTINCT t.name)[..5] as topics
             ORDER BY e.start_date ASC
-            
-            RETURN 
+
+            RETURN
                 e.url_hash as event_id,
                 e.name as title,
                 e.start_date as start_time,
@@ -1113,6 +1162,8 @@ class QueryTemplateRegistry:
                 e.location as location,
                 e.url as url,
                 e.event_type as event_type,
+                e.description as description,
+                e.status as status,
                 null as workgroup,
                 topics
             LIMIT $limit
@@ -1122,8 +1173,9 @@ class QueryTemplateRegistry:
         # PAST_EVENTS - recent past events
         self.templates[RouteId.PAST_EVENTS] = QueryTemplate(
             route_id=RouteId.PAST_EVENTS,
-            description="Get past events (defaults to last 30 days if no date range specified)",
+            description="Get past events, optionally filtered by event name or workgroup",
             param_schema={
+                "event_name": "str (substring match on event name)",
                 "workgroups": "list[str]",
                 "start_date": "str (ISO date)",
                 "end_date": "str (ISO date)",
@@ -1131,33 +1183,38 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Default to last 30 days if no date range specified
-            WITH CASE WHEN $start_date IS NULL THEN datetime() - duration({days: coalesce($relative_days, 30)})
+            WITH CASE WHEN $start_date IS NULL
+                      THEN datetime() - duration({days: coalesce($relative_days, 180)})
                       ELSE datetime($start_date) END as threshold_start,
                  CASE WHEN $end_date IS NULL THEN datetime()
                       ELSE datetime($end_date) END as threshold_end
-            
+
             MATCH (e:Event)
-            WHERE datetime(e.startTime) >= threshold_start
-              AND datetime(e.startTime) <= threshold_end
+            WHERE datetime(e.start_date) >= threshold_start
+              AND datetime(e.start_date) <= threshold_end
+              AND ($event_name IS NULL OR toLower(coalesce(e.name, '')) CONTAINS toLower($event_name)
+                   OR toLower(coalesce(e.description, '')) CONTAINS toLower($event_name))
               AND ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
-                       MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
-                       WHERE wg.id IN $workgroups OR wg.name IN $workgroups
+                       MATCH (e)<-[:MENTIONS]-(r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
+                       WHERE coalesce(r.archived, false) = false
+                         AND ds.datasource_id IN $workgroups
                    })
-            
-            OPTIONAL MATCH (e)-[:BELONGS_TO]->(wg:Workgroup)
-            
-            WITH e, wg
-            ORDER BY e.startTime DESC
-            
-            RETURN 
-                e.id as event_id,
+
+            WITH e
+            ORDER BY e.start_date DESC
+
+            RETURN
+                e.url_hash as event_id,
                 e.name as title,
-                e.startTime as start_time,
-                e.endTime as end_time,
+                e.start_date as start_time,
+                e.end_date as end_time,
+                e.location as location,
                 e.url as url,
-                wg.name as workgroup
+                e.event_type as event_type,
+                e.description as description,
+                e.status as status,
+                null as workgroup
             LIMIT $limit
             """
         )
