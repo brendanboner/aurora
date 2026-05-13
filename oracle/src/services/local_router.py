@@ -282,11 +282,25 @@ class LocalRouter:
         (r"what('s| is) (coming up|scheduled|planned)", RouteId.UPCOMING_EVENTS),
         (r"(next|future) (events?|meetings?|conferences?|workshops?)", RouteId.UPCOMING_EVENTS),
         (r"when is (the )?(next|upcoming)\s+", RouteId.UPCOMING_EVENTS),
+        # "when is the WGC EMEA" / "when is the Wi-Fi World Congress" (named event without "next")
+        (r"when (is|are|does?)\s+(the\s+)?([\w\s\-]{3,40}?)\s+(event|conference|meeting|summit|workshop|happening|scheduled|taking\s+place)", RouteId.UPCOMING_EVENTS),
+        # "when is the WGC in europe" / "when is WGC EMEA" — short upper-case acronym queries
+        (r"when\s+(?:is|are)\s+(?:the\s+)?(?:[A-Z]{2,}[\w\-]*(?:\s+[\w\-]+){0,5})\s*(?:\?|$)", RouteId.UPCOMING_EVENTS),
         (r"(events?|conferences?|meetings?).*?(this|next)\s+(quarter|month|week)", RouteId.UPCOMING_EVENTS),
         
+        # Upcoming events — additional patterns for natural phrasing
+        # "what wfa meetings are upcoming" / "what are the upcoming WBA events"
+        (r"what\s+(?:[\w\s\-]+\s+)?(meetings?|events?|conferences?)\s+(?:are\s+)?(upcoming|scheduled|planned|coming up)", RouteId.UPCOMING_EVENTS),
+        # "are there any meetings this week" / "what meetings are this week"
+        (r"(?:are there|what|show|list)\s+(?:any\s+)?(?:[\w\s\-]+\s+)?(meetings?|events?|conferences?)\s+(?:[\w\s]*\s+)?(this|next)\s+week", RouteId.UPCOMING_EVENTS),
+        # "when is wireless japan" / "when is the member meeting"
+        (r"when\s+is\s+(?:the\s+)?[\w][\w\s\-]{2,40}$", RouteId.UPCOMING_EVENTS),
+
         # Past events
         (r"(past|previous|recent) (events?|meetings?|conferences?)", RouteId.PAST_EVENTS),
         (r"what (events?|meetings?) (happened|occurred|took place)", RouteId.PAST_EVENTS),
+        (r"when (was|were) (the )?(last|previous|most recent)\s+", RouteId.PAST_EVENTS),
+        (r"(last|most recent|previous)\s+[\w\s\-]+(event|conference|meeting|summit|workshop)", RouteId.PAST_EVENTS),
         
         # Meeting search by title/topic
         (r"meeting (about|regarding|on|covering|discussing)\s+", RouteId.MEETING_BY_TITLE),
@@ -574,9 +588,10 @@ class LocalRouter:
                     start = today - timedelta(days=7)
                     return start, today, 7
                 elif "this week" in question:
-                    # Current week (Monday to today)
+                    # Full calendar week: Monday to Sunday (includes future days)
                     start = today - timedelta(days=today.weekday())
-                    return start, today, 7
+                    end = start + timedelta(days=6)
+                    return start, end, 7
                 elif "last week" in question:
                     # Previous calendar week (Monday-Sunday)
                     end = today - timedelta(days=today.weekday() + 1)

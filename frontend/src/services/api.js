@@ -402,13 +402,17 @@ export async function* sendOracleQueryStream(userId, question, options = {}) {
 
 // Oracle Enhance - Get detailed answer by analyzing document content (Phase 5)
 export const sendEnhanceQuery = async (question, documents) => {
-  // documents should be array of { url, datasource_id, title }
+  // Send all available metadata so the server can build rich context
+  // even when live document fetching fails (no scraper configured)
   const payload = {
     question,
     documents: documents.map(doc => ({
       url: doc.url,
-      datasource_id: doc.datasource_id || 'wfa', // Default to 'wfa' if not specified
+      datasource_id: doc.datasource_id || 'wfa',
       title: doc.title || null,
+      summary: doc.summary || null,
+      topics: doc.topics?.length ? doc.topics : null,
+      publish_date: doc.publish_date || null,
     })),
   };
   
@@ -822,6 +826,40 @@ export const triggerTopicCuration = async () => {
 export const triggerEventReconciliation = async () => {
   const response = await apiClient.post('/curator/trigger/reconcile');
   return response.data;
+};
+
+// ==================== Knowledge Graph Visualisation ====================
+
+export const getGraphVisualisationStats = async () => {
+  const res = await apiClient.get('/visualisation/graph/stats');
+  return res.data;
+};
+
+export const getBalancedGraphData = async (limit = 800, importanceThreshold = 0.3) => {
+  const res = await apiClient.get('/visualisation/graph/balanced-data', {
+    params: { limit, importance_threshold: importanceThreshold },
+  });
+  return res.data;
+};
+
+export const searchGraphNodes = async (q, limit = 20) => {
+  const res = await apiClient.get('/visualisation/graph/search', { params: { q, limit } });
+  return res.data;
+};
+
+export const getSingleTypeGraphData = async (nodeType, limit = 1000) => {
+  const res = await apiClient.get('/visualisation/graph/data', {
+    params: { node_types: nodeType, limit, importance_threshold: 0 },
+  });
+  return res.data;
+};
+
+export const getNodeNeighborhood = async (nodeId, hops = 1, limit = 50) => {
+  const res = await apiClient.get(
+    `/visualisation/graph/neighborhood/${encodeURIComponent(String(nodeId))}`,
+    { params: { hops, limit } }
+  );
+  return res.data;
 };
 
 export default apiClient;

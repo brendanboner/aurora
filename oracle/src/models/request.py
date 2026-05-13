@@ -125,7 +125,10 @@ class EnhanceDocumentReference(BaseModel):
     """Reference to a document for enhancement."""
     url: str = Field(..., description="Document URL")
     datasource_id: str = Field(..., description="Datasource ID (e.g., 'wfa', 'wfa_causeway')")
-    title: Optional[str] = Field(default=None, description="Document title (for display)")
+    title: Optional[str] = Field(default=None, description="Document title")
+    summary: Optional[str] = Field(default=None, description="Document summary already known to the client")
+    topics: Optional[list[str]] = Field(default=None, description="Topics already extracted for this document")
+    publish_date: Optional[str] = Field(default=None, description="Document publish date")
 
 
 class EnhanceRequest(BaseModel):

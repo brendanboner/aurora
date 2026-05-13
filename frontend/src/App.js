@@ -32,7 +32,7 @@ import TeamsTab from './pages/TeamsTab';
 import { testBackendConnection } from './services/api';
 
 // Pages that should have no padding in the page-container
-const NO_PADDING_ROUTES = ['/documents'];
+const NO_PADDING_ROUTES = ['/documents', '/admin/knowledge-graph'];
 
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
@@ -215,15 +215,15 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, tog
                                   </ProtectedRoute>
                                 } 
                               />
-                              <Route 
-                                path="/admin/knowledge-graph" 
+                              <Route
+                                path="/admin/knowledge-graph"
                                 element={
                                   <ProtectedRoute requiredRole={['admin', 'superadmin']}>
                                     <AdminKnowledgeGraph />
                                   </ProtectedRoute>
-                                } 
+                                }
                               />
-                              <Route 
+                              <Route
                                 path="/admin/monitoring" 
                                 element={
                                   <ProtectedRoute requiredRole={['admin', 'superadmin']}>

@@ -673,3 +673,206 @@
   padding: 3px 10px;
   border-radius: 12px;
 }
+
+/* ── Collapsible section toggle ── */
+.mon-section {
+  padding: 0;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  background: var(--card, #fff);
+}
+
+.mon-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 24px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.mon-section-toggle:hover {
+  background: var(--muted, #f9fafb);
+}
+
+.mon-section-chevron {
+  font-size: 10px;
+  color: var(--muted-foreground, #9ca3af);
+  flex-shrink: 0;
+  width: 12px;
+}
+
+.mon-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted-foreground, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.mon-section-action {
+  margin-left: auto;
+}
+
+.mon-section-body {
+  padding: 4px 24px 20px;
+}
+
+.mon-count-badge.warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* ── Stalled batches ── */
+.mon-batch-row.stalled {
+  border-color: #fca5a5;
+  background: #fff5f5;
+}
+
+.mon-stalled-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fee2e2;
+  color: #b91c1c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mon-batch-elapsed.stalled {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.mon-batch-fill.stalled {
+  background: linear-gradient(90deg, #f87171, #dc2626);
+}
+
+.mon-batch-status.scraping {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* ── Warning bar ── */
+.mon-warn-bar {
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  margin-bottom: 12px;
+}
+
+.mon-warn-bar.danger {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+/* ── Metric warn ── */
+.mon-metric.warn .mon-metric-value { color: #b91c1c; }
+.mon-metric.warn .mon-metric-label { color: #b91c1c; }
+
+/* ── Activity section padding fix ── */
+.mon-activity {
+  padding: 0;
+  background: none;
+}
+
+.mon-activity-actions {
+  margin-bottom: 10px;
+}
+
+/* ── Queue summary row ── */
+.mon-queue-summary-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+/* ── Scheduler section ── */
+.mon-sched-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.mon-sched-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.mon-sched-stat.warn .mon-sched-val { color: #b91c1c; }
+.mon-sched-stat.warn .mon-sched-lbl { color: #b91c1c; }
+
+.mon-sched-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--foreground, #111827);
+  line-height: 1;
+}
+
+.mon-sched-lbl {
+  font-size: 11px;
+  color: var(--muted-foreground, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mon-sched-overdue-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #b91c1c;
+  margin-bottom: 6px;
+}
+
+.mon-sched-overdue, .mon-sched-noschedule {
+  margin-bottom: 12px;
+}
+
+.mon-sched-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border, #f3f4f6);
+  font-size: 12px;
+}
+
+.mon-sched-row.overdue { color: #b91c1c; }
+
+.mon-sched-name {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mon-sched-cron {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--muted-foreground, #9ca3af);
+}
+
+.mon-sched-last {
+  font-size: 11px;
+  color: var(--muted-foreground, #9ca3af);
+  white-space: nowrap;
+}

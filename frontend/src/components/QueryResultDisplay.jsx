@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { BookIcon, CalendarIcon, BuildingIcon, SearchIcon, HourglassIcon, SparkleIcon, BarChartIcon, ThumbsUpIcon, ThumbsDownIcon, LightbulbIcon, ToolIcon } from './icons';
 import ChevronLeftIcon from './icons/ChevronLeftIcon';
 import ChevronRightIcon from './icons/ChevronRightIcon';
+import ChevronDownIcon from './icons/ChevronDownIcon';
 import Icon from './Icon';
 import './QueryResultDisplay.css';
 
@@ -282,19 +283,13 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   };
 
   const renderModeSelector = () => {
-    // Show mode selector if we have documents (even without an answer for retrieval mode)
     if (!hasDocuments) return null;
-
-    // Determine if enhance is available (not yet enhanced, has documents)
-    const canEnhance = onEnhance && hasDocuments && !message.isEnhanced;
-    // Determine if we can toggle (already enhanced, have both versions, and original has actual content)
-    const hasOriginalContent = message.originalAnswer?.content && message.originalAnswer.content !== 'Here are the relevant documents:';
-    const canToggle = message.isEnhanced && onToggleEnhanced && (hasOriginalContent && message.enhancedAnswer);
+    // Fast pipeline: no tab bar — enhance/toggle move into the stats row
+    if (message.pipeline === 'fast') return null;
 
     return (
       <div className="display-mode-selector">
         <div className="mode-tabs">
-          {/* Only show Answer tab if we have an answer */}
           {hasAnswer && (
             <button
               className={`mode-tab ${displayMode === DISPLAY_MODES.ANSWER ? 'active' : ''}`}
@@ -318,40 +313,34 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
             </button>
           )}
         </div>
-        {/* Show enhance button on Answer tab OR in retrieval-only mode (no answer yet) */}
-        {(displayMode === DISPLAY_MODES.ANSWER || !hasAnswer) && (
-          <>
-            {canEnhance && (
-              <button
-                className="enhance-button"
-                onClick={onEnhance}
-                disabled={isEnhancing}
-                title={hasAnswer ? "Get a more detailed answer using document content" : "Generate an answer from these documents"}
-              >
-                {isEnhancing ? (
-                  <>
-                    <Icon Component={HourglassIcon} size={14} /> Enhancing...
-                  </>
-                ) : (
-                  <><Icon Component={SparkleIcon} size={14} /> {hasAnswer ? 'Enhance' : 'Generate Answer'}</>
-                )}
-              </button>
-            )}
-            {canToggle && (
-              <button
-                className={`enhance-toggle-button ${message.showingEnhanced ? 'showing-enhanced' : 'showing-original'}`}
-                onClick={onToggleEnhanced}
-                title={message.showingEnhanced ? 'Switch to graph summary answer' : 'Switch to enhanced answer'}
-              >
-                {message.showingEnhanced ? (
-                  <><Icon Component={BarChartIcon} size={14} /> Show Graph Summary</>
-                ) : (
-                  <><Icon Component={SparkleIcon} size={14} /> Show Enhanced</>
-                )}
-              </button>
-            )}
-          </>
-        )}
+        {/* Enhance button for baseline mode — shown next to tabs */}
+        {(displayMode === DISPLAY_MODES.ANSWER || !hasAnswer) && (() => {
+          const canEnhance = onEnhance && hasDocuments && !message.isEnhanced;
+          const hasOriginalContent = message.originalAnswer?.content && message.originalAnswer.content !== 'Here are the relevant documents:';
+          const canToggle = message.isEnhanced && onToggleEnhanced && (hasOriginalContent && message.enhancedAnswer);
+          return (
+            <>
+              {canEnhance && (
+                <button className="enhance-button" onClick={onEnhance} disabled={isEnhancing}
+                  title={hasAnswer ? "Get a more detailed answer using document content" : "Generate an answer from these documents"}>
+                  {isEnhancing
+                    ? <><Icon Component={HourglassIcon} size={14} /> Enhancing...</>
+                    : <><Icon Component={SparkleIcon} size={14} /> {hasAnswer ? 'Enhance' : 'Generate Answer'}</>}
+                </button>
+              )}
+              {canToggle && (
+                <button
+                  className={`enhance-toggle-button ${message.showingEnhanced ? 'showing-enhanced' : 'showing-original'}`}
+                  onClick={onToggleEnhanced}
+                  title={message.showingEnhanced ? 'Switch to graph summary answer' : 'Switch to enhanced answer'}>
+                  {message.showingEnhanced
+                    ? <><Icon Component={BarChartIcon} size={14} /> Show Graph Summary</>
+                    : <><Icon Component={SparkleIcon} size={14} /> Show Enhanced</>}
+                </button>
+              )}
+            </>
+          );
+        })()}
       </div>
     );
   };
@@ -570,16 +559,16 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                   {message.pipeline === 'fast' ? 'Confidence:' : 'Answer confidence:'}
                 </span>
                 <div className="confidence-bar">
-                  <div 
-                    className="confidence-fill" 
+                  <div
+                    className="confidence-fill"
                     style={{ width: `${message.confidenceScore * 100}%` }}
                   />
                 </div>
                 <span className="confidence-value">{Math.round(message.confidenceScore * 100)}%</span>
               </div>
             )}
-            
-            {/* Stats and personalization on the right */}
+
+            {/* Stats, personalization, and enhance controls on the right */}
             <div className="answer-stats-right">
               {message.personalizationApplied && (
                 <span className="personalization-tag" title="Answer tailored to your preferences">
@@ -591,6 +580,39 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                   <Icon Component={isShowingEnhanced ? SparkleIcon : BarChartIcon} size={14} /> {statsDisplay}
                 </div>
               )}
+              {/* Enhance / toggle buttons — shown inline in stats row for fast pipeline */}
+              {message.pipeline === 'fast' && (() => {
+                const canEnhance = onEnhance && hasDocuments && !message.isEnhanced;
+                const hasOriginalContent = message.originalAnswer?.content && message.originalAnswer.content !== 'Here are the relevant documents:';
+                const canToggle = message.isEnhanced && onToggleEnhanced && (hasOriginalContent && message.enhancedAnswer);
+                return (
+                  <>
+                    {canEnhance && (
+                      <button
+                        className="enhance-btn-inline"
+                        onClick={onEnhance}
+                        disabled={isEnhancing}
+                        title="Get a more detailed answer with additional sources"
+                      >
+                        {isEnhancing
+                          ? <><Icon Component={HourglassIcon} size={13} /> Enhancing…</>
+                          : <><Icon Component={SparkleIcon} size={13} /> Enhance</>}
+                      </button>
+                    )}
+                    {canToggle && (
+                      <button
+                        className={`enhance-btn-inline toggle ${message.showingEnhanced ? 'active' : ''}`}
+                        onClick={onToggleEnhanced}
+                        title={message.showingEnhanced ? 'Switch to graph summary' : 'Switch to enhanced answer'}
+                      >
+                        {message.showingEnhanced
+                          ? <><Icon Component={BarChartIcon} size={13} /> Summary</>
+                          : <><Icon Component={SparkleIcon} size={13} /> Enhanced</>}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -633,7 +655,12 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
               onClick={() => setReferencesOpen((prev) => !prev)}
               aria-expanded={referencesOpen}
             >
-              <strong>Reference Documents</strong>
+              <span className="references-toggle-left">
+                <span className={`references-chevron${referencesOpen ? ' open' : ''}`}>
+                  <ChevronDownIcon size={14} />
+                </span>
+                <strong>Reference Documents</strong>
+              </span>
               <span className="references-toggle-meta">
                 {combinedReferences.length} item{combinedReferences.length === 1 ? '' : 's'}
               </span>

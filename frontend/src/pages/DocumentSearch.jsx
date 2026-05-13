@@ -314,6 +314,29 @@ const DocumentSearch = () => {
     return ds ? ds.name : id;
   };
 
+  // Group datasources by organisation prefix for the select menu
+  const DS_GROUPS = [
+    { prefix: 'wfa_causeway', label: 'WFA Causeway' },
+    { prefix: 'wfa_',        label: 'WFA Public' },
+    { prefix: 'wba_extranet',label: 'WBA Extranet' },
+    { prefix: 'wba_',        label: 'WBA' },
+    { prefix: 'ietf_',       label: 'IETF' },
+    { prefix: 'ieee802_',    label: 'IEEE 802' },
+    { prefix: 'mef_',        label: 'MEF' },
+    { prefix: 'nist_',       label: 'NIST' },
+  ];
+
+  const groupedDatasources = (() => {
+    const groups = DS_GROUPS.map(g => ({ ...g, items: [] }));
+    const other = { prefix: '', label: 'Other', items: [] };
+    datasources.forEach(ds => {
+      const id = ds.datasource_id.toLowerCase();
+      const match = groups.find(g => id.startsWith(g.prefix));
+      (match || other).items.push(ds);
+    });
+    return [...groups, other].filter(g => g.items.length > 0);
+  })();
+
   // Get display name for topic
   const getTopicName = (id) => {
     const topic = topics.find(t => t.topic_id === id);
@@ -415,15 +438,19 @@ const DocumentSearch = () => {
               {/* Datasources */}
               <div className="filter-group">
                 <label>Datasources</label>
-                <select 
+                <select
                   onChange={(e) => handleMultiSelect(e, setSelectedDatasources, selectedDatasources)}
                   className="filter-select"
                 >
-                  <option value="">Select datasource...</option>
-                  {datasources.map(ds => (
-                    <option key={ds.datasource_id} value={ds.datasource_id}>
-                      {ds.name} ({ds.document_count})
-                    </option>
+                  <option value="">Select datasource…</option>
+                  {groupedDatasources.map(group => (
+                    <optgroup key={group.label} label={`${group.label} (${group.items.length})`}>
+                      {group.items.map(ds => (
+                        <option key={ds.datasource_id} value={ds.datasource_id}>
+                          {ds.name} ({ds.document_count})
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 {selectedDatasources.length > 0 && (

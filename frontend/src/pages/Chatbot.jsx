@@ -1087,7 +1087,13 @@ What would you like to know?`;
               <div className="message-avatar">
                 {message.role === 'user' ? <ProfileIcon size={20} /> : <ChatIcon size={20} />}
               </div>
-              <div className="message-content">
+              <div className="message-content" onCopy={(e) => {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed) return;
+                const text = sel.toString().replace(/\n+$/, '').replace(/^\n+/, '');
+                e.clipboardData.setData('text/plain', text);
+                e.preventDefault();
+              }}>
                 <div className="message-header">
                   <span className="message-sender">
                     {message.role === 'user' ? 'You' : 'Aurora'}
@@ -1099,7 +1105,7 @@ What would you like to know?`;
                     ).toLocaleTimeString()}
                   </span>
                 </div>
-                
+
                 {/* User messages and error messages - render content directly */}
                 {(message.role === 'user' || message.isError) && (
                   <div className={`message-text ${message.isError ? 'error' : ''}`}>
@@ -1122,8 +1128,10 @@ What would you like to know?`;
                 {/* Assistant messages with Oracle data - use QueryResultDisplay */}
                 {message.role === 'assistant' && !message.isError && (
                   <>
-                    {/* For welcome messages or simple responses without documents */}
-                    {!message.documents?.length && !message.citations?.length && (
+                    {/* For welcome messages or simple responses without documents.
+                        Skip rendering when streaming with no content yet — the
+                        isLoading typing indicator below acts as the placeholder. */}
+                    {!message.documents?.length && !message.citations?.length && (message.content?.trim() || message.isWelcomeMessage) && (
                       <div className="message-text">
                         {message.isWelcomeMessage ? (
                           getWelcomeMessageJSX(message.userEmail)
