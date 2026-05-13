@@ -916,30 +916,76 @@ class FastEngine:
             else:
                 logger.warning("Fallback also returned zero results")
         
-        # Cross-datasource fallback: If zero results and workgroups filter was used, retry without workgroups
+        # Cross-datasource fallback: behaviour depends on whether the workgroups filter
+        # was set by an explicit @mention/datasource_ids (explicit_datasource_filter=True)
+        # or was inferred from the query text.
+        #
+        # Explicit filter  → NEVER expand to other sources (that's wrong).
+        #                     Instead, return the most recent docs from that source
+        #                     regardless of date window (DATASOURCE_LATEST template).
+        # Inferred filter  → Expand to all datasources as before.
         if len(processed_results) == 0 and params.get('workgroups') and len(params['workgroups']) > 0:
-            logger.info(
-                f"Zero results with workgroups filter, expanding to all datasources "
-                f"(route={self._get_route_id_str(plan)}, workgroups={params['workgroups']})"
-            )
-            
-            # Remove workgroups filter for cross-datasource fallback
-            fallback_params = params.copy()
-            fallback_params['workgroups'] = []
-            
-            fallback_start = time.time()
-            fallback_results = repo.client.execute_query(
-                template.cypher,
-                fallback_params
-            )
-            fallback_time_ms = int((time.time() - fallback_start) * 1000)
-            processed_results = template.execute_post_process(fallback_results)
-            
-            if len(processed_results) > 0:
-                logger.info(f"Cross-datasource fallback succeeded: retrieved {len(processed_results)} documents")
-                query_time_ms += fallback_time_ms
+            is_explicit = getattr(plan, 'explicit_datasource_filter', False)
+
+            if is_explicit:
+                # User explicitly targeted this source — stay within it.
+                # Use DATASOURCE_LATEST: no date window, just the most recent N docs.
+                logger.info(
+                    f"Zero recent results for explicit @source filter, trying DATASOURCE_LATEST "
+                    f"(workgroups={params['workgroups']})"
+                )
+                latest_template = self.template_registry.get_template(RouteId.DATASOURCE_LATEST)
+                if latest_template:
+                    try:
+                        latest_params = {
+                            "workgroups": params['workgroups'],
+                            "limit": params.get('limit', 10),
+                        }
+                        fallback_start = time.time()
+                        fallback_results = repo.client.execute_query(
+                            latest_template.cypher,
+                            latest_params
+                        )
+                        fallback_time_ms = int((time.time() - fallback_start) * 1000)
+                        processed_results = latest_template.execute_post_process(fallback_results)
+                        query_time_ms += fallback_time_ms
+                        if len(processed_results) > 0:
+                            logger.info(
+                                f"DATASOURCE_LATEST fallback: {len(processed_results)} docs "
+                                f"(oldest available from explicit source)"
+                            )
+                            # Tag results so answer generator can say "no recent updates; last known:"
+                            for r in processed_results:
+                                r['_explicit_source_latest_fallback'] = True
+                        else:
+                            logger.warning(
+                                f"DATASOURCE_LATEST fallback: no documents at all for "
+                                f"workgroups={params['workgroups']}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"DATASOURCE_LATEST fallback failed: {e}")
             else:
-                logger.warning("Cross-datasource fallback also returned zero results")
+                # Inferred filter — safe to expand to all datasources
+                logger.info(
+                    f"Zero results with inferred workgroups filter, expanding to all datasources "
+                    f"(route={self._get_route_id_str(plan)}, workgroups={params['workgroups']})"
+                )
+                fallback_params = params.copy()
+                fallback_params['workgroups'] = []
+
+                fallback_start = time.time()
+                fallback_results = repo.client.execute_query(
+                    template.cypher,
+                    fallback_params
+                )
+                fallback_time_ms = int((time.time() - fallback_start) * 1000)
+                processed_results = template.execute_post_process(fallback_results)
+
+                if len(processed_results) > 0:
+                    logger.info(f"Cross-datasource fallback succeeded: retrieved {len(processed_results)} documents")
+                    query_time_ms += fallback_time_ms
+                else:
+                    logger.warning("Cross-datasource fallback also returned zero results")
 
         if len(processed_results) == 0 and self._should_retry_recent_content_without_topics(plan, params):
             logger.info(

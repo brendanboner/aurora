@@ -122,6 +122,11 @@ class RouteId(str, Enum):
     MY_GROUPS_DIGEST = "my_groups_digest"           # "what's new in my groups?"
     MEMBERSHIP_ACTION = "membership_action"         # "join the AI/ML workgroup" / "leave PQC"
 
+    # Fallback for explicit-source queries when no recent content exists —
+    # returns the most recent N documents from the specified datasources
+    # regardless of how old they are, so the user always gets an answer.
+    DATASOURCE_LATEST = "datasource_latest"
+
     # Fallback
     GENERIC_SEARCH = "generic_search"
 
@@ -210,6 +215,13 @@ class RoutePlan(BaseModel):
         description="For event queries: exclude meetings and only return conferences/summits"
     )
     
+    # When True the workgroups filter came from an explicit @mention / datasource_ids
+    # parameter — the cross-datasource fallback must NOT remove it.
+    explicit_datasource_filter: bool = Field(
+        default=False,
+        description="True when workgroups came from an explicit @mention, not extracted from query text"
+    )
+
     # User source membership filters (populated from user_source_memberships table)
     excluded_datasources: List[str] = Field(
         default_factory=list,

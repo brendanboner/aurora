@@ -511,6 +511,8 @@ class LocalRouter:
             end_date=end_date,
             relative_days=relative_days,
             workgroups=workgroups_filter,
+            # Mark as explicit so fallback never removes the workgroup constraint
+            explicit_datasource_filter=bool(datasource_ids),
             topics=entities.get("topics", []),
             organizations=entities.get("organizations", []),
             people=entities.get("people", []),

@@ -8,7 +8,7 @@ All temporal queries MUST use robust date fallback since publish_date is often N
 
 Use this pattern in Cypher expressions (WITH/RETURN):
     CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
 
 This must be a single expression, not a block. Cypher does not support SQL-style CASE blocks.
@@ -426,10 +426,11 @@ class QueryTemplateRegistry:
               WHERE coalesce(r.archived, false) = false
               WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days,
                    CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01')
+                   AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
               WHERE effective_date >= max_threshold
-                AND effective_date <= datetime()
+                AND effective_date < datetime()
 
               // Filter by organization (WFA, WBA, etc.) - this ensures "Wi-Fi Alliance updates" only returns WFA sources
               WITH r, effective_date, primary_threshold, fallback_threshold, items_per_group, group_limit, requested_days
@@ -607,7 +608,7 @@ class QueryTemplateRegistry:
             WITH ds, r
             WITH ds, r,
                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
@@ -657,7 +658,7 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH ds, r,
                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
@@ -1296,7 +1297,7 @@ class QueryTemplateRegistry:
                 // Date fallback with validation - handle NULL publish_date
                 WITH r, t, rt.relevance as base_relevance, rt.stance as stance,
                      CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
                 RETURN r, effective_date, base_relevance, stance, t.name as topic_name, 'exact' as match_type
@@ -1323,7 +1324,7 @@ class QueryTemplateRegistry:
                 // Date fallback - handle NULL publish_date
                 WITH r,
                      CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
                 
                 // Get the first matching topic for metadata and calculate match quality
@@ -1484,7 +1485,7 @@ class QueryTemplateRegistry:
             WITH r, threshold
             WITH r, threshold,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             WHERE effective_date >= threshold
               AND effective_date <= datetime()
@@ -1604,7 +1605,7 @@ class QueryTemplateRegistry:
             // Date fallback with validation
             WITH r, p,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
             
             // Extract segment number or URL timestamp for secondary sorting of video series
@@ -1732,7 +1733,7 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH ds, r,
                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
@@ -2474,7 +2475,7 @@ ORDER BY e.start_date DESC
             
             // Calculate effective date with robust fallback
             WITH r, CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year + 1
+                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
             
             // Filter by date range if provided
@@ -2669,6 +2670,41 @@ ORDER BY e.start_date DESC
             """,
             description="Recent digest activity across user's joined WBA workgroups",
             param_schema={"datasource_ids": "list[str]", "days": "int", "limit": "int"},
+        )
+
+        # DATASOURCE_LATEST — fallback for explicit @source queries with no recent content.
+        # Returns the N most recent documents from the specified datasources with no date
+        # filter, so the user always gets an informative "last known update" response.
+        self.templates[RouteId.DATASOURCE_LATEST] = QueryTemplate(
+            route_id=RouteId.DATASOURCE_LATEST,
+            cypher="""
+            MATCH (r:Resource)-[:INGESTED_FROM]->(ds:DataSource)
+            WHERE ds.datasource_id IN $workgroups
+              AND coalesce(r.archived, false) = false
+              AND coalesce(trim(r.title), '') <> ''
+              AND toLower(trim(r.title)) <> 'untitled'
+            WITH r, ds,
+                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                      AND datetime(r.publish_date) >= datetime('2000-01-01')
+                      AND datetime(r.publish_date) <= datetime()
+                 THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END AS effective_date
+            ORDER BY effective_date DESC
+            LIMIT $limit
+            OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+            WITH r, ds, effective_date, collect(DISTINCT t.name) AS topics
+            RETURN r.url_hash  AS id,
+                   r.title     AS title,
+                   r.summary   AS summary,
+                   toString(effective_date) AS date,
+                   r.url       AS url,
+                   r.doc_type  AS type,
+                   ds.datasource_id AS workgroup_id,
+                   coalesce(ds.display_name, ds.name) AS workgroup_name,
+                   topics,
+                   true AS is_latest_fallback
+            """,
+            description="Most recent documents from specified datasources, no date window — used when explicit @source query has no recent results",
+            param_schema={"workgroups": "list[str]", "limit": "int"},
         )
 
         logger.info(f"Registered {len(self.templates)} query templates")
