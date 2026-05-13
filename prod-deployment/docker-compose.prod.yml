@@ -568,6 +568,9 @@ services:
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
 
+      # Teams integration — optional; enables proactive push when agents generate posts
+      TEAMS_AGENT_URL: ${TEAMS_AGENT_URL:-}
+
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
       # OpenTelemetry Configuration

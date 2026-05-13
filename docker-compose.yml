@@ -639,6 +639,10 @@ services:
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
       ORACLE_SERVICE_URL: ${ORACLE_SERVICE_URL:-http://oracle:8000}
 
+      # Teams integration — optional; enables proactive push when agents generate posts
+      # Teams-agent must be running (docker compose --profile teams up -d)
+      TEAMS_AGENT_URL: ${TEAMS_AGENT_URL:-http://aurora-teams-agent:3978}
+
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
       # OpenTelemetry Configuration
@@ -739,6 +743,12 @@ services:
       - AURORA_ORACLE_URL=http://oracle:8000
       - AURORA_CONTENT_CREATOR_URL=http://content_creator_service:8000
       - AURORA_FRONTEND_URL=${AURORA_FRONTEND_URL:-http://localhost:3000}
+      # PostgreSQL — stores conversation references for proactive messaging
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-aurora}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-aurora_password}
+      - POSTGRES_DB=${POSTGRES_DB:-aurora}
       # Microsoft Graph API for email lookup (optional but recommended for production)
       - GRAPH_TENANT_ID=${AZURE_TENANT_ID:-}
       - GRAPH_CLIENT_ID=${AZURE_APP_CLIENT_ID:-}

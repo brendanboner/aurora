@@ -201,6 +201,18 @@ class AgentScheduler:
             )
             self._agent_service.mark_agent_run(agent.id, event_cursor=event.fingerprint(), generated=True)
             logger.info("CreatorAgent %s generated post %s", agent.name, post_id)
+
+            # Push to Teams if agent has a teams_slug (fire-and-forget, non-fatal)
+            if getattr(agent, "teams_slug", None):
+                from .teams_notifier import push_feed_update
+                push_feed_update(
+                    agent_slug=agent.teams_slug,
+                    agent_name=agent.name,
+                    post_id=post_id,
+                    title=payload.get("title") or event.title or f"Update from {agent.name}",
+                    summary=payload.get("summary") or "",
+                    tags=tags if isinstance(tags, list) else [],
+                )
             
             # Record metrics
             if OTEL_AVAILABLE and span and execution_start:

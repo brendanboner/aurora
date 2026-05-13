@@ -40,6 +40,15 @@ async def list_agents(include_disabled: bool = Query(default=False)) -> List[Cre
     return _agent_service.list_agents(include_disabled=include_disabled)
 
 
+@router.get("/by-slug/{teams_slug}", response_model=CreatorAgent)
+async def get_agent_by_teams_slug(teams_slug: str) -> CreatorAgent:
+    """Resolve a Teams slug (e.g. 'aurora-wba-wifi-design-wg') to a creator agent."""
+    agent = _agent_service.get_agent_by_teams_slug(teams_slug)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"No agent found with teams_slug '{teams_slug}'")
+    return agent
+
+
 @router.post("", response_model=CreatorAgent)
 async def create_agent(payload: CreatorAgentCreate) -> CreatorAgent:
     return _agent_service.create_agent(payload)

@@ -1,0 +1,102 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "bleed": true,
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "🤖",
+                  "size": "Large"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${agent_name}",
+                  "weight": "Bolder",
+                  "size": "Medium",
+                  "wrap": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "New update in your interest area",
+                  "size": "Small",
+                  "isSubtle": true,
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "${title}",
+          "weight": "Bolder",
+          "size": "Medium",
+          "wrap": true
+        },
+        {
+          "type": "TextBlock",
+          "text": "${summary}",
+          "wrap": true,
+          "spacing": "Small",
+          "maxLines": 4
+        },
+        {
+          "type": "FactSet",
+          "facts": [
+            {
+              "title": "Tags",
+              "value": "${tags}"
+            },
+            {
+              "title": "Published",
+              "value": "${published_at}"
+            }
+          ],
+          "spacing": "Small",
+          "isVisible": "${has_meta}"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "💬 Ask ${agent_name} about this",
+      "data": {
+        "msteams": {
+          "type": "imBack",
+          "value": "@${agent_slug} Tell me more about: ${title}"
+        }
+      }
+    },
+    {
+      "type": "Action.OpenUrl",
+      "title": "🔗 View source",
+      "url": "${source_url}",
+      "isVisible": "${has_url}"
+    }
+  ]
+}

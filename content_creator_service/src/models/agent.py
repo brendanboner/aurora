@@ -36,6 +36,11 @@ class CreatorAgentBase(BaseModel):
         ge=0.0,
         le=1.0,
     )
+    teams_slug: Optional[str] = Field(
+        default=None,
+        description="Teams bot slug for @aurora-<slug> routing (e.g. aurora-wba-wifi-design-wg)",
+        pattern=r"^aurora-[a-z0-9-]+$",
+    )
     enabled: bool = True
 
 
@@ -57,6 +62,7 @@ class CreatorAgentUpdate(BaseModel):
     discovery_tolerance: Optional[float] = None
     cadence_window_days: Optional[int] = None
     llm_temperature_override: Optional[float] = None
+    teams_slug: Optional[str] = None
     enabled: Optional[bool] = None
 
 

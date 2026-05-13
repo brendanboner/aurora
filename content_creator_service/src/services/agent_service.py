@@ -44,17 +44,26 @@ class AgentService:
             raise HTTPException(status_code=404, detail="Agent not found")
         return CreatorAgent(**dict(row))
 
+    def get_agent_by_teams_slug(self, teams_slug: str) -> Optional[CreatorAgent]:
+        row = db.fetch_one(
+            "SELECT * FROM creator_agent WHERE teams_slug = %s",
+            (teams_slug,),
+        )
+        return CreatorAgent(**dict(row)) if row else None
+
     def create_agent(self, payload: CreatorAgentCreate) -> CreatorAgent:
         row = db.fetch_one(
             """
             INSERT INTO creator_agent (
                 name, description, persona, expertise_topics, expertise_organisations,
                 expertise_standards, tone_style, posting_cadence, content_length_preference,
-                importance_threshold, discovery_tolerance, cadence_window_days, llm_temperature_override, enabled
+                importance_threshold, discovery_tolerance, cadence_window_days, llm_temperature_override,
+                teams_slug, enabled
             ) VALUES (
                 %(name)s, %(description)s, %(persona)s, %(expertise_topics)s, %(expertise_organisations)s,
                 %(expertise_standards)s, %(tone_style)s, %(posting_cadence)s, %(content_length_preference)s,
-                %(importance_threshold)s, %(discovery_tolerance)s, %(cadence_window_days)s, %(llm_temperature_override)s, %(enabled)s
+                %(importance_threshold)s, %(discovery_tolerance)s, %(cadence_window_days)s, %(llm_temperature_override)s,
+                %(teams_slug)s, %(enabled)s
             ) RETURNING *
             """,
             payload.model_dump(),

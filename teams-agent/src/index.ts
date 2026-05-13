@@ -2,6 +2,7 @@ import * as restify from 'restify';
 import * as path from 'path';
 import { BotFrameworkAdapter, ConversationState, MemoryStorage, UserState } from 'botbuilder';
 import { AuroraBot } from './bot';
+import { ProactiveMessenger, FeedUpdatePayload } from './services/proactiveMessenger';
 import * as dotenv from 'dotenv';
 
 // Load environment variables.
@@ -77,6 +78,9 @@ const memoryStorage = new MemoryStorage();
 const conversationState = new ConversationState(memoryStorage);
 const userState = new UserState(memoryStorage);
 
+// Proactive messaging helper (needs adapter reference)
+const proactiveMessenger = new ProactiveMessenger(adapter);
+
 // Create the main dialog
 const bot = new AuroraBot(conversationState, userState);
 
@@ -115,6 +119,40 @@ server.get('/api/health', async (req, res) => {
     service: 'aurora-teams-agent',
     aurora_api: process.env.AURORA_API_URL
   });
+});
+
+/**
+ * Internal proactive push endpoint — called by content_creator_service when a new post is created.
+ * Not authenticated (Docker network isolation is the security boundary).
+ * Body: { agent_slug, agent_name, post_id, title, summary, tags, source_url?, published_at? }
+ */
+server.post('/internal/push-feed-update', async (req, res) => {
+  const body = req.body as Partial<FeedUpdatePayload>;
+
+  if (!body?.agent_slug || !body?.title) {
+    res.json({ error: 'agent_slug and title are required' });
+    (res as any).status = 400;
+    return;
+  }
+
+  console.log(`[${new Date().toISOString()}] Proactive push: agent_slug=${body.agent_slug} title="${body.title}"`);
+
+  try {
+    const result = await proactiveMessenger.pushFeedUpdate({
+      agent_slug:    body.agent_slug,
+      agent_name:    body.agent_name   || body.agent_slug,
+      post_id:       body.post_id      || 0,
+      title:         body.title,
+      summary:       body.summary      || '',
+      tags:          body.tags         || [],
+      source_url:    body.source_url,
+      published_at:  body.published_at,
+    });
+    res.json({ status: 'ok', ...result });
+  } catch (err) {
+    console.error('[internal/push-feed-update] Error:', err);
+    res.json({ error: (err as Error).message });
+  }
 });
 
 // Graceful shutdown

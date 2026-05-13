@@ -235,4 +235,53 @@ export class AgentHandler {
 
     await context.sendActivity({ text: summary, attachments: [card] });
   }
+
+  /**
+   * Ask a question directed at a specific agent persona resolved by Teams slug.
+   * Used when the user types @aurora-<slug> <question>.
+   */
+  async handleAskAgentBySlug(context: TurnContext, teamsSlug: string, question: string): Promise<void> {
+    const email = this.userService.extractUserEmail(context.activity);
+    const displayName = context.activity.from.name || 'User';
+    const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+    const agentService = new AuroraAgentService(auroraUser.id, email);
+
+    const agent = await agentService.getAgentBySlug(teamsSlug);
+    if (!agent) {
+      await context.sendActivity(
+        `❌ No agent found with Teams slug \`@${teamsSlug}\`. Type \`agents\` to see available agents.`
+      );
+      return;
+    }
+
+    const agentPersona = {
+      name: agent.name,
+      persona: agent.persona,
+      tone_style: agent.tone_style || 'analytical',
+      content_length_preference: agent.content_length_preference || 'medium',
+      expertise_topics: agent.expertise_topics || [],
+      expertise_organisations: agent.expertise_organisations || [],
+      expertise_standards: agent.expertise_standards || [],
+      llm_temperature_override: agent.llm_temperature_override ?? null,
+    };
+
+    await context.sendActivity(`💬 Asking **${agent.name}** (@${teamsSlug}): *${question}*...`);
+
+    const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
+
+    if (!response.answer && (!response.documents || response.documents.length === 0)) {
+      await context.sendActivity(`**${agent.name}** could not find a relevant answer to that question.`);
+      return;
+    }
+
+    const card = buildOracleResponseCard(response, question);
+    const sourceLinks = response.documents?.length
+      ? '\n\n📚 **Sources:**\n' + response.documents.slice(0, 5).map((doc, idx) =>
+          `${idx + 1}. [${doc.title}](${doc.url})`
+        ).join('\n')
+      : '';
+    const summary = `**${agent.name}:** ${response.answer || 'Here are the results:'}${sourceLinks}`;
+
+    await context.sendActivity({ text: summary, attachments: [card] });
+  }
 }

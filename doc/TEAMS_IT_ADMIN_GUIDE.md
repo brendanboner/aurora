@@ -1,229 +1,318 @@
 # Aurora Teams Integration — IT Admin Guide
 
 **Audience:** IT / Azure AD / Microsoft 365 administrators  
-**Purpose:** Everything needed to deploy the Aurora Teams app (tab + bot) in your Microsoft 365 tenant.
+**Purpose:** Everything needed to deploy Aurora in Microsoft Teams — initial bot setup, SSO, per-agent personas, and proactive messaging.
 
 ---
 
-## Overview
+## What Aurora Does in Teams
 
-Aurora is deployed as a **single Microsoft Teams App** containing:
-- A **Teams Tab** (React web app with chat + content feed)
-- An **@Aurora Bot** (natural language Q&A + content agent commands)
+Aurora is a knowledge-graph AI assistant that works in Teams in two ways:
 
-Both surfaces share the same Azure App Registration. The tab uses Teams SSO (silent login via Azure AD). The bot uses the Bot Framework with a separate Bot Channel Registration.
+1. **Reactive Q&A** — users ask questions, Aurora answers using its knowledge graph and LLMs
+2. **Proactive feed** — when a creator agent publishes new content, Aurora pushes it as a card to subscribed conversations — no user action required
+
+### User Commands (quick reference)
+
+| Command | What it does |
+|---------|-------------|
+| `feed` | Pull latest content feed |
+| `@aurora-ietf What's new with QUIC?` | Ask a specific named agent by slug |
+| `setChannelAgent @aurora-wba-wifi-design-wg` | Route all messages in this channel through one agent |
+| `clearChannelAgent` | Remove the channel-scoped agent |
+| `subscribe @aurora-ietf` | Receive proactive pushes from the IETF agent |
+| `unsubscribe @aurora-ietf` | Stop receiving pushes |
+| `agents` | List all available creator agents |
+| `help` | Full command reference |
+
+---
+
+## Architecture
+
+```
+Teams User
+  └── @Aurora Bot
+        └── Teams message → Bot Framework webhook
+              → https://aurora-octo.xcloudiq.com/bot/api/messages
+              → teams-agent (Node.js, Docker)
+                  ├── ChatHandler     → Oracle (LLM Q&A)
+                  ├── AgentHandler    → Oracle with agent persona context
+                  ├── FeedHandler     → content_creator_service
+                  └── ProactiveMessenger ← content_creator_service (push)
+
+content_creator_service
+  └── on new post → POST /internal/push-feed-update (Docker-internal only)
+        → ProactiveMessenger → adapter.continueConversation()
+              → Adaptive Card pushed to all subscribed conversations
+```
+
+Conversation references (needed for proactive push) are stored in PostgreSQL when the bot joins any conversation.
 
 ---
 
 ## Prerequisites
 
-- Global Admin or Teams Service Admin access
-- Azure subscription (for Bot registration)
-- Aurora application already deployed at a public HTTPS domain (e.g., `aurora-octo.xcloudiq.com`)
+- Global Admin or Teams Service Admin access in your Microsoft 365 tenant
+- Azure subscription (same tenant as Teams)
+- Aurora already deployed at a public HTTPS domain (e.g. `aurora-octo.xcloudiq.com`)
+- `docker compose --profile teams up -d` running on the Aurora host
 
 ---
 
-## Step 1: Verify the Existing Azure App Registration
+## Step 1 — Verify the Aurora Azure App Registration (Teams SSO)
 
-Aurora's frontend already has an Azure App Registration (created during initial SSO setup):
+Aurora's frontend uses Teams SSO (silent Azure AD login). This App Registration already exists:
 
 - **App Client ID:** `5f9b6a4d-2e1c-4c9f-a5b3-1d7e9c2f8a4b`  
-  _(This ID is embedded in `frontend/public/manifest.json` → `webApplicationInfo.id`)_
+  _(embedded in `frontend/public/manifest.json` → `webApplicationInfo.id`)_
 
-**Verify / update these settings in the Azure Portal:**
+**Check in Azure Portal → App registrations → find by client ID above:**
 
-1. Go to **Azure Portal** → **Azure Active Directory** → **App registrations**
-2. Find the Aurora app (search by client ID above)
-3. Check **Authentication** → **Redirect URIs**:
-   - Should include: `https://aurora-octo.xcloudiq.com/api/auth/callback`
-4. Check **Expose an API**:
-   - Application ID URI should be: `api://aurora-octo.xcloudiq.com/5f9b6a4d-2e1c-4c9f-a5b3-1d7e9c2f8a4b`
-   - If missing, click **Add a scope** and set the Application ID URI as above
-   - Add scope: `access_as_user`
-   - Who can consent: **Admins and users**
-5. Check **API permissions** (delegated):
-   - `openid`, `email`, `profile` (Microsoft Graph) — all consented
-6. Note the **Tenant ID** (shown in the Overview tab) — you'll need it for `.env`
+1. **Authentication** → Redirect URIs: must include `https://aurora-octo.xcloudiq.com/api/auth/callback`
+2. **Expose an API**:
+   - Application ID URI: `api://aurora-octo.xcloudiq.com/5f9b6a4d-2e1c-4c9f-a5b3-1d7e9c2f8a4b`
+   - Scope: `access_as_user` — Who can consent: **Admins and users**
+3. **API permissions** (delegated): `openid`, `email`, `profile` — all consented
+4. Note the **Tenant ID** from the Overview tab
 
-**Update `.env` with the tenant info (for Teams SSO endpoint):**
-```bash
+**Update Aurora `.env`:**
+```
 AZURE_TENANT_ID=<your-tenant-guid>
 AZURE_APP_CLIENT_ID=5f9b6a4d-2e1c-4c9f-a5b3-1d7e9c2f8a4b
 ```
 
 ---
 
-## Step 2: Create an Azure Bot Registration (for @Aurora Bot)
+## Step 2 — Create the Azure Bot Registration (@Aurora Bot)
 
-> **Note:** Skip this step if you only want the Teams Tab (no bot messaging). The tab works independently.
+This registers the single Aurora bot that all conversations use.
 
-1. Go to **Azure Portal** → **Create a resource** → search for **"Azure Bot"**
-2. Click **Create**
-3. Fill in:
-   - **Bot handle:** `aurora-teams-bot` (or any unique name)
-   - **Subscription / Resource Group:** as appropriate
-   - **Pricing tier:** `F0` (free) for testing, `S1` for production
+1. **Azure Portal → Create a resource → Azure Bot**
+2. Fill in:
+   - **Bot handle:** `aurora-teams-bot`
+   - **Pricing tier:** `F0` (free) for testing; `S1` for production
    - **Microsoft App type:** `Single tenant`
    - **Creation type:** `Create new Microsoft App ID`
-4. Click **Review + Create** → **Create**
-5. Once deployed, go to the bot resource → **Configuration**:
+3. After creation, go to **Configuration**:
    - **Messaging endpoint:** `https://aurora-octo.xcloudiq.com/bot/api/messages`
-   - Note the **Microsoft App ID** (this is your `BOT_ID`)
-6. Go to **Configuration** → **Manage Password** → create a client secret
-   - Note the secret value (this is your `BOT_PASSWORD`)
-7. Go to **Channels** → click **Microsoft Teams** → **Save**
+   - Note the **Microsoft App ID** → this is `BOT_ID`
+4. **Configuration → Manage Password** → create a client secret → note it as `BOT_PASSWORD`
+5. **Channels → Microsoft Teams → Save**
 
-**Update `.env` with the bot credentials:**
-```bash
-BOT_ID=<microsoft-app-id-from-step-5>
-BOT_PASSWORD=<client-secret-from-step-6>
+**Update Aurora `.env`:**
+```
+BOT_ID=<microsoft-app-id>
+BOT_PASSWORD=<client-secret>
 ```
 
 ---
 
-## Step 3: Grant Microsoft Graph Permissions (for Email Lookup)
+## Step 3 — Grant Microsoft Graph Permissions (Email Lookup)
 
-The bot resolves Teams user AAD Object IDs to email addresses via Graph API. This requires:
+The bot looks up user email addresses from AAD Object IDs via Graph API. Without this, Aurora creates users with synthetic IDs (`<aad-oid>@teams.aad`) — everything works but user profiles won't be linked by email.
 
-1. In the **Bot's Azure App Registration** (different from the Aurora app registration):
-   - Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Application permissions**
-   - Add: `User.Read.All`
-2. Click **Grant admin consent** for your tenant
-3. Optionally set these in `.env` for bot Graph API access:
-   ```bash
-   GRAPH_TENANT_ID=<your-tenant-guid>
-   GRAPH_CLIENT_ID=<bot-app-id>
-   GRAPH_CLIENT_SECRET=<bot-client-secret>
-   ```
+In the **Bot's Azure App Registration** (same app created in Step 2):
 
-> **Note:** `User.Read.All` requires admin consent. Without it, the bot falls back to using the AAD Object ID as a synthetic identifier. Users will still work, but their Aurora profile won't be linked by email.
+1. **API permissions → Add a permission → Microsoft Graph → Application permissions**
+2. Add: `User.Read.All`
+3. Click **Grant admin consent** ← requires Global Admin
 
----
-
-## Step 4: Create the Teams App Package
-
-On the Aurora application server (or a developer machine with repo access):
-
-```bash
-# Basic tab-only package (no bot)
-./scripts/create-teams-package.sh aurora-octo.xcloudiq.com
-
-# Full package with bot
-BOT_ID=<your-bot-app-id> ./scripts/create-teams-package.sh aurora-octo.xcloudiq.com
-
-# Output: aurora-teams-app.zip in repo root
+**Update Aurora `.env`:**
+```
+GRAPH_TENANT_ID=<your-tenant-guid>
+GRAPH_CLIENT_ID=<bot-app-id>
+GRAPH_CLIENT_SECRET=<bot-client-secret>
 ```
 
-The script substitutes the domain and Bot ID into `manifest.json` and packages it with the app icons.
+> `User.Read.All` requires admin consent. This is the only permission in the entire Aurora stack that does.
 
 ---
 
-## Step 5: Submit to Teams Admin Center
+## Step 4 — Build and Deploy the Teams App Package
 
-1. Go to **https://admin.teams.microsoft.com**
-2. Navigate to **Teams apps** → **Manage apps**
-3. Click **Upload new app** (top right)
-4. Click **Upload** → select `aurora-teams-app.zip`
-5. Review the app details and click **Submit**
-6. The app will appear in the list with status **Submitted**
-
-**For admin-approved apps (recommended for org-wide rollout):**
-- Click the app → **Publish** to make it available in the org app catalog
-- Optionally use **App setup policies** to pre-install Aurora for specific teams or users
-
----
-
-## Step 6: User Installation
-
-Once published:
-- Users can find Aurora in **Teams Apps** (search for "Aurora")
-- To add to a **team channel:** Click **+** in the channel tab bar → search "Aurora" → Add
-- To use the **bot:** In any channel or chat, type `@Aurora` to mention the bot
-
----
-
-## Step 7: Start the Bot Service
-
-On the Aurora host server:
+On the Aurora server or a developer machine with the repo:
 
 ```bash
-# Start with the teams profile (brings up teams-agent container)
+# Start the teams-agent container (if not already running)
 docker compose --profile teams up -d teams-agent
 
-# Verify it's running
-docker compose logs teams-agent
+# Build the app package (substitutes domain and BOT_ID into manifest.json)
+BOT_ID=<your-bot-app-id> ./scripts/create-teams-package.sh aurora-octo.xcloudiq.com
+# Output: aurora-teams-app.zip
 ```
 
-The bot will be accessible at `https://aurora-octo.xcloudiq.com/bot/api/messages` (via nginx).
+**Upload to Teams Admin Center:**
+
+1. Go to `https://admin.teams.microsoft.com`
+2. **Teams apps → Manage apps → Upload new app**
+3. Select `aurora-teams-app.zip`
+4. Click **Publish** to make it available org-wide
+5. Optionally use **App setup policies** to pre-install Aurora for specific users/groups
+
+**For testing (sideload without admin approval):**  
+Teams → Apps → Upload a custom app → select `aurora-teams-app.zip`
 
 ---
 
-## Configuration Reference
+## Step 5 — Set Agent Teams Slugs
 
-| Environment Variable | Description | Required For |
-|---|---|---|
+For `@aurora-<slug>` routing to work, each creator agent needs a `teams_slug` set in the database. This is done by the Aurora team, not IT:
+
+```sql
+-- Run on the Aurora PostgreSQL instance
+UPDATE creator_agent SET teams_slug = 'aurora-ietf'                WHERE name = 'IETF Monitor';
+UPDATE creator_agent SET teams_slug = 'aurora-wba-wifi-design-wg'  WHERE name = 'WBA Wi-Fi Design';
+UPDATE creator_agent SET teams_slug = 'aurora-mister-multipath'    WHERE name = 'Mister Multipath';
+```
+
+Users can then type `@aurora-ietf What's happening with QUIC?` and the message routes through the IETF agent persona.
+
+---
+
+## Step 6 — Start the Bot and Verify
+
+```bash
+# Start teams-agent
+docker compose --profile teams up -d teams-agent
+
+# Verify
+docker compose logs -f teams-agent
+
+# Test the health endpoint
+curl https://aurora-octo.xcloudiq.com/bot/api/health
+```
+
+---
+
+## Phase 2 (Optional) — Per-Agent Bot Identities
+
+By default, all agent personas (`@aurora-ietf`, `@aurora-wba-wifi-design-wg`) are served by the **single `@Aurora` bot**. The agent identity appears in the message body.
+
+If you want each agent to appear as a **distinct named bot** in Teams (own avatar, display name in @mention dropdown), each agent needs its own Azure Bot App Registration.
+
+### What IT needs to create (once per agent)
+
+#### 1 — Azure AD App Registration
+
+1. **Azure Portal → App registrations → New registration**
+2. Name: `Aurora — <Agent Display Name>` (e.g. `Aurora — IETF Agent`)
+3. Supported account types: **Single tenant**
+4. Click **Register** → note the **Application (client) ID**
+5. **Certificates & secrets → New client secret** → note the value
+
+#### 2 — Azure Bot Service
+
+1. **Azure Portal → Create → Azure Bot**
+2. Bot handle: `aurora-<slug>` (e.g. `aurora-ietf`)
+3. Microsoft App ID: **Use existing** → paste the App ID from above
+4. Messaging endpoint: `https://aurora-octo.xcloudiq.com/bot/api/messages/aurora-ietf`
+   > The slug in the URL path tells Aurora which agent persona to use
+5. **Channels → Microsoft Teams → Save**
+
+#### 3 — Teams App Package
+
+```bash
+# Run from Aurora repo root
+./scripts/create-agent-manifest.sh aurora-ietf <app-id> <bot-id>
+# Output: dist/teams-packages/aurora-ietf.zip
+```
+
+Deploy the .zip via Teams Admin Center (same as Step 4).
+
+#### 4 — Provide credentials to Aurora team
+
+```
+AGENT_BOT_AURORA_IETF_APP_ID=<app-id>
+AGENT_BOT_AURORA_IETF_APP_SECRET=<client-secret>
+```
+
+Naming convention: `AGENT_BOT_<SLUG_UPPERCASE_UNDERSCORED>_APP_ID` / `_APP_SECRET`
+
+### Recommended agents for Phase 2 (priority order)
+
+| Slug | Display Name | Domain |
+|------|-------------|--------|
+| `aurora-ietf` | IETF Agent | QUIC, HTTP/3, internet standards |
+| `aurora-wba-wifi-design-wg` | WBA Wi-Fi Design WG | Wi-Fi design, 6 GHz, Hotspot 2.0 |
+| `aurora-ieee-802` | IEEE 802 Agent | 802.11be, 802.1Q, Ethernet |
+| `aurora-mister-multipath` | Mister Multipath | MPTCP, QUIC, multipath networking |
+
+> **Note:** Phase 1 (slug routing via single bot) gives identical *functionality* to Phase 2 — the only difference is whether the bot appears as `@Aurora` or as `@aurora-ietf` in the Teams mention dropdown. Start with Phase 1; upgrade later with no code changes.
+
+---
+
+## Full Use Case Summary
+
+| Use case | Teams feature | IT action |
+|----------|--------------|-----------|
+| Personal chat with Aurora | Bot, personal scope | Install Aurora app |
+| Q&A in a team channel | Bot, team scope | Add bot to channel |
+| Proactive feed pushes to personal chat | Bot Framework proactive messaging | None — Aurora handles this |
+| Proactive feed pushes to a channel | Same | Add bot to channel, user subscribes |
+| Ask named agent (`@aurora-ietf ...`) | Single bot + slug routing | Set `teams_slug` in DB (Aurora team) |
+| Lock channel to one agent | `setChannelAgent` command | None |
+| True per-agent identity in @mention dropdown | Per-agent app registration | One App Registration + package per agent |
+| Org-wide pre-install (no user action needed) | App setup policies | Teams Admin — App setup policies |
+
+---
+
+## Environment Variables Reference
+
+| Variable | Description | Required For |
+|----------|-------------|-------------|
 | `AZURE_TENANT_ID` | Azure AD tenant GUID | Teams SSO tab auth |
 | `AZURE_APP_CLIENT_ID` | Azure App Registration client ID | Teams SSO tab auth |
-| `BOT_ID` | Bot Framework App ID (from Azure Bot) | @Aurora bot |
+| `BOT_ID` | Bot Framework App ID | @Aurora bot |
 | `BOT_PASSWORD` | Bot Framework client secret | @Aurora bot |
 | `GRAPH_TENANT_ID` | Azure tenant for Graph API | Bot email lookup |
 | `GRAPH_CLIENT_ID` | Bot app ID for Graph API | Bot email lookup |
 | `GRAPH_CLIENT_SECRET` | Bot client secret for Graph API | Bot email lookup |
+| `POSTGRES_HOST/USER/PASSWORD/DB` | PostgreSQL connection | Conversation reference store (proactive push) |
+| `TEAMS_AGENT_URL` | Internal URL to teams-agent (set on content_creator_service) | Proactive push trigger |
 
 ---
 
-## Required Azure Permissions Summary
+## Azure Permissions Summary
 
-| Permission | Type | Used By | Admin Consent Required |
-|---|---|---|---|
-| `openid`, `email`, `profile` | Delegated | Teams SSO tab login | No |
-| `access_as_user` | Delegated (custom) | Teams SSO token validation | No (user consent) |
+| Permission | Type | Purpose | Admin Consent |
+|------------|------|---------|---------------|
+| `openid`, `email`, `profile` | Delegated | Teams SSO login | No |
+| `access_as_user` | Delegated (custom scope) | Teams SSO token validation | No (user consent) |
 | `User.Read.All` | Application | Bot → Graph API email lookup | **Yes** |
-| Teams channel (Bot Framework) | Channel | Bot messaging in Teams | No |
+| Teams Bot channel | Channel | Bot messaging in Teams | No |
 
 ---
 
 ## Troubleshooting
 
-### Tab shows login button instead of auto-logging in
-- Confirm `AZURE_TENANT_ID` and `AZURE_APP_CLIENT_ID` are set in Aurora's `.env`
-- Verify the `webApplicationInfo` section in `manifest.json` has the correct `id` (must match Azure App Registration client ID)
-- Verify the **Expose an API** scope (`access_as_user`) is configured on the Azure App Registration
+**Tab shows login button instead of auto-logging in**
+- Confirm `AZURE_TENANT_ID` and `AZURE_APP_CLIENT_ID` are set in `.env`
+- Verify `webApplicationInfo.id` in `manifest.json` matches the Azure App Registration client ID
+- Check **Expose an API** scope (`access_as_user`) is configured
 
-### Bot doesn't respond in Teams
-- Check `BOT_ID` and `BOT_PASSWORD` are correct in `.env`
-- Verify the messaging endpoint in Azure Bot points to `https://aurora-octo.xcloudiq.com/bot/api/messages`
-- Check teams-agent logs: `docker compose logs teams-agent`
-- Verify the Microsoft Teams channel is enabled in Azure Bot → Channels
+**Bot doesn't respond in Teams**
+- Verify `BOT_ID` and `BOT_PASSWORD` in `.env`
+- Confirm messaging endpoint in Azure Bot → Configuration: `https://aurora-octo.xcloudiq.com/bot/api/messages`
+- Check logs: `docker compose logs -f teams-agent`
+- Confirm Microsoft Teams channel is enabled: Azure Bot → Channels → Teams ✓
 
-### Bot can't find user email
-- This is expected without `GRAPH_CLIENT_SECRET` configured
-- Configure Graph API credentials in `.env` and grant `User.Read.All` admin consent
-- Without Graph API, bot creates users with synthetic identifiers (`<aad-oid>@teams.aad`)
+**`@aurora-ietf` returns "agent not found"**
+- Check `teams_slug` is set: `SELECT name, teams_slug FROM creator_agent WHERE teams_slug IS NOT NULL;`
+- Confirm the slug matches exactly (e.g. `aurora-ietf` not `ietf`)
 
-### "App not found" in Teams
-- The app package may not have been submitted/approved yet
-- Check Teams Admin Center: **Teams apps** → **Manage apps** → filter by "Custom apps"
-- App approval may take up to 24 hours after initial submission
+**Proactive pushes not arriving**
+- Check `TEAMS_AGENT_URL` is set in the content_creator_service environment
+- Check logs: `docker compose logs -f teams-agent | grep ProactiveMessenger`
+- Confirm the user typed `subscribe @aurora-<slug>` in the target conversation
+- Verify the PostgreSQL `teams_conversation_references` table has the conversation: `SELECT conversation_id, subscribed_agent_slugs FROM teams_conversation_references;`
 
----
+**Bot can't find user email**
+- Expected if `GRAPH_CLIENT_SECRET` is not configured — bot falls back to synthetic ID
+- Grant `User.Read.All` admin consent and set Graph API env vars in `.env`
 
-## Architecture Reference
-
-```
-Teams User
-  ├── Tab (Aurora web app)
-  │     └── https://aurora-octo.xcloudiq.com/teams
-  │           → Azure AD SSO token (via Teams SDK)
-  │           → POST /api/auth/teams-sso (exchange for Aurora session)
-  │           → All /api/* calls with teams_session cookie
-  │
-  └── @Aurora Bot
-        └── Teams message → Bot Framework → Azure Bot Webhook
-              → https://aurora-octo.xcloudiq.com/bot/api/messages
-              → teams-agent Docker container (Node.js)
-              → Aurora backend services
-```
+**"App not found" in Teams**
+- Check Teams Admin Center: **Manage apps → filter by Custom apps**
+- App approval can take up to 24 hours after first submission
 
 ---
 
@@ -232,3 +321,4 @@ Teams User
 - **Aurora App Team:** bbonner (Extreme Networks)
 - **Teams Admin Center:** https://admin.teams.microsoft.com
 - **Azure Portal:** https://portal.azure.com
+

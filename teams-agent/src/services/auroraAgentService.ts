@@ -11,6 +11,7 @@ export interface CreatorAgent {
   expertise_organisations: string[];
   expertise_standards: string[];
   llm_temperature_override: number | null;
+  teams_slug: string | null;
   enabled: boolean;
   follower_count?: number;
 }
@@ -51,5 +52,17 @@ export class AuroraAgentService {
     const agents = await this.listAgents();
     const lower = name.toLowerCase();
     return agents.find((a) => a.name.toLowerCase().includes(lower)) ?? null;
+  }
+
+  /** Resolve a Teams slug (e.g. 'aurora-wba-wifi-design-wg') to an agent. */
+  async getAgentBySlug(teamsSlug: string): Promise<CreatorAgent | null> {
+    try {
+      const response = await this.apiClient.get(`/agents/by-slug/${encodeURIComponent(teamsSlug)}`);
+      return response.data;
+    } catch (err: any) {
+      if (err?.response?.status === 404) return null;
+      console.warn(`[AuroraAgentService] getAgentBySlug(${teamsSlug}) failed:`, err?.message);
+      return null;
+    }
   }
 }
