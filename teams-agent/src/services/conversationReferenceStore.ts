@@ -179,6 +179,49 @@ export class ConversationReferenceStore {
       [conversationId, auroraUserId]
     );
   }
+
+  // ── Webhook methods ──────────────────────────────────────────────────────────
+
+  /**
+   * Store a Teams Incoming Webhook URL for a specific agent slug in this conversation.
+   * The webhook is used instead of bot push when posting proactive updates,
+   * allowing messages to arrive with the agent's custom name and icon.
+   */
+  async setWebhookUrl(conversationId: string, agentSlug: string, webhookUrl: string): Promise<void> {
+    await getPool().query(
+      `UPDATE teams_conversation_references
+       SET agent_webhook_urls = agent_webhook_urls || jsonb_build_object($2::TEXT, $3::TEXT),
+           updated_at = NOW()
+       WHERE conversation_id = $1`,
+      [conversationId, agentSlug, webhookUrl]
+    );
+  }
+
+  /** Remove a webhook URL for a specific agent slug from this conversation. */
+  async removeWebhookUrl(conversationId: string, agentSlug: string): Promise<void> {
+    await getPool().query(
+      `UPDATE teams_conversation_references
+       SET agent_webhook_urls = agent_webhook_urls - $2::TEXT,
+           updated_at = NOW()
+       WHERE conversation_id = $1`,
+      [conversationId, agentSlug]
+    );
+  }
+
+  /**
+   * Get all conversations that have a webhook URL configured for the given agent slug,
+   * along with the webhook URL. Used by ProactiveMessenger to prefer webhook dispatch.
+   */
+  async getWebhooksForAgent(agentSlug: string): Promise<Array<{ conversation_id: string; webhook_url: string }>> {
+    const res = await getPool().query<{ conversation_id: string; webhook_url: string }>(
+      `SELECT conversation_id,
+              agent_webhook_urls->$1 AS webhook_url
+       FROM teams_conversation_references
+       WHERE agent_webhook_urls ? $1`,
+      [agentSlug]
+    );
+    return res.rows;
+  }
 }
 
 export const conversationReferenceStore = new ConversationReferenceStore();
