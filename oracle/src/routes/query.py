@@ -151,20 +151,22 @@ async def list_datasources(
     try:
         repo = get_repo()
         
-        # Query all DataSource nodes with document counts
+        # Query all DataSource nodes with document counts + grouping fields
         query = """
             MATCH (ds:DataSource)
             OPTIONAL MATCH (r:Resource)-[:INGESTED_FROM]->(ds)
             WITH ds, count(r) AS doc_count
             RETURN ds.datasource_id AS datasource_id,
-                   ds.name AS name,
+                   coalesce(ds.display_name, ds.name) AS name,
                    ds.description AS description,
+                   ds.parent_datasource_id AS parent_datasource_id,
+                   ds.scraper_type AS scraper_type,
                    doc_count
             ORDER BY doc_count DESC
         """
-        
+
         results = repo.client.execute_query(query)
-        
+
         datasources = []
         for record in results:
             datasources.append(DataSourceInfo(
@@ -172,6 +174,8 @@ async def list_datasources(
                 name=record.get("name") or record.get("datasource_id", "Unknown"),
                 description=record.get("description"),
                 document_count=record.get("doc_count", 0),
+                parent_datasource_id=record.get("parent_datasource_id"),
+                scraper_type=record.get("scraper_type"),
             ))
         
         logger.info(f"Retrieved {len(datasources)} datasources")
@@ -250,21 +254,34 @@ async def query(
                     datasource_ids = []
                     for mention in mentions:
                         logger.debug(f"[{query_id}] Looking up datasource for mention: {mention}")
-                        # Query Neo4j for datasource with matching name or ID
-                        # Try exact match first, then contains
+                        # Match by exact ID, display_name contains, or name contains.
+                        # coalesce prefers display_name for human-readable names like "Next Gen".
                         result = neo4j_client.execute_query("""
                             MATCH (ds:DataSource)
                             WHERE toLower(ds.datasource_id) = toLower($mention)
-                               OR toLower(ds.name) CONTAINS toLower($mention)
+                               OR toLower(coalesce(ds.display_name, ds.name, '')) CONTAINS toLower($mention)
                                OR toLower(ds.datasource_id) CONTAINS toLower($mention)
                             RETURN ds.datasource_id AS datasource_id
                             LIMIT 1
                         """, parameters={"mention": mention})
-                        
+
                         logger.debug(f"[{query_id}] Query result for '{mention}': {result}")
-                        
+
                         if result and len(result) > 0:
-                            datasource_ids.append(result[0]["datasource_id"])
+                            matched_id = result[0]["datasource_id"]
+                            datasource_ids.append(matched_id)
+
+                            # Expand: also include any child datasources so that
+                            # @wba includes all WBA Extranet communities,
+                            # @nextgen includes its workgroups, etc.
+                            children = neo4j_client.execute_query("""
+                                MATCH (child:DataSource {parent_datasource_id: $parent_id})
+                                RETURN child.datasource_id AS datasource_id
+                            """, parameters={"parent_id": matched_id})
+                            for child in (children or []):
+                                child_id = child.get("datasource_id")
+                                if child_id and child_id not in datasource_ids:
+                                    datasource_ids.append(child_id)
                     
                     if datasource_ids:
                         logger.info(f"[{query_id}] Extracted datasource_ids from @mentions: {datasource_ids}")

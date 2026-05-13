@@ -97,10 +97,15 @@ export class AuroraOracleService {
   /**
    * Send query to Oracle service
    */
-  async query(userId: string, question: string, agentPersona?: AgentPersona): Promise<OracleResponse> {
+  async query(
+    userId: string,
+    question: string,
+    agentPersona?: AgentPersona,
+    datasourceIds?: string[],
+  ): Promise<OracleResponse> {
     try {
-      console.log(`Oracle query from user ${userId}: "${question}"${agentPersona ? ` [as ${agentPersona.name}]` : ''}`);
-      
+      console.log(`Oracle query from user ${userId}: "${question}"${agentPersona ? ` [as ${agentPersona.name}]` : ''}${datasourceIds?.length ? ` [@sources: ${datasourceIds.join(',')}]` : ''}`);
+
       const payload: OracleQuery = {
         user_id: userId,
         question: question,
@@ -108,7 +113,8 @@ export class AuroraOracleService {
         ...(agentPersona && { agent_persona: agentPersona }),
         options: {
           max_documents: 5,
-          include_graph_context: true
+          include_graph_context: true,
+          ...(datasourceIds?.length ? { datasource_ids: datasourceIds } : {}),
         }
       };
 
@@ -155,6 +161,41 @@ export class AuroraOracleService {
         { suggestion: 'What are the key benefits of Wi-Fi 7?', score: 0.8 }
       ]
     };
+  }
+
+  /**
+   * Resolve @mention text to datasource_ids.
+   * Returns an array of matching datasource IDs (including children).
+   * Uses the oracle's /datasources endpoint which already returns parent_datasource_id.
+   */
+  async resolveMentionsToDatasourceIds(mentions: string[]): Promise<string[]> {
+    if (!mentions.length) return [];
+    try {
+      const response = await this.apiClient.get('/datasources');
+      const allSources: Array<{ datasource_id: string; name: string; parent_datasource_id?: string }> =
+        response.data?.datasources || [];
+
+      const resolved = new Set<string>();
+      for (const mention of mentions) {
+        const lower = mention.toLowerCase();
+        const match = allSources.find(ds =>
+          ds.datasource_id.toLowerCase() === lower ||
+          ds.datasource_id.toLowerCase().includes(lower) ||
+          (ds.name || '').toLowerCase().includes(lower)
+        );
+        if (match) {
+          resolved.add(match.datasource_id);
+          // Include children (one level)
+          for (const child of allSources.filter(ds => ds.parent_datasource_id === match.datasource_id)) {
+            resolved.add(child.datasource_id);
+          }
+        }
+      }
+      return Array.from(resolved);
+    } catch (err) {
+      console.warn('resolveMentionsToDatasourceIds failed:', err);
+      return [];
+    }
   }
 
   /**

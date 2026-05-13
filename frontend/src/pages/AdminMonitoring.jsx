@@ -102,10 +102,17 @@ function BatchRow({ batch }) {
   const label = sourceLabel(batch.datasource_id, batch.display_name);
   const pct = Math.min(100, Math.round(batch.progress_percent));
   const statusColor = batch.status === 'digesting' ? 'digesting' : 'retrieving';
+  // Show datasource_id as subtitle only when it differs meaningfully from the label
+  const showSubtitle = batch.datasource_id && batch.datasource_id !== label;
   return (
     <div className="mon-batch-row">
       <div className="mon-batch-meta">
-        <span className="mon-batch-name" title={batch.datasource_id}>{label}</span>
+        <div className="mon-batch-name-col">
+          <span className="mon-batch-name">{label}</span>
+          {showSubtitle && (
+            <span className="mon-batch-id">{batch.datasource_id}</span>
+          )}
+        </div>
         <span className={`mon-batch-status ${statusColor}`}>{batch.status}</span>
         {batch.started_at && (
           <span className="mon-batch-elapsed">↑ {elapsed(batch.started_at)}</span>

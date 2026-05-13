@@ -200,6 +200,8 @@ class DataSourceInfo(BaseModel):
     name: str = Field(..., description="Human-readable name")
     description: Optional[str] = Field(default=None, description="Description of the datasource")
     document_count: int = Field(default=0, description="Number of documents from this source")
+    parent_datasource_id: Optional[str] = Field(default=None, description="Parent datasource ID for hierarchy")
+    scraper_type: Optional[str] = Field(default=None, description="Scraper type for grouping")
 
 
 class DataSourcesResponse(BaseModel):

@@ -506,20 +506,31 @@ def upsert_user_preferences(
 # ========== User Source Preferences (weighted source boosts) ==========
 
 def get_user_source_preferences(user_id: str) -> List[Dict[str, Any]]:
-    """Return [{datasource_id, weight}, ...] for the user."""
+    """Return [{datasource_id, weight}, ...] for the user.
+
+    Returns [] gracefully if migration 008 hasn't been applied yet.
+    """
     query = """
         SELECT datasource_id, weight
         FROM user_source_preferences
         WHERE user_id = %s
         ORDER BY weight DESC, datasource_id
     """
-    return fetchall(query, (user_id,))
+    try:
+        return fetchall(query, (user_id,))
+    except Exception as e:
+        if "user_source_preferences" in str(e):
+            return []
+        raise
 
 
 def upsert_user_source_preference(
     user_id: str, datasource_id: str, weight: float = 1.0
 ) -> Dict[str, Any]:
-    """Set or update a weighted source preference."""
+    """Set or update a weighted source preference.
+
+    Returns gracefully if migration 008 hasn't been applied yet.
+    """
     query = """
         INSERT INTO user_source_preferences (user_id, datasource_id, weight)
         VALUES (%s, %s, %s)
@@ -528,18 +539,31 @@ def upsert_user_source_preference(
             updated_at = NOW()
         RETURNING user_id, datasource_id, weight
     """
-    return fetchone(query, (user_id, datasource_id, weight))
+    try:
+        return fetchone(query, (user_id, datasource_id, weight))
+    except Exception as e:
+        if "user_source_preferences" in str(e):
+            return {"user_id": user_id, "datasource_id": datasource_id, "weight": weight}
+        raise
 
 
 def delete_user_source_preference(user_id: str, datasource_id: str) -> bool:
-    """Remove a source preference (reverts to default weighting)."""
+    """Remove a source preference (reverts to default weighting).
+
+    Returns gracefully if migration 008 hasn't been applied yet.
+    """
     query = """
         DELETE FROM user_source_preferences
         WHERE user_id = %s AND datasource_id = %s
         RETURNING datasource_id
     """
-    result = fetchone(query, (user_id, datasource_id))
-    return result is not None
+    try:
+        result = fetchone(query, (user_id, datasource_id))
+        return result is not None
+    except Exception as e:
+        if "user_source_preferences" in str(e):
+            return False
+        raise
 
 
 # ========== User Source Memberships ==========

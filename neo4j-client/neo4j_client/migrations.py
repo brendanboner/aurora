@@ -1322,7 +1322,7 @@ class Migrations:
                 "scraper_type": "wba_extranet",
                 "resource_url": "/",
                 "scrape_schedule": "0 2 * * 1",
-                "run_on_startup": False,
+                "run_on_startup": True,
                 "check_content_hash": True,
                 "publish_weight": 1.0,
                 "update_weight": 0.9,
@@ -1366,7 +1366,8 @@ class Migrations:
                 d.description                 = $description
             ON MATCH SET
                 d.display_name                = $display_name,
-                d.description                 = $description
+                d.description                 = $description,
+                d.run_on_startup              = true
             RETURN d.datasource_id AS id, (d.name IS NOT NULL) AS existed
             """
             result = session.run(query, **ds)

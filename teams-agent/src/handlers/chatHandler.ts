@@ -21,12 +21,26 @@ export class ChatHandler {
       // Get user info
       const email = this.userService.extractUserEmail(context.activity);
       const displayName = context.activity.from.name || 'User';
-      
+
       // Get or create Aurora user
       const auroraUser = await this.userService.getOrCreateUser(email, displayName);
-      
-      // Query Oracle
-      const response = await this.oracleService.query(auroraUser.id, question);
+
+      // Parse @source mentions (e.g. "@wba what happened this week" or "@iot last meeting")
+      // Agent mentions (@AgentName) are handled by agentHandler — here we handle datasource mentions.
+      const mentionPattern = /@(\w+)/g;
+      const mentions = [...question.matchAll(mentionPattern)].map(m => m[1]);
+      let cleanQuestion = question;
+      let datasourceIds: string[] = [];
+      if (mentions.length > 0) {
+        datasourceIds = await this.oracleService.resolveMentionsToDatasourceIds(mentions);
+        if (datasourceIds.length > 0) {
+          cleanQuestion = question.replace(mentionPattern, '').trim();
+          console.log(`[Teams] @mentions ${mentions.join(',')} → datasource_ids: ${datasourceIds.join(',')}`);
+        }
+      }
+
+      // Query Oracle (oracle also handles any remaining @mentions in cleanQuestion)
+      const response = await this.oracleService.query(auroraUser.id, cleanQuestion, undefined, datasourceIds);
       
       // Send response as card with text summary for emulator compatibility
       const card = buildOracleResponseCard(response, question);
