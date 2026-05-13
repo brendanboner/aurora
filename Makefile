@@ -23,7 +23,7 @@
 
 .PHONY: help test-all build-push-all ship-all aws-login connect_aurora_ec2clean-all \
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
-        build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view \
+        build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
         dev
 
@@ -134,7 +134,7 @@ test-kg-view:
 # Build and Push All Services
 # =============================================================================
 
-build-push-all: build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view
+build-push-all: build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent
 	@echo "$(GREEN)✓ All images built and pushed successfully$(NC)"
 
 build-push-auth:
@@ -180,6 +180,17 @@ build-push-content-creator:
 build-push-kg-view:
 	@echo "$(CYAN)Building and pushing kg-view service...$(NC)"
 	@cd kg_view && $(MAKE) build-push ECR_REGISTRY=$(ECR_REGISTRY) VERSION=$(VERSION)
+
+build-push-teams-agent:
+	@echo "$(CYAN)Building and pushing teams-agent service (multi-platform)...$(NC)"
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(ECR_REGISTRY)/aurora-teams-agent:$(VERSION) \
+		-t $(ECR_REGISTRY)/aurora-teams-agent:latest \
+		--push \
+		-f teams-agent/Dockerfile \
+		teams-agent/
+	@echo "$(GREEN)✓ teams-agent pushed: $(ECR_REGISTRY)/aurora-teams-agent:$(VERSION)$(NC)"
 
 # =============================================================================
 # Ship All Services (with tests and builds)
