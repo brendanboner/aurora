@@ -1015,6 +1015,17 @@ class GenerationService:
         )
         
         logger.info("Generated post %s for user agent %s", post_id, agent_name)
+
+        # Push to Teams — routes to conversations linked to this user (fire-and-forget)
+        from .teams_notifier import push_user_agent_update
+        push_user_agent_update(
+            aurora_user_id=user_id,
+            agent_name=agent_name,
+            post_id=post_id,
+            title=llm_response.get("title", "Untitled update"),
+            summary=llm_response.get("summary") or "",
+            tags=llm_response.get("tags", topics) if isinstance(llm_response.get("tags", topics), list) else [],
+        )
         
         return {
             "post_id": post_id,

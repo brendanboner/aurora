@@ -15,6 +15,17 @@ export interface FeedUpdatePayload {
   published_at?: string;
 }
 
+export interface UserAgentUpdatePayload {
+  aurora_user_id: string;
+  agent_name: string;
+  post_id: number;
+  title: string;
+  summary: string;
+  tags: string[];
+  source_url?: string;
+  published_at?: string;
+}
+
 /**
  * Sends a proactive feed update to all conversations subscribed to the given agent slug.
  *
@@ -134,6 +145,44 @@ export class ProactiveMessenger {
     };
     const cardPayload = template.expand({ $root: data });
     return CardFactory.adaptiveCard(cardPayload);
+  }
+
+  /**
+   * Push a personal user-agent update directly to all Teams conversations
+   * linked to a specific Aurora user (via aurora_user_id).
+   * Used for "My Agents" project-scoped agents from /profile/my-agents.
+   */
+  async pushUserAgentUpdate(payload: UserAgentUpdatePayload): Promise<{ sent: number; errors: number }> {
+    const userRefs = await conversationReferenceStore.getForUser(payload.aurora_user_id);
+
+    if (userRefs.length === 0) {
+      console.log(`[ProactiveMessenger] No Teams conversations linked to user ${payload.aurora_user_id}`);
+      return { sent: 0, errors: 0 };
+    }
+
+    // Reuse the same card template — slug shown as agent name, no subscribe action needed
+    const card = this.buildBotCard({
+      agent_slug:   payload.aurora_user_id,
+      agent_name:   payload.agent_name,
+      post_id:      payload.post_id,
+      title:        payload.title,
+      summary:      payload.summary,
+      tags:         payload.tags,
+      source_url:   payload.source_url,
+      published_at: payload.published_at,
+    });
+    const activity = MessageFactory.attachment(card);
+
+    let sent = 0, errors = 0;
+    for (const ref of userRefs) {
+      const ok = await this.botPush(ref, activity, ref.conversation_id);
+      ok ? sent++ : errors++;
+    }
+
+    console.log(
+      `[ProactiveMessenger] User-agent "${payload.title}" → ${sent} sent, ${errors} errors (user ${payload.aurora_user_id})`
+    );
+    return { sent, errors };
   }
 }
 

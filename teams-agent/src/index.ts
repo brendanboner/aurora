@@ -2,7 +2,7 @@ import * as restify from 'restify';
 import * as path from 'path';
 import { BotFrameworkAdapter, ConversationState, MemoryStorage, UserState } from 'botbuilder';
 import { AuroraBot } from './bot';
-import { ProactiveMessenger, FeedUpdatePayload } from './services/proactiveMessenger';
+import { ProactiveMessenger, FeedUpdatePayload, UserAgentUpdatePayload } from './services/proactiveMessenger';
 import * as dotenv from 'dotenv';
 
 // Load environment variables.
@@ -153,6 +153,41 @@ server.post('/internal/push-feed-update', async (req, res) => {
 
   proactiveMessenger.pushFeedUpdate(payload).catch((err) => {
     console.error('[internal/push-feed-update] Delivery error:', err);
+  });
+});
+
+/**
+ * Internal endpoint for personal user-agent updates.
+ * Routes by aurora_user_id → all Teams conversations linked to that user.
+ * Called by content_creator_service after generating a post for a user agent.
+ */
+server.post('/internal/push-user-agent-update', async (req, res) => {
+  const body = req.body as Partial<UserAgentUpdatePayload>;
+
+  if (!body?.aurora_user_id || !body?.title) {
+    res.json({ error: 'aurora_user_id and title are required' });
+    return;
+  }
+
+  console.log(
+    `[${new Date().toISOString()}] User-agent push: user=${body.aurora_user_id} agent="${body.agent_name}" title="${body.title}"`
+  );
+
+  res.json({ status: 'queued' });
+
+  const payload: UserAgentUpdatePayload = {
+    aurora_user_id: body.aurora_user_id,
+    agent_name:     body.agent_name    || 'My Agent',
+    post_id:        body.post_id       || 0,
+    title:          body.title,
+    summary:        body.summary       || '',
+    tags:           body.tags          || [],
+    source_url:     body.source_url,
+    published_at:   body.published_at,
+  };
+
+  proactiveMessenger.pushUserAgentUpdate(payload).catch((err) => {
+    console.error('[internal/push-user-agent-update] Delivery error:', err);
   });
 });
 
