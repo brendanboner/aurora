@@ -139,25 +139,25 @@ class UserContext:
     topics: list[str]
     organisations: list[str]
     people: list[str]
-    
+    joined_workgroups: list[str] = None  # Display names of joined WBA workgroups
+
     def to_prompt_section(self) -> str:
         """Format user context for inclusion in LLM prompt."""
         parts = []
-        
+
         if self.topics:
-            # Include ALL topics - no limit, as they help steer the response
             parts.append(f"- Their areas of interest: {', '.join(self.topics)}")
         if self.organisations:
-            # Include ALL organizations - no limit, for comprehensive steering
             parts.append(f"- Organizations they follow: {', '.join(self.organisations)}")
         if self.people:
-            # Limit people to 10 most popular (by follower count across all users)
             popular_people = _get_popular_people(self.people, limit=10)
             parts.append(f"- People they track: {', '.join(popular_people)}")
-        
+        if self.joined_workgroups:
+            parts.append(f"- WBA workgroups they belong to: {', '.join(self.joined_workgroups)}")
+
         if not parts:
             return ""
-        
+
         return "\n".join(parts)
 
 

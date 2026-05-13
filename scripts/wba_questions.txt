@@ -1,0 +1,27 @@
+# WBA Extranet Q&A test battery
+# Run with: ./cli/aurora --pipeline fast "QUESTION"
+# All should produce substantive answers after the first scrape populates the KG.
+
+What programmes are available in WBA?
+What programs are available in WBA?
+List workgroups available in the WBA extranet
+Show me WBA programmes
+What workgroups are in the IoT programme?
+What groups are under Next Gen?
+What workgroups are in the AI/ML programme?
+What is happening in the AI/ML working group?
+What's new in Next Gen?
+What is new in the IoT HaLow workgroup?
+What is the latest activity in the PQC group?
+What was discussed in the last PQC meeting?
+What was covered in the last AI/ML call?
+Last meeting notes for PQC
+Last PQC meeting summary
+What's new in my groups
+Updates from my workgroups
+My groups digest
+Join the AI/ML workgroup
+Leave the AI/ML workgroup
+Join the PQC group
+Who are the leaders of the AI/ML working group?
+Who chairs the PQC workgroup?

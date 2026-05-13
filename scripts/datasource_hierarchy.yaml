@@ -1,0 +1,110 @@
+# DataSource hierarchy map
+#
+# Maps child datasource_id → parent_datasource_id for known source families.
+# Applied by migrate_datasource_hierarchy.py.
+#
+# Format:
+#   datasource_id: parent_datasource_id
+#
+# Adding a new entry is additive — it just sets parent_datasource_id on
+# the existing DataSource node. Removing an entry is NOT retroactive;
+# run the script with --clear to null out parent_datasource_id for a node.
+#
+# Legend:
+#   wba_extranet_*  — WBA Extranet communities (auto-created by scraper)
+#   wfa_*           — WFA Causeway datasources
+#   ieee802_*       — IEEE 802 working groups
+#   ietf_wg_*       — IETF working groups (grouped by area)
+
+# ── WBA public website sub-sources ──────────────────────────────────────────
+wba_newsroom: wba
+wba_case_studies: wba
+wba_industry_reports: wba
+wba_presentations: wba
+wba_specifications: wba
+wba_whitepapers: wba
+
+# ── IEEE 802 working groups ──────────────────────────────────────────────────
+ieee802_11: ieee802
+ieee802_1: ieee802
+ieee802_3: ieee802
+
+# ── IETF working groups (by area) ───────────────────────────────────────────
+# Routing area
+ietf_wg_idr: ietf_datatracker_api
+ietf_wg_lsr: ietf_datatracker_api
+ietf_wg_bess: ietf_datatracker_api
+ietf_wg_pce: ietf_datatracker_api
+ietf_wg_teas: ietf_datatracker_api
+ietf_wg_mpls: ietf_datatracker_api
+ietf_wg_spring: ietf_datatracker_api
+ietf_wg_lsvr: ietf_datatracker_api
+ietf_wg_bfd: ietf_datatracker_api
+ietf_wg_lisp: ietf_datatracker_api
+ietf_wg_nvo3: ietf_datatracker_api
+ietf_wg_pim: ietf_datatracker_api
+ietf_wg_bier: ietf_datatracker_api
+ietf_wg_detnet: ietf_datatracker_api
+ietf_wg_cats: ietf_datatracker_api
+ietf_wg_manet: ietf_datatracker_api
+ietf_wg_rtgwg: ietf_datatracker_api
+ietf_wg_babel: ietf_datatracker_api
+ietf_wg_ospf: ietf_datatracker_api
+ietf_wg_isis: ietf_datatracker_api
+# Security area
+ietf_wg_tls: ietf_datatracker_api
+ietf_wg_ipsecme: ietf_datatracker_api
+ietf_wg_kitten: ietf_datatracker_api
+ietf_wg_jose: ietf_datatracker_api
+ietf_wg_oauth: ietf_datatracker_api
+ietf_wg_acme: ietf_datatracker_api
+ietf_wg_lamps: ietf_datatracker_api
+ietf_wg_mls: ietf_datatracker_api
+ietf_wg_ace: ietf_datatracker_api
+ietf_wg_lake: ietf_datatracker_api
+ietf_wg_cose: ietf_datatracker_api
+ietf_wg_keytrans: ietf_datatracker_api
+ietf_wg_dance: ietf_datatracker_api
+ietf_wg_openpgp: ietf_datatracker_api
+ietf_wg_hpke: ietf_datatracker_api
+ietf_wg_saag: ietf_datatracker_api
+ietf_wg_emu: ietf_datatracker_api
+ietf_wg_rats: ietf_datatracker_api
+# Transport area
+ietf_wg_quic: ietf_datatracker_api
+ietf_wg_tcpm: ietf_datatracker_api
+ietf_wg_httpbis: ietf_datatracker_api
+ietf_wg_httpapi: ietf_datatracker_api
+ietf_wg_masque: ietf_datatracker_api
+ietf_wg_ccwg: ietf_datatracker_api
+ietf_wg_moq: ietf_datatracker_api
+ietf_wg_webtrans: ietf_datatracker_api
+ietf_wg_tsvwg: ietf_datatracker_api
+# IoT area
+ietf_wg_6lo: ietf_datatracker_api
+ietf_wg_6man: ietf_datatracker_api
+ietf_wg_core: ietf_datatracker_api
+ietf_wg_dult: ietf_datatracker_api
+ietf_wg_asdf: ietf_datatracker_api
+ietf_wg_iotops: ietf_datatracker_api
+# Media
+ietf_wg_avtcore: ietf_datatracker_api
+ietf_wg_mmusic: ietf_datatracker_api
+ietf_wg_payload: ietf_datatracker_api
+# Infrastructure
+ietf_wg_ntp: ietf_datatracker_api
+ietf_wg_dhc: ietf_datatracker_api
+ietf_wg_dnssd: ietf_datatracker_api
+ietf_wg_add: ietf_datatracker_api
+ietf_wg_dnsop: ietf_datatracker_api
+
+# ── WBA Extranet communities ─────────────────────────────────────────────────
+# These are auto-set by the WBAExtranetScraper at runtime (it upserts each
+# child DataSource with parent_datasource_id='wba_extranet').
+# Manual overrides go here when the scraper can't infer the parent correctly,
+# e.g. when a workgroup should point at its programme rather than the root.
+#
+# Example:
+#   wba_extranet_c6039e27: wba_extranet_76992aeb   # AI/ML under Next Gen
+#
+# To find community keys: run cli/wba_dump_hierarchy.py after first scrape.

@@ -31,23 +31,37 @@ class Resource:
     datasource_id: Optional[str] = None  # Which scraper/site this came from
     batch_id: Optional[str] = None       # Ingestion batch ID for tracking
     scraped_at: Optional[str] = None    # ISO 8601 format (YYYY-MM-DDTHH:MM:SS)
-    
+    # Optional metadata extensions used by alliance-portal scrapers
+    doc_type: Optional[str] = None      # 'digest-post', 'meeting-prep-call', 'agenda', 'contribution', etc.
+    summary: Optional[str] = None       # Short summary (overrides digester-extracted summary when set)
+    access_notes: Optional[str] = None  # e.g., 'WBA Extranet — login required'
+    content_hash: Optional[str] = None  # Override content_hash (when computed from metadata only — never store body)
+
     def __post_init__(self):
         """Set scraped_at timestamp if not provided"""
         if not self.scraped_at:
             self.scraped_at = datetime.now().isoformat()
-    
+
     def to_message(self) -> Dict[str, Any]:
         """Convert to RabbitMQ message format"""
+        resource_data: Dict[str, Any] = {
+            "title": self.title,
+            "url": self.url,
+            "category": self.category,
+            "content": self.content,
+            "publish_date": self.publish_date,
+        }
+        if self.doc_type is not None:
+            resource_data["doc_type"] = self.doc_type
+        if self.summary is not None:
+            resource_data["summary"] = self.summary
+        if self.access_notes is not None:
+            resource_data["access_notes"] = self.access_notes
+        if self.content_hash is not None:
+            resource_data["content_hash"] = self.content_hash
         return {
             "message_type": "resource",
-            "resource_data": {
-                "title": self.title,
-                "url": self.url,
-                "category": self.category,
-                "content": self.content,
-                "publish_date": self.publish_date,
-            },
+            "resource_data": resource_data,
             "datasource_id": self.datasource_id,
             "batch_id": self.batch_id,
             "scraped_at": self.scraped_at

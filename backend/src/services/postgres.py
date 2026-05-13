@@ -453,60 +453,93 @@ def delete_user(user_id: str) -> int:  # Changed from int to str
 
 # ========== User Preferences ==========
 
-def get_user_preferences(user_id: str) -> Dict[str, Any]:  # Changed from int to str
-    """Get user preferences."""
-    query = "SELECT * FROM user_preferences WHERE user_id = %s"
+def get_user_preferences(user_id: str) -> Dict[str, Any]:
+    """Get user preferences (topics, organisations, people, domains, notifications)."""
+    query = """
+        SELECT user_id, topics, organisations, people, domains,
+               notify_email, notify_digest
+        FROM user_preferences WHERE user_id = %s
+    """
     result = fetchone(query, (user_id,))
     if not result:
-        # Return default preferences if none exist
         return {
             "user_id": user_id,
             "topics": [],
             "organisations": [],
             "people": [],
-            "sources": [],
             "domains": [],
             "notify_email": True,
-            "notify_digest": True
+            "notify_digest": True,
         }
     return result
 
+
 def upsert_user_preferences(
-    user_id: str,  # Changed from int to str
+    user_id: str,
     topics: Optional[List[str]] = None,
     organisations: Optional[List[str]] = None,
     people: Optional[List[str]] = None,
-    sources: Optional[List[str]] = None,
     domains: Optional[List[str]] = None,
     notify_email: Optional[bool] = None,
-    notify_digest: Optional[bool] = None
+    notify_digest: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    """Create or update user preferences."""
+    """Create or update user preferences (topics/orgs/people/domains/notifications)."""
     query = """
-        INSERT INTO user_preferences (user_id, topics, organisations, people, sources, domains, notify_email, notify_digest)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO user_preferences
+            (user_id, topics, organisations, people, domains, notify_email, notify_digest)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id) DO UPDATE SET
-            topics = COALESCE(EXCLUDED.topics, user_preferences.topics),
+            topics        = COALESCE(EXCLUDED.topics,        user_preferences.topics),
             organisations = COALESCE(EXCLUDED.organisations, user_preferences.organisations),
-            people = COALESCE(EXCLUDED.people, user_preferences.people),
-            sources = COALESCE(EXCLUDED.sources, user_preferences.sources),
-            domains = COALESCE(EXCLUDED.domains, user_preferences.domains),
-            notify_email = COALESCE(EXCLUDED.notify_email, user_preferences.notify_email),
+            people        = COALESCE(EXCLUDED.people,        user_preferences.people),
+            domains       = COALESCE(EXCLUDED.domains,       user_preferences.domains),
+            notify_email  = COALESCE(EXCLUDED.notify_email,  user_preferences.notify_email),
             notify_digest = COALESCE(EXCLUDED.notify_digest, user_preferences.notify_digest),
-            updated_at = NOW()
-        RETURNING *
+            updated_at    = NOW()
+        RETURNING user_id, topics, organisations, people, domains,
+                  notify_email, notify_digest
     """
-    params = (
-        user_id,
-        topics,
-        organisations,
-        people,
-        sources,
-        domains,
-        notify_email,
-        notify_digest
-    )
+    params = (user_id, topics, organisations, people, domains, notify_email, notify_digest)
     return fetchone(query, params)
+
+
+# ========== User Source Preferences (weighted source boosts) ==========
+
+def get_user_source_preferences(user_id: str) -> List[Dict[str, Any]]:
+    """Return [{datasource_id, weight}, ...] for the user."""
+    query = """
+        SELECT datasource_id, weight
+        FROM user_source_preferences
+        WHERE user_id = %s
+        ORDER BY weight DESC, datasource_id
+    """
+    return fetchall(query, (user_id,))
+
+
+def upsert_user_source_preference(
+    user_id: str, datasource_id: str, weight: float = 1.0
+) -> Dict[str, Any]:
+    """Set or update a weighted source preference."""
+    query = """
+        INSERT INTO user_source_preferences (user_id, datasource_id, weight)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id, datasource_id) DO UPDATE SET
+            weight     = EXCLUDED.weight,
+            updated_at = NOW()
+        RETURNING user_id, datasource_id, weight
+    """
+    return fetchone(query, (user_id, datasource_id, weight))
+
+
+def delete_user_source_preference(user_id: str, datasource_id: str) -> bool:
+    """Remove a source preference (reverts to default weighting)."""
+    query = """
+        DELETE FROM user_source_preferences
+        WHERE user_id = %s AND datasource_id = %s
+        RETURNING datasource_id
+    """
+    result = fetchone(query, (user_id, datasource_id))
+    return result is not None
 
 
 # ========== User Source Memberships ==========

@@ -133,12 +133,17 @@ class UserResponse(BaseModel):
     synced_to_graph: bool = False  # Whether user exists in Neo4j graph
 
 
+class SourcePreference(BaseModel):
+    datasource_id: str
+    weight: float = 1.0
+
+
 class UserPreferences(BaseModel):
     topics: List[str] = []
     organisations: List[str] = []
     people: List[str] = []
-    sources: List[str] = []
     domains: List[str] = []
+    source_preferences: List[SourcePreference] = []
     notify_email: bool = True
     notify_digest: bool = True
 
@@ -517,26 +522,25 @@ async def delete_user(user_id: str, user: Optional[dict] = Depends(get_user_cont
 
 @app.get("/users/{user_id}/preferences", response_model=UserPreferences)
 @require_user_context
-async def get_preferences(user_id: str, user: Optional[dict] = Depends(get_user_context)):  # Changed from int to str
-    """
-    Get user preferences.
-    Users can only view their own preferences unless they're admin.
-    Auto-creates user if they don't exist (first login scenario).
-    """
+async def get_preferences(user_id: str, user: Optional[dict] = Depends(get_user_context)):
+    """Get user preferences (topics, orgs, people, domains, source preferences, notifications)."""
     try:
-        # Check authorization
         if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
             raise HTTPException(status_code=403, detail="Access denied")
-        
-        # User must exist from login sync
         user_data = postgres.get_user_by_id(user_id)
         if not user_data:
-            logger.error(f"User {user_id} not found - login sync failed")
-            raise HTTPException(status_code=500, detail="User not synced - please log out and log back in")
-        
+            raise HTTPException(status_code=500, detail="User not synced — please log out and back in")
         prefs = postgres.get_user_preferences(user_id)
-        prefs_dict = cast(Dict[str, Any], prefs)
-        return UserPreferences(**prefs_dict)
+        source_prefs = postgres.get_user_source_preferences(user_id)
+        return UserPreferences(
+            topics=prefs.get("topics") or [],
+            organisations=prefs.get("organisations") or [],
+            people=prefs.get("people") or [],
+            domains=prefs.get("domains") or [],
+            source_preferences=[SourcePreference(**sp) for sp in source_prefs],
+            notify_email=prefs.get("notify_email", True),
+            notify_digest=prefs.get("notify_digest", True),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -545,35 +549,39 @@ async def get_preferences(user_id: str, user: Optional[dict] = Depends(get_user_
 
 @app.put("/users/{user_id}/preferences", response_model=UserPreferences)
 @require_user_context
-async def update_preferences(user_id: str, preferences: UserPreferences, user: Optional[dict] = Depends(get_user_context)):  # Changed from int to str
-    """
-    Update user preferences.
-    Users can only update their own preferences unless they're admin.
-    Auto-creates user if they don't exist (first login scenario).
-    """
+async def update_preferences(
+    user_id: str,
+    preferences: UserPreferences,
+    user: Optional[dict] = Depends(get_user_context),
+):
+    """Update user preferences. source_preferences are written as a full replace."""
     try:
-        # Check authorization
         if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
             raise HTTPException(status_code=403, detail="Access denied")
-        
-        # User must exist from login sync
         user_data = postgres.get_user_by_id(user_id)
         if not user_data:
-            logger.error(f"User {user_id} not found - login sync failed")
-            raise HTTPException(status_code=500, detail="User not synced - please log out and log back in")
-        
-        result = postgres.upsert_user_preferences(
+            raise HTTPException(status_code=500, detail="User not synced — please log out and back in")
+
+        postgres.upsert_user_preferences(
             user_id=user_id,
-            topics=preferences.topics,
-            organisations=preferences.organisations,
-            people=preferences.people,
-            sources=preferences.sources,
-            domains=preferences.domains,
+            topics=preferences.topics or None,
+            organisations=preferences.organisations or None,
+            people=preferences.people or None,
+            domains=preferences.domains or None,
             notify_email=preferences.notify_email,
-            notify_digest=preferences.notify_digest
+            notify_digest=preferences.notify_digest,
         )
-        result_dict = cast(Dict[str, Any], result)
-        return UserPreferences(**result_dict)
+
+        # Replace all source preferences for this user atomically.
+        if preferences.source_preferences is not None:
+            existing = {sp["datasource_id"] for sp in postgres.get_user_source_preferences(user_id)}
+            incoming = {sp.datasource_id for sp in preferences.source_preferences}
+            for sp in preferences.source_preferences:
+                postgres.upsert_user_source_preference(user_id, sp.datasource_id, sp.weight)
+            for ds_id in existing - incoming:
+                postgres.delete_user_source_preference(user_id, ds_id)
+
+        return await get_preferences(user_id, user)
     except HTTPException:
         raise
     except Exception as e:
@@ -590,21 +598,117 @@ class DatasourceInfo(BaseModel):
     fetch_url: Optional[str] = None
     area_acronym: Optional[str] = None
     area_name: Optional[str] = None
+    parent_datasource_id: Optional[str] = None
+    description: Optional[str] = None
+
+
+class TopicTreeNode(BaseModel):
+    topic_id: str
+    name: str
+    tier: Optional[int] = None
+    parent_topic_id: Optional[str] = None
+
+
+class SourcePreferenceResponse(BaseModel):
+    user_id: str
+    datasource_id: str
+    weight: float
 
 
 @app.get("/datasources", response_model=List[DatasourceInfo])
 @require_user_context
 async def list_datasources(user: Optional[dict] = Depends(get_user_context)):
-    """
-    List all datasources available for user preference selection.
-    Returns workgroups (authenticated_portal) and public sources (scraped_webpage),
-    grouped by category. Used by the Workgroup Preferences UI.
-    """
+    """List all datasources for user preference selection (flat list)."""
     try:
         datasources = graph_service.get_listable_datasources()
         return [DatasourceInfo(**ds) for ds in datasources]
     except Exception as e:
         logger.error(f"Error fetching listable datasources: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/datasources/tree", response_model=List[DatasourceInfo])
+@require_user_context
+async def list_datasources_tree(user: Optional[dict] = Depends(get_user_context)):
+    """Return all datasources with parent_datasource_id for hierarchical rendering.
+
+    Nodes with parent_datasource_id=None are roots. The frontend builds the
+    tree client-side from this flat list.
+    """
+    try:
+        datasources = graph_service.get_datasource_tree()
+        return [DatasourceInfo(**ds) for ds in datasources]
+    except Exception as e:
+        logger.error(f"Error fetching datasource tree: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/topics/tree", response_model=List[TopicTreeNode])
+@require_user_context
+async def list_topics_tree(user: Optional[dict] = Depends(get_user_context)):
+    """Return Topics with parent_topic_id for the Technology preference picker."""
+    try:
+        topics = graph_service.get_topics_tree()
+        return [TopicTreeNode(**t) for t in topics]
+    except Exception as e:
+        logger.error(f"Error fetching topics tree: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== User Source Preference Endpoints (weighted boosts) ==========
+
+@app.get("/users/{user_id}/source-preferences", response_model=List[SourcePreferenceResponse])
+@require_user_context
+async def get_source_preferences(user_id: str, user: Optional[dict] = Depends(get_user_context)):
+    """Get a user's weighted source preferences."""
+    try:
+        if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        rows = postgres.get_user_source_preferences(user_id)
+        return [SourcePreferenceResponse(user_id=user_id, **r) for r in rows]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/users/{user_id}/source-preferences/{datasource_id}", response_model=SourcePreferenceResponse)
+@require_user_context
+async def upsert_source_preference(
+    user_id: str,
+    datasource_id: str,
+    body: SourcePreference,
+    user: Optional[dict] = Depends(get_user_context),
+):
+    """Set a weighted source preference (weight 0.0–2.0, default 1.0)."""
+    try:
+        if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        if not 0.0 <= body.weight <= 2.0:
+            raise HTTPException(status_code=422, detail="weight must be between 0.0 and 2.0")
+        result = postgres.upsert_user_source_preference(user_id, datasource_id, body.weight)
+        return SourcePreferenceResponse(user_id=user_id, **result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/users/{user_id}/source-preferences/{datasource_id}", status_code=204)
+@require_user_context
+async def delete_source_preference(
+    user_id: str,
+    datasource_id: str,
+    user: Optional[dict] = Depends(get_user_context),
+):
+    """Remove a source preference (reverts to default weighting)."""
+    try:
+        if user_id != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        postgres.delete_user_source_preference(user_id, datasource_id)
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 

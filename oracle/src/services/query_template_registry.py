@@ -2532,4 +2532,143 @@ ORDER BY e.start_date DESC
             """
         )
         
+        # ── WBA Extranet templates (fast pipeline only) ──────────────────────
+
+        # List all WBA Extranet programmes (root datasources with no parent).
+        self.templates[RouteId.WBA_PROGRAMME_LIST] = QueryTemplate(
+            route_id=RouteId.WBA_PROGRAMME_LIST,
+            cypher="""
+            MATCH (d:DataSource {scraper_type: 'wba_extranet'})
+            WHERE d.parent_datasource_id IS NULL
+               OR d.parent_datasource_id = 'wba_extranet'
+               OR d.datasource_id = 'wba_extranet'
+            WITH d ORDER BY d.name
+            RETURN d.datasource_id  AS datasource_id,
+                   d.display_name   AS name,
+                   d.description    AS description
+            """,
+            description="List all WBA Extranet programmes",
+            param_schema={},
+        )
+
+        # List workgroups that are children of a given programme.
+        self.templates[RouteId.WBA_WORKGROUPS_OF] = QueryTemplate(
+            route_id=RouteId.WBA_WORKGROUPS_OF,
+            cypher="""
+            MATCH (parent:DataSource {scraper_type: 'wba_extranet'})
+            WHERE toLower(parent.name) CONTAINS toLower($programme_name)
+               OR toLower(parent.display_name) CONTAINS toLower($programme_name)
+            WITH parent LIMIT 1
+            MATCH (child:DataSource {scraper_type: 'wba_extranet',
+                                     parent_datasource_id: parent.datasource_id})
+            RETURN child.datasource_id  AS datasource_id,
+                   child.display_name   AS name,
+                   child.description    AS description
+            ORDER BY child.name
+            """,
+            description="List workgroups within a named WBA programme",
+            param_schema={"programme_name": "str"},
+        )
+
+        # Recent digest activity for a named workgroup (or its children).
+        self.templates[RouteId.WBA_RECENT_ACTIVITY] = QueryTemplate(
+            route_id=RouteId.WBA_RECENT_ACTIVITY,
+            cypher="""
+            // Resolve datasource (match name or its children)
+            MATCH (ds:DataSource {scraper_type: 'wba_extranet'})
+            WHERE toLower(ds.name) CONTAINS toLower($workgroup_name)
+               OR toLower(coalesce(ds.display_name,'')) CONTAINS toLower($workgroup_name)
+            WITH collect(ds.datasource_id) AS direct_ids
+            // Include child workgroups so programme queries roll up
+            OPTIONAL MATCH (child:DataSource {scraper_type: 'wba_extranet'})
+            WHERE child.parent_datasource_id IN direct_ids
+            WITH direct_ids + coalesce(collect(child.datasource_id), []) AS ds_ids
+
+            MATCH (r:Resource)
+            WHERE r.datasource_id IN ds_ids
+              AND r.doc_type IN ['digest-post', 'meeting-prep-call',
+                                  'agenda', 'contribution', 'meeting-minutes',
+                                  'presentation', 'specification']
+              AND (
+                r.publish_date IS NOT NULL
+                AND datetime(r.publish_date) >= datetime() - duration({days: $days})
+              )
+            WITH r ORDER BY
+              CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                   WHEN r.scraped_at  IS NOT NULL THEN datetime(r.scraped_at)
+                   ELSE datetime() END DESC
+            RETURN r.url_hash   AS id,
+                   r.title      AS title,
+                   r.summary    AS summary,
+                   r.publish_date AS date,
+                   r.url        AS url,
+                   r.doc_type   AS type,
+                   r.datasource_id AS datasource_id
+            LIMIT $limit
+            """,
+            description="Recent digest/document activity for a WBA workgroup",
+            param_schema={"workgroup_name": "str", "days": "int", "limit": "int"},
+        )
+
+        # Last meeting: completed Event + linked prep-call Resource + attendees.
+        self.templates[RouteId.WBA_LAST_MEETING] = QueryTemplate(
+            route_id=RouteId.WBA_LAST_MEETING,
+            cypher="""
+            MATCH (ds:DataSource {scraper_type: 'wba_extranet'})
+            WHERE toLower(ds.name) CONTAINS toLower($workgroup_name)
+               OR toLower(coalesce(ds.display_name,'')) CONTAINS toLower($workgroup_name)
+            WITH ds LIMIT 1
+
+            // Prefer a Resource with doc_type 'meeting-prep-call' as the meeting record.
+            OPTIONAL MATCH (r:Resource {datasource_id: ds.datasource_id})
+            WHERE r.doc_type IN ['meeting-prep-call', 'meeting-minutes', 'agenda']
+            WITH ds, r ORDER BY
+              CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                   ELSE datetime('1970-01-01') END DESC
+            WITH ds, collect(r)[0] AS latest_resource
+
+            OPTIONAL MATCH (p:Person)-[:MENTIONS]->(latest_resource)
+
+            RETURN ds.name              AS workgroup,
+                   latest_resource.title   AS title,
+                   latest_resource.summary AS summary,
+                   latest_resource.publish_date AS date,
+                   latest_resource.url     AS url,
+                   collect(DISTINCT p.name) AS attendees
+            LIMIT 1
+            """,
+            description="Latest meeting record for a WBA workgroup",
+            param_schema={"workgroup_name": "str"},
+        )
+
+        # MY_GROUPS_DIGEST — same as WBA_RECENT_ACTIVITY but scoped to
+        # datasource_ids explicitly passed in plan.preferred_datasources.
+        self.templates[RouteId.MY_GROUPS_DIGEST] = QueryTemplate(
+            route_id=RouteId.MY_GROUPS_DIGEST,
+            cypher="""
+            MATCH (r:Resource)
+            WHERE r.datasource_id IN $datasource_ids
+              AND r.doc_type IN ['digest-post', 'meeting-prep-call',
+                                  'agenda', 'contribution', 'meeting-minutes',
+                                  'presentation', 'specification']
+              AND (
+                r.publish_date IS NOT NULL
+                AND datetime(r.publish_date) >= datetime() - duration({days: $days})
+              )
+            WITH r ORDER BY
+              CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+                   ELSE datetime() END DESC
+            RETURN r.url_hash   AS id,
+                   r.title      AS title,
+                   r.summary    AS summary,
+                   r.publish_date AS date,
+                   r.url        AS url,
+                   r.doc_type   AS type,
+                   r.datasource_id AS datasource_id
+            LIMIT $limit
+            """,
+            description="Recent digest activity across user's joined WBA workgroups",
+            param_schema={"datasource_ids": "list[str]", "days": "int", "limit": "int"},
+        )
+
         logger.info(f"Registered {len(self.templates)} query templates")

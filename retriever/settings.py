@@ -51,9 +51,14 @@ class Settings(BaseSettings):
     wfa_causeway_username: str = ""
     wfa_causeway_password: str = ""
     
-    # WBA Authentication
+    # WBA Authentication (public wballiance.com — WordPress login)
     wba_username: str = ""
     wba_password: str = ""
+
+    # WBA Extranet Authentication (extranet.wballiance.com — Higher Logic portal)
+    wba_extranet_username: str = ""
+    wba_extranet_password: str = ""
+    wba_extranet_base_url: str = "https://extranet.wballiance.com"
     
     # Event Sanitization Configuration
     sanitize_events: bool = True  # Enable/disable sensitive info sanitization

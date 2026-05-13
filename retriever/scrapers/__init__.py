@@ -8,6 +8,7 @@ from .base import BaseScraper
 from .WFA import WFAScraper
 from .WFA_causeway import WFACausewayScraper
 from .WBA import WBAScraper
+from .WBA_extranet import WBAExtranetScraper
 from .IETF_blog import IETFBlogScraper
 from .IETF_datatracker import IETFDatatrackerScraper
 from .IEEE802 import IEEE802Scraper
@@ -21,6 +22,7 @@ ALL_SCRAPERS = {
     "WFAScraper": WFAScraper,
     "WFACausewayScraper": WFACausewayScraper,
     "WBAScraper": WBAScraper,
+    "WBAExtranetScraper": WBAExtranetScraper,
     "IETFBlogScraper": IETFBlogScraper,
     "IETFDatatrackerScraper": IETFDatatrackerScraper,
     "IEEE802Scraper": IEEE802Scraper,
@@ -35,6 +37,7 @@ __all__ = [
     'WFAScraper',
     'WFACausewayScraper',
     'WBAScraper',
+    'WBAExtranetScraper',
     'IETFBlogScraper',
     'IETFDatatrackerScraper',
     'IEEE802Scraper',

@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  getListableDatasources,
-  getUserSourceMemberships,
-  upsertSourceMembership,
-  deleteSourceMembership,
-} from '../services/api';
+/**
+ * WorkgroupPreferencesModal — thin wrapper around PreferencesPanel.
+ *
+ * Preserved for backward-compatibility with the Chatbot quick-access button.
+ * Opens the Groups tab by default. All logic lives in PreferencesPanel.
+ */
+import React from 'react';
+import PreferencesPanel from './PreferencesPanel';
 import './WorkgroupPreferencesModal.css';
 
 /**
@@ -20,6 +21,19 @@ import './WorkgroupPreferencesModal.css';
  *   - Default (neither) → standard behaviour, nothing changes
  */
 export default function WorkgroupPreferencesModal({ userId, onClose }) {
+  return (
+    <div className="wgp-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="wgp-modal" role="dialog" aria-modal="true" aria-labelledby="wgp-title"
+           style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '80vh' }}>
+        <PreferencesPanel userId={userId} defaultTab="group" onClose={onClose} />
+      </div>
+    </div>
+  );
+}
+
+// Dead code below kept only for reference — logic moved to PreferencesPanel.
+// eslint-disable-next-line no-unused-vars
+function _LegacyWorkgroupPreferencesModal({ userId, onClose }) {
   const [datasources, setDatasources] = useState({ public: [], workgroup: [], ietfWg: [] });
   const [collapsedAreas, setCollapsedAreas] = useState({});
   const [memberships, setMemberships] = useState({ joined: [], ignored: [] });

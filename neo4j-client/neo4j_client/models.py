@@ -439,7 +439,13 @@ class DataSource(Node):
         None,
         description="Folder paths for hierarchical scrapers (e.g., Causeway working groups)"
     )
-    
+
+    # Hierarchy (used by alliance-portal scrapers — programme→workgroup nesting)
+    parent_datasource_id: Optional[str] = Field(
+        None,
+        description="datasource_id of the parent DataSource (e.g., a programme that contains this workgroup). NULL for top-level sources."
+    )
+
     NORMALIZE = {
         "name": "title",
         "source_type": "lower",
@@ -1367,7 +1373,7 @@ class ResourceRelatesToEvent(Relationship):
 
 class PersonAttendingEvent(Relationship):
     """Person - attending -> Event
-    
+
     Represents a user's intention to attend an event.
     Users can mark/unmark attendance and indicate if they're presenting.
     """
@@ -1376,15 +1382,69 @@ class PersonAttendingEvent(Relationship):
     target_node_label: str = "Event"
     target_id_field: str = "url_hash"
     relationship_label: str = "ATTENDING"
-    
+
     marked_at: datetime = Field(
         ...,
         description="Timestamp when user marked/updated their attendance"
     )
-    
+
     is_presenting: bool = Field(
         default=False,
         description="Whether the person is presenting at this event"
+    )
+
+
+class PersonLeadsDataSource(Relationship):
+    """Person - leads -> DataSource
+
+    A person holds a leadership role for a programme/workgroup DataSource
+    (e.g., chair, co-chair, secretary, staff lead).
+    """
+    source_node_label: str = "Person"
+    source_id_field: str = "person_id"
+    target_node_label: str = "DataSource"
+    target_id_field: str = "datasource_id"
+    relationship_label: str = "LEADS"
+
+    role: str = Field(
+        default="chair",
+        description="Leadership role (e.g., 'chair', 'co-chair', 'secretary', 'staff-lead')"
+    )
+    since: Optional[datetime] = Field(
+        None,
+        description="When the person took on this leadership role (if visible)"
+    )
+    evidence: Optional[str] = Field(
+        None,
+        description="Source quote or URL backing this leadership assertion"
+    )
+
+    NORMALIZE = {
+        "role": "lower"
+    }
+
+
+class PersonMemberOfDataSource(Relationship):
+    """Person - member of -> DataSource
+
+    A person is a recorded member of a programme/workgroup DataSource.
+    Distinct from a user's Aurora-side workgroup membership (which lives
+    in the Postgres user_source_memberships table); this is the alliance
+    roster as observed by the scraper.
+    """
+    source_node_label: str = "Person"
+    source_id_field: str = "person_id"
+    target_node_label: str = "DataSource"
+    target_id_field: str = "datasource_id"
+    relationship_label: str = "MEMBER_OF"
+
+    joined_at: Optional[datetime] = Field(
+        None,
+        description="When the person joined the workgroup (if visible)"
+    )
+    evidence: Optional[str] = Field(
+        None,
+        description="Source quote or URL backing this membership assertion"
     )
 
 

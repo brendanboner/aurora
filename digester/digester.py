@@ -26,7 +26,10 @@ from services.event_associator import EventAssociator
 from utils.model_builder import build_models, build_event_model, BuiltModelsDict
 from neo4j_client import Neo4jClient, GraphRepository, NodeDeduplicator
 
-from neo4j_client.models import Person, ResourceUploadedByPerson, ResourceRelatesToEvent
+from neo4j_client.models import (
+    Person, ResourceUploadedByPerson, ResourceRelatesToEvent,
+    PersonLeadsDataSource, PersonMemberOfDataSource,
+)
 import redis.asyncio as redis
 import json
 
@@ -1083,6 +1086,8 @@ class DocumentDigester:
                 return await self.process_event_message(message)
             elif message_type == "resource":
                 return await self.process_resource_message(message)
+            elif message_type == "wba_metadata":
+                return await self.process_wba_metadata_message(message)
             else:
                 raise ValueError(f"Unknown or missing message_type: {message_type}")
                 
@@ -1180,6 +1185,158 @@ class DocumentDigester:
             f"(total processed: {self.total_messages_processed})"
         )
         
+        return True
+
+    async def process_wba_metadata_message(self, message: Dict[str, Any]) -> bool:
+        """Process a WBA Extranet community-metadata message.
+
+        Payload shape (emitted by `WBAExtranetScraper.publish_wba_metadata`):
+
+            {
+              "message_type": "wba_metadata",
+              "datasource_id": "wba_extranet_<short>",
+              "scraped_at": "<iso>",
+              "wba_metadata": {
+                "community_key": "<guid>",
+                "community_name": "...",
+                "leaders": [{"name": str, "role": str, "profile_url": str|None}, ...],
+                "members": [{"name": str, "profile_url": str|None}, ...]
+              }
+            }
+
+        For each leader/member we MERGE a Person node keyed on a deterministic
+        person_id (slugified name) and MERGE the corresponding `LEADS` or
+        `MEMBER_OF` edge into the target DataSource. The operation is
+        idempotent — repeated payloads produce zero net change.
+
+        Person dedup against existing Resource MENTIONS / AFFILIATED_WITH
+        people is handled lazily by the NodeDeduplicator the next time the
+        Person appears in a richer payload (Resource extraction); for the
+        roster-only case here we accept that two payloads with the same name
+        but different casing/punctuation may briefly create separate nodes
+        before the next extraction merges them.
+        """
+        from neo4j_client.models import slugify
+
+        payload = message.get("wba_metadata") or {}
+        datasource_id = message.get("datasource_id")
+        community_name = payload.get("community_name", "<unknown community>")
+
+        if not datasource_id:
+            raise ValueError("wba_metadata message missing datasource_id")
+        if not isinstance(payload, dict):
+            raise ValueError("wba_metadata payload must be an object")
+
+        leaders = payload.get("leaders") or []
+        members = payload.get("members") or []
+        if not isinstance(leaders, list) or not isinstance(members, list):
+            raise ValueError("wba_metadata.leaders and .members must be lists")
+
+        logger.info(
+            f"Processing wba_metadata for {community_name} "
+            f"(datasource={datasource_id}, leaders={len(leaders)}, members={len(members)})"
+        )
+
+        if not self.graph_repository:
+            logger.warning("graph_repository unavailable — wba_metadata is a no-op")
+            await self.record_completed(message, None)
+            return True
+
+        # Verify the DataSource exists so MERGE edges don't dangle. If it
+        # doesn't, the scraper hasn't upserted it yet — skip rather than
+        # creating a partial Person→missing DataSource edge.
+        ds_exists_q = "MATCH (d:DataSource {datasource_id: $id}) RETURN d.datasource_id AS id LIMIT 1"
+        ds_check = await asyncio.to_thread(
+            self.graph_repository.client.execute_query, ds_exists_q, {"id": datasource_id}
+        )
+        if not ds_check:
+            logger.warning(
+                f"wba_metadata: DataSource '{datasource_id}' not found in graph — skipping"
+            )
+            await self.record_completed(message, None)
+            return True
+
+        person_merge_query = """
+        MERGE (p:Person {person_id: $person_id})
+        ON CREATE SET p.name = $name,
+                      p.email = $email,
+                      p.profile_url = $profile_url,
+                      p.created_at = datetime()
+        ON MATCH SET  p.name = coalesce(p.name, $name),
+                      p.profile_url = coalesce(p.profile_url, $profile_url),
+                      p.last_updated = datetime()
+        RETURN p.person_id AS person_id
+        """
+
+        leaders_written = 0
+        for entry in leaders:
+            try:
+                name = (entry or {}).get("name", "").strip()
+                if not name:
+                    continue
+                role = (entry.get("role") or "chair").lower()
+                profile_url = entry.get("profile_url")
+                person_id = slugify(name)
+
+                await asyncio.to_thread(
+                    self.graph_repository.client.execute_write,
+                    person_merge_query,
+                    {
+                        "person_id": person_id,
+                        "name": name,
+                        "email": None,
+                        "profile_url": profile_url,
+                    },
+                )
+                rel = PersonLeadsDataSource(
+                    source_id=person_id,
+                    target_id=datasource_id,
+                    role=role,
+                    evidence=profile_url,
+                )
+                await asyncio.to_thread(self.graph_repository.create_relationship, rel)
+                leaders_written += 1
+            except Exception as exc:
+                logger.error(f"wba_metadata: failed to write leader {entry!r}: {exc}")
+
+        members_written = 0
+        for entry in members:
+            try:
+                name = (entry or {}).get("name", "").strip()
+                if not name:
+                    continue
+                profile_url = entry.get("profile_url")
+                person_id = slugify(name)
+
+                await asyncio.to_thread(
+                    self.graph_repository.client.execute_write,
+                    person_merge_query,
+                    {
+                        "person_id": person_id,
+                        "name": name,
+                        "email": None,
+                        "profile_url": profile_url,
+                    },
+                )
+                rel = PersonMemberOfDataSource(
+                    source_id=person_id,
+                    target_id=datasource_id,
+                    evidence=profile_url,
+                )
+                await asyncio.to_thread(self.graph_repository.create_relationship, rel)
+                members_written += 1
+            except Exception as exc:
+                logger.error(f"wba_metadata: failed to write member {entry!r}: {exc}")
+
+        logger.info(
+            f"wba_metadata for {community_name}: "
+            f"{leaders_written} LEADS, {members_written} MEMBER_OF written"
+        )
+
+        # Track success metric and clear delivery counter.
+        await self.record_completed(message, None)
+        await self._clear_delivery_attempts(message)
+        self.total_messages_processed += 1
         return True
 
     async def process_resource_message(self, message: Dict[str, Any]) -> bool:

@@ -736,6 +736,79 @@ def get_listable_datasources() -> List[Dict[str, Any]]:
     return datasources
 
 
+def get_datasource_tree() -> List[Dict[str, Any]]:
+    """
+    Return all listable DataSources as a flat list with parent_datasource_id
+    so the frontend can build a hierarchy. Nodes with parent_datasource_id=None
+    are roots; children reference their parent's datasource_id.
+
+    The UI distinguishes Source (category='public') from Group (category='workgroup').
+    """
+    repo = get_repo()
+    query = """
+    MATCH (ds:DataSource)
+    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage', 'ietf_wg']
+    RETURN ds.datasource_id       AS datasource_id,
+           coalesce(ds.display_name, ds.name, ds.datasource_id) AS name,
+           ds.source_type         AS source_type,
+           ds.fetch_url           AS fetch_url,
+           ds.area_acronym        AS area_acronym,
+           ds.area_name           AS area_name,
+           ds.parent_datasource_id AS parent_datasource_id,
+           ds.description         AS description
+    ORDER BY ds.source_type DESC, name
+    """
+    results = repo.client.execute_query(query, {})
+    nodes = []
+    for r in results:
+        source_type = r["source_type"] or ""
+        category = "workgroup" if source_type in ("authenticated_portal", "ietf_wg") else "public"
+        nodes.append({
+            "datasource_id": r["datasource_id"],
+            "name": r["name"],
+            "source_type": source_type,
+            "category": category,
+            "fetch_url": r.get("fetch_url"),
+            "area_acronym": r.get("area_acronym"),
+            "area_name": r.get("area_name"),
+            "parent_datasource_id": r.get("parent_datasource_id"),
+            "description": r.get("description"),
+        })
+    return nodes
+
+
+def get_topics_tree() -> List[Dict[str, Any]]:
+    """
+    Return all top-level and mid-tier Topics (tier <= 1) with their children,
+    for use in the Technology tab of the preferences picker.
+
+    Returns flat list; each node has optional parent_topic_id so the client
+    can reconstruct the tree.
+    """
+    repo = get_repo()
+    query = """
+    MATCH (t:Topic)
+    WHERE t.tier IS NULL OR t.tier <= 2
+    OPTIONAL MATCH (parent:Topic)-[:ENCOMPASSES]->(t)
+    RETURN t.topic_id   AS topic_id,
+           t.name       AS name,
+           t.tier       AS tier,
+           parent.topic_id AS parent_topic_id
+    ORDER BY t.tier, t.name
+    LIMIT 500
+    """
+    results = repo.client.execute_query(query, {})
+    return [
+        {
+            "topic_id": r["topic_id"],
+            "name": r["name"],
+            "tier": r.get("tier"),
+            "parent_topic_id": r.get("parent_topic_id"),
+        }
+        for r in results
+    ]
+
+
 def get_all_datasource_configurations() -> List[Dict[str, Any]]:
     """
     Get all datasource configurations from Neo4j.

@@ -20,7 +20,8 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel, HttpUrl, Field
 
 from scrapers import (
-    WFAScraper, WFACausewayScraper, WBAScraper, IETFBlogScraper, IETFDatatrackerScraper,
+    WFAScraper, WFACausewayScraper, WBAScraper, WBAExtranetScraper,
+    IETFBlogScraper, IETFDatatrackerScraper,
     IEEE802Scraper, MEFScraper, NISTScraper, ONFScraper, DMTFScraper,
 )
 from scrapers.base import BaseScraper, Resource
@@ -62,6 +63,7 @@ SCRAPER_CLASSES: Dict[str, Type[BaseScraper]] = {
     "wfa": WFAScraper,
     "wfa_causeway": WFACausewayScraper,
     "wba": WBAScraper,
+    "wba_extranet": WBAExtranetScraper,
     "ietf_blog": IETFBlogScraper,
     "ietf_datatracker": IETFDatatrackerScraper,
     "ieee802": IEEE802Scraper,

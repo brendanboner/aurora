@@ -36,6 +36,8 @@ class Migrations:
             Migrations.add_nist_datasources,
             Migrations.add_onf_datasources,
             Migrations.add_dmtf_datasources,
+            Migrations.add_datasource_parent_index,
+            Migrations.add_wba_extranet_root_datasource,
         ]
         
         for migration_func in migrations:
@@ -1294,6 +1296,109 @@ class Migrations:
             return True
         except Exception as e:
             logger.error(f"Error upserting DMTF datasources: {e}")
+            return False
+
+    @staticmethod
+    def add_wba_extranet_root_datasource(session: Session) -> bool:
+        """
+        Upsert the root WBA Extranet DataSource node.
+
+        Running this DataSource triggers the WBAExtranetScraper, which then
+        discovers per-community child DataSources at scrape time. Default
+        cadence: weekly (Mondays 02:00). Disabled by default — set
+        run_on_startup or wait for the scheduled slot to fire.
+
+        Idempotent — MERGE on datasource_id.
+        """
+        try:
+            ds = {
+                "datasource_id": "wba_extranet",
+                "name": "WBA Extranet",
+                "display_name": "WBA Extranet (Programmes & Workgroups)",
+                "org_id": "wba",
+                "source_type": "authenticated_portal",
+                "fetch_url": "https://extranet.wballiance.com",
+                "has_events": False,
+                "scraper_type": "wba_extranet",
+                "resource_url": "/",
+                "scrape_schedule": "0 2 * * 1",
+                "run_on_startup": False,
+                "check_content_hash": True,
+                "publish_weight": 1.0,
+                "update_weight": 0.9,
+                "event_weight": 0.8,
+                "temporal_extraction_days": 90,
+                "scraper_delay": 1.0,
+                "max_resources": -1,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 5,
+                "description": (
+                    "WBA Extranet — member-only Higher Logic portal. "
+                    "Root datasource that drives weekly discovery of programmes "
+                    "and workgroups (e.g., Next Gen, AI/ML, PQC, Wi-Fi Design). "
+                    "Each discovered community becomes its own child DataSource."
+                ),
+            }
+            query = """
+            MERGE (d:DataSource {datasource_id: $datasource_id})
+            ON CREATE SET
+                d.name                        = $name,
+                d.display_name                = $display_name,
+                d.org_id                      = $org_id,
+                d.source_type                 = $source_type,
+                d.fetch_url                   = $fetch_url,
+                d.has_events                  = $has_events,
+                d.scraper_type                = $scraper_type,
+                d.resource_url                = $resource_url,
+                d.scrape_schedule             = $scrape_schedule,
+                d.run_on_startup              = $run_on_startup,
+                d.check_content_hash          = $check_content_hash,
+                d.publish_weight              = $publish_weight,
+                d.update_weight               = $update_weight,
+                d.event_weight                = $event_weight,
+                d.temporal_extraction_days    = $temporal_extraction_days,
+                d.scraper_delay               = $scraper_delay,
+                d.max_resources               = $max_resources,
+                d.max_redirects               = $max_redirects,
+                d.discovery_mode              = $discovery_mode,
+                d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+                d.description                 = $description
+            ON MATCH SET
+                d.display_name                = $display_name,
+                d.description                 = $description
+            RETURN d.datasource_id AS id, (d.name IS NOT NULL) AS existed
+            """
+            result = session.run(query, **ds)
+            record = result.single()
+            if record:
+                action = "updated" if record["existed"] else "created"
+                logger.info(f"WBA Extranet root DataSource '{record['id']}' {action}")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting WBA Extranet root datasource: {e}")
+            return False
+
+    @staticmethod
+    def add_datasource_parent_index(session: Session) -> bool:
+        """
+        Index DataSource.parent_datasource_id so programme→workgroup hierarchy
+        lookups are O(log n) instead of full scans.
+
+        Used by the fast oracle pipeline when expanding "what's new in <programme>"
+        queries to include child workgroups, and by the frontend tree picker.
+
+        Idempotent — IF NOT EXISTS guard.
+        """
+        try:
+            session.run(
+                "CREATE INDEX datasource_parent_id IF NOT EXISTS "
+                "FOR (d:DataSource) ON (d.parent_datasource_id)"
+            )
+            logger.info("Created/verified index on DataSource.parent_datasource_id")
+            return True
+        except Exception as e:
+            logger.error(f"Error creating datasource_parent_id index: {e}")
             return False
 
     @staticmethod

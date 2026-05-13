@@ -114,6 +114,14 @@ class RouteId(str, Enum):
     IETF_WG_UPDATES = "ietf_wg_updates"
     IETF_MEETING_AGENDA = "ietf_meeting_agenda"
 
+    # WBA Extranet routes (fast pipeline only — baseline unaffected)
+    WBA_PROGRAMME_LIST = "wba_programme_list"       # "what programmes are in WBA?"
+    WBA_WORKGROUPS_OF = "wba_workgroups_of"         # "what workgroups are in the IoT programme?"
+    WBA_RECENT_ACTIVITY = "wba_recent_activity"     # "what is happening in AI/ML?"
+    WBA_LAST_MEETING = "wba_last_meeting"           # "what was discussed in the last PQC meeting?"
+    MY_GROUPS_DIGEST = "my_groups_digest"           # "what's new in my groups?"
+    MEMBERSHIP_ACTION = "membership_action"         # "join the AI/ML workgroup" / "leave PQC"
+
     # Fallback
     GENERIC_SEARCH = "generic_search"
 

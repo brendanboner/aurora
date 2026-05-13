@@ -168,24 +168,34 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, tog
                         />
                               
                               {/* User Profile routes */}
-                              <Route 
-                                element={<UserProfile />} 
+                              <Route
+                                element={<UserProfile />}
                               />
-                              <Route 
-                                path="/profile/topics" 
-                                element={<UserProfile />} 
+                              <Route
+                                path="/profile/topics"
+                                element={<UserProfile />}
                               />
-                              <Route 
-                                path="/profile/organisations" 
-                                element={<UserProfile />} 
+                              <Route
+                                path="/profile/organisations"
+                                element={<UserProfile />}
                               />
-                              <Route 
-                                path="/profile/people" 
-                                element={<UserProfile />} 
+                              <Route
+                                path="/profile/people"
+                                element={<UserProfile />}
                               />
-                              <Route 
-                                path="/profile/notifications" 
-                                element={<UserProfile />} 
+                              <Route
+                                path="/profile/notifications"
+                                element={<UserProfile />}
+                              />
+                              {/* Unified preferences page (Groups/Sources/Technology/Companies) */}
+                              <Route
+                                path="/profile/preferences"
+                                element={<UserProfile initialSection="preferences" />}
+                              />
+                              {/* Alias: memberships → preferences Group tab */}
+                              <Route
+                                path="/profile/memberships"
+                                element={<UserProfile initialSection="preferences" initialPreferencesTab="group" />}
                               />
                               <Route 
                                 path="/profile/agents" 

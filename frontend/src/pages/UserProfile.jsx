@@ -4,9 +4,10 @@ import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, ResetIcon, Wa
 import { getUserPreferences, updateUserPreferences, getTopics, getOrganisations, getPeople, getTopicsHierarchy } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import TopicTree from '../components/TopicTree';
+import PreferencesPanel from '../components/PreferencesPanel';
 import './UserProfile.css';
 
-const UserProfile = () => {
+const UserProfile = ({ initialSection, initialPreferencesTab }) => {
   const { user } = useAuth();
   const hierarchyLoadingRef = useRef(false);
   const loadDataRef = useRef(false);
@@ -63,11 +64,13 @@ const UserProfile = () => {
 
   const location = useLocation();
   const path = location.pathname;
-  const selectedSection = path.includes('/profile/topics') ? 'topics'
+  const selectedSection = initialSection
+    || (path.includes('/profile/preferences') || path.includes('/profile/memberships') ? 'preferences'
+    : path.includes('/profile/topics') ? 'topics'
     : path.includes('/profile/organisations') ? 'organisations'
     : path.includes('/profile/people') ? 'people'
     : path.includes('/profile/notifications') ? 'notifications'
-    : null;
+    : null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -403,6 +406,16 @@ const UserProfile = () => {
 
       {loading ? (<div className="spinner" />) : (
         <>
+          {/* Unified preferences panel (Groups/Sources/Technology/Companies) */}
+          {selectedSection === 'preferences' && user && (
+            <div className="profile-section" style={{ padding: 0, overflow: 'hidden' }}>
+              <PreferencesPanel
+                userId={user.id}
+                defaultTab={initialPreferencesTab || 'group'}
+              />
+            </div>
+          )}
+
           {(selectedSection === 'topics' || !selectedSection) && (
             <div className="profile-section">
               <h2><span className="icon-heading"><BookIcon size={20} /></span> Topics Preferences</h2>

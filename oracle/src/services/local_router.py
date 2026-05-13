@@ -49,6 +49,49 @@ class LocalRouter:
     # Route patterns (query text -> route_id)
     # CRITICAL: ORDER MATTERS - Most specific patterns first, general patterns last
     ROUTE_PATTERNS = [
+        # === WBA EXTRANET QUERIES (high priority — unambiguous intent) ===
+        # Membership action: "join the AI/ML workgroup" / "leave PQC group"
+        (r"^(join|leave|follow|unfollow|add|remove)\s+(the\s+)?[\w\s\-\/]+(\s+(workgroup|programme|program|group|community))?$",
+         RouteId.MEMBERSHIP_ACTION),
+
+        # "what's new in my groups" — MUST come before WBA_RECENT_ACTIVITY
+        # so "my groups" queries are not captured as workgroup-specific activity
+        (r"(what('?s|\s+is)\s+)?(new|happening|latest|recent|updates?)\s+(in|from|across)\s+my\s+(groups?|workgroups?|sources?|programmes?)",
+         RouteId.MY_GROUPS_DIGEST),
+        (r"my\s+(groups?|workgroups?|sources?|programmes?)\s+(digest|summary|updates?|news|activity)",
+         RouteId.MY_GROUPS_DIGEST),
+        (r"(updates?|news|activity|summary|digest)\s+(from|across|in)\s+my\s+(groups?|workgroups?)",
+         RouteId.MY_GROUPS_DIGEST),
+
+        # "what programmes / workgroups are available in WBA"
+        # Allow optional "in" between the availability word and "wba" (e.g. "available in WBA")
+        (r"(what|list|show)\s+(programmes?|programs?|workgroups?|groups?)\s+(are\s+)?(available|exist|in|under)\s+(in\s+)?(the\s+)?(wba|wi[-\s]?fi\s+broadband)",
+         RouteId.WBA_PROGRAMME_LIST),
+        # "show me WBA programmes" / "list WBA workgroups"
+        (r"(show|list).{0,15}(wba|wi[-\s]?fi\s+broadband).{0,20}(programmes?|programs?|workgroups?)",
+         RouteId.WBA_PROGRAMME_LIST),
+        # "what WBA programmes are there"
+        (r"(what|which).{0,10}(wba).{0,10}(programmes?|programs?|workgroups?|groups?)",
+         RouteId.WBA_PROGRAMME_LIST),
+
+        # "what workgroups / programs are in [programme name]"
+        (r"(what|list|show)\s+(workgroups?|programs?|groups?|subgroups?)\s+(are\s+)?(in|under|part\s+of|inside|within)\s+(the\s+)?[\w\s\-\/]+",
+         RouteId.WBA_WORKGROUPS_OF),
+        (r"(workgroups?|programs?|groups?)\s+(in|under|inside|within)\s+(the\s+)?[\w\s\-\/]+\s+(programme|program|workgroup|group)?",
+         RouteId.WBA_WORKGROUPS_OF),
+
+        # "what is new / happening in [workgroup]"
+        (r"(what('?s|\s+is)\s+)?(new|happening|going\s+on|latest|recent)\s+(in|at|with|for)\s+(the\s+)?[\w\s\-\/]+\s*(workgroup|group|programme|program)?",
+         RouteId.WBA_RECENT_ACTIVITY),
+        (r"(what.{0,20}(in|at)\s+(the\s+)?[\w\s\-\/]+(workgroup|group|programme|program))",
+         RouteId.WBA_RECENT_ACTIVITY),
+
+        # "what was discussed in the last [workgroup] meeting"
+        (r"(what\s+was\s+|what\s+were\s+)(discussed|covered|talked\s+about|reviewed)\s+(in|at|during)\s+(the\s+)?(last|latest|recent|previous)\s+([\w\s\-\/]+)?\s*(meeting|call|session)",
+         RouteId.WBA_LAST_MEETING),
+        (r"(last|latest|recent|previous)\s+([\w\s\-\/]+)?\s*(meeting|call|session)\s+(notes?|summary|minutes?|recap)",
+         RouteId.WBA_LAST_MEETING),
+
         # === PEOPLE QUERIES (highest priority - very specific) ===
         # "who represents X at Y" / "who is X's representative"
         (r"who (represents?|is representing)\s+[\w\s\-]+\s+(at|in|for|on)\s+", RouteId.ORGANIZATION_REPRESENTATIVES),

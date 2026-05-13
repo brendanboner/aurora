@@ -107,6 +107,38 @@ export const getListableDatasources = async () => {
   return response.data;
 };
 
+// Hierarchical datasource tree (includes parent_datasource_id for tree rendering)
+export const getDatasourceTree = async () => {
+  const response = await apiClient.get('/backend/datasources/tree');
+  return response.data;
+};
+
+// Topic tree (for Technology preferences tab)
+export const getTopicTree = async () => {
+  const response = await apiClient.get('/backend/topics/tree');
+  return response.data;
+};
+
+// User source preferences (weighted boosts — separate from join/ignore memberships)
+export const getUserSourcePreferences = async (userId) => {
+  const response = await apiClient.get(`/backend/users/${userId}/source-preferences`);
+  return response.data; // [{ datasource_id, weight }, ...]
+};
+
+export const upsertSourcePreference = async (userId, datasourceId, weight = 1.0) => {
+  const response = await apiClient.put(
+    `/backend/users/${userId}/source-preferences/${encodeURIComponent(datasourceId)}`,
+    { datasource_id: datasourceId, weight }
+  );
+  return response.data;
+};
+
+export const deleteSourcePreference = async (userId, datasourceId) => {
+  await apiClient.delete(
+    `/backend/users/${userId}/source-preferences/${encodeURIComponent(datasourceId)}`
+  );
+};
+
 // User source memberships (workgroup join/ignore preferences)
 export const getUserSourceMemberships = async (userId) => {
   const response = await apiClient.get(`/backend/users/${userId}/source-memberships`);

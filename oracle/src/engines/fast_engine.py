@@ -87,6 +87,61 @@ class FastEngine:
         self.conv_store = ConversationStore(redis_client=redis_client)
         self._initialized = True
     
+    async def _expand_wba_children(self, datasource_ids: list) -> list:
+        """Expand any WBA Extranet programme IDs to include their child workgroups.
+
+        A one-hop lookup on parent_datasource_id so that "what's new in my
+        groups" automatically includes workgroups belonging to joined programmes.
+        Results are cached in Redis for 5 minutes.
+        """
+        if not datasource_ids:
+            return datasource_ids
+
+        cache_key = "fast:datasource_tree:wba_children"
+        # Try Redis cache first
+        if self.fast_cache and self.fast_cache._redis_client:
+            try:
+                import json as _json
+                cached = self.fast_cache._redis_client.get(cache_key)
+                if cached:
+                    child_map: dict = _json.loads(cached)
+                else:
+                    child_map = {}
+            except Exception:
+                child_map = {}
+        else:
+            child_map = {}
+
+        if not child_map:
+            # Build map from Neo4j
+            try:
+                from src.services.graph_service_oracle import get_oracle_repo
+                repo = get_oracle_repo()
+                rows = repo.client.execute_query(
+                    """
+                    MATCH (child:DataSource {scraper_type: 'wba_extranet'})
+                    WHERE child.parent_datasource_id IS NOT NULL
+                    RETURN child.parent_datasource_id AS parent,
+                           child.datasource_id        AS child
+                    """,
+                    {},
+                )
+                for r in rows:
+                    child_map.setdefault(r["parent"], []).append(r["child"])
+                if self.fast_cache and self.fast_cache._redis_client:
+                    import json as _json
+                    self.fast_cache._redis_client.setex(cache_key, 300, _json.dumps(child_map))
+            except Exception as exc:
+                logger.warning(f"_expand_wba_children: Neo4j lookup failed: {exc}")
+                return datasource_ids
+
+        expanded = list(datasource_ids)
+        for ds_id in list(datasource_ids):
+            for child_id in child_map.get(ds_id, []):
+                if child_id not in expanded:
+                    expanded.append(child_id)
+        return expanded
+
     def get_name(self) -> str:
         """Get engine name."""
         return "fast"
@@ -367,7 +422,47 @@ class FastEngine:
                     plan.preferred_datasources = user_preferred_datasources
             if user_preferred_domains:
                 plan.preferred_domains = user_preferred_domains
-            
+
+            # WBA: for programme-level routes, expand preferred_datasources to
+            # include child workgroups (one hop via parent_datasource_id).
+            route_id_value = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+            from src.models.route_plan import RouteId as _RI
+            if route_id_value in (
+                _RI.WBA_RECENT_ACTIVITY.value, _RI.MY_GROUPS_DIGEST.value
+            ) and plan.preferred_datasources:
+                plan.preferred_datasources = await self._expand_wba_children(
+                    plan.preferred_datasources
+                )
+
+            # MEMBERSHIP_ACTION: short-circuit — do NOT execute Cypher,
+            # do NOT raise (a raise triggers baseline fallback).
+            if route_id_value == _RI.MEMBERSHIP_ACTION.value:
+                from src.services.membership_action import handle as _handle_membership
+                answer_text = await _handle_membership(
+                    question=request.question,
+                    user_id=str(request.user_id) if request.user_id else None,
+                    neo4j_client=self.neo4j_client if hasattr(self, 'neo4j_client') else None,
+                    span=span,
+                )
+                # Build a minimal response and return immediately.
+                from src.models.response import OracleResponse, RetrievalMetadata
+                processing_time_ms = int((time.time() - start_time) * 1000)
+                metadata = RetrievalMetadata(
+                    intent="membership_action",
+                    intent_confidence=1.0,
+                    strategies_used=["membership_action"],
+                    total_candidates=0,
+                    processing_time_ms=processing_time_ms,
+                )
+                return OracleResponse(
+                    answer=answer_text,
+                    documents=[],
+                    citations=[],
+                    metadata=metadata,
+                    pipeline="fast",
+                    fast_confidence=1.0,
+                )
+
             # Handle route_id that might be enum or string (after cache deserialization)
             route_id_str = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
             span.set_attribute("fast.route_id", route_id_str)

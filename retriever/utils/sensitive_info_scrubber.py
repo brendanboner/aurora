@@ -340,9 +340,73 @@ class SensitiveInfoScrubber:
             detected_patterns=list(set(detected))
         )
     
+    def sanitize_text(self, text: Optional[str]) -> SanitizationResult:
+        """
+        Sanitize free-form text — strips meeting URLs, IDs, passcodes, and phone
+        numbers without imposing event-specific framing.
+
+        Designed for resource content/summary scrubbing (e.g., discussion threads,
+        digest posts, prep-call write-ups) where we want to keep the text but
+        remove sensitive meeting access details.
+
+        Args:
+            text: Arbitrary text content
+
+        Returns:
+            SanitizationResult with sanitized text
+        """
+        if not text:
+            return SanitizationResult(
+                original="",
+                sanitized="",
+                was_modified=False,
+                detected_patterns=[]
+            )
+
+        original = text
+        detected = self.detect_sensitive_content(text)
+
+        if not detected:
+            return SanitizationResult(
+                original=original,
+                sanitized=text,
+                was_modified=False,
+                detected_patterns=[]
+            )
+
+        sanitized = text
+
+        # First pass: meeting credential blocks
+        for pattern, name in self.compiled_block_patterns:
+            if pattern.search(sanitized):
+                detected.append(name)
+                sanitized = pattern.sub(' [meeting access details removed] ', sanitized)
+
+        # Second pass: individual URLs / IDs / passcodes / phones
+        for pattern, _ in self.compiled_url_patterns:
+            sanitized = pattern.sub('', sanitized)
+        for pattern, _ in self.compiled_id_patterns:
+            sanitized = pattern.sub('', sanitized)
+        for pattern, _ in self.compiled_passcode_patterns:
+            sanitized = pattern.sub('', sanitized)
+        for pattern, _ in self.compiled_phone_patterns:
+            sanitized = pattern.sub('', sanitized)
+
+        # Whitespace cleanup
+        sanitized = re.sub(r'\n\s*\n\s*\n+', '\n\n', sanitized)
+        sanitized = re.sub(r'[ \t]+', ' ', sanitized)
+        sanitized = sanitized.strip()
+
+        return SanitizationResult(
+            original=original,
+            sanitized=sanitized,
+            was_modified=True,
+            detected_patterns=list(set(detected))
+        )
+
     def sanitize_event_data(
-        self, 
-        location: Optional[str], 
+        self,
+        location: Optional[str],
         description: Optional[str]
     ) -> Tuple[str, str, bool]:
         """
@@ -398,16 +462,16 @@ def sanitize_event_description(description: Optional[str]) -> str:
 
 
 def sanitize_event_data(
-    location: Optional[str], 
+    location: Optional[str],
     description: Optional[str]
 ) -> Tuple[str, str]:
     """
     Convenience function to sanitize both fields using default scrubber.
-    
+
     Args:
         location: Event location string
         description: Event description string
-        
+
     Returns:
         Tuple of (sanitized_location, sanitized_description)
     """
@@ -415,3 +479,16 @@ def sanitize_event_data(
         location, description
     )
     return sanitized_location, sanitized_description
+
+
+def sanitize_text(text: Optional[str]) -> str:
+    """
+    Convenience function for general-purpose meeting-info scrubbing on arbitrary
+    text (e.g., discussion bodies, digest posts). Returns the sanitized string.
+
+    Use for Resource.content / Resource.summary on sources that may contain
+    Zoom / Teams / Meet URLs and credentials.
+    """
+    if text is None:
+        return ""
+    return default_scrubber.sanitize_text(text).sanitized
