@@ -65,15 +65,4 @@ export class AuroraAgentService {
       return null;
     }
   }
-
-  /** Return agents the given Aurora user is following. */
-  async listFollowedAgents(userId: string): Promise<CreatorAgent[]> {
-    try {
-      const response = await this.apiClient.get(`/agents/user/${encodeURIComponent(userId)}/followed`);
-      return (response.data?.agents ?? []).map((a: any) => a.agent ?? a);
-    } catch (err: any) {
-      console.warn(`[AuroraAgentService] listFollowedAgents(${userId}) failed:`, err?.message);
-      return [];
-    }
-  }
 }
