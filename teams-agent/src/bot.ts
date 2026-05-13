@@ -283,7 +283,7 @@ Or use a channel webhook for named delivery: \`setAgentWebhook @aurora-<slug> ht
   private async sendHelpMessage(context: TurnContext): Promise<void> {
     const helpCard = CardFactory.adaptiveCard({
       type: 'AdaptiveCard',
-      version: '1.5',
+      version: '1.4',
       body: [
         {
           type: 'TextBlock',
