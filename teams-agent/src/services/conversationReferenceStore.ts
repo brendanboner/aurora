@@ -88,6 +88,15 @@ export class ConversationReferenceStore {
     return res.rows;
   }
 
+  /** Retrieve a single conversation reference by conversation ID. */
+  async get(conversationId: string): Promise<StoredConversationReference | null> {
+    const res = await getPool().query<StoredConversationReference>(
+      'SELECT * FROM teams_conversation_references WHERE conversation_id = $1',
+      [conversationId]
+    );
+    return res.rows[0] ?? null;
+  }
+
   /**
    * Retrieve all conversations subscribed to a given agent slug.
    * Includes conversations where subscribed_agent_slugs contains the slug,

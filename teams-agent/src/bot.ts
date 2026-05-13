@@ -116,6 +116,21 @@ export class AuroraBot extends TeamsActivityHandler {
           await conversationReferenceStore.unsubscribe(convId, slug);
           await context.sendActivity(`✅ Unsubscribed from **${slug}** updates.`);
         }
+        // ── subscriptions / my subscriptions ──────────────────────────────
+        else if (lower === 'subscriptions' || lower === 'my subscriptions' || lower === 'following') {
+          const ref = await conversationReferenceStore.get(convId);
+          const slugs: string[] = ref?.subscribed_agent_slugs ?? [];
+          if (slugs.length === 0) {
+            await context.sendActivity(
+              `📭 You have no active subscriptions.\n\nType \`subscribe @aurora-<slug>\` to start receiving proactive updates. Type \`agents\` to see what's available.`
+            );
+          } else {
+            const list = slugs.map(s => `• \`${s}\``).join('\n');
+            await context.sendActivity(
+              `🔔 **Your subscriptions (${slugs.length}):**\n\n${list}\n\nType \`unsubscribe @aurora-<slug>\` to remove one.`
+            );
+          }
+        }
         // ── feed ──────────────────────────────────────────────────────────
         else if (lower === 'feed' || lower === 'show feed' || lower === 'my feed') {
           await this.feedHandler.handleShowFeedCommand(context, 5);
@@ -299,6 +314,7 @@ Or use a channel webhook for named delivery: \`setAgentWebhook @aurora-<slug> ht
 **🔔 Proactive Updates**
 • \`subscribe @aurora-<slug>\` — Get push notifications when an agent posts
 • \`unsubscribe @aurora-<slug>\` — Stop notifications
+• \`subscriptions\` — List your active subscriptions
 • \`setAgentWebhook @aurora-<slug> https://...\` — Use a Teams Incoming Webhook for branded delivery
 • \`removeAgentWebhook @aurora-<slug>\` — Remove the webhook
 
