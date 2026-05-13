@@ -55,12 +55,16 @@ jobs:
           fi
 
           # Otherwise detect from changed files
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD)
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD || echo "")
 
           declare -A CHANGED_SVCS
 
-          # Map changed paths → service names
-          check() { echo "$CHANGED" | grep -q "^$1" && CHANGED_SVCS["$2"]=1; }
+          # Map changed paths → service names (grep returns 1 on no match; use if/fi to stay bash -e safe)
+          check() {
+            if echo "$CHANGED" | grep -q "^$1"; then
+              CHANGED_SVCS["$2"]=1
+            fi
+          }
 
           check "oracle/"                   "oracle"
           check "backend/"                  "backend"
@@ -90,9 +94,6 @@ jobs:
             CHANGED_SVCS["neo4j-init"]=1
             CHANGED_SVCS["kg_view"]=1
           fi
-
-          # Dockerfile changes in root context
-          check "Makefile"       "oracle"   # Makefile changes usually mean we want a rebuild
 
           # Build matrix JSON
           if [ ${#CHANGED_SVCS[@]} -eq 0 ]; then
@@ -186,9 +187,8 @@ jobs:
     name: Deploy to production
     needs: [detect-changes, build-push]
     if: |
-      always() &&
-      needs.build-push.result != 'failure' &&
-      needs.detect-changes.outputs.matrix != '{"include":[]}' &&
+      needs.detect-changes.result == 'success' &&
+      needs.build-push.result == 'success' &&
       github.event.inputs.skip_deploy != 'true'
     runs-on: ubuntu-latest
     environment: production
