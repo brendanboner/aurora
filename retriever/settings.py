@@ -60,11 +60,14 @@ class Settings(BaseSettings):
     wba_extranet_password: str = ""
     wba_extranet_base_url: str = "https://extranet.wballiance.com"
     # Cookie-based auth (when login form has reCAPTCHA):
-    # Paste the HLTC and ASP.NET_SessionId values from your browser DevTools
+    # Paste cookie values from browser DevTools (Application → Cookies)
     # after logging in to https://extranet.wballiance.com manually.
-    # Application → Cookies → extranet.wballiance.com
-    wba_extranet_hltc: str = ""
-    wba_extranet_session_id: str = ""
+    # HLLogin is the persistent "remember me" token (expires after ~7 days).
+    # The server auto-generates a new session (HLTC / ASP.NET_SessionId)
+    # when it sees a valid HLLogin cookie, so only HLLogin is needed.
+    wba_extranet_hllogin: str = ""   # Primary: persistent login token (HLLogin cookie)
+    wba_extranet_hltc: str = ""      # Legacy: session auth token (HLTC cookie, if set)
+    wba_extranet_session_id: str = ""  # Optional: ASP.NET_SessionId cookie
     # IAM Key-based auth (preferred for automated access — no reCAPTCHA):
     # Obtain the HLIAMKey from the WBA admin portal under:
     #   Settings → Integrations → API Settings → IAM Key

@@ -376,43 +376,65 @@ class WBAExtranetScraper(BaseScraper):
     async def _inject_session_cookies(self) -> bool:
         """Inject pre-authenticated browser cookies directly.
 
-        When WBA_EXTRANET_HLTC is set (user logged in via browser and
-        copied cookie value), we skip the reCAPTCHA-protected login form
-        and inject the cookie directly into the aiohttp session.
+        Priority:
+          1. WBA_EXTRANET_HLLOGIN (persistent "remember me" token — best option)
+             The server auto-issues a fresh session when it sees this cookie,
+             no reCAPTCHA involved. Expires ~7 days after browser login.
+          2. WBA_EXTRANET_HLTC (legacy session token, shorter-lived)
 
-        How to get the cookie value:
+        How to obtain HLLogin:
           1. Log in to https://extranet.wballiance.com in Chrome/Firefox
           2. Open DevTools → Application → Cookies → extranet.wballiance.com
-          3. Copy the HLTC value and (optionally) ASP.NET_SessionId
-          4. Set WBA_EXTRANET_HLTC=<value> in your .env file
-
-        Returns True if cookies were injected, False if not configured.
+          3. Copy the HLLogin value (975-char hex string)
+          4. Set WBA_EXTRANET_HLLOGIN=<value> in your .env file
         """
+        from yarl import URL
+        base_url = URL(self.base_url)
+
+        hllogin = settings.wba_extranet_hllogin
         hltc = settings.wba_extranet_hltc
         session_id = settings.wba_extranet_session_id
-        if not hltc:
+
+        if not (hllogin or hltc):
             return False
 
-        from http.cookiejar import Cookie
-        import time
+        if hllogin:
+            self.session.cookie_jar.update_cookies({"HLLogin": hllogin}, base_url)
+            logger.info(f"WBA Extranet: injected HLLogin cookie ({len(hllogin)} chars)")
+            # Warm up the session — sends HLLogin to the server which auto-creates
+            # a fresh HLTC + ASP.NET_SessionId without any reCAPTCHA.
+            try:
+                async with self.session.get(
+                    self._abs_url("/"),
+                    headers=self._headers(),
+                    allow_redirects=True,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as resp:
+                    final = str(resp.url)
+                    authenticated = "/login" not in final.lower()
+                    if authenticated:
+                        logger.info(
+                            f"WBA Extranet: HLLogin session established (redirected to {final[:60]})"
+                        )
+                    else:
+                        logger.warning(
+                            "WBA Extranet: HLLogin warm-up did not redirect away from login — "
+                            "cookie may be expired. Generate a fresh HLLogin by logging in "
+                            "to https://extranet.wballiance.com and copying the HLLogin cookie."
+                        )
+                    return authenticated
+            except Exception as exc:
+                logger.error(f"WBA Extranet: session warm-up failed: {exc}")
+                return True  # proceed anyway
 
-        base = self.base_url
-        hostname = "extranet.wballiance.com"
+        if hltc:
+            self.session.cookie_jar.update_cookies({"HLTC": hltc}, base_url)
+            if session_id:
+                self.session.cookie_jar.update_cookies({"ASP.NET_SessionId": session_id}, base_url)
+            logger.info(f"WBA Extranet: injected HLTC cookie ({len(hltc)} chars)")
+            return True
 
-        def _make_cookie(name: str, value: str) -> dict:
-            return {"name": name, "value": value}
-
-        # aiohttp uses yarl URLs for filter_cookies; inject via update_cookies
-        from yarl import URL
-        url = URL(base)
-        self.session.cookie_jar.update_cookies({"HLTC": hltc}, url)
-        if session_id:
-            self.session.cookie_jar.update_cookies({"ASP.NET_SessionId": session_id}, url)
-        logger.info(
-            f"WBA Extranet: injected pre-authenticated browser cookies "
-            f"(HLTC={hltc[:8]}... session={session_id[:8] if session_id else 'not set'}...)"
-        )
-        return True
+        return False
 
     async def authenticate(self, username: str, password: str) -> bool:
         """Higher Logic ASP.NET WebForms login.
