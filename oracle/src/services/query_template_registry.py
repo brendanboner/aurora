@@ -2583,7 +2583,8 @@ ORDER BY e.start_date DESC
             // Include child workgroups so programme queries roll up
             OPTIONAL MATCH (child:DataSource {scraper_type: 'wba_extranet'})
             WHERE child.parent_datasource_id IN direct_ids
-            WITH direct_ids + coalesce(collect(child.datasource_id), []) AS ds_ids
+            WITH direct_ids, collect(child.datasource_id) AS child_ids
+            WITH direct_ids + child_ids AS ds_ids
 
             MATCH (r:Resource)
             WHERE r.datasource_id IN ds_ids
