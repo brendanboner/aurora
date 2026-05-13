@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ============================================
 # BUILD STAGE - Compile dependencies with gcc
 # ============================================
@@ -15,11 +16,13 @@ RUN apt-get update && \
 
 # Install Python dependencies to a temporary location
 COPY curator/requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install -r requirements.txt
 
 # Install local shared library (neo4j-client)
 COPY neo4j-client ./neo4j-client
-RUN pip install --no-cache-dir --prefix=/install ./neo4j-client
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install ./neo4j-client
 
 
 # ============================================

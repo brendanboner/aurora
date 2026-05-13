@@ -51,8 +51,9 @@ help:
 	@echo "  make restart       - Restart all services (in place)"
 	@echo "  make restart-nginx - Restart nginx only"
 	@echo "  make restart-kg-view - Restart KG View services only"
-	@echo "  make update        - Pull latest images and restart (with backup)"
-	@echo "  make update-fast   - Pull latest images and restart (no backup)"
+	@echo "  make update        - Pull latest images and restart (with backup + health gate)"
+	@echo "  make update-fast   - Pull latest images and restart (no backup + health gate)"
+	@echo "  make rollback      - Roll back to a prior version: make rollback VERSION=abc1234"
 	@echo "  make update-kg-view - Pull and restart KG View services only"
 	@echo ""
 	@echo "$(GREEN)Monitoring:$(NC)"
@@ -156,6 +157,8 @@ update: ecr-login
 	@$(MAKE) migrate
 	@echo "$(YELLOW)→ Restarting services...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) up -d
+	@echo "$(YELLOW)→ Waiting for services to become healthy...$(NC)"
+	@$(MAKE) wait-healthy
 	@echo "$(YELLOW)→ Removing old unused images...$(NC)"
 	@docker image prune -a -f
 	@echo "$(GREEN)✓ Services updated and old images cleaned$(NC)"
@@ -168,9 +171,43 @@ update-fast: ecr-login
 	@$(MAKE) migrate
 	@echo "$(YELLOW)→ Restarting services...$(NC)"
 	@docker compose -f $(COMPOSE_FILE) up -d
+	@echo "$(YELLOW)→ Waiting for services to become healthy...$(NC)"
+	@$(MAKE) wait-healthy
 	@echo "$(YELLOW)→ Removing old unused images...$(NC)"
 	@docker image prune -a -f
 	@echo "$(GREEN)✓ Services updated and old images cleaned$(NC)"
+
+# Poll core service health endpoints until ready (max 120s)
+wait-healthy:
+	@echo "$(CYAN)Checking service health...$(NC)"
+	@TIMEOUT=120; INTERVAL=5; ELAPSED=0; \
+	DOMAIN=$$(grep '^DEPLOYMENT_DOMAIN=' .env 2>/dev/null | cut -d'=' -f2 || echo "localhost"); \
+	while [ $$ELAPSED -lt $$TIMEOUT ]; do \
+		AUTH_OK=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000"); \
+		BACKEND_OK=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000"); \
+		ORACLE_OK=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8006/health 2>/dev/null || echo "000"); \
+		if [ "$$AUTH_OK" = "200" ] && [ "$$BACKEND_OK" = "200" ] && [ "$$ORACLE_OK" = "200" ]; then \
+			echo "$(GREEN)✓ auth ($$AUTH_OK)  backend ($$BACKEND_OK)  oracle ($$ORACLE_OK) — all healthy$(NC)"; \
+			exit 0; \
+		fi; \
+		echo "$(YELLOW)  Waiting... auth=$$AUTH_OK backend=$$BACKEND_OK oracle=$$ORACLE_OK ($$ELAPSED/$$TIMEOUT s)$(NC)"; \
+		sleep $$INTERVAL; \
+		ELAPSED=$$((ELAPSED + INTERVAL)); \
+	done; \
+	echo "$(RED)✗ Health check timed out after $$TIMEOUT seconds$(NC)"; \
+	echo "$(YELLOW)  Run 'make status' and 'make logs' to investigate$(NC)"; \
+	exit 1
+
+rollback:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "$(RED)✗ Specify VERSION to roll back to, e.g.: make rollback VERSION=abc1234$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(CYAN)Rolling back to version $(VERSION)...$(NC)"
+	@VERSION=$(VERSION) docker compose -f $(COMPOSE_FILE) up -d
+	@echo "$(YELLOW)→ Waiting for services to become healthy...$(NC)"
+	@$(MAKE) wait-healthy
+	@echo "$(GREEN)✓ Rolled back to $(VERSION)$(NC)"
 
 pull: ecr-login
 	@echo "$(CYAN)Pulling latest images from ECR...$(NC)"

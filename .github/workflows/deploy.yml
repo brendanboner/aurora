@@ -1,0 +1,255 @@
+name: Build, Push, and Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Comma-separated services to build (leave empty for changed services only)"
+        required: false
+        default: ""
+      skip_deploy:
+        description: "Skip production deployment after build"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+
+# Cancel in-progress runs on the same branch to avoid race conditions
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Detect which services have changed
+  # ─────────────────────────────────────────────────────────────────────────────
+  detect-changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get short SHA
+        id: version
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Detect changed services
+        id: set-matrix
+        run: |
+          # If explicit services were requested via workflow_dispatch, use those
+          EXPLICIT="${{ github.event.inputs.services }}"
+          if [ -n "$EXPLICIT" ]; then
+            # Convert comma-separated to JSON array of service objects
+            SERVICES=$(echo "$EXPLICIT" | tr ',' '\n' | jq -R . | jq -sc '[.[] | {service: .}]')
+            echo "matrix={\"include\":$SERVICES}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Otherwise detect from changed files
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD)
+
+          declare -A CHANGED_SVCS
+
+          # Map changed paths → service names
+          check() { echo "$CHANGED" | grep -q "^$1" && CHANGED_SVCS["$2"]=1; }
+
+          check "oracle/"                   "oracle"
+          check "backend/"                  "backend"
+          check "auth/"                     "auth"
+          check "retriever/"                "retriever"
+          check "digester/"                 "digester"
+          check "curator/"                  "curator"
+          check "content_creator_service/"  "content_creator_service"
+          check "frontend/"                 "frontend"
+          check "nginx/"                    "nginx"
+          check "neo4j-init/"               "neo4j-init"
+          check "kg_view/"                  "kg_view"
+          check "teams-agent/"              "teams-agent"
+
+          # Shared libs trigger rebuild of all dependent services
+          if echo "$CHANGED" | grep -qE "^(common/|neo4j-client/|rabbitmq-client/)"; then
+            echo "Shared library changed — rebuilding all services"
+            CHANGED_SVCS["oracle"]=1
+            CHANGED_SVCS["backend"]=1
+            CHANGED_SVCS["auth"]=1
+            CHANGED_SVCS["retriever"]=1
+            CHANGED_SVCS["digester"]=1
+            CHANGED_SVCS["curator"]=1
+            CHANGED_SVCS["content_creator_service"]=1
+            CHANGED_SVCS["frontend"]=1
+            CHANGED_SVCS["nginx"]=1
+            CHANGED_SVCS["neo4j-init"]=1
+            CHANGED_SVCS["kg_view"]=1
+          fi
+
+          # Dockerfile changes in root context
+          check "Makefile"       "oracle"   # Makefile changes usually mean we want a rebuild
+
+          # Build matrix JSON
+          if [ ${#CHANGED_SVCS[@]} -eq 0 ]; then
+            echo "No service changes detected — skipping builds"
+            echo 'matrix={"include":[]}' >> $GITHUB_OUTPUT
+          else
+            MATRIX=$(printf '%s\n' "${!CHANGED_SVCS[@]}" | jq -R . | jq -sc '[.[] | {service: .}]')
+            echo "Changed services: ${!CHANGED_SVCS[@]}"
+            echo "matrix={\"include\":$MATRIX}" >> $GITHUB_OUTPUT
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build and push changed services in parallel (matrix)
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-push:
+    name: Build ${{ matrix.service }}
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.matrix != '{"include":[]}' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      fail-fast: false   # keep building other services if one fails
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Determine platform and Dockerfile
+        id: config
+        env:
+          SERVICE: ${{ matrix.service }}
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          VERSION: ${{ needs.detect-changes.outputs.version }}
+        run: |
+          # Teams-agent needs multi-platform; everything else is arm64 (EC2 Graviton)
+          if [ "$SERVICE" = "teams-agent" ]; then
+            echo "platform=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+            echo "dockerfile=teams-agent/Dockerfile" >> $GITHUB_OUTPUT
+            echo "context=teams-agent" >> $GITHUB_OUTPUT
+            echo "image_name=aurora-teams-agent" >> $GITHUB_OUTPUT
+          elif [ "$SERVICE" = "kg_view" ]; then
+            echo "platform=linux/arm64" >> $GITHUB_OUTPUT
+            echo "dockerfile=kg_view/Dockerfile" >> $GITHUB_OUTPUT
+            echo "context=." >> $GITHUB_OUTPUT
+            echo "image_name=aurora-kg-view-backend" >> $GITHUB_OUTPUT
+          else
+            echo "platform=linux/arm64" >> $GITHUB_OUTPUT
+            echo "dockerfile=${SERVICE}/Dockerfile" >> $GITHUB_OUTPUT
+            echo "context=." >> $GITHUB_OUTPUT
+            # Map service dir names to ECR image names
+            case "$SERVICE" in
+              content_creator_service) IMAGE_NAME="aurora-content-creator" ;;
+              neo4j-init)              IMAGE_NAME="aurora-neo4j-init" ;;
+              *)                       IMAGE_NAME="aurora-${SERVICE}" ;;
+            esac
+            echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.config.outputs.context }}
+          file: ${{ steps.config.outputs.dockerfile }}
+          platforms: ${{ steps.config.outputs.platform }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ steps.config.outputs.image_name }}:${{ needs.detect-changes.outputs.version }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ steps.config.outputs.image_name }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Deploy to production via SSM after all builds succeed
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to production
+    needs: [detect-changes, build-push]
+    if: |
+      always() &&
+      needs.build-push.result != 'failure' &&
+      needs.detect-changes.outputs.matrix != '{"include":[]}' &&
+      github.event.inputs.skip_deploy != 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy via SSM
+        env:
+          VERSION: ${{ needs.detect-changes.outputs.version }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          echo "Deploying version $VERSION to production..."
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --region ${{ env.AWS_REGION }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              \"sudo -u ec2-user bash -c 'cd /home/ec2-user/octo-rapid-aurora && git pull origin main && cd prod-deployment && VERSION=$VERSION make update-fast 2>&1 | tee /tmp/aurora-deploy-$VERSION.log'\"
+            ]" \
+            --output text \
+            --query 'Command.CommandId')
+
+          echo "SSM Command ID: $COMMAND_ID"
+          echo "Waiting for deployment to complete (max 5 minutes)..."
+
+          # Poll for completion
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Pending")
+
+            echo "  [$i/60] Status: $STATUS"
+
+            if [ "$STATUS" = "Success" ]; then
+              echo "✓ Deployment succeeded"
+              # Print deploy output
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$EC2_INSTANCE_ID" \
+                --query 'StandardOutputContent' \
+                --output text | tail -30
+              exit 0
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+              echo "✗ Deployment failed with status: $STATUS"
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$EC2_INSTANCE_ID" \
+                --query 'StandardErrorContent' \
+                --output text | tail -30
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          echo "✗ Deployment timed out after 5 minutes"
+          exit 1

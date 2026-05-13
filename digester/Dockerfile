@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ============================================
 # BUILD STAGE - Compile dependencies with gcc
 # ============================================
@@ -13,14 +14,16 @@ RUN apt-get update && \
 
 # Install Python dependencies to a temporary location
 COPY digester/requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install -r requirements.txt
 
 # Install local shared libraries
 COPY common ./common
 COPY rabbitmq-client ./rabbitmq-client
 COPY neo4j-client ./neo4j-client
-RUN pip install --no-cache-dir --prefix=/install ./rabbitmq-client
-RUN pip install --no-cache-dir --prefix=/install ./neo4j-client
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install ./rabbitmq-client && \
+    pip install --prefix=/install ./neo4j-client
 
 
 # ============================================

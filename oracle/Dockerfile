@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -8,13 +9,15 @@ COPY common ./common
 # Copy local client libraries and install
 COPY neo4j-client ./neo4j-client
 COPY rabbitmq-client ./rabbitmq-client
-RUN pip install --no-cache-dir --upgrade pip && \
-	pip install --no-cache-dir ./neo4j-client ./rabbitmq-client
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && \
+    pip install ./neo4j-client ./rabbitmq-client
 
 # Copy oracle service and install as editable package
 COPY oracle ./oracle
 WORKDIR /app/oracle
-RUN pip install --no-cache-dir -e .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -e .
 
 # Switch back to /app so common module is in Python path
 WORKDIR /app

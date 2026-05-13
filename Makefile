@@ -21,7 +21,7 @@
 #   VERSION is automatically determined from git SHA
 # =============================================================================
 
-.PHONY: help test-all build-push-all ship-all aws-login connect_aurora_ec2clean-all \
+.PHONY: help test-all build-push-all build-push-parallel ship-all aws-login connect_aurora_ec2clean-all \
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
@@ -136,6 +136,21 @@ test-kg-view:
 
 build-push-all: build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent
 	@echo "$(GREEN)✓ All images built and pushed successfully$(NC)"
+
+# Build all services concurrently (faster, but uses more CPU/memory)
+build-push-parallel:
+	@echo "$(CYAN)Building all services in parallel...$(NC)"
+	@for svc in auth backend curator digester retriever frontend neo4j-init nginx oracle content_creator_service kg_view; do \
+		(cd $$svc && $(MAKE) -s build-push ECR_REGISTRY=$(ECR_REGISTRY) VERSION=$(VERSION) && echo "$(GREEN)✓ $$svc$(NC)") & \
+	done; \
+	(docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(ECR_REGISTRY)/aurora-teams-agent:$(VERSION) \
+		-t $(ECR_REGISTRY)/aurora-teams-agent:latest \
+		--push -f teams-agent/Dockerfile teams-agent/ \
+		&& echo "$(GREEN)✓ teams-agent$(NC)") & \
+	wait
+	@echo "$(GREEN)✓ All images built and pushed in parallel$(NC)"
 
 build-push-auth:
 	@echo "$(CYAN)Building and pushing auth service...$(NC)"

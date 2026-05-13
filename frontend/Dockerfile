@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Build React app and output to shared volume
 FROM node:20-alpine
 
@@ -7,7 +8,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Copy source code
 COPY . .

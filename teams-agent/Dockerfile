@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for Teams Agent
 FROM node:20-alpine AS builder
 
@@ -8,7 +9,8 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Install dependencies
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Copy source code
 COPY src ./src
@@ -26,7 +28,8 @@ RUN apk add --no-cache dumb-init
 
 # Copy package files and install production dependencies only
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist

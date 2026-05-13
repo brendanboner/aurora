@@ -145,7 +145,7 @@ services:
   # =============================================================================
 
   neo4j-init:
-    image: ${ECR_REGISTRY}/aurora-neo4j-init:latest
+    image: ${ECR_REGISTRY}/aurora-neo4j-init:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -177,7 +177,7 @@ services:
   # =============================================================================
   
   auth:
-    image: ${ECR_REGISTRY}/aurora-auth:latest
+    image: ${ECR_REGISTRY}/aurora-auth:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -235,7 +235,7 @@ services:
       start_period: 20s
 
   backend:
-    image: ${ECR_REGISTRY}/aurora-backend:latest
+    image: ${ECR_REGISTRY}/aurora-backend:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -307,7 +307,7 @@ services:
       start_period: 40s
 
   retriever:
-    image: ${ECR_REGISTRY}/aurora-retriever:latest
+    image: ${ECR_REGISTRY}/aurora-retriever:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -379,7 +379,7 @@ services:
       start_period: 30s
 
   digester:
-    image: ${ECR_REGISTRY}/aurora-digester:latest
+    image: ${ECR_REGISTRY}/aurora-digester:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -452,7 +452,7 @@ services:
       start_period: 40s
 
   curator:
-    image: ${ECR_REGISTRY}/aurora-curator:latest
+    image: ${ECR_REGISTRY}/aurora-curator:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -534,7 +534,7 @@ services:
       start_period: 30s
 
   content_creator_service:
-    image: ${ECR_REGISTRY}/aurora-content-creator:latest
+    image: ${ECR_REGISTRY}/aurora-content-creator:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -590,7 +590,7 @@ services:
       start_period: 30s
 
   oracle:
-    image: ${ECR_REGISTRY}/aurora-oracle:latest
+    image: ${ECR_REGISTRY}/aurora-oracle:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
@@ -680,7 +680,7 @@ services:
       start_period: 40s
 
   frontend:
-    image: ${ECR_REGISTRY}/aurora-frontend:latest
+    image: ${ECR_REGISTRY}/aurora-frontend:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ../frontend
@@ -700,7 +700,7 @@ services:
   # =============================================================================
 
   nginx:
-    image: ${ECR_REGISTRY}/aurora-nginx:latest
+    image: ${ECR_REGISTRY}/aurora-nginx:${VERSION:-latest}
     # Uncomment to build locally instead of using ECR:
     # build:
     #   context: ..
