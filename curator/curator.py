@@ -262,6 +262,55 @@ class CuratorScheduler:
             logger.error(f"Orphan monitor failed: {e}", exc_info=True)
             update_job_state(job_name, is_running=False, last_error=str(e))
 
+    def _run_stalled_batch_cleanup(self):
+        """Mark stalled IngestionBatch nodes as failed.
+
+        Runs every 30 minutes. A batch is stalled when it has been in
+        'retrieving' or 'digesting' status for more than 2 hours — this means
+        the scraper or digester hung or was restarted mid-run.
+
+        This is the background companion to the digester's startup cleanup:
+        - Digester startup handles the common 'restart mid-run' case instantly.
+        - This watchdog catches the rarer 'process hung without restarting' case.
+        """
+        from neo4j_client.client import Neo4jClient
+
+        job_name = "stalled_batch_cleanup"
+        stall_hours = 2
+        try:
+            update_job_state(job_name, is_running=True)
+            client = Neo4jClient(
+                uri=settings.neo4j_uri, user=settings.neo4j_user,
+                password=settings.neo4j_password, database=settings.neo4j_database
+            )
+            client.connect()
+            result = client.execute_write(
+                f"""
+                MATCH (b:IngestionBatch)
+                WHERE b.status IN ['retrieving', 'digesting', 'scraping']
+                  AND b.scrape_started_at < datetime() - duration('PT{stall_hours}H')
+                SET b.status        = 'failed',
+                    b.error_message = 'Auto-cleaned by curator watchdog: stuck in '
+                                      + b.status + ' for >{stall_hours}h',
+                    b.digest_completed_at = datetime()
+                RETURN count(b) AS fixed
+                """,
+                {},
+            )
+            client.close()
+            fixed = result[0]["fixed"] if result else 0
+            update_job_state(job_name, is_running=False, last_run=datetime.now(), last_error=None)
+            if fixed > 0:
+                logger.warning(
+                    f"Stalled batch watchdog: marked {fixed} batch(es) as failed "
+                    f"(stuck >{stall_hours}h in retrieving/digesting)"
+                )
+            else:
+                logger.debug("Stalled batch watchdog: no stalled batches found")
+        except Exception as exc:
+            logger.error(f"Stalled batch cleanup failed: {exc}", exc_info=True)
+            update_job_state(job_name, is_running=False, last_error=str(exc))
+
     def _schedule_immediate_recheck(self):
         """
         Schedule an immediate threshold check after organization completes.
@@ -387,6 +436,18 @@ class CuratorScheduler:
             replace_existing=True,
         )
         logger.info("Orphan monitor: scheduled every 6 hours")
+
+        # Schedule stalled-batch watchdog (every 30 minutes).
+        # Catches batches that get stuck without a service restart —
+        # e.g., a scraper that hung on a network call and never returned.
+        self.scheduler.add_job(
+            self._run_stalled_batch_cleanup,
+            trigger=IntervalTrigger(minutes=30),
+            id="stalled_batch_cleanup",
+            name="Stalled Batch Cleanup",
+            replace_existing=True,
+        )
+        logger.info("Stalled batch watchdog: scheduled every 30 minutes")
         
         # Start the scheduler
         self.scheduler.start()
