@@ -220,20 +220,20 @@ class TestDatasourceLatestTemplate:
 
     def test_template_cypher_rejects_future_dates(self, registry_source):
         """DATASOURCE_LATEST must also filter future-dated documents."""
-        # Find the DATASOURCE_LATEST section
-        start = registry_source.find('DATASOURCE_LATEST')
+        # Use rfind so we land on the template definition, not an earlier comment reference
+        start = registry_source.rfind('DATASOURCE_LATEST')
         section = registry_source[start:start + 3000]
         assert 'datetime(r.publish_date) <= datetime()' in section
 
     def test_template_cypher_marks_results_as_latest_fallback(self, registry_source):
         """DATASOURCE_LATEST must set is_latest_fallback=true in RETURN clause."""
-        start = registry_source.find('DATASOURCE_LATEST')
+        start = registry_source.rfind('DATASOURCE_LATEST')
         section = registry_source[start:start + 3000]
         assert 'is_latest_fallback' in section
 
     def test_template_excludes_untitled_docs(self, registry_source):
         """Low-quality documents (empty/untitled) must be excluded."""
-        start = registry_source.find('DATASOURCE_LATEST')
+        start = registry_source.rfind('DATASOURCE_LATEST')
         section = registry_source[start:start + 3000]
         assert 'trim(r.title)' in section
         assert 'untitled' in section.lower()

@@ -101,13 +101,19 @@ def test_topic_manager_keeps_topic_extraction_for_temporal_queries_with_subject(
 
 
 def test_local_router_routes_latest_updates_query_to_recent_content():
-    """Temporal update prompts should avoid the generic definition route."""
+    """Temporal update prompts without explicit org should route to RECENT_CONTENT.
+    Queries that name a known org (wi-fi alliance, ietf, etc.) correctly route to
+    ORGANIZATION_ACTIVITY — use a generic phrasing to test the RECENT_CONTENT path."""
     router = LocalRouter()
 
-    route_id, confidence = router._match_route_pattern("what are the latest wi-fi alliance updates?")
-
+    # Generic recency query (no org name) → RECENT_CONTENT
+    route_id, confidence = router._match_route_pattern("what are the latest updates?")
     assert route_id == RouteId.RECENT_CONTENT
     assert confidence > 0
+
+    # Org-specific recency query → ORGANIZATION_ACTIVITY (correct)
+    route_id_org, _ = router._match_route_pattern("what are the latest wi-fi alliance updates?")
+    assert route_id_org == RouteId.ORGANIZATION_ACTIVITY
 
 
 def test_local_router_keeps_standards_topic_when_org_also_matches():
