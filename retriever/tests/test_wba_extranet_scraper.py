@@ -56,6 +56,7 @@ def scraper():
         s.base_url = "https://extranet.wballiance.com"
         s.is_authenticated = False
         s._community_datasource_ids = {}
+        s._home_html_cache = {}
         s.session = MagicMock()
         s.neo4j_client = None
         s.graph_repository = None
