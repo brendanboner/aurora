@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 DATATRACKER_BASE = "https://datatracker.ietf.org"
 IETF_MEETING_BASE = "https://datatracker.ietf.org/meeting"
 
+# Material name prefixes we want to scrape as resources; everything else is skipped.
+MATERIAL_INCLUDE = ("slides-", "agenda-")
+# Prefixes that are definitively noise (attendance sheets, recordings, chat logs).
+MATERIAL_EXCLUDE = ("bluesheets-", "recording-", "chatlog-", "sessionchair-", "draft-")
+
 
 class IETFDatatrackerScraper(BaseScraper):
     """
@@ -275,6 +280,98 @@ class IETFDatatrackerScraper(BaseScraper):
         )
 
     # ------------------------------------------------------------------
+    # Session material (slides / agenda) scraping
+    # ------------------------------------------------------------------
+
+    async def _scrape_session_materials(
+        self,
+        session: Dict,
+        meeting: Dict,
+        wg_acronym: str,
+        wg_name: str,
+        datasource_id: str,
+        area_acronym: str,
+        scraper_delay: float,
+    ) -> int:
+        """
+        Fetch and publish slide/agenda PDFs linked to a meeting session.
+
+        For each material ref in the session the Datatracker API returns a path
+        like ``/api/v1/doc/document/slides-125-lamps-chair-introduction/``.
+        We resolve that to the document's current revision, construct the PDF
+        download URL, extract the text, and publish it as a Resource.
+
+        Returns the number of new resources published.
+        """
+        meeting_number = meeting.get("number", "")
+        meeting_date = meeting.get("date", "")
+        material_refs: List[str] = session.get("materials", [])
+        published = 0
+
+        for ref in material_refs:
+            # e.g. "/api/v1/doc/document/slides-125-lamps-chair-introduction/"
+            doc_name = ref.rstrip("/").rsplit("/", 1)[-1]
+
+            if any(doc_name.startswith(exc) for exc in MATERIAL_EXCLUDE):
+                continue
+            if not any(doc_name.startswith(inc) for inc in MATERIAL_INCLUDE):
+                continue
+
+            category = "presentation" if doc_name.startswith("slides-") else "agenda"
+            doc_type = "slides" if doc_name.startswith("slides-") else "agenda"
+
+            # Strip "/api/v1" so _api_get can prepend API_BASE
+            api_path = ref[len("/api/v1"):] if ref.startswith("/api/v1") else f"/doc/document/{doc_name}/"
+
+            doc = await self._api_get(api_path.rstrip("/") + "/")
+            if not doc:
+                logger.debug(f"    [{wg_acronym}] No API metadata for: {doc_name}")
+                await asyncio.sleep(scraper_delay)
+                continue
+
+            name = doc.get("name") or doc_name
+            rev = doc.get("rev") or "00"
+            title = doc.get("title") or name
+
+            raw_time = doc.get("time")
+            if not raw_time and isinstance(doc.get("rev_history"), list) and doc["rev_history"]:
+                raw_time = doc["rev_history"][0].get("timestamp")
+            publish_date = raw_time[:10] if raw_time else meeting_date
+
+            pdf_url = f"{DATATRACKER_BASE}/meeting/{meeting_number}/materials/{name}-{rev}.pdf"
+
+            if self.url_exists_in_db(pdf_url):
+                logger.debug(f"    [{wg_acronym}] Already ingested: {pdf_url}")
+                continue
+
+            logger.info(f"    [{wg_acronym}] Fetching material PDF: {pdf_url}")
+            content = await self.fetch_and_extract_pdf(pdf_url)
+
+            # Skip if the PDF couldn't be downloaded (404, 403, network error)
+            if content.startswith("Failed to fetch PDF:") or content.startswith("Error fetching PDF:"):
+                logger.warning(f"    [{wg_acronym}] Could not fetch {pdf_url}: {content[:80]}")
+                await asyncio.sleep(scraper_delay)
+                continue
+
+            resource = Resource(
+                title=f"{title} — IETF {meeting_number} {wg_name.upper()}",
+                url=pdf_url,
+                category=category,
+                content=content,
+                publish_date=publish_date,
+                datasource_id=datasource_id,
+                doc_type=doc_type,
+            )
+            self.publish_resource(
+                resource,
+                additional_fields={"workgroup_id": wg_acronym, "area_acronym": area_acronym},
+            )
+            published += 1
+            await asyncio.sleep(scraper_delay)
+
+        return published
+
+    # ------------------------------------------------------------------
     # Per-WG scraping
     # ------------------------------------------------------------------
 
@@ -321,9 +418,14 @@ class IETFDatatrackerScraper(BaseScraper):
                 if event:
                     self.publish_event(event)
                     evt_count += 1
+                mat_count = await self._scrape_session_materials(
+                    session, meeting, wg_acronym, wg_name,
+                    datasource_id, area_acronym, scraper_delay,
+                )
+                res_count += mat_count
             await asyncio.sleep(scraper_delay)
 
-        logger.info(f"    [{wg_acronym}] Published {res_count} drafts, {evt_count} events")
+        logger.info(f"    [{wg_acronym}] Published {res_count} resources (drafts + materials), {evt_count} events")
         return res_count, evt_count
 
     # ------------------------------------------------------------------
