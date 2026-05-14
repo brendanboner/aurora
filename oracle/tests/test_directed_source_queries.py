@@ -60,6 +60,9 @@ def test_recent_content_template_rejects_future_dates():
     sys.modules['src.settings'].settings = types.SimpleNamespace(
         fast_template_version='1.0',
         fast_result_limit=10,
+        # Include attributes needed by other tests that share the module cache
+        parallel_retrieval_enabled=True,
+        retrieval_timeout=30,
     )
     # Minimal RouteId stub
     import enum

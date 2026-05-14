@@ -132,7 +132,8 @@ def test_effective_date_1970_excluded_by_max_threshold():
 def test_datasource_latest_template_also_rejects_future_dates(registry_source):
     """The DATASOURCE_LATEST fallback template must also reject future publish_dates."""
     # Find the DATASOURCE_LATEST block
-    start = registry_source.find('DATASOURCE_LATEST')
+    # Use rfind to land on the template definition rather than an earlier comment reference
+    start = registry_source.rfind('DATASOURCE_LATEST')
     assert start != -1, "DATASOURCE_LATEST template not found"
     # Check the relevant section (next 2000 chars after its definition)
     section = registry_source[start:start + 2000]
