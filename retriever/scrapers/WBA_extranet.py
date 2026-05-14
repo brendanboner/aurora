@@ -161,6 +161,10 @@ class WBAExtranetScraper(BaseScraper):
         self.is_authenticated = False
         # Cache of community_key -> upserted datasource_id (filled during run)
         self._community_datasource_ids: Dict[str, str] = {}
+        # Cache of community_key -> home page HTML (set in parse_community_landing,
+        # reused in _scrape_community_home_for_resources to avoid double-fetch which
+        # can cause different server-side state and result in 0 discussion links).
+        self._home_html_cache: Dict[str, str] = {}
 
     # ---- helpers ---------------------------------------------------------- #
 
@@ -760,6 +764,11 @@ class WBAExtranetScraper(BaseScraper):
             logger.error(f"Failed to fetch community home {community.home_url}: {exc}")
             return (None, [], [])
 
+        # Cache the HTML so _scrape_community_home_for_resources can reuse it
+        # without a second fetch (which can return different content due to
+        # session state changes after following many discussion thread links).
+        self._home_html_cache[community.community_key] = html
+
         soup = BeautifulSoup(html, "html.parser")
 
         # Description: prefer a long-form paragraph block near the page top.
@@ -958,6 +967,198 @@ class WBAExtranetScraper(BaseScraper):
             f"(since={since.date() if since else 'beginning'})"
         )
         return out
+
+    # ---- community home page fallback (works when digest viewer / library are JS-rendered) --- #
+
+    async def _scrape_community_home_for_resources(
+        self,
+        community: "CommunityRef",
+        community_datasource_id: str,
+        since: Optional[datetime],
+        limit: Optional[int],
+    ) -> List[Resource]:
+        """Scrape the community home page for discussion links and follow each to
+        extract document download URLs.
+
+        The digest-viewer and library pages are React SPAs and return no content to
+        BeautifulSoup. But the community home page (/communities/community-home?communitykey=X)
+        IS server-rendered and lists recent discussion threads — including document upload
+        announcements which carry the /higherlogic/ws/groups/{key}/download/{id}/latest URL.
+        """
+        home_url = community.home_url  # already /communities/community-home?communitykey=X
+
+        # Prefer cached HTML from parse_community_landing (same page, fetched earlier in
+        # the scrape loop). A second fetch can return different content due to session
+        # state changes caused by following discussion thread links for prior communities.
+        html = self._home_html_cache.get(community.community_key)
+        if not html:
+            try:
+                async with self.session.get(home_url, headers=self._headers()) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"Community home fallback {community.name}: HTTP {resp.status}")
+                        return []
+                    html = await resp.text()
+            except Exception as exc:
+                logger.error(f"Community home fallback {community.name}: fetch failed: {exc}")
+                return []
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Collect all /discussion/ links from the community home page (server-rendered)
+        seen_bases: set = set()
+        disc_links: List[str] = []
+        for a in soup.find_all("a", href=re.compile(r"/discussion/", re.I)):
+            href = a["href"].split("#")[0].strip()  # strip fragment
+            if href and href not in seen_bases:
+                seen_bases.add(href)
+                disc_links.append(href)
+
+        logger.info(
+            f"Community {community.name}: community home fallback found "
+            f"{len(disc_links)} discussion links"
+        )
+
+        # Build resources directly from discussion link text + title without
+        # following each thread. Following threads changes ASP.NET session state
+        # which then causes subsequent community home pages to render without
+        # their discussion links. Instead we use the discussion permalink as the
+        # resource URL; the download URL appears inside the thread but the
+        # digester can resolve it on first ingest.
+        resources: List[Resource] = []
+        max_links = limit or 50
+
+        for href in disc_links[:max_links]:
+            disc_url = self._abs_url(href) if href.startswith("/") else href
+            # Title: use the link text from the community home page anchor
+            link_text = ""
+            for a in soup.find_all("a", href=re.compile(re.escape(href.split("?")[0]), re.I)):
+                link_text = a.get_text(strip=True)
+                if link_text:
+                    break
+
+            title = link_text
+            # Strip " uploaded" trailer for document upload announcements
+            if title.lower().endswith(" uploaded"):
+                title = title[:-9].strip()
+            if not title:
+                title = href.rsplit("/", 1)[-1].replace("-", " ").title()
+
+            doc_type = self._guess_doc_type(title, disc_url)
+            if PREP_CALL_PATTERN.search(disc_url):
+                doc_type = "meeting-prep-call"
+
+            metadata_hash = self._metadata_hash(
+                community_datasource_id, title, None, None, None, None
+            )
+
+            resources.append(Resource(
+                title=title,
+                url=disc_url,
+                category="library" if any(
+                    ext in title.lower() for ext in [".pdf", ".docx", ".pptx", ".xlsx", ".doc"]
+                ) else "discussion",
+                content=None,
+                publish_date=None,
+                datasource_id=community_datasource_id,
+                doc_type=doc_type,
+                access_notes="WBA Extranet — login required",
+                content_hash=metadata_hash,
+                summary=None,
+            ))
+
+        logger.info(
+            f"Community {community.name}: community home fallback yielded "
+            f"{len(resources)} resources (without inline thread fetch)"
+        )
+        return resources
+
+    async def _resource_from_discussion_page(
+        self,
+        disc_url: str,
+        community_datasource_id: str,
+        since: Optional[datetime],
+    ) -> Optional[Resource]:
+        """Fetch one discussion thread page and return a Resource.
+
+        For document-upload announcements the Resource url is set to the
+        /higherlogic/ws/groups/.../download/.../latest endpoint so the digester
+        fetches and summarises the actual file.  For plain text threads the
+        discussion permalink is used.
+        """
+        async with self.session.get(disc_url, headers=self._headers(), allow_redirects=True) as resp:
+            if resp.status != 200:
+                return None
+            html = await resp.text()
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Title from <title> tag — strip " | Community Name" suffix and " uploaded" trailer
+        page_title_el = soup.find("title")
+        raw_title = page_title_el.get_text(strip=True) if page_title_el else ""
+        title = raw_title.split(" | ")[0].strip()
+        if title.lower().endswith(" uploaded"):
+            title = title[:-9].strip()
+        if not title:
+            return None
+
+        # Download URL: the "Download Latest Revision" link points to the actual file
+        dl_link = soup.find("a", href=re.compile(r"/higherlogic/ws/groups/.+/download/", re.I))
+        doc_viewer_link = soup.find("a", href=re.compile(r"/higherlogic/ws/groups/.+/documents/", re.I))
+
+        if dl_link:
+            resource_url = self._abs_url(dl_link["href"])
+            category = "library"
+        else:
+            resource_url = disc_url
+            category = "discussion"
+
+        # Date: try <time>, .date, .PostDate selectors first; fall back to title parsing
+        pub_date_iso: Optional[str] = None
+        date_el = soup.select_one("time, .date, .ThreadDate, .PostDate, .digestDate")
+        if date_el:
+            raw = (date_el.get("datetime") or date_el.get_text(strip=True) or "").strip()
+            if raw:
+                try:
+                    pub_date_iso = date_parse(raw).strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+
+        # Apply since filter — skip if we know the date and it's too old
+        if since and pub_date_iso:
+            try:
+                pub_dt = date_parse(pub_date_iso).replace(tzinfo=timezone.utc)
+                if pub_dt < since:
+                    return None
+            except Exception:
+                pass
+
+        # Text body for context
+        body_text = ""
+        body_el = soup.select_one(".ThreadBody, .PostBody, .discussion-body, article main")
+        if body_el:
+            body_text = sanitize_text(body_el.get_text(" ", strip=True))
+
+        # doc_type: guess from title/filename, or mark as prep-call if URL matches
+        doc_type = self._guess_doc_type(title, resource_url)
+        if PREP_CALL_PATTERN.search(disc_url):
+            doc_type = "meeting-prep-call"
+
+        metadata_hash = self._metadata_hash(
+            community_datasource_id, title, None, pub_date_iso, None, None
+        )
+
+        return Resource(
+            title=title,
+            url=resource_url,
+            category=category,
+            content=body_text[:2000] or None,
+            summary=body_text[:500] or None,
+            publish_date=pub_date_iso,
+            datasource_id=community_datasource_id,
+            doc_type=doc_type,
+            access_notes="WBA Extranet — login required",
+            content_hash=metadata_hash,
+        )
 
     # ---- library documents (metadata only) -------------------------------- #
 
@@ -1450,6 +1651,36 @@ class WBAExtranetScraper(BaseScraper):
                         limit=doc_limit,
                         since=None if first_run else since,
                     )
+
+                # Community home page fallback: the digest viewer and library
+                # pages are React SPAs — BeautifulSoup can't see their content.
+                # The community HOME page is server-rendered and lists recent
+                # discussion threads including document upload announcements.
+                # Follow each thread to extract the /higherlogic/ws/.../download/
+                # URL and publish as a library Resource.
+                if not threads and not docs:
+                    home_resources = await self._scrape_community_home_for_resources(
+                        community, community_datasource_id,
+                        since=None if first_run else since,
+                        limit=doc_limit,
+                    )
+                    for r in home_resources:
+                        if re.search(r"/higherlogic/ws/groups/.+/download/", r.url):
+                            docs.append(r)
+                        else:
+                            threads.append(r)
+                    if home_resources:
+                        logger.info(
+                            f"Community {community.name}: community home fallback "
+                            f"contributed {len(home_resources)} items "
+                            f"({len(docs)} docs, {len(threads)} threads)"
+                        )
+                        # Publish any text threads found via fallback
+                        for r in self.filter_new_urls(threads):
+                            self.publish_resource(r)
+                            items_processed += 1
+                        threads = []  # already published above
+
                 if docs:
                     urls = [d.url for d in docs]
                     existing = self.batch_check_urls_exist(urls)
@@ -1467,7 +1698,11 @@ class WBAExtranetScraper(BaseScraper):
                             needs_body = True
 
                         if needs_body:
-                            await self._fetch_document_body_inline(d)
+                            # Skip body download when SKIP_WBA_BODY_DOWNLOAD is set.
+                            # This lets production ingest the body; local dev just
+                            # proves the metadata pipeline works without large downloads.
+                            if not getattr(settings, 'wba_extranet_skip_body_download', False):
+                                await self._fetch_document_body_inline(d)
                             self.publish_resource(d)
                             items_processed += 1
 

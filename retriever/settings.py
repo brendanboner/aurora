@@ -74,7 +74,11 @@ class Settings(BaseSettings):
     # Used with HLIAMKey + HLPassword + HLUserLogin headers for the
     # /higherlogic/external/api/v2.0/ REST API endpoints.
     wba_extranet_iam_key: str = ""
-    
+    # Set to True (or WBA_EXTRANET_SKIP_BODY_DOWNLOAD=true) to skip document
+    # body downloads. Useful for local dev where you just want to prove the
+    # metadata pipeline works; production should leave this False.
+    wba_extranet_skip_body_download: bool = False
+
     # Event Sanitization Configuration
     sanitize_events: bool = True  # Enable/disable sensitive info sanitization
     sanitization_replacement_text: str = "[Meeting access details removed for privacy. Please view the source link for access details.]"
