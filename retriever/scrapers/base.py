@@ -26,7 +26,7 @@ class Resource:
     title: str
     url: str
     category: str
-    content: Optional[str] = None
+    content: str = ""  # digester requires a string; empty = body not yet fetched
     publish_date: Optional[str] = None  # ISO 8601 format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
     datasource_id: Optional[str] = None  # Which scraper/site this came from
     batch_id: Optional[str] = None       # Ingestion batch ID for tracking
@@ -48,7 +48,7 @@ class Resource:
             "title": self.title,
             "url": self.url,
             "category": self.category,
-            "content": self.content,
+            "content": self.content if self.content is not None else "",
             "publish_date": self.publish_date,
         }
         if self.doc_type is not None:
