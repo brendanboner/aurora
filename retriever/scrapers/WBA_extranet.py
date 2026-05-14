@@ -61,6 +61,10 @@ DEFAULT_BASE_URL = "https://extranet.wballiance.com"
 # /communities/community-home/digestviewer per the user's example URLs.
 PATH_LOGIN = "/login"
 PATH_ALL_COMMUNITIES = "/communities/all-communities"
+# Community directory page — server-rendered list of all communities as HTML links.
+# Visiting this page while authenticated exposes every ?CommunityKey= href that
+# Strategy 2 link-scanning can parse, unlike the React SPA at all-communities.
+PATH_COMMUNITY_DIRECTORY = "/communities/community-home?CommunityKey=dafe344a-d672-47cb-8fd8-a9be950c981d"
 PATH_COMMUNITY_HOME = "/communities/community-home"
 PATH_DIGEST_VIEWER = "/communities/community-home/digestviewer"
 PATH_LIBRARY = "/communities/community-home/librarydocuments"
@@ -609,90 +613,116 @@ class WBAExtranetScraper(BaseScraper):
           2. Scan all-communities HTML for any ?communitykey= links (fallback).
           3. If still 0, try the HigherLogic API endpoints.
         """
-        url = self._abs_url(PATH_ALL_COMMUNITIES)
-        logger.info(f"WBA Extranet: discovering communities at {url}")
-
-        try:
-            async with self.session.get(url, headers=self._headers()) as resp:
-                if resp.status != 200:
-                    logger.error(f"all-communities returned HTTP {resp.status}")
-                    return []
-                html = await resp.text()
-        except Exception as exc:
-            logger.error(f"Failed to fetch all-communities: {exc}")
-            return []
-
-        soup = BeautifulSoup(html, "html.parser")
         found: Dict[str, CommunityRef] = {}
 
-        # Strategy 1: parse React component configs embedded in scripts
-        import json as _json
-        for script in soup.find_all("script"):
-            text = script.get_text()
-            if "communityKey" not in text and "communitykey" not in text.lower():
-                continue
-            # Extract all GUID-like communityKey values
-            key_matches = re.findall(
-                r'["\']communityKey["\']\s*:\s*["\']([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\']',
-                text, re.IGNORECASE
-            )
-            for key in key_matches:
-                if key not in found:
-                    # Try to extract name from nearby context
-                    name_match = re.search(
-                        rf'["\']communityKey["\']\s*:\s*["\']{re.escape(key)}["\'].*?["\'](?:name|title|communityName)["\']\s*:\s*["\']([^"\']+)["\']',
-                        text, re.IGNORECASE | re.DOTALL
-                    )
-                    name = name_match.group(1) if name_match else f"Community {key[:8]}"
-                    home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
-                    found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+        # Strategy 0: fetch the server-rendered community directory page.
+        # This page lists all communities as plain HTML links (?CommunityKey=…)
+        # and is far more reliable than the React SPA at /all-communities.
+        dir_url = self._abs_url(PATH_COMMUNITY_DIRECTORY)
+        logger.info(f"WBA Extranet: discovering communities via directory at {dir_url}")
+        try:
+            async with self.session.get(dir_url, headers=self._headers()) as resp:
+                if resp.status == 200:
+                    dir_soup = BeautifulSoup(await resp.text(), "html.parser")
+                    for link in dir_soup.find_all("a", href=True):
+                        key = self._community_key_from_url(link["href"])
+                        if not key or key in found:
+                            continue
+                        name = link.get_text(strip=True) or f"Community {key[:8]}"
+                        home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
+                        found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+                    logger.info(f"WBA Extranet: directory page found {len(found)} communities")
+                else:
+                    logger.warning(f"WBA Extranet: directory page returned HTTP {resp.status}, falling back")
+        except Exception as exc:
+            logger.warning(f"WBA Extranet: directory page fetch failed: {exc}, falling back")
 
-        # Strategy 2: scan HTML links for ?communitykey= parameters
-        for link in soup.find_all("a", href=True):
-            href = link["href"]
-            key = self._community_key_from_url(href)
-            if not key or key in found:
-                continue
-            name = link.get_text(strip=True)
-            if not name:
-                parent = link.find_parent()
-                if parent is not None:
-                    name = parent.get_text(" ", strip=True)[:200]
-            if not name:
-                name = f"Community {key[:8]}"
-            home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
-            found[key] = CommunityRef(community_key=key, name=name, home_url=home)
-
-        # Strategy 3: if still empty, try HL API endpoints
+        # Strategy 1 & 2: React SPA fallback — only needed if directory page failed.
         if not found:
-            logger.info("WBA Extranet: no communities from HTML, trying HL API endpoints")
-            api_endpoints = [
-                "/api/community/search?count=100&orderBy=Name",
-                "/api/community/GetUserCommunities?count=100",
-            ]
-            for ep in api_endpoints:
-                try:
-                    async with self.session.get(
-                        self._abs_url(ep),
-                        headers={**self._headers(), "Accept": "application/json"},
-                        allow_redirects=False,
-                    ) as api_resp:
-                        if api_resp.status == 200:
-                            ct = api_resp.headers.get("Content-Type", "")
-                            if "json" in ct:
-                                data = await api_resp.json()
-                                items = data if isinstance(data, list) else data.get("communities", data.get("items", []))
-                                for item in items:
-                                    key = item.get("communityKey") or item.get("CommunityKey") or item.get("key")
-                                    name = item.get("name") or item.get("Name") or item.get("title") or f"Community {key[:8]}"
-                                    if key and key not in found:
-                                        home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
-                                        found[key] = CommunityRef(community_key=key, name=name, home_url=home)
-                                if found:
-                                    logger.info(f"WBA Extranet: found {len(found)} communities via API {ep}")
-                                    break
-                except Exception as exc:
-                    logger.debug(f"API endpoint {ep} failed: {exc}")
+            url = self._abs_url(PATH_ALL_COMMUNITIES)
+            logger.info(f"WBA Extranet: falling back to all-communities SPA at {url}")
+            try:
+                async with self.session.get(url, headers=self._headers()) as resp:
+                    if resp.status != 200:
+                        logger.error(f"all-communities returned HTTP {resp.status}")
+                        return []
+                    html = await resp.text()
+            except Exception as exc:
+                logger.error(f"Failed to fetch all-communities: {exc}")
+                return []
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Strategy 1: parse React component configs embedded in scripts
+            import json as _json
+            for script in soup.find_all("script"):
+                text = script.get_text()
+                if "communityKey" not in text and "communitykey" not in text.lower():
+                    continue
+                key_matches = re.findall(
+                    r'["\']communityKey["\']\s*:\s*["\']([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\']',
+                    text, re.IGNORECASE
+                )
+                for key in key_matches:
+                    if key not in found:
+                        name_match = re.search(
+                            rf'["\']communityKey["\']\s*:\s*["\']{re.escape(key)}["\'].*?["\'](?:name|title|communityName)["\']\s*:\s*["\']([^"\']+)["\']',
+                            text, re.IGNORECASE | re.DOTALL
+                        )
+                        name = name_match.group(1) if name_match else f"Community {key[:8]}"
+                        home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
+                        found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+
+            # Strategy 2: scan HTML links for ?communitykey= parameters
+            for link in soup.find_all("a", href=True):
+                href = link["href"]
+                key = self._community_key_from_url(href)
+                if not key or key in found:
+                    continue
+                name = link.get_text(strip=True)
+                if not name:
+                    parent = link.find_parent()
+                    if parent is not None:
+                        name = parent.get_text(" ", strip=True)[:200]
+                if not name:
+                    name = f"Community {key[:8]}"
+                home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
+                found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+
+        # Strategy 3: always try internal HL API endpoints and merge results.
+        # These work with the session cookie alone and return the full membership
+        # list. HTML scraping only catches keys baked into the initial React shell
+        # (typically 3-5), so merging is necessary to discover all communities.
+        html_count = len(found)
+        api_endpoints = [
+            "/api/community/search?count=200&orderBy=Name",
+            "/api/community/GetUserCommunities?count=200",
+        ]
+        for ep in api_endpoints:
+            try:
+                async with self.session.get(
+                    self._abs_url(ep),
+                    headers={**self._headers(), "Accept": "application/json"},
+                    allow_redirects=False,
+                ) as api_resp:
+                    if api_resp.status == 200:
+                        ct = api_resp.headers.get("Content-Type", "")
+                        if "json" in ct:
+                            data = await api_resp.json()
+                            items = data if isinstance(data, list) else data.get("communities", data.get("items", []))
+                            before = len(found)
+                            for item in items:
+                                key = item.get("communityKey") or item.get("CommunityKey") or item.get("key")
+                                name = item.get("name") or item.get("Name") or item.get("title") or f"Community {key[:8]}"
+                                if key and key not in found:
+                                    home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
+                                    found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+                            added = len(found) - before
+                            logger.info(f"WBA Extranet: API {ep} added {added} communities (total {len(found)})")
+                            if len(found) > html_count:
+                                break
+            except Exception as exc:
+                logger.debug(f"API endpoint {ep} failed: {exc}")
 
         communities = list(found.values())
         if not communities:

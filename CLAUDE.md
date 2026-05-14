@@ -94,7 +94,7 @@ These are real footguns that have caused regressions. The full list is in copilo
 | Auth/proxy | `auth/auth.py`, `auth/services/proxy.py`, `common/auth_middleware.py`, `common/service_client.py` |
 | Graph models / dedup | `neo4j-client/` (Topic, Organization, Person, Resource, Event, DataSource) |
 | CLI | `cli/aurora_query.py`, `cli/fast_questions.txt` (68-question test bank) |
-| Pipeline docs | `doc/PIPELINE_FLOW.md`, `doc/CURATOR_INTEGRATION.md` |
+| Pipeline docs | `doc/PIPELINE_FLOW.md`, `doc/FAST_PIPELINE.md`, `doc/CURATOR_OPTIMIZATION.md`, `doc/CREATOR_AGENT_ORACLE_INTEGRATION.md` |
 
 ## Debugging stale answers (fast pipeline)
 

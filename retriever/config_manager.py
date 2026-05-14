@@ -307,10 +307,16 @@ class ConfigManager:
         for ds in all_scheduled:
             schedule = ds.get('scrape_schedule')
             last_scraped = ds.get('last_scraped_at')
-            # Use last_scraped if available, otherwise fall back to updated_at/created_at
-            reference_time = last_scraped or ds.get('updated_at') or ds.get('created_at')
-            
-            if self.is_schedule_due(schedule, reference_time):
+
+            # Never-scraped datasources are always due — don't use created_at as a
+            # proxy, because a node created after the last cron slot would wrongly
+            # appear up-to-date and miss its first run entirely.
+            if last_scraped is None:
+                due_datasources.append(ds)
+                logger.debug(f"Datasource {ds['datasource_id']} is due (never scraped)")
+                continue
+
+            if self.is_schedule_due(schedule, last_scraped):
                 due_datasources.append(ds)
                 logger.debug(f"Datasource {ds['datasource_id']} is due (schedule: {schedule})")
         

@@ -2078,65 +2078,51 @@ class QueryTemplateRegistry:
             """
         )
         
-        # TOPIC_COMPARISON - compare two topics/standards side-by-side
+        # TOPIC_COMPARISON - compare two topics/standards side-by-side.
+        # Matches Topic nodes first; if fewer than 2 are found, falls back to DataSource nodes
+        # (workgroups such as "Wi-Fi 7" and "Wi-Fi 8" are DataSources, not Topics).
         self.templates[RouteId.TOPIC_COMPARISON] = QueryTemplate(
             route_id=RouteId.TOPIC_COMPARISON,
             description="Compare two topics or standards side-by-side",
             param_schema={
-                "topics": "list[str] (expects 2+ topics)",
+                "topics": "list[str] (2+ topic names or workgroup/datasource names)",
                 "start_date": "str (ISO date)",
                 "limit": "int"
             },
             cypher="""
-            // Find the topics to compare
+            // Resources for each comparison subject — try Topic nodes first, then DataSource nodes.
             MATCH (t:Topic)
-            WHERE any(topic IN $topics WHERE toLower(t.name) = toLower(topic) OR t.topic_id = topic OR any(alias IN coalesce(t.aliases, []) WHERE toLower(alias) = toLower(topic)))
-            
-            WITH collect(t) as topics_to_compare
-            WHERE size(topics_to_compare) >= 2
-            WITH topics_to_compare,
-                 CASE
-                     WHEN size(topics_to_compare) = 0 THEN 1
-                     ELSE toInteger(ceil(toFloat($limit) / size(topics_to_compare)))
-                 END as sample_limit
-            
-            // Get resources for each topic
-            UNWIND topics_to_compare as topic
-            MATCH (r:Resource)-[rt:RELATES_TO]->(topic)
+            WHERE any(term IN $topics WHERE
+                toLower(t.name) = toLower(term) OR t.topic_id = term OR
+                any(alias IN coalesce(t.aliases, []) WHERE toLower(alias) = toLower(term)))
+            MATCH (r:Resource)-[rt:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
               AND rt.relevance >= 0.5
               AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-            
-            // Collect organizations and key attributes
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
-            
-            // Drop topics_to_compare from scope before aggregation to avoid implicit grouping error
-            WITH topic, r, o, sample_limit
-            
-            WITH topic, sample_limit,
-                 count(DISTINCT r) as resource_count,
-                 collect(DISTINCT r.publish_date)[0..5] as recent_dates,
-                 collect(DISTINCT o.name)[0..10] as related_orgs,
-                 collect(DISTINCT {
-                     id: r.url_hash,
-                     title: r.title,
-                     date: r.publish_date,
-                     url: r.url,
-                     summary: r.summary
-                 })[0..sample_limit] as sample_resources
-            
-            RETURN 
-                topic.name as topic_name,
-                topic.topic_id as topic_id,
-                topic.description as description,
-                topic.classification as classification,
-                resource_count,
-                recent_dates,
-                related_orgs,
-                sample_resources
-            ORDER BY resource_count DESC
+            RETURN t.name AS subject_name, t.topic_id AS subject_id,
+                   t.description AS description, t.classification AS classification,
+                   r.url_hash AS res_id, r.title AS res_title, r.publish_date AS res_date,
+                   r.url AS res_url, r.summary AS res_summary, o.name AS org_name
+
+            UNION
+
+            MATCH (ds:DataSource)
+            WHERE any(term IN $topics WHERE
+                toLower(ds.name) = toLower(term) OR ds.datasource_id = term)
+            MATCH (r:Resource)-[:INGESTED_FROM]->(ds)
+            WHERE coalesce(r.archived, false) = false
+              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+            RETURN ds.name AS subject_name, ds.datasource_id AS subject_id,
+                   ds.description AS description, null AS classification,
+                   r.url_hash AS res_id, r.title AS res_title, r.publish_date AS res_date,
+                   r.url AS res_url, r.summary AS res_summary, o.name AS org_name
             """
         )
+        # Post-process: aggregate per-subject rows into the shape that _nodes_to_documents
+        # and _compose_standard_topic_comparison expect.
+        self.templates[RouteId.TOPIC_COMPARISON].post_process = self._post_process_topic_comparison
         
         # STATUS_CHECK - current status of topic/standard
         self.templates[RouteId.STATUS_CHECK] = QueryTemplate(
@@ -2846,3 +2832,56 @@ ORDER BY e.start_date DESC
         )
 
         logger.info(f"Registered {len(self.templates)} query templates")
+
+    @staticmethod
+    def _post_process_topic_comparison(results: List[Dict]) -> List[Dict]:
+        """Aggregate per-resource UNION rows into per-subject groups for TOPIC_COMPARISON."""
+        from collections import defaultdict
+
+        subjects: Dict[str, Dict] = {}
+
+        for row in results:
+            name = row.get("subject_name")
+            if not name:
+                continue
+            if name not in subjects:
+                subjects[name] = {
+                    "topic_name": name,
+                    "topic_id": row.get("subject_id"),
+                    "description": row.get("description"),
+                    "classification": row.get("classification"),
+                    "resource_count": 0,
+                    "recent_dates": [],
+                    "related_orgs": [],
+                    "sample_resources": [],
+                    "_seen_res": set(),
+                    "_seen_orgs": set(),
+                }
+            s = subjects[name]
+            res_id = row.get("res_id")
+            if res_id and res_id not in s["_seen_res"]:
+                s["_seen_res"].add(res_id)
+                s["resource_count"] += 1
+                res_date = row.get("res_date")
+                if res_date and len(s["recent_dates"]) < 5:
+                    s["recent_dates"].append(res_date)
+                if len(s["sample_resources"]) < 10:
+                    s["sample_resources"].append({
+                        "id": res_id,
+                        "title": row.get("res_title"),
+                        "date": res_date,
+                        "url": row.get("res_url"),
+                        "summary": row.get("res_summary"),
+                    })
+            org = row.get("org_name")
+            if org and org not in s["_seen_orgs"] and len(s["related_orgs"]) < 10:
+                s["_seen_orgs"].add(org)
+                s["related_orgs"].append(org)
+
+        result = []
+        for data in subjects.values():
+            data.pop("_seen_res", None)
+            data.pop("_seen_orgs", None)
+            result.append(data)
+
+        return sorted(result, key=lambda x: x["resource_count"], reverse=True)

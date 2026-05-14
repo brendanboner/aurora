@@ -25,6 +25,8 @@
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
+        deploy-auth deploy-backend deploy-curator deploy-digester deploy-retriever deploy-frontend deploy-neo4j-init deploy-nginx deploy-oracle deploy-content-creator deploy-kg-view \
+        release-auth release-backend release-curator release-digester release-retriever release-frontend release-neo4j-init release-nginx release-oracle release-content-creator release-kg-view \
         dev
 
 # Load common configuration (colors, ECR, region)
@@ -63,7 +65,9 @@ help:
 	@echo "$(GREEN)Service-Specific Commands:$(NC)"
 	@echo "  make test-<service>         - Run tests for a specific service"
 	@echo "  make build-push-<service>   - Build and push a specific service image"
-	@echo "  make ship-<service>         - Test, build, and ship a specific service"
+	@echo "  make ship-<service>         - Test, build, and push a specific service to ECR"
+	@echo "  make deploy-<service>       - Pull latest image + restart on EC2 via SSM"
+	@echo "  make release-<service>      - ship + deploy in one step"
 	@echo ""
 	@echo "  Or from service directory:"
 	@echo "    cd <service> && make test"
@@ -259,6 +263,99 @@ ship-content-creator:
 ship-kg-view:
 	@echo "$(CYAN)Testing, building, and shipping kg-view service...$(NC)"
 	@cd kg_view && $(MAKE) ship
+
+# =============================================================================
+# Deploy to Production (pull latest image + restart on EC2 via SSM)
+# =============================================================================
+# Usage: make deploy-<service>    — pull + restart one service on EC2
+#        make release-<service>   — ship (test+build+push) then deploy
+
+EC2_DEPLOY_PATH ?= /home/ec2-user/octo-rapid-aurora/prod-deployment
+EC2_COMPOSE     ?= docker compose -f docker-compose.prod.yml
+
+# Internal macro: send a shell command to EC2 via SSM and wait for it to finish
+define ssm-run
+	@echo "$(CYAN)Deploying to EC2 via SSM...$(NC)"
+	@CMD_ID=$$(aws ssm send-command \
+		--instance-ids $(EC2_INSTANCE_ID) \
+		--document-name "AWS-RunShellScript" \
+		--parameters 'commands=["sudo -u ec2-user bash -c \"cd $(EC2_DEPLOY_PATH) && $(1)\""]' \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION) \
+		--output text --query 'Command.CommandId'); \
+	echo "  SSM command: $$CMD_ID"; \
+	STATUS="InProgress"; \
+	while [ "$$STATUS" = "InProgress" ] || [ "$$STATUS" = "Pending" ]; do \
+		sleep 3; \
+		STATUS=$$(aws ssm get-command-invocation \
+			--command-id $$CMD_ID \
+			--instance-id $(EC2_INSTANCE_ID) \
+			--profile $(AWS_SSO_PROFILE) \
+			--region $(AWS_REGION) \
+			--output text --query 'Status' 2>/dev/null || echo "Pending"); \
+	done; \
+	aws ssm get-command-invocation \
+		--command-id $$CMD_ID \
+		--instance-id $(EC2_INSTANCE_ID) \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION) \
+		--output text --query 'StandardOutputContent'; \
+	if [ "$$STATUS" != "Success" ]; then \
+		aws ssm get-command-invocation \
+			--command-id $$CMD_ID \
+			--instance-id $(EC2_INSTANCE_ID) \
+			--profile $(AWS_SSO_PROFILE) \
+			--region $(AWS_REGION) \
+			--output text --query 'StandardErrorContent'; \
+		echo "$(RED)✗ Deploy failed (status: $$STATUS)$(NC)"; exit 1; \
+	fi; \
+	echo "$(GREEN)✓ $@ deployed$(NC)"
+endef
+
+deploy-auth:
+	$(call ssm-run,$(EC2_COMPOSE) pull auth && $(EC2_COMPOSE) up -d auth)
+
+deploy-backend:
+	$(call ssm-run,$(EC2_COMPOSE) pull backend && $(EC2_COMPOSE) up -d backend)
+
+deploy-curator:
+	$(call ssm-run,$(EC2_COMPOSE) pull curator && $(EC2_COMPOSE) up -d curator)
+
+deploy-digester:
+	$(call ssm-run,$(EC2_COMPOSE) pull digester && $(EC2_COMPOSE) up -d digester)
+
+deploy-retriever:
+	$(call ssm-run,$(EC2_COMPOSE) pull retriever && $(EC2_COMPOSE) up -d retriever)
+
+deploy-frontend:
+	$(call ssm-run,$(EC2_COMPOSE) pull frontend && $(EC2_COMPOSE) up -d frontend)
+
+deploy-neo4j-init:
+	$(call ssm-run,$(EC2_COMPOSE) pull neo4j-init && $(EC2_COMPOSE) run --rm neo4j-init)
+
+deploy-nginx:
+	$(call ssm-run,$(EC2_COMPOSE) pull nginx && $(EC2_COMPOSE) up -d nginx)
+
+deploy-oracle:
+	$(call ssm-run,$(EC2_COMPOSE) pull oracle && $(EC2_COMPOSE) up -d oracle)
+
+deploy-content-creator:
+	$(call ssm-run,$(EC2_COMPOSE) pull content_creator_service && $(EC2_COMPOSE) up -d content_creator_service)
+
+deploy-kg-view:
+	$(call ssm-run,$(EC2_COMPOSE) pull kg-view-frontend kg-view-backend && $(EC2_COMPOSE) up -d kg-view-frontend kg-view-backend)
+
+release-auth:          ship-auth          deploy-auth
+release-backend:       ship-backend       deploy-backend
+release-curator:       ship-curator       deploy-curator
+release-digester:      ship-digester      deploy-digester
+release-retriever:     ship-retriever     deploy-retriever
+release-frontend:      ship-frontend      deploy-frontend
+release-neo4j-init:    ship-neo4j-init    deploy-neo4j-init
+release-nginx:         ship-nginx         deploy-nginx
+release-oracle:        ship-oracle        deploy-oracle
+release-content-creator: ship-content-creator deploy-content-creator
+release-kg-view:       ship-kg-view       deploy-kg-view
 
 # =============================================================================
 # AWS ECR Login

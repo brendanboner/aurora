@@ -486,6 +486,12 @@ class LocalRouter:
         if skip_user_prefs:
             logger.debug(f"Skipping user preference expansion for {route_id.value} (focused query)")
         
+        # For TOPIC_COMPARISON, workgroup names serve as comparison subjects when no
+        # explicit topic entities were extracted (e.g. "wifi 7 vs wifi 8" lands in workgroups).
+        if route_id == RouteId.TOPIC_COMPARISON and not entities.get("topics") and entities.get("workgroups"):
+            entities["topics"] = list(entities["workgroups"])
+            logger.debug(f"TOPIC_COMPARISON: promoting workgroups to topics: {entities['topics']}")
+
         # Validate route: DOCUMENTS_BY_TOPIC requires at least one topic
         # If no topics found, fall back to GENERIC_SEARCH (full-text search)
         if route_id == RouteId.DOCUMENTS_BY_TOPIC and not entities.get("topics"):
