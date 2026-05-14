@@ -162,7 +162,7 @@ class ONFScraper(BaseScraper):
                         title=title,
                         url=url,
                         category=category,
-                        content=summary or None,
+                        content=summary or "",
                         publish_date=publish_date,
                         datasource_id=datasource_id,
                     )

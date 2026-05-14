@@ -1638,7 +1638,7 @@ class DocumentDigester:
         """
         if not self.graph_repository:
             return 0
-        stall_hours = 2  # anything older than this is definitely abandoned
+        stall_hours = 1  # anything older than this is definitely abandoned (was 2h)
         try:
             result = self.graph_repository.client.execute_write(
                 f"""
@@ -1682,9 +1682,26 @@ class DocumentDigester:
             # start consuming new messages — prevents monitoring noise.
             self._cleanup_stalled_batches_on_startup()
 
+            # Schedule periodic cleanup of stalled batches (every 2 hours).
+            # Batches accumulate when content=None or other validation errors
+            # prevent items from ever completing their batch counter.
+            import asyncio as _asyncio
+
+            async def _periodic_batch_cleanup():
+                while True:
+                    await _asyncio.sleep(2 * 3600)  # 2 hours
+                    try:
+                        fixed = self._cleanup_stalled_batches_on_startup()
+                        if fixed:
+                            logger.info(f"Periodic cleanup: marked {fixed} stalled batch(es) as failed")
+                    except Exception as _exc:
+                        logger.warning(f"Periodic batch cleanup failed (non-fatal): {_exc}")
+
+            _asyncio.create_task(_periodic_batch_cleanup())
+
             # Start consuming messages
             logger.info("Starting async message consumption from RabbitMQ...")
-            
+
             # Async consumer handles everything, no need for separate stop flag monitor
             await self.rabbitmq_consumer.consume(self.process_message)
             

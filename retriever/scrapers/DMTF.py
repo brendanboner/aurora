@@ -162,7 +162,7 @@ class DMTFScraper(BaseScraper):
                         title=title,
                         url=url,
                         category="news",
-                        content=summary or None,
+                        content=summary or "",
                         publish_date=publish_date,
                         datasource_id=datasource_id,
                     )

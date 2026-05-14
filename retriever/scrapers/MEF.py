@@ -174,7 +174,7 @@ class MEFScraper(BaseScraper):
                         title=title,
                         url=url,
                         category=category,
-                        content=content or None,
+                        content=content or "",
                         publish_date=publish_date,
                         datasource_id=datasource_id,
                     )
