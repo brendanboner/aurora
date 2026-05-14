@@ -189,7 +189,9 @@ def patched_base_scraper_deps(mock_neo4j_client, mock_graph_repository,
         mock_repo_class.return_value = mock_graph_repository
         mock_producer_class.return_value = mock_rabbitmq_producer
         mock_redis_class.return_value = mock_redis_client
-        mock_config_manager_class.return_value = MagicMock()
+        mock_config_manager = MagicMock()
+        mock_config_manager.get_ingestion_lookback_cutoff.return_value = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        mock_config_manager_class.return_value = mock_config_manager
         
         yield {
             'neo4j_client': mock_neo4j_client,

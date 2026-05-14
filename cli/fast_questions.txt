@@ -107,3 +107,36 @@ Explain the roaming problem caused by sticky clients
 How does beamforming improve signal strength in 802.11be?
 What is spatial reuse and how is it implemented in Wi-Fi 6?
 How does preamble puncturing work in Wi-Fi 6E and Wi-Fi 7?
+
+# --- 11. WBA WORKGROUPS & EXTRANET ---
+What is the WBA Enterprise Security for Private 5G workgroup working on?
+What has the WBA published about OpenRoaming?
+What is the WBA Roaming Work Group focusing on?
+What has the WBA AI/ML for Wi-Fi workgroup produced?
+What WBA workgroups are focused on Wi-Fi security topics?
+What is the WBA NextGen Work Group working on?
+What is the WBA doing about E2E Wi-Fi QoS and latency?
+What has the WBA published on Post-Quantum Cybersecurity for Wi-Fi?
+What does the WBA say about OpenRoaming for IoT deployments?
+What is the WBA position on 6G and Wi-Fi convergence?
+
+# --- 12. WFA CAUSEWAY WORKGROUPS ---
+What has the WFA Broadcast Technical Task Group published recently?
+What is the WFA Wi-Fi Location Task Group working on?
+What is the WFA Wi-Fi 8 Marketing Task Group focused on?
+What documents has the WFA Passpoint Task Group produced?
+What is the WFA Wi-Fi HaLow Task Group working on?
+
+# --- 13. @MENTION DATASOURCE QUERIES ---
+# These exercise the @mention → datasource_ids filtering path
+@broadcast what are the latest updates?
+@wifi8mtg what has been discussed recently in the Wi-Fi 8 task group?
+@wba what has the WBA published in the last month?
+@enterprise what is the latest on Enterprise Security for Private 5G?
+@openroaming what are the latest OpenRoaming developments?
+@roaming what is the Roaming Work Group focused on?
+@location what is the Wi-Fi Location Task Group working on?
+@passpoint what is new in Passpoint standardisation?
+@pqc what is the WBA Post-Quantum Cybersecurity workgroup doing?
+@nextgen what is the WBA NextGen workgroup working on?
+@aiml what has the AI/ML for Wi-Fi workgroup been discussing?

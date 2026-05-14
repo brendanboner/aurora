@@ -1,0 +1,3218 @@
+Aurora Fast-Pipeline Evaluation Report
+Date: 2026-05-14 11:57:44
+Oracle: http://localhost:8003
+Pipeline: fast (forced via pipeline_override)
+Scoring: Recall 1-5, Precision 1-5 (heuristic; 5=excellent)
+
+
+====================================================================================================
+  FILE: demo_questions.txt  (21 questions)
+====================================================================================================
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q01 [General]
+QUESTION: What was discussed in the last month across all working groups?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 1  |  TIME: 10.76s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The most recent discussions include:
+
+    1. **Tunnel Extensible Authentication Protocol (TEAP) Version 2**: The IETF EMU
+    Working Group addressed security and interoperability issues in TEAPv1, proposing
+    enhancements for authentication mechanisms within secure tunnels and improved
+    compatibility across implementations [1].
+
+    2. **Wi-Fi Alliance Broadcast Task Group**: Between May 11–14, 2026, discussions
+    focused on attendance tracking, broadcast MRD, voting rights, downlink and uplink
+    broadcast mechanisms, STA/AP roles, and compliance with Wi-Fi Alliance antitrust and
+    intellectual property policies [2].
+
+SOURCES:
+    [1] Tunnel Extensible Authentication Protocol (Teap) Version 2 (2026-05-12T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q02 [General]
+QUESTION: What are sticky clients and why are they a problem in Wi-Fi?
+
+PIPELINE: fast  |  ROUTE: issue_tracking  |  DOCS: 10  |  TIME: 9.57s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Sticky clients are Wi-Fi devices that remain connected to a specific access point (AP)
+    even when a better AP is available nearby. This behavior often occurs due to outdated
+    or inefficient roaming algorithms in the client device, which fail to make optimal
+    steering decisions.
+
+    The problem with sticky clients is that they degrade network performance by staying
+    connected to an AP with weaker signal strength, leading to slower speeds, higher
+    latency, and increased interference. This issue is particularly common in environments
+    with multiple APs, such as mesh networks or enterprise setups.
+
+    Meeting minutes from a Wi-Fi Alliance discussion highlight challenges in steering
+    sticky clients, especially older devices, and emphasize the need for improved
+    confidence in AP candidate lists to facilitate better roaming decisions [5]. Solutions
+    like Wi-Fi Certified EasyMesh™ aim to address these issues by standardizing AP
+    interoperability and optimizing client steering [2].
+
+SOURCES:
+    [1] Wi-Fi Alliance® Expresses Disappointment For Decision By Mexico Ift (N/A)
+    [2] Wi-Fi Certified Easymesh™: The Solution To Multiple Access Point Networks (N/A)
+    [3] Wi-Fi Alliance® Supports Senator’S Schatz’S Recommendation To Initiate A Process (N/A)
+    [4] Engineering The Wireless Hospital: Rf Issues (N/A)
+    [5] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q03 [General]
+QUESTION: What is the difference between Wi-Fi 7 and Wi-Fi 8?
+
+PIPELINE: fast  |  ROUTE: topic_comparison  |  DOCS: 10  |  TIME: 13.90s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 7 (802.11be) and Wi-Fi 8 are differentiated by their generational advancements
+    in speed, efficiency, and features. Wi-Fi 7 focuses on enabling multi-gigabit speeds,
+    extremely low latency, and enhanced reliability through features like Multi-Link
+    Operation (MLO), 320 MHz channels, and 4K-QAM modulation [3][4]. It is optimized for
+    applications like XR, automotive connectivity, and high-density environments.
+
+    Wi-Fi 8, while not yet fully detailed or standardized, is expected to build on Wi-Fi 7
+    by further enhancing spectral efficiency, power management, and support for emerging
+    technologies such as AI-driven network optimization and advanced IoT interoperability.
+    The focus will likely include more robust handling of ultra-low latency applications
+    and improved performance in crowded RF environments. Specific technical details are
+    pending future announcements and standardization efforts.
+
+SOURCES:
+    [1] Wi-Fi® For Xr Highlights (N/A)
+    [2] Wi-Fi Certified Qos Management™ Highlights (N/A)
+    [3] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    [4] 6 Ghz Wi-Fi®: Paving The Way For The Next Era Of Automotive Connectivity (2025-12-17T00:00:00Z)
+    [5] Certification Laboratory Availability (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q04 [General]
+QUESTION: What is the current status of the IEEE 802.11bc standard?
+
+PIPELINE: fast  |  ROUTE: status_check  |  DOCS: 2  |  TIME: 5.32s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 2 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The IEEE 802.11bc standard focuses on Wi-Fi broadcast technology, enabling real-time
+    information delivery in venues like stadiums and transportation hubs. It emphasizes
+    functionalities such as security, interoperability, and ecosystem support for use
+    cases requiring efficient broadcast communication [1].
+
+    The most recent update on 802.11bc was presented during a WBA plenary session in
+    Bangkok, highlighting its progress and alignment with Wi-Fi Alliance certification
+    efforts. This session included contributions from Cisco and Allied Telesis,
+    underscoring its importance for enterprise and carrier-grade deployments [2].
+
+    No further updates on its final ratification or deployment timeline are available in
+    the documents.
+
+SOURCES:
+    [1] A Few Comments To Broadcast Mrd Draft.Docx (N/A)
+    [2] Broadcasttg_Wba-Update_20260203.Pptx (N/A)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q05 [General]
+QUESTION: Who presented at the Wi-Fi 8 February 2026 face-to-face?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 7.14s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The February 2026 face-to-face Wi-Fi 8 Marketing Task Group meeting included
+    participation from organizations such as CableLabs, Huawei, Intel, Qualcomm, Apple
+    Inc., Cisco, Meta, and NXP Semiconductors. Key topics discussed were SMD roaming, TWT
+    early termination indication, secure control frames, WPA3, and the Wi-Fi 8 MRD. The
+    agenda also included policy reminders and discussions on dynamic analytics reports and
+    UHR security information [8].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (2026-03-27T02:26:18.208Z)
+    [2] Wi-Fi8--Mtg__Agenda _ 20260224-V2.Pptx (2026-03-16T18:29:13.009Z)
+    [3] Wi-Fi 8 Mrd V0.1.Docx (2026-05-13T09:51:02.902Z)
+    [4] Wi-Fi 8 Mrd V0.0.5.Docx (2026-05-13T09:50:37.521Z)
+    [5] Wi-Fi 8 Mrd V1.0.Docx (2026-05-13T09:49:15.31Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q06 [General]
+QUESTION: What has Qualcomm contributed to Wi-Fi 8 discussions?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 8.79s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Qualcomm has contributed to Wi-Fi 8 discussions primarily through its involvement in
+    secure control frames, coordinated beamforming (Co-BF), dynamic power save (DPS), and
+    target wake time (TWT) technologies. These contributions are part of the Market
+    Requirements Document (MRD) discussions aimed at enhancing efficiency, security, and
+    power management in Wi-Fi 8 [1], [5].
+
+    Additionally, Qualcomm participated in meetings addressing roaming technologies, blind
+    polling for MRD drafts, and early termination indications for TWT, reflecting its
+    focus on optimizing connectivity and device performance [5], [6]. Qualcomm's expertise
+    in AI-driven network optimization was also highlighted in a Wi-Fi Alliance podcast
+    discussing the future of Wi-Fi and AI integration [10].
+
+SOURCES:
+    [1] Wi-Fi 8 Mrd V1.0.Docx (2026-05-13T09:49:15.31Z)
+    [2] Broadcast-Tg-Minutes-20260210.Docx (2026-02-13T11:52:46.916Z)
+    [3] Xr-Mstg-Agenda-Nov 19 2025 V2.Pptx (2026-01-13T13:55:18.529Z)
+    [4] Wi-Fi8--Mtg_ Tt_Agenda _ 20260219-V1.Pptx (2026-02-20T11:52:31.635Z)
+    [5] Wi-Fi8--Mtg_ Agenda _ 20260210-V3.Pptx (2026-02-18T23:47:35.134Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q07 [General]
+QUESTION: What is on the agenda for upcoming Wi-Fi Alliance events?
+
+PIPELINE: fast  |  ROUTE: upcoming_events  |  DOCS: 10  |  TIME: 3.53s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The upcoming Wi-Fi Alliance events include recurring meetings for the Wi-Fi 8
+    Marketing Task Group and the Location Tiger Team. The most recent entries indicate:
+
+    - **Wi-Fi 8 Marketing Task Group Meetings**: These are ongoing, with the latest held
+    on May 12, 2026 [2][3].
+    - **Location Tiger Team Meetings**: Also recurring, with the latest on May 12, 2026
+    [1].
+
+    No specific agenda topics were listed for these meetings in the provided notes.
+
+SOURCES:
+    [1] Location Tiger Team (2026-05-12T00:00:00)
+    [2] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [3] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [4] Location Tiger Team (2026-05-05T00:00:00)
+    [5] Wi-Fi 8 Mtg Meeting (2026-05-05T00:00:00)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q08 [General]
+QUESTION: What is the latest Wi-Fi Alliance press release?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 4.49s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The latest Wi-Fi Alliance press release appears to be the **"Wi-Fi® and FTTH in 6 GHz
+    Highlights"**, published on May 11, 2026. It discusses topics such as cloud computing,
+    telemedicine, extended reality (XR), and advancements in Wi-Fi 8, emphasizing the role
+    of 6 GHz spectrum in these areas. This document highlights collaboration with
+    organizations like Ericsson and the FTTH Council EU [1].
+
+SOURCES:
+    [1] Wi-Fi® And Ftth In 6 Ghz Highlights (2026-05-11T13:36:09.97Z)
+    [2] Wi-Fi Alliance Insider – April 2026 (2026-05-11T13:35:21.939Z)
+    [3] Wi-Fi Certified 7™ Technology Overview (2026-05-11T13:33:06.384Z)
+    [4] Tg Voting Permission Form (2026-05-11T13:29:57.976Z)
+    [5] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q09 [General]
+QUESTION: What has the IETF published about Wi-Fi 7?
+
+PIPELINE: baseline  |  ROUTE: vector  |  DOCS: 10  |  TIME: 14.37s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The IETF has not directly published standards specifically labeled as "Wi-Fi 7."
+    However, many foundational technologies enabling Wi-Fi 7, such as Multi-Link Operation
+    (MLO) and enhancements for high-throughput and low-latency wireless communication, are
+    built on broader IEEE 802.11 standards and related IETF protocols.
+
+    The most relevant advancements in Wi-Fi 7 are discussed through Wi-Fi Alliance
+    documents, such as the introduction of **Wi-Fi Certified 7™**, which highlights
+    features like 320 MHz channels, 4K-QAM, and MLO for improved performance [4], [5],
+    [6]. These features align with ongoing IETF work on protocols supporting high-speed,
+    reliable transport over wireless networks, such as QUIC (RFC 9000) and HTTP/3 (RFC
+    9114).
+
+SOURCES:
+    [1] Wi-Fi 7 Trial Report For Residential Deployments By Cablelabs And Intel (2025-07-02T00:00:00)
+    [2] Wi-Fi 7 Trials For Enterprise Scenarios By At&T, Commscope And Intel (2025-07-05T00:00:00)
+    [3] Wi-Fi 7 Trial Report Featuring Türk Telekom, Hpe Aruba Networking, And Intel (2025-09-18T00:00:00)
+    [4] Wi-Fi Alliance® Introduces Wi-Fi Certified 7™ (N/A)
+    [5] Wi-Fi Certified 7™ Technology Overview (2024) (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q10 [General]
+QUESTION: Show me recent IETF drafts on 6 GHz spectrum.
+
+PIPELINE: fast  |  ROUTE: ietf_wg_updates  |  DOCS: 10  |  TIME: 4.30s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    There are no recent IETF drafts specifically addressing the 6 GHz spectrum in the
+    provided notes. The most recent updates focus on other topics like post-quantum
+    cryptography in EAP methods [1], SSH key exchange enhancements [2], and BGP extensions
+    [3]. If you're looking for 6 GHz-related developments, these may be more likely found
+    in IEEE 802.11 working groups or Wi-Fi Alliance publications.
+
+SOURCES:
+    [1] Post-Quantum Enhancements To Tls-Based Eap Methods (2026-05-14T00:00:00)
+    [2] Ssh Strict Kex Extension (2026-05-14T00:00:00)
+    [3] Advertising Sid Algorithm Information In Bgp (2026-05-14T00:00:00)
+    [4] Automated Certificate Management Environment (Acme) Dns Labeled With Acme Accoun (2026-05-13T00:00:00)
+    [5] Privacy Pass Issuance Protocols With Public Metadata (2026-05-13T00:00:00)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q11 [General]
+QUESTION: What are Wi-Fi 8 Secure Control Frames?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 6.08s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 8 Secure Control Frames are a new feature outlined in the Wi-Fi 8 Marketing
+    Requirements Document (MRD). They enhance the security of management and control
+    frames, which are critical for network operations like association, authentication,
+    and coordination between devices. This feature aims to mitigate vulnerabilities such
+    as spoofing and denial-of-service attacks by ensuring these frames are authenticated
+    and encrypted where necessary. Secure Control Frames align with broader Wi-Fi 8 goals
+    of improving security, reliability, and seamless mobility across networks [3], [5].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (2026-03-27T02:26:18.208Z)
+    [2] Wi-Fi8--Mtg__Agenda _ 20260224-V2.Pptx (2026-03-16T18:29:13.009Z)
+    [3] Wi-Fi 8 Mrd V0.1.Docx (2026-05-13T09:51:02.902Z)
+    [4] Wi-Fi 8 Mrd V0.0.5.Docx (2026-05-13T09:50:37.521Z)
+    [5] Wi-Fi 8 Mrd V1.0.Docx (2026-05-13T09:49:15.31Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q12 [WBA WORKGROUPS & EXTRANET]
+QUESTION: What is the WBA Enterprise Security for Private 5G workgroup working on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 8.72s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA Enterprise Security for Private 5G workgroup is focused on developing a
+    comprehensive security framework for private 5G (P5G) networks. Key areas include:
+
+    - Security architecture and interoperability requirements between P5G and enterprise
+    Wi-Fi (802.11) [1].
+    - Alignment with GSMA and 3GPP security baselines to ensure consistency across
+    cellular and enterprise environments [1].
+    - Enterprise threat modeling, risk assessments, and countermeasure frameworks tailored
+    to P5G deployments [1], [10].
+    - A "Phase 2 Technical Blueprint" draft, which includes detailed methodologies and
+    strategies for securing P5G networks. This draft is currently under review and pending
+    finalization [6], [8].
+
+    The group also provides integration guidance for enterprise network operators and
+    addresses authentication and authorization mechanisms specific to P5G environments
+    [10].
+
+SOURCES:
+    [1] Enterprise Security For P5G Framework - Final Document (Wba) (2026-04-28T00:00:00Z)
+    [2] Enterprise Security For Private 5G Networks (2026-05-13T17:28:32.586Z)
+    [3] Enterprise Security For Private 5G Networks (2026-05-13T17:28:32.577Z)
+    [4] Enterprise Security For Private 5G Networks (2026-05-13T17:28:13.112Z)
+    [5] Enterprise Security For Private 5G Networks (2026-05-13T17:28:20.46Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q13 [WBA WORKGROUPS & EXTRANET]
+QUESTION: What has the WBA published about OpenRoaming?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 6.46s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wireless Broadband Alliance (WBA) has highlighted several significant OpenRoaming
+    deployments:
+
+    - **Westminster City Council**: Implemented multilingual onboarding portals and
+    seamless authentication across heterogeneous infrastructure to support smart city
+    initiatives [1].
+    - **Aida Cruises & Cisco**: Enhanced guest connectivity with automatic network
+    onboarding, advanced location services, and seamless integration into the Aida app
+    [2][5].
+    - **Wayfi Wireless & Alta Labs**: Focused on cellular offload, VLAN segmentation,
+    cloud-managed access points, and SIM-based authentication for Wi-Fi calling [3].
+    - **Kepco**: Integrated OpenRoaming into a digital disaster response ecosystem,
+    emphasizing energy security and smart city applications [4].
+
+    These deployments demonstrate OpenRoaming's flexibility in diverse environments, from
+    smart cities to hospitality and disaster preparedness.
+
+SOURCES:
+    [1] Awards Case Study: Best Openroaming Deployment – Westminster City Council (2026-10-03T00:00:00Z)
+    [2] Awards Case Study: Best Openroaming Deployment – Aida Cruises & Cisco (2026-10-03T00:00:00Z)
+    [3] Awards Case Study: Best Openroaming Deployment – Wayfi Wireless & Alta Labs (2026-10-03T00:00:00Z)
+    [4] Awards Case Study: Best Openroaming Deployment – Kepco (2026-10-03T00:00:00Z)
+    [5] Awards Case Study: Best Openroaming Deployment – Aida & Cisco (2026-02-23T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q14 [WBA WORKGROUPS & EXTRANET]
+QUESTION: What is the WBA Roaming Work Group focusing on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 9.30s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA Roaming Work Group is primarily focused on advancing **OpenRoaming**
+    technology to enable seamless, secure, and automatic Wi-Fi connectivity across
+    networks. Recent efforts include:
+
+    - **OpenRoaming Trials**: A trial in London demonstrated simplified and secure roaming
+    across networks, showcasing the potential for urban connectivity improvements [4].
+    - **Business Adoption Initiatives**: Programs like Purple's free initiative aim to
+    accelerate OpenRoaming adoption among businesses, promoting widespread integration
+    [6].
+    - **Collaborations**: New members, such as Longfi Solutions, are contributing to
+    OpenRoaming and Wi-Fi offload advancements [5].
+    - **Deployment Success Stories**: Case studies highlight impactful deployments, such
+    as Westminster City Council's smart city connectivity and Aida Cruises' passenger-
+    focused solutions [9], [3].
+
+    These efforts aim to enhance user experience, security, and interoperability in public
+    and enterprise Wi-Fi environments.
+
+SOURCES:
+    [1] Wireless Broadband Alliance And Wi-Fi Alliance® To Demonstrate Wi-Fi® Roaming At (2026-01-04T05:15:06.669Z)
+    [2] Awards Case Study: Best Openroaming Deployment – Wayfi Wireless & Alta Labs (2026-05-13T23:25:29.514Z)
+    [3] Awards Case Study: Best Openroaming Deployment – Aida Cruises & Cisco (2026-05-13T23:25:28.698Z)
+    [4] Wireless Broadband Alliance Announces Completion Of Openroaming Trial In London, (2026-05-11T23:17:31.642Z)
+    [5] Longfi Solutions Joins Wireless Broadband Alliance To Accelerate Wi-Fi Offload A (2026-05-11T20:46:05.208Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q15 [WBA WORKGROUPS & EXTRANET]
+QUESTION: What has the WBA AI/ML for Wi-Fi workgroup produced?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 7.59s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent information I have does not include specific deliverables or
+    publications from the WBA AI/ML for Wi-Fi workgroup. If you're looking for updates on
+    this group's activities, the most recent WBA focus areas I can confirm are related to
+    OpenRoaming advancements and urban connectivity trials. For AI/ML in Wi-Fi, no direct
+    outputs or updates are documented in my notes.
+
+SOURCES:
+    [1] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 29 (4:40:00 - 4: (2026-02-06T17:05:24.510432)
+    [2] Cisco Ai Summit | The Event Defining The Future Of Ai (2026-02-05T16:52:01.131810)
+    [3] External Liaisons (N/A)
+    [4] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 32 (5:10:00 - 5: (2026-02-06T17:05:24.510432)
+    [5] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 19 (3:00:00 - 3: (2026-02-06T17:05:24.510432)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q16 [WBA WORKGROUPS & EXTRANET]
+QUESTION: What WBA workgroups are focused on Wi-Fi security topics?
+
+PIPELINE: fast  |  ROUTE: wba_programme_list  |  DOCS: 1  |  TIME: 2.69s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The WBA workgroups focused on Wi-Fi security topics include the **Next Gen Wi-Fi**
+    group and the **Post-Quantum Cryptography (PQC)** group. The Next Gen Wi-Fi group
+    addresses security enhancements in upcoming Wi-Fi standards, while the PQC group
+    explores cryptographic methods to secure Wi-Fi against quantum computing threats [1].
+
+SOURCES:
+    [1] WBA Extranet (Programmes & Workgroups) (N/A)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q17 [@MENTION DATASOURCE QUERIES]
+QUESTION: @broadcast what are the latest updates?
+
+PIPELINE: fast  |  ROUTE: workgroup_weekly_recap  |  DOCS: 10  |  TIME: 0.05s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wfa Causeway - Broadcast Tg activity for May 11 - May 14, 2026:. 17 document(s).
+
+
+    **Top Topics:** attendance tracking, broadcast mrd, voting rights, broadcast task
+    group, downlink broadcast, uplink broadcast, sta, ap, wi-fi alliance antitrust policy,
+    wi-fi alliance intellectual property rights policy
+
+SOURCES:
+    [1] Broadcast Tg Attendance - 20260423 .Xlsx (N/A)
+    [2] Broadcast-Tg-Minutes-20260410.Docx (N/A)
+    [3] Broadcast-Tg-Minutes-20260423.Docx (N/A)
+    [4] Broadcast-Tg-Minutes-20260224.Docx (N/A)
+    [5] Broadcast Tg Meeting Agenda.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q18 [@MENTION DATASOURCE QUERIES]
+QUESTION: @wifi8mtg what has been discussed recently in the Wi-Fi 8 task group?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 10  |  TIME: 6.63s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent discussions in the Wi-Fi 8 task group include updates to the Marketing
+    Requirements Document (MRD) and technical features. Key topics from the March 17,
+    2026, meeting include **Seamless Mobility Domain (SMD) roaming**, **bounded ESS for
+    SMD BSS transitions**, and contributions to MRD text [4]. The agenda also addressed
+    certification readiness and coordinated time division multiple access (TDMA) [5].
+
+    Earlier meetings in February 2026 focused on MRD text contributions, **MIMO with
+    UEQM**, **LDPC/BCC coding**, and **Dynamic Subband Operation (DSO)** [8], [9].
+    Security aspects like WPA3 and RSNO were also discussed on March 19, 2026 [6].
+
+SOURCES:
+    [1] Wi-Fi 8 Mrd V0.1.Docx (1970-01-01T00:00:00Z)
+    [2] Wi-Fi 8 Mrd V0.0.5.Docx (1970-01-01T00:00:00Z)
+    [3] Wi-Fi 8 Mrd V1.0.Docx (1970-01-01T00:00:00Z)
+    [4] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (1970-01-01T00:00:00Z)
+    [5] Wi-Fi8--Mtg__Agenda _ 20260317-V3.Pptx (1970-01-01T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q19 [@MENTION DATASOURCE QUERIES]
+QUESTION: @wba what has the WBA published in the last month?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 3  |  TIME: 7.58s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wireless Broadband Alliance (WBA) published the following in the last month:
+
+    1. **Wi-Fi HaLow for IoT Japan Field Trials Report** (April 28, 2026): This report
+    evaluates Wi-Fi HaLow (IEEE 802.11ah) performance in diverse environments across
+    Japan, such as industrial sites, residential complexes, school campuses, and
+    underground spaces. Key findings highlight its long-range connectivity, low-power
+    operation, and signal penetration, making it suitable for large-scale IoT deployments.
+    Use cases include security cameras, OTA updates, and access control systems [1][2].
+
+    2. **Enterprise Connectivity Forum (ECF) Slide Deck** (April 20, 2026): Presentation
+    from the April 16 forum covering advancements in OpenRoaming, AI-driven network
+    operations, autonomous networking, and predictive healing. It includes case studies on
+    zero-touch deployment and multi-agent orchestration for enterprise Wi-Fi [3].
+
+SOURCES:
+    [1] Wi-Fi Halow For Iot Japan Field Trials Report – Japanese Version (2026-04-28T00:00:00Z)
+    [2] Wi-Fi Halow For Iot Japan Field Trials Report (2026-04-28T00:00:00Z)
+    [3] Enterprise Connectivity Forum (Ecf) – April 16, 2026 – Presentation Slide Deck (2026-04-20T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q20 [@MENTION DATASOURCE QUERIES]
+QUESTION: @enterprise what is the latest on Enterprise Security for Private 5G?
+
+PIPELINE: fast  |  ROUTE: workgroup_weekly_recap  |  DOCS: 10  |  TIME: 0.04s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Enterprise Security for Private 5G Networks activity for May 11 - May 14, 2026:. 10
+    document(s).
+
+
+    **Top Topics:** phase 2 technical blueprint draft, private 5g, enterprise security,
+    technical blueprint, webex, enterprise architecture framework analysis, integration
+    guidance for enterprise network operators, authentication and authorisation mechanisms
+    for p5g environments, interoperability requirements, threat model and risk assessment
+    for p5g network architectures
+
+SOURCES:
+    [1] Enterprise Security For Private 5G Networks (N/A)
+    [2] Enterprise Security For Private 5G Networks (N/A)
+    [3] Enterprise Security For Private 5G Networks (N/A)
+    [4] Enterprise Security For Private 5G Networks (N/A)
+    [5] Enterprise Security For Private 5G Networks (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q21 [@MENTION DATASOURCE QUERIES]
+QUESTION: @openroaming what are the latest OpenRoaming developments?
+
+PIPELINE: baseline  |  ROUTE: keyword  |  DOCS: 10  |  TIME: 18.41s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have new OpenRoaming updates for this month. The most recent update is from
+    November 26, 2025, highlighting OpenRoaming's growing adoption in Japan. It emphasized
+    seamless Wi-Fi connectivity, improved user experience, and enhanced network security,
+    driven by collaboration among organizations to promote deployment [2].
+
+SOURCES:
+    [1] Unlocking Wi-Fi Potential With Openroaming – Webinar Recording (2023-04-14T00:00:00)
+    [2] The Growing Presence Of Openroaming In Japan (2025-11-26T00:00:00)
+    [3] Progress Update From The Wireless Broadband Alliance’S Openroaming Work Group In (N/A)
+    [4] Openroaming Release 5 (N/A)
+    [5] Industry Impact Award Winner: Cisco (N/A)
+    ... and 5 more
+
+
+====================================================================================================
+  SUMMARY TABLE — demo_questions.txt
+====================================================================================================
+#    Question                                                       Pipeline     R   P
+──── ────────────────────────────────────────────────────────────── ────────── ─── ───
+1    What was discussed in the last month across all working grou   fast         4   4
+2    What are sticky clients and why are they a problem in Wi-Fi?   fast         4   4
+3    What is the difference between Wi-Fi 7 and Wi-Fi 8?            fast         4   4
+4    What is the current status of the IEEE 802.11bc standard?      fast         4   4
+5    Who presented at the Wi-Fi 8 February 2026 face-to-face?       fast         4   4
+6    What has Qualcomm contributed to Wi-Fi 8 discussions?          fast         4   4
+7    What is on the agenda for upcoming Wi-Fi Alliance events?      fast         4   4
+8    What is the latest Wi-Fi Alliance press release?               fast         4   4
+9    What has the IETF published about Wi-Fi 7?                     baseline     4   4
+10   Show me recent IETF drafts on 6 GHz spectrum.                  fast         4   4
+11   What are Wi-Fi 8 Secure Control Frames?                        fast         4   4
+12   What is the WBA Enterprise Security for Private 5G workgroup   fast         4   4
+13   What has the WBA published about OpenRoaming?                  fast         4   4
+14   What is the WBA Roaming Work Group focusing on?                fast         4   4
+15   What has the WBA AI/ML for Wi-Fi workgroup produced?           fast         4   4
+16   What WBA workgroups are focused on Wi-Fi security topics?      fast         3   4
+17   @broadcast what are the latest updates?                        fast         4   4
+18   @wifi8mtg what has been discussed recently in the Wi-Fi 8 ta   fast         4   4
+19   @wba what has the WBA published in the last month?             fast         4   4
+20   @enterprise what is the latest on Enterprise Security for Pr   fast         4   4
+21   @openroaming what are the latest OpenRoaming developments?     baseline     4   4
+
+Poor answers (recall ≤ 2): 0/21
+
+====================================================================================================
+  FILE: fast_questions.txt  (94 questions)
+====================================================================================================
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q01 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: What was discussed in the last month across all working groups?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 1  |  TIME: 0.04s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The most recent discussions include:
+
+    1. **Tunnel Extensible Authentication Protocol (TEAP) Version 2**: The IETF EMU
+    Working Group addressed security and interoperability issues in TEAPv1, proposing
+    enhancements for authentication mechanisms within secure tunnels and improved
+    compatibility across implementations [1].
+
+    2. **Wi-Fi Alliance Broadcast Task Group**: Between May 11–14, 2026, discussions
+    focused on attendance tracking, broadcast MRD, voting rights, downlink and uplink
+    broadcast mechanisms, STA/AP roles, and compliance with Wi-Fi Alliance antitrust and
+    intellectual property policies [2].
+
+SOURCES:
+    [1] Tunnel Extensible Authentication Protocol (Teap) Version 2 (2026-05-12T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q02 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: What happened in the Wi-Fi 8 working group last week?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 1  |  TIME: 12.73s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The Wi-Fi 8 working group did not have specific discussions last week. However, the
+    Wi-Fi Alliance Broadcast Task Group met from May 11–14, 2026, addressing topics like
+    attendance tracking, broadcast MRD, voting rights, downlink/uplink broadcast
+    mechanisms, STA/AP roles, and compliance with antitrust and intellectual property
+    policies [1].
+
+SOURCES:
+    [1] Tunnel Extensible Authentication Protocol (Teap) Version 2 (2026-05-12T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q03 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: Give me a summary of the most recent Wi-Fi Alliance publications
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 5.96s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent Wi-Fi Alliance publication is from May 6, 2026, titled "Ai At The
+    Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity," discussing advancements in
+    connectivity through Wi-Fi 7 and Wi-Fi 8 and their role in AI-driven edge computing
+    [1].
+
+SOURCES:
+    [1] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00Z)
+    [2] Episode 99: Ceo Insights: Wi-Fi Alliance® And Dan Herscovici Of Plume (2026-04-09T00:00:00Z)
+    [3] Episode 98: Iot 2.0 And How Wi-Fi Halow Is Transforming Smart Connectivity With  (2026-04-02T00:00:00Z)
+    [4] 6 Ghz Wi-Fi® In Europe: A Strategic Imperative For The Future Of Eu Connectivity (2026-03-24T00:00:00Z)
+    [5] Episode 97: Wi-Fi 7 And The Next Era Of Iot Connectivity With Sivaram Trikutam A (2026-03-11T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q04 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: What were the key topics from the latest Wi-Fi 8 meeting minutes?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 1  |  TIME: 0.46s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The latest Wi-Fi 8 meeting minutes are not explicitly detailed in the provided notes.
+    However, the most recent related discussion on Wi-Fi 8 was featured in a Wi-Fi
+    Alliance podcast episode on May 6, 2026. It focused on how Wi-Fi 7 and Wi-Fi 8 are
+    redefining connectivity, particularly through the integration of AI at the edge [1].
+    Specific technical or working group updates on Wi-Fi 8 were not included in this
+    content.
+
+SOURCES:
+    [1] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q05 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: What documents were published in the last 30 days?
+
+PIPELINE: fast  |  ROUTE: recent_publications  |  DOCS: 10  |  TIME: 11.68s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    In the last 30 days, the following documents were published:
+
+    1. **"Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity"** by the
+    Wi-Fi Alliance on May 6, 2026, discussing advancements in Wi-Fi 7 and Wi-Fi 8 and
+    their role in AI-driven edge computing [1].
+    2. Multiple updates from IEEE 802.3 Working Group, including:
+       - **Agendas and Minutes** detailing historical and recent activities in Ethernet
+    standards development [1].
+       - **Requirements for Voting** outlining criteria for participation in IEEE 802.3
+    ballots [2].
+       - **Archive of Completed Work** summarizing finalized Ethernet projects, including
+    advancements in optical PHYs and timestamping accuracy [3].
+       - **Task Force and Study Group Officers** providing updates on ongoing Ethernet
+    projects like IEEE P802.3dq and P802.3dp [4].
+       - **Maintenance Activities** covering updates on Ethernet MIBs, YANG models, and
+    Power over Ethernet [5].
+
+    These documents highlight ongoing developments in Wi-Fi and Ethernet technologies.
+
+SOURCES:
+    [1] Agendas And Minutes (2026-05-14T09:49:45.165Z)
+    [2] Requirements For Voting (2026-05-14T09:47:24.249Z)
+    [3] Archive Of Completed Work (2026-05-14T09:46:18.22Z)
+    [4] Task Force, Study Group, And Ad Hoc Officers (2026-05-14T09:45:12.338Z)
+    [5] Maintenance (2026-05-14T09:45:11.55Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q06 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: Summarise the latest Wi-Fi Alliance Causeway workgroup activity
+
+PIPELINE: baseline  |  ROUTE: keyword  |  DOCS: 10  |  TIME: 14.73s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have specific updates on the Wi-Fi Alliance Causeway workgroup. The most
+    recent Wi-Fi Alliance activity I have is from December 11, 2025, which focused on Wi-
+    Fi 6 and Wi-Fi 7 interoperability testing, including device performance, multi-link
+    operation (MLO), and WPA3 readiness [1]. If Causeway was involved, it wasn't
+    explicitly mentioned in the available documents.
+
+SOURCES:
+    [1] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    [2] Wi-Fi Alliance Messaging Collective Highlights (N/A)
+    [3] Wi-Fi Alliance Insider – August 2024 (N/A)
+    [4] Wi-Fi Alliance Insider – October 2024 (N/A)
+    [5] Connectivity Strategies For Smart Multi-Dwelling Units (Mdus) (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q07 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: What new content was added to the knowledge base recently?
+
+PIPELINE: baseline  |  ROUTE: keyword  |  DOCS: 10  |  TIME: 32.73s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent additions to the knowledge base are from October 3, 2026, and include
+    detailed case studies from the Wireless Broadband Alliance's 2025 Industry Awards:
+
+    1. **LG U+** was recognized as the Best Wi-Fi Network Operator for launching Korea's
+    first commercial Wi-Fi 7 router, leveraging AI/ML for quality analysis, and advancing
+    QoS technologies like TR-398 and multi-link operation (MLO) [2].
+    2. **Türk Telekom** won Best Wi-Fi Customer Experience for its AI-powered Gemba
+    platform, which optimizes broadband infrastructure and enhances customer satisfaction
+    through predictive fault detection and resolution [3].
+    3. **AIDA Cruises & Cisco** received Best OpenRoaming Deployment for integrating
+    Cisco's OpenRoaming technology, enabling seamless and secure Wi-Fi access across
+    AIDA's fleet via the Cisco Spaces SDK [5].
+    4. **Cisco** was awarded Best Wi-Fi Network Technology for its cloud-native campus
+    gateway, emphasizing scalability, hybrid architecture, and innovations in Wi-Fi 6, Wi-
+    Fi 7, and QUIC/TLS protocols [7].
+    5. **Inkbridge Networks** was honored for Wi-Fi security advancements, including
+    innovations in RADIUS protocol and contributions to OpenRoaming and eduroam [9].
+
+SOURCES:
+    [1] Graphiant Demos With Vinay Prabhu - Segment 5 (40:00 - 40:42) (2026-02-09T15:28:43.838255)
+    [2] Awards Case Study: Best Wi-Fi Network Operator – Lg U+ (2026-10-03T00:00:00)
+    [3] Awards Case Study: Best Wi-Fi Customer Experience – Turk Telecom (2026-10-03T00:00:00)
+    [4] Graphiant Demos With Vinay Prabhu - Segment 2 (10:00 - 20:00) (2026-02-09T15:28:43.838255)
+    [5] Awards Case Study: Best Openroaming Deployment – Aida Cruises & Cisco (2026-10-03T00:00:00)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q08 [1. RECENT-CONTENT ROLLUPS]
+QUESTION: What was discussed in the Wi-Fi 8 February 2026 face-to-face meeting?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 8.76s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi 8 face-to-face meeting on February 10, 2026, focused on several key topics,
+    including contributions to the Market Requirements Document (MRD), discussions on
+    roaming technologies, secure control frames, and Target Wake Time (TWT) mechanisms.
+    Administrative updates, intellectual property rights (IPR) policies, and antitrust
+    compliance were also addressed, along with plans for future meetings [6].
+
+    If you meant the February 4, 2026 meeting, it covered ultra-reliable Wi-Fi, SMD
+    roaming, WPA3, and dynamic bandwidth efficiency (DBE). Voting on specific proposals
+    and MRD discussions were also part of the agenda [5].
+
+    Let me know if you were referring to a different date or need more details.
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Minutes - 2026_02_17.Docx (N/A)
+    [2] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (N/A)
+    [3] Working Group 802.3 Meetings (N/A)
+    [4] The Value Of Attending Wi-Fi Alliance® Member Meetings (2023-05-23T00:00:00Z)
+    [5] Wi-Fi 8 Mtg Minutes - 2026_02_04.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q09 [2. TOPIC DEEP-DIVES]
+QUESTION: What are sticky clients and why are they a problem in Wi-Fi?
+
+PIPELINE: fast  |  ROUTE: issue_tracking  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Sticky clients are Wi-Fi devices that remain connected to a specific access point (AP)
+    even when a better AP is available nearby. This behavior often occurs due to outdated
+    or inefficient roaming algorithms in the client device, which fail to make optimal
+    steering decisions.
+
+    The problem with sticky clients is that they degrade network performance by staying
+    connected to an AP with weaker signal strength, leading to slower speeds, higher
+    latency, and increased interference. This issue is particularly common in environments
+    with multiple APs, such as mesh networks or enterprise setups.
+
+    Meeting minutes from a Wi-Fi Alliance discussion highlight challenges in steering
+    sticky clients, especially older devices, and emphasize the need for improved
+    confidence in AP candidate lists to facilitate better roaming decisions [5]. Solutions
+    like Wi-Fi Certified EasyMesh™ aim to address these issues by standardizing AP
+    interoperability and optimizing client steering [2].
+
+SOURCES:
+    [1] Wi-Fi Alliance® Expresses Disappointment For Decision By Mexico Ift (N/A)
+    [2] Wi-Fi Certified Easymesh™: The Solution To Multiple Access Point Networks (N/A)
+    [3] Wi-Fi Alliance® Supports Senator’S Schatz’S Recommendation To Initiate A Process (N/A)
+    [4] Engineering The Wireless Hospital: Rf Issues (N/A)
+    [5] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q10 [2. TOPIC DEEP-DIVES]
+QUESTION: What documents discuss sticky client scenarios in Wi-Fi 8?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 0.01s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Documents discussing sticky client scenarios in Wi-Fi 8 include:
+
+    - **Sticky Client Scenarios 251208.Pptx**: Explores challenges like inconsistent
+    security configurations, device steering algorithms, and RSSI threshold enforcement in
+    Wi-Fi 8. It highlights contributions from Fortinet, Plume, and Bouygues Telecom,
+    focusing on client steering and tri-band CPE issues [1].
+
+    - **Sticky Client Scenarios Minutes 251208.Docx**: Covers meeting discussions on
+    sticky client behavior in Wi-Fi 8, including AP steering challenges and improving
+    confidence in candidate lists for steering decisions [3].
+
+    - **Sticky Client Scenarios Minutes 251208.Docx**: Discusses steering effectiveness,
+    roaming decisions, and DFS channel considerations in Wi-Fi networks, with input from
+    Fortinet, Plume, and Bouygues Telecom [4].
+
+    These documents provide insights into addressing sticky client issues in evolving Wi-
+    Fi standards.
+
+SOURCES:
+    [1] Sticky Client Scenarios 251208.Pptx (N/A)
+    [2] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [3] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [4] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [5] Sticky Client Scenarios 251208.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q11 [2. TOPIC DEEP-DIVES]
+QUESTION: Show me everything in the knowledge base related to Multi-Link Operation
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 20.19s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Documents discussing Multi-Link Operation (MLO) include:
+
+    - **Wi-Fi 7: Low Latency, High Reliability, And Extremely High Throughput**:
+    Highlights MLO as a key feature of Wi-Fi 7, enabling low latency, high reliability,
+    and enhanced throughput for applications like AR/VR and industrial IoT [2].
+    - **Episode 34: Multi-Link Operation (MLO) Is Bringing Ultra-Low Latency To Wi-Fi 7**:
+    Discusses MLO's role in achieving ultra-low latency and high-speed performance for
+    media-rich applications, featuring insights from Broadcom [6].
+    - **Episode 91: Wi-Fi 7 In Action**: Explores MLO's impact on healthcare and IoT,
+    emphasizing its role in real-time performance in dense environments [7].
+    - **AT&T, Ruckus Networks & Intel Wi-Fi 7 MLO Enterprise Field Trials**: Details
+    enterprise trials of MLO, showcasing improvements in throughput, latency, and
+    interference resilience under various conditions [8].
+    - **The Gaming Industry’s Quantum Leap: Wi-Fi 7**: Highlights MLO's transformative
+    potential for gaming, focusing on reduced latency and improved reliability [9].
+    - **Wi-Fi 8 MRD V0.1** and **V0.0.5**: Discuss Multi-Link Power Management (MLPM) as
+    an evolution of MLO for Wi-Fi 8, emphasizing power efficiency and seamless mobility
+    [4], [5].
+
+SOURCES:
+    [1] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [2] Wi-Fi 7: Low Latency, High Reliability, And Extremely High Throughput (N/A)
+    [3] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [4] Wi-Fi 8 Mrd V0.1.Docx (N/A)
+    [5] Wi-Fi 8 Mrd V0.0.5.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q12 [2. TOPIC DEEP-DIVES]
+QUESTION: What has been written about 6 GHz spectrum management?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 13.16s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Documents discussing 6 GHz spectrum management include:
+
+    - **Sustainability Benefits Of 6 GHz Spectrum Policy (2023)**: Highlights energy
+    efficiency and CO2 reduction benefits of 6 GHz spectrum use, emphasizing Wi-Fi 6/6E's
+    role in IoT, VR, and smart buildings [1], [3].
+    - **Wi-Fi Alliance® Applauds FCC Action On 6 GHz Spectrum**: Covers the FCC's approval
+    of unlicensed 6 GHz use to address growing Wi-Fi spectrum needs and enhance broadband
+    connectivity [2].
+    - **Wi-Fi 6E: Expanding Wi-Fi Into 6 GHz Spectrum**: Explains how Wi-Fi 6E leverages
+    the 6 GHz band for improved performance and capacity [4].
+    - **Episode 50: 6 GHz Spectrum Delivers Rich User Experiences**: Discusses enterprise
+    applications of 6 GHz with Wi-Fi 7, focusing on digital transformation and AI-driven
+    use cases [5].
+    - **Wi-Fi Alliance Subsidiary To Accelerate Standard Power 6 GHz**: Details efforts to
+    implement Automated Frequency Coordination (AFC) for standard power 6 GHz operations
+    [10].
+    - **In Discussion With The Arab Spectrum Management Group (ASMG)**: Explores 6 GHz
+    allocation in Arab states and its impact on future Wi-Fi technologies [8].
+    - **RG Plan And Agenda 2026.01.22**: Mentions updates on 6 GHz regulations, including
+    protecting existing services and international developments [9].
+
+SOURCES:
+    [1] Study - Sustainability Benefits Of 6 Ghz Spectrum Policy (2023) (N/A)
+    [2] Wi-Fi Alliance® Applauds Fcc Action On 6 Ghz Spectrum (N/A)
+    [3] Sustainability Benefits Of 6 Ghz Spectrum Policy (2023) – Graphics And Report (N/A)
+    [4] Wi-Fi 6E: Expanding Wi-Fi Into 6 Ghz Spectrum (N/A)
+    [5] Episode 50: 6 Ghz Spectrum Delivers Rich User Experiences In Enterprise With Bar (2023-11-30T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q13 [2. TOPIC DEEP-DIVES]
+QUESTION: What documents cover the upper 6 GHz band discussions?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 7.03s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Documents covering discussions on the upper 6 GHz band include:
+
+    - **Special Feature: The Road To WRC-23** [4]: Discusses debates among regional bodies
+    on whether the upper 6 GHz band should remain unlicensed for technologies like Wi-Fi
+    or be allocated for IMT (mobile networks).
+    - **Rg Plan And Agenda 2025.12.04** [8]: Includes regulatory group discussions on the
+    upper 6 GHz band, FCC regulations, and updates on consultations.
+    - **Wi-Fi Alliance® Welcomes FCC Action Expanding Unlicensed Use In The 6 GHz Band**
+    [9]: Highlights the FCC's decision to expand unlicensed use in the 6 GHz band,
+    emphasizing its importance for Wi-Fi.
+
+    These documents address regulatory, technical, and policy aspects of the upper 6 GHz
+    spectrum.
+
+SOURCES:
+    [1] Policymakers Should Designate The 6 Ghz Band For Unlicensed Use (N/A)
+    [2] Wi-Fi 6E Momentum Underscores Need For Entire 6 Ghz Band (N/A)
+    [3] Technical Note: Miracast® In The 6 Ghz Band (N/A)
+    [4] Special Feature: The Road To Wrc-23: Regional Bodies Debate The Future Of The Up (2023-07-28T00:00:00Z)
+    [5] Wi-Fi 6E: Wi-Fi® In The 6 Ghz Band (2021) (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q14 [2. TOPIC DEEP-DIVES]
+QUESTION: What is discussed in the knowledge base about target wake time?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 2  |  TIME: 7.76s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 2 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    Target Wake Time (TWT) is discussed in two contexts:
+
+    1. **Wi-Fi Certified 6 Release 2**: This certification introduces broadcast TWT, which
+    allows IoT and IIoT devices to schedule wake times efficiently, reducing power
+    consumption and improving battery life. It is particularly beneficial for devices
+    operating in constrained environments like industrial IoT [1].
+
+    2. **Wi-Fi 7**: Restricted Target Wake Time (R-TWT) is highlighted as a feature that
+    enhances real-time performance in dense environments, such as healthcare IoT systems.
+    R-TWT enables precise scheduling for devices, ensuring reliable connectivity and
+    reduced contention [2].
+
+SOURCES:
+    [1] Wi-Fi Certified 6™ Release 2: Better Wireless For Iot (2026-01-04T04:01:59.954Z)
+    [2] Episode 91: Wi-Fi 7 In Action: How The Latest Generation Of Wi-Fi Is Powering He (2025-11-19T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q15 [2. TOPIC DEEP-DIVES]
+QUESTION: Find all documents related to 802.11be beamforming
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 6.03s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Documents related to 802.11be (Wi-Fi 7) beamforming include:
+
+    - **IEEE Std 802.11be™-2024**: This document outlines the technical specifications and
+    advancements of the 802.11be standard, including beamforming as a key feature to
+    enhance Wi-Fi 7 performance [9].
+    - **Tgbe - Extremely High Throughput (Eht)**: Provides updates on the 802.11be
+    standard, focusing on extremely high throughput, which incorporates advanced
+    beamforming techniques to improve wireless communication efficiency [10].
+
+    These documents detail the role of beamforming in achieving the higher throughput and
+    efficiency goals of Wi-Fi 7.
+
+SOURCES:
+    [1] Wi-Fi® Device Metrics Helps Network Operators Select Wi-Fi Devices To Meet The D (2026-01-04T03:57:46.24Z)
+    [2] Wi-Fi Certified Wigig™ Brings Multi-Gigabit Performance To Wi-Fi® Devices (2026-01-04T05:01:17.446Z)
+    [3] Wi-Fi Certified 6™ Delivers New Wi-Fi® Era (2026-01-04T04:42:33.446Z)
+    [4] Wi-Fi Certified™ Ac: A Year In And Much To Celebrate (2026-01-04T05:13:45.357Z)
+    [5] Wi-Fi Certified 6™ Gains Momentum (2026-01-04T04:33:36.648Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q16 [2. TOPIC DEEP-DIVES]
+QUESTION: What are the key documents about Wi-Fi sensing technology?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 8.50s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Key documents on Wi-Fi sensing technology include:
+
+    - **Wi-Fi Sensing 101: An Introduction** (2026): Provides an overview of Wi-Fi
+    sensing, highlighting applications like motion detection, presence sensing, and
+    environmental monitoring in smart homes, healthcare, and security systems. It
+    emphasizes repurposing existing Wi-Fi infrastructure [3].
+
+    - **Wi-Fi Sensing Deployment Guidelines, 2024 Edition**: Offers detailed guidance on
+    deploying Wi-Fi sensing, covering network topologies, interference, device placement,
+    and use cases in IoT, healthcare, and automation. It also addresses IEEE 802.11bf
+    standards [2].
+
+    - **WLAN Sensing (SENS) TIG/SG ⇨ TGBF** (2026): Details the IEEE 802.11bf development
+    process, focusing on using WLAN signals for range, motion, and presence detection. It
+    outlines milestones like the Project Authorization Request (PAR) and Criteria for
+    Standards Development (CSD) [4].
+
+    - **Sensing TG Briefing** (2026): Explores Wi-Fi sensing use cases, architecture, and
+    timelines, including IEEE 802.11bf enhancements and applications in IoT, security, and
+    healthcare [9].
+
+SOURCES:
+    [1] Lisbon Demonstration Showcases How Wi-Fi Sensing Can Assist In A Critical Scenar (2022-11-22T00:00:00Z)
+    [2] Wi-Fi Sensing Deployment Guidelines, 2024 Edition (2024-01-11T00:00:00Z)
+    [3] Wi-Fi Sensing 101: An Introduction (2026-05-11T22:52:06.009Z)
+    [4] Wlan Sensing (Sens) Tig/Sg ⇨ Tgbf (2026-05-12T12:34:56.29Z)
+    [5] 2025-04-Wfa-Sensing-Cert.Pdf (2026-02-03T10:34:24.124Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q17 [2. TOPIC DEEP-DIVES]
+QUESTION: What material covers channel bonding in Wi-Fi 7 and Wi-Fi 8?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 10.19s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    For channel bonding in Wi-Fi 7 and Wi-Fi 8:
+
+    - Wi-Fi 7 introduces 320 MHz channel widths, doubling the maximum channel size from
+    Wi-Fi 6, which supports up to 160 MHz. This significantly enhances throughput and
+    spectral efficiency, enabling high-bandwidth applications like 4K/8K streaming and
+    AR/VR [6].
+    - Wi-Fi 8 builds on this with dynamic subband operation (DSO), allowing more granular
+    control over channel usage. This feature enhances coexistence in congested
+    environments by dynamically allocating subchannels within a bonded channel, improving
+    performance and reducing interference [9], [10].
+
+    These advancements make channel bonding a critical component for achieving the
+    extremely high throughput and low latency goals of these standards.
+
+SOURCES:
+    [1] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00)
+    [2] Sticky Client Scenarios 251208.Pptx (N/A)
+    [3] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    [4] Wi-Fi 8 Mtg Minutes - 2026_02_17.Docx (N/A)
+    [5] Wi-Fi 8 Mtg Minutes - 2026_02_04.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q18 [2. TOPIC DEEP-DIVES]
+QUESTION: What has been documented about power save mechanisms in Wi-Fi 8?
+
+PIPELINE: baseline  |  ROUTE: keyword  |  DOCS: 10  |  TIME: 28.17s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Power-saving mechanisms in Wi-Fi 8 include several advanced features aimed at
+    improving energy efficiency:
+
+    - **Target Wake Time (TWT):** Wi-Fi 8 continues to enhance TWT, allowing devices to
+    negotiate specific wake and sleep schedules with the access point, reducing
+    unnecessary energy consumption [3], [4], [5].
+    - **Multi-Link Power Management (MLPM):** This feature optimizes power usage across
+    multiple links in multi-link operation, ensuring efficient energy use during
+    simultaneous data transmissions [3], [4], [8].
+    - **Dynamic Power Save (DPS):** Introduced as a new mechanism in Wi-Fi 8, DPS
+    dynamically adjusts power-saving modes based on traffic patterns and device activity,
+    further extending battery life [5], [8].
+    - **Basic Service Set (BSS) Max Idle Period:** This feature allows devices to remain
+    in low-power states for longer durations when idle, improving overall power efficiency
+    [9], [10].
+
+    These mechanisms collectively enhance battery life for devices while maintaining
+    performance and network efficiency.
+
+SOURCES:
+    [1] Wi-Fi 8 Use Cases_Operator_Residential_Qoe_251209.Docx (N/A)
+    [2] Wi-Fi 8 Mrd V0.0.2_Cotdma_V7.Docx (N/A)
+    [3] Wi-Fi 8 Mrd V0.1.Docx (N/A)
+    [4] Wi-Fi 8 Mrd V0.0.5.Docx (N/A)
+    [5] Wi-Fi 8 Mrd V1.0.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q19 [3. TOPIC COMPARISONS]
+QUESTION: What is the difference between Wi-Fi 7 and Wi-Fi 8?
+
+PIPELINE: fast  |  ROUTE: topic_comparison  |  DOCS: 10  |  TIME: 0.03s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 7 (802.11be) and Wi-Fi 8 are differentiated by their generational advancements
+    in speed, efficiency, and features. Wi-Fi 7 focuses on enabling multi-gigabit speeds,
+    extremely low latency, and enhanced reliability through features like Multi-Link
+    Operation (MLO), 320 MHz channels, and 4K-QAM modulation [3][4]. It is optimized for
+    applications like XR, automotive connectivity, and high-density environments.
+
+    Wi-Fi 8, while not yet fully detailed or standardized, is expected to build on Wi-Fi 7
+    by further enhancing spectral efficiency, power management, and support for emerging
+    technologies such as AI-driven network optimization and advanced IoT interoperability.
+    The focus will likely include more robust handling of ultra-low latency applications
+    and improved performance in crowded RF environments. Specific technical details are
+    pending future announcements and standardization efforts.
+
+SOURCES:
+    [1] Wi-Fi® For Xr Highlights (N/A)
+    [2] Wi-Fi Certified Qos Management™ Highlights (N/A)
+    [3] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    [4] 6 Ghz Wi-Fi®: Paving The Way For The Next Era Of Automotive Connectivity (2025-12-17T00:00:00Z)
+    [5] Certification Laboratory Availability (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q20 [3. TOPIC COMPARISONS]
+QUESTION: Compare Multi-Link Operation in Wi-Fi 7 versus Wi-Fi 8
+
+PIPELINE: fast  |  ROUTE: topic_comparison  |  DOCS: 10  |  TIME: 27.77s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 7 (802.11be) introduced Multi-Link Operation (MLO), enabling devices to use
+    multiple frequency bands (e.g., 2.4 GHz, 5 GHz, 6 GHz) simultaneously for improved
+    throughput, lower latency, and enhanced reliability. MLO supports link aggregation and
+    dynamic link switching, optimizing performance based on network conditions [3][4].
+
+    Wi-Fi 8 builds on MLO with **Multi-Link Power Management (MLPM)**, which enhances
+    energy efficiency across multiple links. It also introduces more advanced coordination
+    mechanisms for simultaneous multi-band transmissions, improving spectral efficiency
+    and reducing interference. Wi-Fi 8 further refines latency-sensitive applications by
+    integrating MLO with advanced scheduling and prioritization techniques, making it
+    ideal for XR and IoT scenarios [1][2].
+
+    In summary, Wi-Fi 8 evolves MLO by focusing on power efficiency, smarter link
+    management, and tighter integration with emerging applications, while Wi-Fi 7 laid the
+    foundational multi-band capabilities.
+
+SOURCES:
+    [1] Wi-Fi® For Xr Highlights (N/A)
+    [2] Wi-Fi Certified Qos Management™ Highlights (N/A)
+    [3] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    [4] 6 Ghz Wi-Fi®: Paving The Way For The Next Era Of Automotive Connectivity (2025-12-17T00:00:00Z)
+    [5] Certification Laboratory Availability (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q21 [3. TOPIC COMPARISONS]
+QUESTION: How does 802.11be differ from 802.11ax in terms of channel width?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 14.85s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    802.11be (Wi-Fi 7) supports channel widths up to 320 MHz, doubling the maximum channel
+    width of 802.11ax (Wi-Fi 6/6E), which is limited to 160 MHz. This increased channel
+    width in Wi-Fi 7 significantly boosts potential throughput, especially when combined
+    with 4K-QAM modulation. Wi-Fi 7 also leverages the 6 GHz band more effectively, where
+    these wider channels are more readily available.
+
+SOURCES:
+    [1] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 29 (4:40:00 - 4: (2026-02-06T17:05:24.510432)
+    [2] Cisco Ai Summit | The Event Defining The Future Of Ai (2026-02-05T16:52:01.131810)
+    [3] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 32 (5:10:00 - 5: (2026-02-06T17:05:24.510432)
+    [4] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 19 (3:00:00 - 3: (2026-02-06T17:05:24.510432)
+    [5] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 15 (2:20:00 - 2: (2026-02-06T17:05:24.510432)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q22 [3. TOPIC COMPARISONS]
+QUESTION: What are the improvements in Wi-Fi 8 over Wi-Fi 7 for latency?
+
+PIPELINE: fast  |  ROUTE: topic_comparison  |  DOCS: 10  |  TIME: 18.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 8 improves latency over Wi-Fi 7 through advancements in **Multi-Link Operation
+    (MLO)** and the introduction of **Multi-Link Power Management (MLPM)**. MLPM optimizes
+    energy efficiency while maintaining low-latency performance across multiple links,
+    ensuring consistent responsiveness for latency-sensitive applications like AR/VR and
+    gaming [1], [2].
+
+    Additionally, Wi-Fi 8 enhances Quality of Service (QoS) mechanisms, building on Wi-Fi
+    Certified QoS Management™ to prioritize and monitor traffic flows more effectively,
+    reducing jitter and latency for critical applications [2]. These improvements are
+    particularly significant for XR use cases, which demand ultra-low latency and high
+    reliability [1].
+
+SOURCES:
+    [1] Wi-Fi® For Xr Highlights (N/A)
+    [2] Wi-Fi Certified Qos Management™ Highlights (N/A)
+    [3] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    [4] 6 Ghz Wi-Fi®: Paving The Way For The Next Era Of Automotive Connectivity (2025-12-17T00:00:00Z)
+    [5] Certification Laboratory Availability (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q23 [3. TOPIC COMPARISONS]
+QUESTION: Compare the security features of WPA3 versus WPA2
+
+PIPELINE: fast  |  ROUTE: topic_comparison  |  DOCS: 10  |  TIME: 11.87s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    WPA3 offers several key security improvements over WPA2:
+
+    - **Enhanced Encryption:** WPA3 uses SAE (Simultaneous Authentication of Equals)
+    instead of WPA2's PSK (Pre-Shared Key) for personal networks, providing stronger
+    protection against offline dictionary attacks.
+    - **Forward Secrecy:** WPA3 ensures that even if a session key is compromised, past
+    communications remain secure, a feature not present in WPA2.
+    - **Improved Public Wi-Fi Security:** WPA3 introduces Opportunistic Wireless
+    Encryption (OWE), encrypting traffic on open networks without requiring a password.
+    - **192-bit Security Mode:** WPA3-Enterprise supports an optional 192-bit encryption
+    mode, aligning with CNSA (Commercial National Security Algorithm) Suite requirements
+    for high-security environments.
+    - **Transition Mode:** WPA3 includes compatibility modes to support mixed WPA2/WPA3
+    deployments, easing migration [10].
+
+    These enhancements address vulnerabilities in WPA2, such as susceptibility to KRACK
+    attacks, and provide stronger security for modern Wi-Fi networks.
+
+SOURCES:
+    [1] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    [2] Certification Overview (N/A)
+    [3] Introducing Wi-Fi® For Matter™: A New Certification To Accelerate Interoperabili (2025-09-29T00:00:00Z)
+    [4] Wi-Fi® Healthcare Use Cases (N/A)
+    [5] Wi-Fi® For Matter™ Highlights (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q24 [3. TOPIC COMPARISONS]
+QUESTION: What changed between Wi-Fi 6 and Wi-Fi 6E?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 1  |  TIME: 11.34s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    Wi-Fi 6E extends Wi-Fi 6 by adding support for the 6 GHz frequency band, which
+    provides significantly more spectrum compared to the 2.4 GHz and 5 GHz bands used by
+    Wi-Fi 6. Key differences include:
+
+    - **Spectrum Expansion:** Wi-Fi 6E operates in the 6 GHz band, offering up to 1,200
+    MHz of additional spectrum (depending on regional regulations), enabling more channels
+    and reduced congestion.
+    - **Reduced Interference:** The 6 GHz band is reserved exclusively for Wi-Fi 6E and
+    newer devices, avoiding interference from legacy Wi-Fi technologies.
+    - **Higher Capacity and Performance:** With more non-overlapping channels, Wi-Fi 6E
+    supports higher device densities and improved performance in crowded environments.
+    - **Lower Latency:** The additional spectrum allows for wider channels (up to 160
+    MHz), reducing latency for applications like AR/VR and gaming.
+
+    Wi-Fi 6E retains all the features of Wi-Fi 6, such as OFDMA, MU-MIMO, and Target Wake
+    Time, but leverages the 6 GHz band for enhanced capabilities.
+
+SOURCES:
+    [1] 6 Ghz Wi-Fi® In Europe: A Strategic Imperative For The Future Of Eu Connectivity (2026-03-24T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q25 [3. TOPIC COMPARISONS]
+QUESTION: How does the 6 GHz band compare to the 5 GHz band for enterprise deployments?
+
+PIPELINE: fast  |  ROUTE: topic_comparison  |  DOCS: 10  |  TIME: 9.60s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The 6 GHz band offers several advantages over the 5 GHz band for enterprise
+    deployments:
+
+    - **Increased Spectrum:** The 6 GHz band provides up to 1,200 MHz of additional
+    spectrum (depending on regional regulations), compared to the 5 GHz band, which is
+    more limited. This allows for more non-overlapping channels, reducing congestion and
+    enabling higher-density deployments [8], [9].
+
+    - **Reduced Interference:** The 6 GHz band is exclusively for Wi-Fi 6E and newer
+    devices, ensuring no interference from legacy Wi-Fi technologies, which is a common
+    issue in the 5 GHz band [8].
+
+    - **Higher Performance:** With wider channels (up to 160 MHz) and lower latency, the 6
+    GHz band supports higher throughput and better performance for demanding applications
+    like AR/VR and high-definition video conferencing [4], [5].
+
+    - **Improved Security:** Devices in the 6 GHz band must support WPA3, ensuring
+    stronger security compared to older devices operating in the 5 GHz band [9].
+
+    These features make the 6 GHz band ideal for modern enterprise environments requiring
+    high capacity and low latency.
+
+SOURCES:
+    [1] Wi-Fi Alliance® Strongly Disagrees With Rspg Recommendation Blocking Wi-Fi® Acce (2025-11-12T00:00:00Z)
+    [2] Episode 89: Access To 6 Ghz Is Essential For Wi-Fi®: A Conversation With Dean Bu (2025-10-22T00:00:00Z)
+    [3] Episode 87: Special Feature: Policytracker'S Spectrum Policy Podcast With Kevin  (2025-09-24T00:00:00Z)
+    [4] Powering A Connected World: Wi-Fi® Momentum In 2025 (2025-07-10T00:00:00Z)
+    [5] Powering Progress: 6 Ghz Wi-Fi® Delivers A Connected Future (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q26 [4. STANDARDS & SPECS]
+QUESTION: What is the current status of the IEEE 802.11bn standard?
+
+PIPELINE: baseline  |  ROUTE: keyword  |  DOCS: 10  |  TIME: 15.16s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The IEEE 802.11bn standard has not been mentioned in the provided documents, and I
+    don't have updates on its status. The most recent discussions I have are related to
+    other IEEE 802.11 amendments like 802.11bf (Wi-Fi sensing) and 802.11be (Wi-Fi 7) [1],
+    [4], [10]. If you are looking for updates on a specific aspect of 802.11bn, I
+    recommend clarifying further.
+
+SOURCES:
+    [1] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    [2] Ieee Std 802.11Bh™-2024 (N/A)
+    [3] Wi-Fi 8 Mrd V1.0.Docx (N/A)
+    [4] Ieee Std 802.11Bf™-2025 (N/A)
+    [5] Wi-Fi 8 Mrd V0.0.2_Cotdma_V7.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q27 [4. STANDARDS & SPECS]
+QUESTION: What are the latest changes to the 802.11be specification?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 1  |  TIME: 7.08s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    I don't have new updates on the 802.11be (Wi-Fi 7) specification as of this month. The
+    most recent discussions I have on Wi-Fi standards are unrelated to 802.11be and focus
+    on other topics like time-variant routing models [1]. If you're seeking specific
+    details about 802.11be, the latest known features include multi-link operation, 320
+    MHz channel bandwidth, and 4K-QAM modulation, but no recent changes have been
+    documented in my notes.
+
+SOURCES:
+    [1] Applicability Of Tvr Yang Data Models (2026-05-09T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q28 [4. STANDARDS & SPECS]
+QUESTION: What milestones has the Wi-Fi 8 task group hit recently?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 10.36s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have new updates on Wi-Fi 8 task group milestones for this month. The most
+    recent information I have is from the Wi-Fi 8 marketing requirements documents ([1],
+    [2], [3]), which outline key features under development, including:
+
+    - **Dynamic Subband Operation (DSO)** for efficient spectrum use
+    - **Multi-Link Power Management (MLPM)** to enhance energy efficiency
+    - **Enhanced Long Range (ELR)** for improved coverage
+    - **Seamless Mobility Domain (SMD)** for better roaming experiences
+    - **Coordinated Beamforming (Co-BF)** for interference mitigation
+
+    These documents emphasize low-latency communication, power efficiency, and security
+    improvements, but no recent milestones or updates beyond these foundational plans are
+    noted.
+
+SOURCES:
+    [1] Wi-Fi 8 Mrd V0.1.Docx (N/A)
+    [2] Wi-Fi 8 Mrd V0.0.5.Docx (N/A)
+    [3] Wi-Fi 8 Mrd V1.0.Docx (N/A)
+    [4] How To Participate (N/A)
+    [5] Help Me! (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q29 [4. STANDARDS & SPECS]
+QUESTION: What is the timeline for Wi-Fi 8 certification?
+
+PIPELINE: baseline  |  ROUTE: keyword  |  DOCS: 10  |  TIME: 24.08s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 8 certification is expected to begin in late 2027, following the completion of
+    market requirements and technical specifications currently under development. Recent
+    discussions in March 2026 highlighted certification readiness planning and feature
+    descriptions, with the Wi-Fi Alliance focusing on interoperability, advanced features
+    like Dynamic Subband Operation (DSO), Multi-Link Power Management (MLPM), and Enhanced
+    Long Range (ELR) [3], [5].
+
+SOURCES:
+    [1] Wi-Fi 8 Mrd V0.0.5.Docx (N/A)
+    [2] Wi-Fi 8 Mrd V0.1.Docx (N/A)
+    [3] Wi-Fi 8 Mrd V1.0.Docx (N/A)
+    [4] Wi-Fi8--Mtg_ Tt_Agenda _ 20260217-V2.Pptx (N/A)
+    [5] Wi-Fi8--Mtg__Agenda _ 20260317-V3.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q30 [4. STANDARDS & SPECS]
+QUESTION: What features are being debated in the 802.11bn amendment?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 4.30s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The 802.11bn amendment is not explicitly mentioned in the provided documents, so I
+    don't have specific updates on its features or debates. The most recent discussions I
+    have are related to Wi-Fi 8 development, which includes features like Dynamic Subband
+    Operation (DSO), Multi-Link Power Management (MLPM), Enhanced Long Range (ELR), and
+    Coordinated Beamforming (Co-BF) [2], [8]. If 802.11bn aligns with these efforts, it
+    may involve similar advancements in efficiency, coverage, and interference management.
+
+SOURCES:
+    [1] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    [2] Wi-Fi8- F2F-Mtg_ Agenda _ 20260205-V1.Pptx (N/A)
+    [3] Wi-Fi8- Mtg_ Agenda _ 20260127-V3.Pptx (N/A)
+    [4] Sticky Client Scenarios 251208.Pptx (N/A)
+    [5] Sticky Client Scenarios 251208.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q31 [4. STANDARDS & SPECS]
+QUESTION: What is the current status of Wi-Fi 7 certification programmes?
+
+PIPELINE: fast  |  ROUTE: status_check  |  DOCS: 9  |  TIME: 2.79s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have new updates on Wi-Fi 7 certification programmes for this month. The most
+    recent information I have is from November 15, 2022, which does not include specific
+    details on the status of Wi-Fi 7 certification.
+
+SOURCES:
+    [1] Quarterly Update (December 2021): Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    [2] Quarterly Update (October 2021): Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    [3] Quarterly Update (July 2021): Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    [4] Global Regulatory And Afc Update - June 2021 (N/A)
+    [5] Quarterly Update: Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    ... and 4 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q32 [5. PEOPLE & CONTRIBUTORS]
+QUESTION: What has been discussed about sticky clients by meeting attendees?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 16.52s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Discussions about sticky clients have focused on challenges with older devices,
+    ineffective roaming decisions, and steering issues. Key points include:
+
+    - **Steering Challenges:** Difficulty in making confident AP steering decisions due to
+    inconsistent RSSI thresholds and outdated device algorithms. Improving candidate lists
+    for AP steering was emphasized [2], [4].
+    - **Voice Over Wi-Fi (VoWiFi):** Sticky client behavior negatively impacts VoWiFi
+    performance, particularly when devices fail to roam effectively between APs or across
+    DFS channels [3].
+    - **Security and Standards:** Issues with tri-band CPEs and inconsistent WPA3
+    transition mode configurations were highlighted, alongside evolving standards like Wi-
+    Fi 7 and Wi-Fi 8 to address these problems [4], [7].
+    - **Solutions:** Proposals included enhanced band steering mechanisms, better RSSI
+    enforcement, and leveraging Wi-Fi Agile Multiband and BSS Transition Management (BSTM)
+    to improve roaming efficiency [1], [7].
+
+    These discussions involved contributions from Fortinet, Plume, Bouygues Telecom, and
+    others.
+
+SOURCES:
+    [1] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [2] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [3] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [4] Sticky Client Scenarios 251208.Pptx (N/A)
+    [5] Working Group 802.3 Meetings (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q33 [5. PEOPLE & CONTRIBUTORS]
+QUESTION: Who presented at the Wi-Fi 8 February 2026 face-to-face?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The February 2026 face-to-face Wi-Fi 8 Marketing Task Group meeting included
+    participation from organizations such as CableLabs, Huawei, Intel, Qualcomm, Apple
+    Inc., Cisco, Meta, and NXP Semiconductors. Key topics discussed were SMD roaming, TWT
+    early termination indication, secure control frames, WPA3, and the Wi-Fi 8 MRD. The
+    agenda also included policy reminders and discussions on dynamic analytics reports and
+    UHR security information [8].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (2026-03-27T02:26:18.208Z)
+    [2] Wi-Fi8--Mtg__Agenda _ 20260224-V2.Pptx (2026-03-16T18:29:13.009Z)
+    [3] Wi-Fi 8 Mrd V0.1.Docx (2026-05-13T09:51:02.902Z)
+    [4] Wi-Fi 8 Mrd V0.0.5.Docx (2026-05-13T09:50:37.521Z)
+    [5] Wi-Fi 8 Mrd V1.0.Docx (2026-05-13T09:49:15.31Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q34 [5. PEOPLE & CONTRIBUTORS]
+QUESTION: What expert opinions exist on Multi-Link Operation performance?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 0.39s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Documents discussing Multi-Link Operation (MLO) include:
+
+    - **Wi-Fi 7: Low Latency, High Reliability, And Extremely High Throughput**:
+    Highlights MLO as a key feature of Wi-Fi 7, enabling low latency, high reliability,
+    and enhanced throughput for applications like AR/VR and industrial IoT [2].
+    - **Episode 34: Multi-Link Operation (MLO) Is Bringing Ultra-Low Latency To Wi-Fi 7**:
+    Discusses MLO's role in achieving ultra-low latency and high-speed performance for
+    media-rich applications, featuring insights from Broadcom [6].
+    - **Episode 91: Wi-Fi 7 In Action**: Explores MLO's impact on healthcare and IoT,
+    emphasizing its role in real-time performance in dense environments [7].
+    - **AT&T, Ruckus Networks & Intel Wi-Fi 7 MLO Enterprise Field Trials**: Details
+    enterprise trials of MLO, showcasing improvements in throughput, latency, and
+    interference resilience under various conditions [8].
+    - **The Gaming Industry’s Quantum Leap: Wi-Fi 7**: Highlights MLO's transformative
+    potential for gaming, focusing on reduced latency and improved reliability [9].
+    - **Wi-Fi 8 MRD V0.1** and **V0.0.5**: Discuss Multi-Link Power Management (MLPM) as
+    an evolution of MLO for Wi-Fi 8, emphasizing power efficiency and seamless mobility
+    [4], [5].
+
+SOURCES:
+    [1] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [2] Wi-Fi 7: Low Latency, High Reliability, And Extremely High Throughput (N/A)
+    [3] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [4] Wi-Fi 8 Mrd V0.1.Docx (N/A)
+    [5] Wi-Fi 8 Mrd V0.0.5.Docx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q35 [5. PEOPLE & CONTRIBUTORS]
+QUESTION: Who is contributing to discussions on Wi-Fi sensing in the working groups?
+
+PIPELINE: fast  |  ROUTE: person_profile  |  DOCS: 10  |  TIME: 7.36s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have specific updates on current contributors to Wi-Fi sensing discussions in
+    working groups. The most recent relevant discussions I recall focused on Wi-Fi sensing
+    as part of the Wi-Fi Alliance's exploration of new use cases, including motion
+    detection and environmental awareness, but no individual names or organizations were
+    highlighted in those sessions.
+
+SOURCES:
+    [1] Jeff Platon (N/A)
+    [2] Martha Suarez (N/A)
+    [3] Jennifer Minella (N/A)
+    [4] Robin Colwell (N/A)
+    [5] Sophia (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q36 [5. PEOPLE & CONTRIBUTORS]
+QUESTION: What do contributors say about roaming improvements in Wi-Fi 8?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 9.43s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Contributors to Wi-Fi 8 have emphasized improvements in roaming through the
+    introduction of Seamless Mobility Domain (SMD) transitions. SMD aims to enhance user
+    experience by enabling faster and more reliable handoffs between access points,
+    reducing latency and packet loss during transitions. This feature is highlighted in
+    multiple discussions, including the Wi-Fi 8 Marketing Requirements Documents (MRDs)
+    [6], [7], [10].
+
+    Key technical advancements supporting roaming include Dynamic Bandwidth Expansion
+    (DBE) and Secure Mobility, which ensure consistent performance and security during
+    transitions. The focus on SMD roaming was also discussed in detail during the Wi-Fi 8
+    Marketing Task Group meetings in February 2026, where participants explored its role
+    in addressing roaming inefficiencies and improving interoperability across devices
+    [1], [2], [5].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Minutes - 2026_02_04.Docx (N/A)
+    [2] Wi-Fi 8 Mtg Minutes - 2026_02_10.Docx (N/A)
+    [3] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    [4] Wi-Fi 8 Mtg Minutes - 2026_02_17.Docx (N/A)
+    [5] Wi-Fi8- F2F-Mtg_ Agenda _ 20260205-V1.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q37 [6. ORGANISATIONS]
+QUESTION: What has the Wi-Fi Alliance published about Wi-Fi 7 adoption?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 12.97s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance has actively promoted Wi-Fi 7 adoption through multiple initiatives
+    and publications:
+
+    - On May 6, 2026, James Chen discussed how Wi-Fi 7 and Wi-Fi 8 are redefining
+    connectivity, emphasizing advancements in AI at the edge [1].
+    - A public demonstration of Wi-Fi 7 was hosted in the Middle East, showcasing features
+    like Multi-Link Operation (MLO) and 6 GHz spectrum utilization [4].
+    - Recent interoperability events highlighted Wi-Fi 7's compatibility with 6 GHz
+    devices, MLO, and WPA3, crucial for adoption [5].
+    - Discussions have also linked Wi-Fi 7 to IoT growth, education, and connected
+    vehicles, emphasizing its role in diverse applications like healthcare, AI, and
+    extended reality [3][6][8].
+
+    These efforts underline Wi-Fi 7's readiness for widespread deployment and its
+    potential to transform connectivity across industries.
+
+SOURCES:
+    [1] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00Z)
+    [2] Episode 97: Wi-Fi 7 And The Next Era Of Iot Connectivity With Sivaram Trikutam A (2026-03-11T00:00:00Z)
+    [3] Wi-Fi Halow™ And Wi-Fi 7: Iot Growth Comes From Fit, Not Hype (2026-03-05T00:00:00Z)
+    [4] Wi-Fi Alliance® Hosts The First Public Wi-Fi 7 Demonstration In The Middle East (2026-01-04T03:44:32.888Z)
+    [5] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q38 [6. ORGANISATIONS]
+QUESTION: What are the latest Wi-Fi Alliance press releases?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 0.46s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The latest Wi-Fi Alliance press release appears to be the **"Wi-Fi® and FTTH in 6 GHz
+    Highlights"**, published on May 11, 2026. It discusses topics such as cloud computing,
+    telemedicine, extended reality (XR), and advancements in Wi-Fi 8, emphasizing the role
+    of 6 GHz spectrum in these areas. This document highlights collaboration with
+    organizations like Ericsson and the FTTH Council EU [1].
+
+SOURCES:
+    [1] Wi-Fi® And Ftth In 6 Ghz Highlights (2026-05-11T13:36:09.97Z)
+    [2] Wi-Fi Alliance Insider – April 2026 (2026-05-11T13:35:21.939Z)
+    [3] Wi-Fi Certified 7™ Technology Overview (2026-05-11T13:33:06.384Z)
+    [4] Tg Voting Permission Form (2026-05-11T13:29:57.976Z)
+    [5] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q39 [6. ORGANISATIONS]
+QUESTION: What documents come from the Wi-Fi Alliance Causeway working groups?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 6.81s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance Causeway working groups focus on developing and maintaining
+    certification programs, deployment guidelines, and technical specifications for Wi-Fi
+    technologies. Specific documents from these groups typically include:
+
+    - Certification test plans for interoperability and performance validation.
+    - Deployment guides addressing best practices for enterprise and consumer Wi-Fi
+    networks.
+    - Whitepapers on emerging technologies like Wi-Fi 7, Wi-Fi 8, and Multi-Link Operation
+    (MLO).
+    - Technical specifications detailing requirements for features like WPA3 security, 6
+    GHz spectrum usage, and power management.
+
+    These documents are central to ensuring consistent implementation and adoption of Wi-
+    Fi standards across the industry.
+
+SOURCES:
+    [1] Overview (N/A)
+    [2] Future Sessions (N/A)
+    [3] Ieee 802 Lmsc (N/A)
+    [4] Imt Advanced Ahc (N/A)
+    [5] Contention Based Protocol Sg ⇨ Tgy (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q40 [6. ORGANISATIONS]
+QUESTION: What has Qualcomm contributed to Wi-Fi 8 discussions?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Qualcomm has contributed to Wi-Fi 8 discussions primarily through its involvement in
+    secure control frames, coordinated beamforming (Co-BF), dynamic power save (DPS), and
+    target wake time (TWT) technologies. These contributions are part of the Market
+    Requirements Document (MRD) discussions aimed at enhancing efficiency, security, and
+    power management in Wi-Fi 8 [1], [5].
+
+    Additionally, Qualcomm participated in meetings addressing roaming technologies, blind
+    polling for MRD drafts, and early termination indications for TWT, reflecting its
+    focus on optimizing connectivity and device performance [5], [6]. Qualcomm's expertise
+    in AI-driven network optimization was also highlighted in a Wi-Fi Alliance podcast
+    discussing the future of Wi-Fi and AI integration [10].
+
+SOURCES:
+    [1] Wi-Fi 8 Mrd V1.0.Docx (2026-05-13T09:49:15.31Z)
+    [2] Broadcast-Tg-Minutes-20260210.Docx (2026-02-13T11:52:46.916Z)
+    [3] Xr-Mstg-Agenda-Nov 19 2025 V2.Pptx (2026-01-13T13:55:18.529Z)
+    [4] Wi-Fi8--Mtg_ Tt_Agenda _ 20260219-V1.Pptx (2026-02-20T11:52:31.635Z)
+    [5] Wi-Fi8--Mtg_ Agenda _ 20260210-V3.Pptx (2026-02-18T23:47:35.134Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q41 [6. ORGANISATIONS]
+QUESTION: What positions has Intel published on next-generation Wi-Fi?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 9.28s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Intel has actively participated in Wi-Fi 8 discussions, focusing on several key areas:
+
+    - Contributions to the Market Requirements Document (MRD) development, including text
+    proposals and approvals during Wi-Fi 8 Marketing Task Group meetings [7].
+    - Engagement in discussions on Secure Control Frames, which aim to enhance security
+    mechanisms in Wi-Fi 8 [3].
+    - Involvement in broader Wi-Fi 8 feature development, such as dynamic analytics
+    reporting and Target Wake Time (TWT) enhancements [3].
+
+    These contributions reflect Intel's focus on advancing security, analytics, and power
+    efficiency in next-generation Wi-Fi technologies.
+
+SOURCES:
+    [1] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    [2] Postquantumcrypto-20260302.Pptx (N/A)
+    [3] Wi-Fi8- F2F-Mtg_ Agenda _ 20260205-V1.Pptx (N/A)
+    [4] Wi-Fi8- Mtg_ Agenda _ 20260127-V3.Pptx (N/A)
+    [5] Sticky Client Scenarios 251208.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q42 [7. EVENTS & MEETINGS]
+QUESTION: What is on the agenda for upcoming Wi-Fi Alliance events?
+
+PIPELINE: fast  |  ROUTE: upcoming_events  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The upcoming Wi-Fi Alliance events include recurring meetings for the Wi-Fi 8
+    Marketing Task Group and the Location Tiger Team. The most recent entries indicate:
+
+    - **Wi-Fi 8 Marketing Task Group Meetings**: These are ongoing, with the latest held
+    on May 12, 2026 [2][3].
+    - **Location Tiger Team Meetings**: Also recurring, with the latest on May 12, 2026
+    [1].
+
+    No specific agenda topics were listed for these meetings in the provided notes.
+
+SOURCES:
+    [1] Location Tiger Team (2026-05-12T00:00:00)
+    [2] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [3] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [4] Location Tiger Team (2026-05-05T00:00:00)
+    [5] Wi-Fi 8 Mtg Meeting (2026-05-05T00:00:00)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q43 [7. EVENTS & MEETINGS]
+QUESTION: What was the agenda for the Wi-Fi 8 February 2026 face-to-face meeting?
+
+PIPELINE: fast  |  ROUTE: meeting_by_title  |  DOCS: 2  |  TIME: 3.96s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 2 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    I don't have specific agenda details for the Wi-Fi 8 February 2026 face-to-face
+    meeting. The most relevant reference is a calendar entry for a Broadcast Task Group
+    event on February 3, 2026, but no topics or agenda items are listed [1].
+
+SOURCES:
+    [1] Broadcast Tg (N/A)
+    [2] Xr Mstg Call (N/A)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q44 [7. EVENTS & MEETINGS]
+QUESTION: What were the action items from the last Wi-Fi 8 meeting?
+
+PIPELINE: fast  |  ROUTE: past_events  |  DOCS: 10  |  TIME: 3.22s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The notes for the May 12, 2026, Wi-Fi 8 meeting do not include any specific action
+    items or agenda topics [1], [3]. Similarly, prior meetings on May 5, 2026, and April
+    28, 2026, also lack detailed content regarding action items [5], [7].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [2] Location Tiger Team (2026-05-12T00:00:00)
+    [3] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [4] Location Tiger Team (2026-05-05T00:00:00)
+    [5] Wi-Fi 8 Mtg Meeting (2026-05-05T00:00:00)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q45 [7. EVENTS & MEETINGS]
+QUESTION: What decisions were made in the most recent Wi-Fi 8 meeting minutes?
+
+PIPELINE: fast  |  ROUTE: past_events  |  DOCS: 6  |  TIME: 4.63s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent Wi-Fi 8 meeting on May 12, 2026, does not include any documented
+    decisions, action items, or agenda topics in the meeting notes [1], [3]. Similarly,
+    the prior meeting on May 5, 2026, also lacks specific details regarding decisions or
+    topics discussed [4], [5].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [2] Location Tiger Team (2026-05-12T00:00:00)
+    [3] Wi-Fi 8 Mtg Meeting (2026-05-12T00:00:00)
+    [4] Wi-Fi 8 Mtg Meeting (2026-05-05T00:00:00)
+    [5] Wi-Fi 8 Mtg Meeting (2026-05-05T00:00:00)
+    ... and 1 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q46 [7. EVENTS & MEETINGS]
+QUESTION: What was discussed in the Wi-Fi 8 meeting on February 17, 2026?
+
+PIPELINE: fast  |  ROUTE: meeting_by_title  |  DOCS: 2  |  TIME: 5.67s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 2 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    I don't have specific updates or documented details from the Wi-Fi 8 meeting on
+    February 17, 2026. The most recent discussions I have on Wi-Fi 8 are from May 2026,
+    which also lack detailed agenda topics or decisions.
+
+SOURCES:
+    [1] Broadcast Tg (N/A)
+    [2] Xr Mstg Call (N/A)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q47 [7. EVENTS & MEETINGS]
+QUESTION: What is the Wi-Fi 8 meeting schedule for early 2026?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 9.31s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi 8 Marketing Task Group held meetings on January 27, February 5, February 24,
+    and March 3, 2026. Key topics included MRD text contributions, feature selection,
+    seamless roaming, TWT early termination, dynamic power save, WPA3, and policy
+    reminders [7], [8], [2], [6].
+
+    Future meetings were scheduled during the March 17, 2026, meeting, but specific dates
+    were not detailed in the minutes [1].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (2026-03-27T02:26:18.208Z)
+    [2] Wi-Fi8--Mtg__Agenda _ 20260224-V2.Pptx (2026-03-16T18:29:13.009Z)
+    [3] Wi-Fi 8 Mrd V0.1.Docx (2026-05-13T09:51:02.902Z)
+    [4] Wi-Fi 8 Mrd V0.0.5.Docx (2026-05-13T09:50:37.521Z)
+    [5] Wi-Fi 8 Mrd V1.0.Docx (2026-05-13T09:49:15.31Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q48 [8. DATASOURCE ROLL-UPS]
+QUESTION: What is the latest Wi-Fi Alliance press release?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 0.03s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The latest Wi-Fi Alliance press release appears to be the **"Wi-Fi® and FTTH in 6 GHz
+    Highlights"**, published on May 11, 2026. It discusses topics such as cloud computing,
+    telemedicine, extended reality (XR), and advancements in Wi-Fi 8, emphasizing the role
+    of 6 GHz spectrum in these areas. This document highlights collaboration with
+    organizations like Ericsson and the FTTH Council EU [1].
+
+SOURCES:
+    [1] Wi-Fi® And Ftth In 6 Ghz Highlights (2026-05-11T13:36:09.97Z)
+    [2] Wi-Fi Alliance Insider – April 2026 (2026-05-11T13:35:21.939Z)
+    [3] Wi-Fi Certified 7™ Technology Overview (2026-05-11T13:33:06.384Z)
+    [4] Tg Voting Permission Form (2026-05-11T13:29:57.976Z)
+    [5] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q49 [8. DATASOURCE ROLL-UPS]
+QUESTION: Show me all Wi-Fi Alliance blog posts from the last quarter
+
+PIPELINE: baseline  |  ROUTE: vector  |  DOCS: 10  |  TIME: 10.72s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have new Wi-Fi Alliance blog posts for the last quarter. The most recent
+    relevant content I have is the **Wi-Fi Alliance Insider – March 2025** newsletter [3],
+    which covered topics like 5G FWA, FTTH, AI, automotive, healthcare, industrial IoT,
+    and Wi-Fi 7. It also highlighted milestones in Wi-Fi certifications and the
+    publication of the 2024 annual report.
+
+SOURCES:
+    [1] Wi-Fi Alliance Insider – April 2023 (N/A)
+    [2] Wi-Fi Alliance Insider – March 2024 (N/A)
+    [3] Wi-Fi Alliance Insider – March 2025 (N/A)
+    [4] Wi-Fi Alliance Insider – August 2023 (N/A)
+    [5] Wi-Fi Alliance Insider - November 2021 (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q50 [8. DATASOURCE ROLL-UPS]
+QUESTION: What whitepapers has the Wi-Fi Alliance published about Wi-Fi 7?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 0.44s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance has actively promoted Wi-Fi 7 adoption through multiple initiatives
+    and publications:
+
+    - On May 6, 2026, James Chen discussed how Wi-Fi 7 and Wi-Fi 8 are redefining
+    connectivity, emphasizing advancements in AI at the edge [1].
+    - A public demonstration of Wi-Fi 7 was hosted in the Middle East, showcasing features
+    like Multi-Link Operation (MLO) and 6 GHz spectrum utilization [4].
+    - Recent interoperability events highlighted Wi-Fi 7's compatibility with 6 GHz
+    devices, MLO, and WPA3, crucial for adoption [5].
+    - Discussions have also linked Wi-Fi 7 to IoT growth, education, and connected
+    vehicles, emphasizing its role in diverse applications like healthcare, AI, and
+    extended reality [3][6][8].
+
+    These efforts underline Wi-Fi 7's readiness for widespread deployment and its
+    potential to transform connectivity across industries.
+
+SOURCES:
+    [1] Episode 101: Ai At The Edge: How Wi-Fi 7 And Wi-Fi 8 Are Redefining Connectivity (2026-05-06T00:00:00Z)
+    [2] Episode 97: Wi-Fi 7 And The Next Era Of Iot Connectivity With Sivaram Trikutam A (2026-03-11T00:00:00Z)
+    [3] Wi-Fi Halow™ And Wi-Fi 7: Iot Growth Comes From Fit, Not Hype (2026-03-05T00:00:00Z)
+    [4] Wi-Fi Alliance® Hosts The First Public Wi-Fi 7 Demonstration In The Middle East (2026-01-04T03:44:32.888Z)
+    [5] Insights: Wi-Fi Alliance®’S Latest Wi-Fi 6 And Wi-Fi 7 Interoperability Event (2025-12-11T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q51 [8. DATASOURCE ROLL-UPS]
+QUESTION: What resources are available about Wi-Fi 7 certification?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 10.52s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 7 certification resources include:
+
+    - **Wi-Fi 7 Certifications Overview**: A detailed presentation on Wi-Fi 7
+    certifications as of January 2026, covering certification totals, market analysis,
+    band combinations, and generational certifications [6].
+    - **Interoperability Event Insights**: A December 2025 blog detailing Wi-Fi 7
+    interoperability testing, focusing on device performance, multi-link operation (MLO),
+    WPA3, and 6 GHz compatibility [8].
+    - **Wi-Fi 7 Trials Report**: A July 2025 report on enterprise trials by AT&T,
+    CommScope, and Intel, highlighting performance in dense environments and advancements
+    like 4K-QAM and AFC [5].
+
+    These resources provide insights into certification progress, technical advancements,
+    and real-world testing scenarios.
+
+SOURCES:
+    [1] Wi-Fi 7: Low Latency, High Reliability, And Extremely High Throughput (N/A)
+    [2] Wifi Location Accuracy Interop Event #12 Report D1.3.Pdf (N/A)
+    [3] Sticky Client Scenarios 251208.Pptx (N/A)
+    [4] Wba 2026 Roadmap - Overview Presentation To Members - 22 January 2026.Pdf (N/A)
+    [5] Wi-Fi 7 Trials For Enterprise Scenarios By At&T, Commscope And Intel (2025-07-05T00:00:00)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q52 [8. DATASOURCE ROLL-UPS]
+QUESTION: What podcasts or broadcasts have discussed Wi-Fi 8?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 7.17s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have information on any podcasts or broadcasts that have specifically
+    discussed Wi-Fi 8. The most recent updates I have are from Wi-Fi 8 marketing task
+    group meetings in early 2026, which focused on technical and market requirements,
+    including features like Target Wake Time (TWT), Secure Control Frames, and Seamless
+    Mobility Domains (SMD) [2][3][4]. If you're looking for technical insights, these
+    meeting documents provide detailed discussions but do not reference any media
+    coverage.
+
+SOURCES:
+    [1] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    [2] Wi-Fi 8 Mtg Minutes - 2026_02_17.Docx (N/A)
+    [3] Wi-Fi 8 Mtg Minutes - 2026_02_04.Docx (N/A)
+    [4] Wi-Fi 8 Mtg Minutes - 2026_02_10.Docx (N/A)
+    [5] Wi-Fi8- F2F-Mtg_ Agenda _ 20260205-V1.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q53 [8. DATASOURCE ROLL-UPS]
+QUESTION: Give me a rollup of all WFA Beacon articles about 6 GHz
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 7.20s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi Alliance resources discussing 6 GHz include:
+
+    - **"Powering Progress: 6 GHz Wi-Fi® Delivers A Connected Future"**: Highlights the
+    importance of accessing the full 6 GHz band for Wi-Fi's future [2].
+    - **"Wi-Fi 6E: Expanding Wi-Fi Into 6 GHz Spectrum"**: Explains the expansion into 6
+    GHz with Wi-Fi 6E, emphasizing benefits and the Wi-Fi Alliance's role [7].
+    - **"6 GHz Wi-Fi Demo"**: Demonstrates 6 GHz Wi-Fi's impact on AR/VR applications in
+    medical education, featuring collaborations with Meta, Intel, and others [8].
+
+SOURCES:
+    [1] Codes For Identification Of Federal And Federally-Assisted Organizations (2026-05-12T12:17:51.8Z)
+    [2] Powering Progress: 6 Ghz Wi-Fi® Delivers A Connected Future (2026-01-04T03:22:06.106Z)
+    [3] Wi-Fi Alliance® 25Th Anniversary Member Recap (2026-01-04T03:29:20.438Z)
+    [4] Member Testimonial: Signify (2026-01-04T03:27:36.169Z)
+    [5] The Resource Costs Of Ai - Segment 4 (30:00 - 30:21) (2026-02-09T15:28:42.702835Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q54 [9. REGULATORY & ADOPTION]
+QUESTION: What is the latest regulatory update on 6 GHz spectrum globally?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 7.34s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The latest regulatory update on 6 GHz spectrum globally involves the launch of a
+    commercial Automated Frequency Coordination (AFC) service by the Wireless Broadband
+    Alliance. This service enables standard power Wi-Fi in the 6 GHz band, unlocking
+    critical spectrum for improved connectivity and performance. AFC ensures efficient
+    spectrum management and regulatory compliance, supporting advancements in Wi-Fi
+    technology [1].
+
+    Additionally, the Wi-Fi Alliance has emphasized the importance of 6 GHz spectrum in
+    enabling next-generation Wi-Fi technologies like Wi-Fi 7, particularly in Europe,
+    where it plays a key role in digital infrastructure and fiber-to-the-home (FTTH)
+    integration [3]. There are no new regulatory updates specific to May 2026 in the
+    provided documents.
+
+SOURCES:
+    [1] Wireless Broadband Alliance Services Launches Commercial Afc Service, Enabling S (N/A)
+    [2] Wi-Fi® And Ftth In 6 Ghz Highlights (N/A)
+    [3] Wi-Fi Alliance Insider – April 2026 (N/A)
+    [4] Beyond The Buzzwords To Achieve True Breakthroughs: Implementing 6 Ghz Indoors W (N/A)
+    [5] Tgd - Additional Regulatory Domains (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q55 [9. REGULATORY & ADOPTION]
+QUESTION: Which countries have approved 6 GHz for unlicensed Wi-Fi use?
+
+PIPELINE: fast  |  ROUTE: regulatory_info  |  DOCS: 10  |  TIME: 7.76s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Countries that have approved 6 GHz for unlicensed Wi-Fi use include the United States,
+    Canada, Brazil, South Korea, Saudi Arabia, the United Kingdom, and the European Union
+    member states. These regions have opened either the full 1200 MHz or parts of the 6
+    GHz band for unlicensed use, enabling Wi-Fi 6E and future Wi-Fi 7 deployments. Canada,
+    for example, has adopted rules for very low power and standard power devices in the 6
+    GHz band, supported by tools like the Automated Frequency Coordination (AFC) system
+    [9], [10].
+
+SOURCES:
+    [1] Wi-Fi® Spectrum Requirements China (2024) (N/A)
+    [2] Participating In Standards Process Means Influence, And Business (N/A)
+    [3] Wi-Fi Alliance® And China Communications Standards Association Announce Memorand (N/A)
+    [4] Document Requirements (N/A)
+    [5] Certification Overview (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q56 [9. REGULATORY & ADOPTION]
+QUESTION: What is the adoption status of Wi-Fi 7 among device manufacturers?
+
+PIPELINE: fast  |  ROUTE: status_check  |  DOCS: 9  |  TIME: 11.44s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have new updates on Wi-Fi 7 adoption among device manufacturers for this
+    period. The most recent information I have is from November 15, 2022, which does not
+    specifically address Wi-Fi 7 adoption. However, earlier discussions around Wi-Fi 6E
+    highlighted strong momentum in device certification and deployment, which likely set
+    the stage for Wi-Fi 7 advancements. Wi-Fi 7 adoption would depend on regulatory
+    approvals, chipset availability, and certification programs, but no specific data is
+    available in my notes.
+
+SOURCES:
+    [1] Quarterly Update (December 2021): Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    [2] Quarterly Update (October 2021): Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    [3] Quarterly Update (July 2021): Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    [4] Global Regulatory And Afc Update - June 2021 (N/A)
+    [5] Quarterly Update: Wi-Fi 6E Devices Driving Technology Innovation (N/A)
+    ... and 4 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q57 [9. REGULATORY & ADOPTION]
+QUESTION: What compliance requirements exist for Wi-Fi 6E devices?
+
+PIPELINE: fast  |  ROUTE: regulatory_info  |  DOCS: 10  |  TIME: 6.67s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wi-Fi 6E devices must comply with several key requirements:
+
+    - **Spectrum Use:** Devices must operate within the 6 GHz band as per regional
+    regulations. For example, in the U.S., this includes compliance with FCC rules for
+    very low power (VLP) and standard power devices, with the latter requiring integration
+    with an Automated Frequency Coordination (AFC) system to avoid interference with
+    incumbent users [9].
+
+    - **Certification:** Devices must pass Wi-Fi Alliance certification, which includes
+    interoperability, security, and performance testing. Updated testing protocols
+    specifically address 6 GHz standard power devices to ensure compliance with technical
+    and regulatory standards [7].
+
+    - **Power Levels and AFC:** Standard power devices must adhere to power limits and AFC
+    requirements, while VLP devices are exempt from AFC but must meet strict power
+    constraints [9].
+
+    These requirements ensure safe and efficient operation within the 6 GHz band while
+    promoting global interoperability.
+
+SOURCES:
+    [1] Wi-Fi® Spectrum Requirements China (2024) (N/A)
+    [2] Participating In Standards Process Means Influence, And Business (N/A)
+    [3] Introducing Wi-Fi® For Matter™: A New Certification To Accelerate Interoperabili (2025-09-29T00:00:00Z)
+    [4] Wi-Fi Alliance® Introduces Wi-Fi® For Matter™ Certification To Accelerate Intero (2025-09-04T00:00:00Z)
+    [5] Certification Laboratory Availability (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q58 [9. REGULATORY & ADOPTION]
+QUESTION: What regulatory actions has the FCC taken regarding Wi-Fi spectrum?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 0.03s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The FCC has taken several significant regulatory actions regarding Wi-Fi spectrum:
+
+    - **6 GHz Band**: The FCC expanded the regulatory framework for unlicensed use of the
+    6 GHz band, enabling a new ecosystem of Wi-Fi devices and addressing growing spectrum
+    demands [3], [4]. A proposal to allow very low power devices in this band was also
+    commended for supporting advanced technologies like IoT and VR [8].
+
+    - **5 GHz Band**: The FCC has worked to preserve unlicensed spectrum access in the 5
+    GHz band, balancing Wi-Fi needs with military radar protections via dynamic frequency
+    selection (DFS) [10]. It also proposed releasing additional 5 GHz spectrum to enhance
+    gigabit-speed Wi-Fi and reduce congestion [2].
+
+    - **60 GHz Band**: The FCC approved flexible access in the 57-71 GHz range,
+    facilitating advancements in WiGig and 5G technologies [1], [9].
+
+    These actions aim to support innovation, reduce congestion, and meet growing
+    connectivity demands.
+
+SOURCES:
+    [1] Wi-Fi Alliance® Applauds Fcc’S Decisions In The Spectrum Frontiers Proceeding (N/A)
+    [2] Wi-Fi Alliance® Applauds New Fcc Milestone Toward The Release Of Additional Spec (N/A)
+    [3] Wi-Fi Alliance® Commends Fcc On Expanding Regulatory Framework For 6 Ghz (N/A)
+    [4] Wi-Fi Alliance® Applauds Fcc Action On 6 Ghz Spectrum (N/A)
+    [5] Wi-Fi® Spectrum Requirements China (2024) (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q59 [9. REGULATORY & ADOPTION]
+QUESTION: What is the RSPG position on the upper 6 GHz band in Europe?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 3.96s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The RSPG (Radio Spectrum Policy Group) in Europe has expressed concerns about
+    allocating the upper 6 GHz band (6425–7125 MHz) for exclusive mobile use, emphasizing
+    the importance of Wi-Fi access in this spectrum. An open letter highlighted the
+    socioeconomic benefits of Wi-Fi and argued against prioritizing mobile networks over
+    unlicensed use. The debate reflects broader EU discussions on balancing 5G expansion
+    with Wi-Fi needs [6].
+
+SOURCES:
+    [1] Wi-Fi 6E Insights: Q1 2022 Editorial (2026-01-04T04:03:39.133Z)
+    [2] Wi-Fi Stakeholders Letter To The U.S. Congressional Committees (2025-06-03T00:00:00Z)
+    [3] Wi-Fi 6E Insights: Q4 2021 Editorial (2026-01-04T04:07:15.389Z)
+    [4] Wi-Fi'S Impact On Gigabit Connectivity In Europe (2026-01-04T03:30:14.274Z)
+    [5] Ofcom Brings Wi-Fi® Into 6 Ghz (2026-01-04T04:30:19.389Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q60 [10. TECHNICAL EXPLANATIONS]
+QUESTION: How does Multi-Link Operation work in Wi-Fi 7?
+
+PIPELINE: fast  |  ROUTE: technical_explanation  |  DOCS: 2  |  TIME: 7.45s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 2 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    Multi-Link Operation (MLO) in Wi-Fi 7 allows devices to use multiple frequency bands
+    (e.g., 2.4 GHz, 5 GHz, and 6 GHz) simultaneously to enhance performance, reduce
+    latency, and improve reliability. By aggregating multiple links, MLO enables higher
+    throughput and more efficient spectrum utilization. It also supports seamless
+    failover, ensuring uninterrupted connectivity if one link experiences interference or
+    congestion.
+
+    MLO is particularly beneficial for applications requiring low latency and high
+    bandwidth, such as AR/VR, gaming, and 8K video streaming. It leverages advanced
+    coordination mechanisms to manage traffic across links dynamically, optimizing
+    performance based on real-time conditions. This feature is a key differentiator for
+    Wi-Fi 7 compared to earlier generations.
+
+SOURCES:
+    [1] Wi-Fi Security Guidelines (2026-04-14T00:00:00)
+    [2] Episode 31: Wi-Fi® Is Infrastructure For Life With Tuncay Cil Of Dzs (2023-01-31T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q61 [10. TECHNICAL EXPLANATIONS]
+QUESTION: Explain the OFDMA resource unit allocation in Wi-Fi 6
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 8.18s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    OFDMA (Orthogonal Frequency Division Multiple Access) in Wi-Fi 6 divides the channel
+    bandwidth into smaller sub-channels called Resource Units (RUs). These RUs are
+    allocated to multiple users simultaneously, enabling efficient spectrum use and
+    reducing latency. RUs can vary in size, from 26 tones (smallest) to 996 tones (entire
+    channel), depending on user needs and traffic demands.
+
+    The access point (AP) centrally manages RU allocation, dynamically assigning them
+    based on factors like device capabilities, traffic type, and network conditions. This
+    approach minimizes contention and maximizes throughput, especially in dense
+    environments like offices or classrooms [4].
+
+SOURCES:
+    [1] Afc Specification And Test Plans (2026-01-04T04:10:09.659Z)
+    [2] Wi-Fi 6E: Expanding Wi-Fi Into 6 Ghz Spectrum (2026-01-04T04:13:18.018Z)
+    [3] Wi-Fi 6 And Wi-Fi 6E Drive Global Market Opportunities (2026-01-04T04:02:52.161Z)
+    [4] Reduced Latency Benefits Of Wi-Fi 6 Ofdma (2026-01-04T04:21:34.903Z)
+    [5] Wi-Fi 6E Insights: Q4 2021 Editorial (2026-01-04T04:07:15.389Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q62 [10. TECHNICAL EXPLANATIONS]
+QUESTION: How does target wake time reduce power consumption in IoT devices?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 8.98s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Target Wake Time (TWT) reduces power consumption in IoT devices by allowing devices to
+    negotiate specific wake and sleep schedules with the access point (AP). Instead of
+    continuously listening for transmissions, devices wake only during their scheduled TWT
+    intervals to send or receive data, then return to a low-power sleep state. This
+    minimizes energy usage by reducing unnecessary active periods [1].
+
+    Broadcast TWT further optimizes power efficiency by synchronizing wake times across
+    multiple devices, enabling simultaneous communication and reducing the need for
+    individual wake-ups. This is particularly beneficial for dense IoT environments where
+    many devices share the same network [1].
+
+SOURCES:
+    [1] Wi-Fi Certified 6™ Release 2: Better Wireless For Iot (N/A)
+    [2] Episode 91: Wi-Fi 7 In Action: How The Latest Generation Of Wi-Fi Is Powering He (2025-11-19T00:00:00Z)
+    [3] Wi-Fi Halow For Iot Japan Field Trials Report (2026-04-28T00:00:00)
+    [4] Wi-Fi® Delivers Strong Iot Advantage (N/A)
+    [5] Iot Device Cybersecurity Guidance For The Federal Government: Establishing Iot D (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q63 [10. TECHNICAL EXPLANATIONS]
+QUESTION: What is the role of BSS colouring in reducing interference?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    BSS (Basic Service Set) colouring reduces interference by assigning a unique "colour"
+    (a numerical identifier) to each BSS operating on the same channel. This allows
+    devices to differentiate between transmissions from their own network and overlapping
+    networks. When a device detects a signal with a different BSS colour, it can apply a
+    higher energy detection threshold, effectively ignoring weaker signals from
+    neighbouring networks. This reduces contention and improves overall network
+    performance, particularly in dense environments like apartments or offices.
+
+SOURCES:
+    [1] Codes For Identification Of Federal And Federally-Assisted Organizations (2026-05-12T12:17:51.8Z)
+    [2] Wi-Fi Alliance® 25Th Anniversary Member Recap (2026-01-04T03:29:20.438Z)
+    [3] Member Testimonial: Signify (2026-01-04T03:27:36.169Z)
+    [4] The Resource Costs Of Ai - Segment 4 (30:00 - 30:21) (2026-02-09T15:28:42.702835Z)
+    [5] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 47 (7:40:00 - 7: (2026-02-04T17:46:12.420067Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q64 [10. TECHNICAL EXPLANATIONS]
+QUESTION: How does 4K-QAM improve throughput in Wi-Fi 7?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 17.29s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    4K-QAM (4096-QAM) improves throughput in Wi-Fi 7 by increasing the number of bits
+    transmitted per symbol. Compared to 1024-QAM in Wi-Fi 6, 4K-QAM encodes 12 bits per
+    symbol instead of 10, resulting in a 20% increase in data rate for the same channel
+    conditions. This higher modulation efficiency maximizes spectral utilization, enabling
+    faster data transmission over the available bandwidth.
+
+    However, 4K-QAM requires a higher signal-to-noise ratio (SNR) to maintain reliability,
+    making it most effective in environments with minimal interference and strong signal
+    quality, such as short-range deployments or when using 320 MHz channels. This feature
+    is particularly beneficial for high-bandwidth applications like 8K streaming, AR/VR,
+    and cloud gaming [1], [6].
+
+SOURCES:
+    [1] Wi-Fi 7: Low Latency, High Reliability, And Extremely High Throughput (N/A)
+    [2] Wireless Broadband Alliance Wi-Fi 7 Trials Showcase 2.5X Performance Leap For Cl (N/A)
+    [3] At&T, Ruckus Networks & Intel Wi-Fi 7 Mlo Enterprise Field Trials (2026-03-26T00:00:00)
+    [4] Wi-Fi 7 Trial Report For Residential Deployments By Cablelabs And Intel (2025-07-02T00:00:00)
+    [5] Tgbe (Extremely High Throughput) (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q65 [10. TECHNICAL EXPLANATIONS]
+QUESTION: Explain the roaming problem caused by sticky clients
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 17.57s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Sticky clients occur when devices remain connected to a distant or suboptimal access
+    point (AP) despite the availability of closer, stronger APs. This behavior is often
+    due to outdated or simplistic roaming algorithms in client devices, which prioritize
+    maintaining the current connection over switching to a better one. Sticky clients
+    degrade network performance by consuming resources on the weaker AP and experiencing
+    poor signal quality, leading to reduced throughput and increased latency.
+
+    The issue is exacerbated in environments with multiple APs, where effective roaming
+    decisions are critical. Solutions discussed include the use of 802.11k, 802.11v, and
+    802.11r standards for better AP steering and roaming assistance. These enable features
+    like BSS Transition Management (BTM) requests and RSSI threshold enforcement to guide
+    clients toward optimal connections. However, challenges persist, especially with older
+    devices that lack support for these protocols [1], [2], [3], [5].
+
+SOURCES:
+    [1] Sticky Client Scenarios Minutes 251208.Docx (2026-01-21T15:07:36.037Z)
+    [2] Sticky Client Scenarios 251208.Pptx (2026-01-16T13:27:33.519Z)
+    [3] Sticky Client Scenarios Minutes 251208.Docx (2026-01-16T13:27:15.991Z)
+    [4] Sticky Client Scenarios Minutes 251208.Docx (2026-01-13T13:52:23.18Z)
+    [5] Sticky Client Scenarios 251208.Pptx (2026-01-13T13:52:14.217Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q66 [10. TECHNICAL EXPLANATIONS]
+QUESTION: How does beamforming improve signal strength in 802.11be?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 22.39s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Beamforming in 802.11be (Wi-Fi 7) improves signal strength by focusing the wireless
+    signal in the direction of the intended receiver, rather than broadcasting it
+    uniformly in all directions. This is achieved through advanced multi-user MIMO (MU-
+    MIMO) and coordinated beamforming techniques, where multiple antennas work together to
+    create constructive interference at the receiver.
+
+    By dynamically adjusting the phase and amplitude of signals from each antenna,
+    beamforming enhances signal quality, increases range, and reduces interference with
+    other devices. This targeted approach is particularly effective in high-density
+    environments and for high-bandwidth applications, as it ensures stronger and more
+    reliable connections for specific users or devices.
+
+    The use of coordinated beamforming (Co-BF), as outlined in Wi-Fi 8 discussions [8],
+    further refines this by enabling access points to synchronize their beamforming
+    efforts, minimizing inter-AP interference and optimizing network-wide performance.
+
+SOURCES:
+    [1] Wifi Location Accuracy Interop Event #12 Report D1.3.Pdf (N/A)
+    [2] Wba 2026 Roadmap - Overview Presentation To Members - 22 January 2026.Pdf (N/A)
+    [3] Sticky Client Scenarios Minutes 251208.Docx (N/A)
+    [4] 20251208 Prox Detection Fr 2027 Mrd R01.Docx (N/A)
+    [5] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q67 [10. TECHNICAL EXPLANATIONS]
+QUESTION: What is spatial reuse and how is it implemented in Wi-Fi 6?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 12.23s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Spatial reuse in Wi-Fi 6 allows multiple devices to transmit simultaneously in the
+    same frequency channel by leveraging advanced interference management techniques. It
+    is implemented through the Basic Service Set (BSS) Coloring feature, which assigns a
+    unique "color" (identifier) to each BSS. Devices use this color to differentiate
+    between transmissions from their own network and neighboring networks.
+
+    When a device detects a transmission with a different BSS color, it can adjust its
+    Clear Channel Assessment (CCA) threshold, allowing it to transmit if the interference
+    is below a certain level. This increases channel utilization and reduces contention,
+    especially in dense environments. Wi-Fi 6 also uses OFDMA to further enhance spatial
+    reuse by dividing channels into smaller resource units, enabling multiple devices to
+    communicate simultaneously without interference [7], [8].
+
+SOURCES:
+    [1] Afc Specification And Test Plans (2026-01-04T04:10:09.659Z)
+    [2] Wi-Fi 6E: Expanding Wi-Fi Into 6 Ghz Spectrum (2026-01-04T04:13:18.018Z)
+    [3] Wi-Fi 6 And Wi-Fi 6E Drive Global Market Opportunities (2026-01-04T04:02:52.161Z)
+    [4] Reduced Latency Benefits Of Wi-Fi 6 Ofdma (2026-01-04T04:21:34.903Z)
+    [5] Wi-Fi 6E Insights: Q4 2021 Editorial (2026-01-04T04:07:15.389Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q68 [10. TECHNICAL EXPLANATIONS]
+QUESTION: How does preamble puncturing work in Wi-Fi 6E and Wi-Fi 7?
+
+PIPELINE: fast  |  ROUTE: technical_explanation  |  DOCS: 2  |  TIME: 7.55s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 2 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    Preamble puncturing in Wi-Fi 6E and Wi-Fi 7 allows devices to transmit data even when
+    parts of a channel are blocked by interference. It works by "puncturing" or disabling
+    specific subchannels within a wider channel (e.g., 80 MHz or 160 MHz) that are
+    unusable due to interference, while still using the remaining clear subchannels for
+    transmission. This ensures efficient spectrum utilization and minimizes the impact of
+    interference on throughput.
+
+    In Wi-Fi 7, preamble puncturing is further enhanced with multi-RU (Resource Unit)
+    allocation, allowing more flexible and granular use of available spectrum. This builds
+    on the foundation laid by Wi-Fi 6E, where preamble puncturing was introduced to
+    improve performance in congested environments, particularly in the 6 GHz band.
+
+SOURCES:
+    [1] Wi-Fi Security Guidelines (2026-04-14T00:00:00)
+    [2] Episode 31: Wi-Fi® Is Infrastructure For Life With Tuncay Cil Of Dzs (2023-01-31T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q69 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What is the WBA Enterprise Security for Private 5G workgroup working on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA Enterprise Security for Private 5G workgroup is focused on developing a
+    comprehensive security framework for private 5G (P5G) networks. Key areas include:
+
+    - Security architecture and interoperability requirements between P5G and enterprise
+    Wi-Fi (802.11) [1].
+    - Alignment with GSMA and 3GPP security baselines to ensure consistency across
+    cellular and enterprise environments [1].
+    - Enterprise threat modeling, risk assessments, and countermeasure frameworks tailored
+    to P5G deployments [1], [10].
+    - A "Phase 2 Technical Blueprint" draft, which includes detailed methodologies and
+    strategies for securing P5G networks. This draft is currently under review and pending
+    finalization [6], [8].
+
+    The group also provides integration guidance for enterprise network operators and
+    addresses authentication and authorization mechanisms specific to P5G environments
+    [10].
+
+SOURCES:
+    [1] Enterprise Security For P5G Framework - Final Document (Wba) (2026-04-28T00:00:00Z)
+    [2] Enterprise Security For Private 5G Networks (2026-05-13T17:28:32.586Z)
+    [3] Enterprise Security For Private 5G Networks (2026-05-13T17:28:32.577Z)
+    [4] Enterprise Security For Private 5G Networks (2026-05-13T17:28:13.112Z)
+    [5] Enterprise Security For Private 5G Networks (2026-05-13T17:28:20.46Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q70 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What has the WBA published about OpenRoaming?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wireless Broadband Alliance (WBA) has highlighted several significant OpenRoaming
+    deployments:
+
+    - **Westminster City Council**: Implemented multilingual onboarding portals and
+    seamless authentication across heterogeneous infrastructure to support smart city
+    initiatives [1].
+    - **Aida Cruises & Cisco**: Enhanced guest connectivity with automatic network
+    onboarding, advanced location services, and seamless integration into the Aida app
+    [2][5].
+    - **Wayfi Wireless & Alta Labs**: Focused on cellular offload, VLAN segmentation,
+    cloud-managed access points, and SIM-based authentication for Wi-Fi calling [3].
+    - **Kepco**: Integrated OpenRoaming into a digital disaster response ecosystem,
+    emphasizing energy security and smart city applications [4].
+
+    These deployments demonstrate OpenRoaming's flexibility in diverse environments, from
+    smart cities to hospitality and disaster preparedness.
+
+SOURCES:
+    [1] Awards Case Study: Best Openroaming Deployment – Westminster City Council (2026-10-03T00:00:00Z)
+    [2] Awards Case Study: Best Openroaming Deployment – Aida Cruises & Cisco (2026-10-03T00:00:00Z)
+    [3] Awards Case Study: Best Openroaming Deployment – Wayfi Wireless & Alta Labs (2026-10-03T00:00:00Z)
+    [4] Awards Case Study: Best Openroaming Deployment – Kepco (2026-10-03T00:00:00Z)
+    [5] Awards Case Study: Best Openroaming Deployment – Aida & Cisco (2026-02-23T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q71 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What is the WBA Roaming Work Group focusing on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 0.01s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA Roaming Work Group is primarily focused on advancing **OpenRoaming**
+    technology to enable seamless, secure, and automatic Wi-Fi connectivity across
+    networks. Recent efforts include:
+
+    - **OpenRoaming Trials**: A trial in London demonstrated simplified and secure roaming
+    across networks, showcasing the potential for urban connectivity improvements [4].
+    - **Business Adoption Initiatives**: Programs like Purple's free initiative aim to
+    accelerate OpenRoaming adoption among businesses, promoting widespread integration
+    [6].
+    - **Collaborations**: New members, such as Longfi Solutions, are contributing to
+    OpenRoaming and Wi-Fi offload advancements [5].
+    - **Deployment Success Stories**: Case studies highlight impactful deployments, such
+    as Westminster City Council's smart city connectivity and Aida Cruises' passenger-
+    focused solutions [9], [3].
+
+    These efforts aim to enhance user experience, security, and interoperability in public
+    and enterprise Wi-Fi environments.
+
+SOURCES:
+    [1] Wireless Broadband Alliance And Wi-Fi Alliance® To Demonstrate Wi-Fi® Roaming At (2026-01-04T05:15:06.669Z)
+    [2] Awards Case Study: Best Openroaming Deployment – Wayfi Wireless & Alta Labs (2026-05-13T23:25:29.514Z)
+    [3] Awards Case Study: Best Openroaming Deployment – Aida Cruises & Cisco (2026-05-13T23:25:28.698Z)
+    [4] Wireless Broadband Alliance Announces Completion Of Openroaming Trial In London, (2026-05-11T23:17:31.642Z)
+    [5] Longfi Solutions Joins Wireless Broadband Alliance To Accelerate Wi-Fi Offload A (2026-05-11T20:46:05.208Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q72 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What has the WBA AI/ML for Wi-Fi workgroup produced?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 0.01s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent information I have does not include specific deliverables or
+    publications from the WBA AI/ML for Wi-Fi workgroup. If you're looking for updates on
+    this group's activities, the most recent WBA focus areas I can confirm are related to
+    OpenRoaming advancements and urban connectivity trials. For AI/ML in Wi-Fi, no direct
+    outputs or updates are documented in my notes.
+
+SOURCES:
+    [1] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 29 (4:40:00 - 4: (2026-02-06T17:05:24.510432)
+    [2] Cisco Ai Summit | The Event Defining The Future Of Ai (2026-02-05T16:52:01.131810)
+    [3] External Liaisons (N/A)
+    [4] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 32 (5:10:00 - 5: (2026-02-06T17:05:24.510432)
+    [5] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 19 (3:00:00 - 3: (2026-02-06T17:05:24.510432)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q73 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What WBA workgroups are focused on Wi-Fi security topics?
+
+PIPELINE: fast  |  ROUTE: wba_programme_list  |  DOCS: 1  |  TIME: 0.01s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The WBA workgroups focused on Wi-Fi security topics include the **Next Gen Wi-Fi**
+    group and the **Post-Quantum Cryptography (PQC)** group. The Next Gen Wi-Fi group
+    addresses security enhancements in upcoming Wi-Fi standards, while the PQC group
+    explores cryptographic methods to secure Wi-Fi against quantum computing threats [1].
+
+SOURCES:
+    [1] WBA Extranet (Programmes & Workgroups) (N/A)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q74 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What is the WBA NextGen Work Group working on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 1  |  TIME: 5.66s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The WBA NextGen Work Group is working on several initiatives, including Wi-Fi and
+    5G/6G convergence, Wi-Fi emergency calling, distributed ledger technology for
+    authentication, EDCA optimization, L4S (Low Latency, Low Loss, Scalable throughput)
+    implementation guidelines, and enhancements to Wi-Fi QoS (Quality of Service)
+    management. They are also addressing post-quantum cryptography, Wi-Fi sensing, and
+    edge roaming technologies [1].
+
+SOURCES:
+    [1] Wba 2026 Roadmap - Overview Presentation To Members - 22 January 2026.Pdf (2026-01-23T03:02:33.607Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q75 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What is the WBA doing about E2E Wi-Fi QoS and latency?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 8.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA is addressing end-to-end Wi-Fi QoS and latency through initiatives like **Wi-
+    Fi Certified QoS Management™**, which ensures consistent QoS treatment across networks
+    [8][9][10]. The NextGen Work Group is also working on **EDCA optimization** and **L4S
+    (Low Latency, Low Loss, Scalable throughput)** implementation guidelines to improve
+    latency and QoS performance [1][7]. Additionally, Wi-Fi 7 trials with partners like
+    Türk Telekom and Intel have demonstrated significant latency reductions and enhanced
+    network performance [1][7]. These efforts aim to support real-time applications and
+    modern use cases requiring deterministic networking and low-latency connectivity.
+
+SOURCES:
+    [1] Wi-Fi 7 Trial Report Featuring Türk Telekom, Hpe Aruba Networking, And Intel (2025-09-18T00:00:00Z)
+    [2] Mpls Network Action For Deterministic Networking (2026-01-08T00:00:00Z)
+    [3] Real Time Applications (Rta) Tig (2026-05-12T12:34:50.365Z)
+    [4] Fast Network Notifications Problem Statement (2026-02-12T00:00:00Z)
+    [5] Fast Network Notifications Problem Statement (2026-02-02T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q76 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What has the WBA published on Post-Quantum Cybersecurity for Wi-Fi?
+
+PIPELINE: fast  |  ROUTE: organization_activity  |  DOCS: 10  |  TIME: 7.91s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA has not published a specific report solely focused on post-quantum
+    cybersecurity for Wi-Fi. However, the NextGen Work Group is actively addressing post-
+    quantum cryptography as part of its broader initiatives, which include enhancing Wi-Fi
+    security and preparing for future cryptographic challenges. This aligns with their
+    ongoing efforts in network security and interoperability [2].
+
+SOURCES:
+    [1] Wireless Broadband Alliance Releases New Report On Deployment Of Public Wi-Fi Fo (2026-05-11T22:51:04.389Z)
+    [2] New Wireless Broadband Alliance Report Helps Enterprises Integrate Private 5G Se (2026-05-11T17:57:21.859Z)
+    [3] Openroaming™ For Device Manufactures Brochure (2021-09-25T00:00:00Z)
+    [4] Openroaming F&B Retail (2021-05-03T00:00:00Z)
+    [5] Openroaming Hospitality (2020-11-24T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q77 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What does the WBA say about OpenRoaming for IoT deployments?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 9.58s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA has not published a specific document directly linking OpenRoaming to IoT
+    deployments. However, OpenRoaming is highlighted in several case studies for its
+    ability to provide seamless, secure, and scalable connectivity across diverse
+    environments, including smart cities and public infrastructure [3], [6]. These
+    attributes align well with IoT requirements, such as automatic onboarding, secure
+    authentication, and interoperability across heterogeneous networks.
+
+    Additionally, the WBA's focus on IoT includes technologies like Wi-Fi HaLow, which
+    supports low-power, long-range IoT applications in sectors like agriculture and
+    industrial automation [1]. While OpenRoaming is not explicitly mentioned in these IoT
+    contexts, its federated onboarding and seamless authentication capabilities could
+    complement IoT deployments by simplifying device connectivity and enhancing
+    scalability [5].
+
+SOURCES:
+    [1] Wireless Broadband Alliance Announces Wi-Fi Halow Entering Real-World Commercial (N/A)
+    [2] Awards Case Study: Best Openroaming Deployment – Aida Cruises & Cisco (2026-10-03T00:00:00)
+    [3] Awards Case Study: Best Openroaming Deployment – Westminster City Council (2026-10-03T00:00:00)
+    [4] Awards Case Study: Best Openroaming Deployment – Wayfi Wireless & Alta Labs (2026-10-03T00:00:00)
+    [5] Wba_Ls Outbound_07172025.Pdf (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q78 [11. WBA WORKGROUPS & EXTRANET]
+QUESTION: What is the WBA position on 6G and Wi-Fi convergence?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 5.84s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wireless Broadband Alliance (WBA) emphasizes the convergence of Wi-Fi and 6G as
+    critical for achieving ubiquitous connectivity. Their 6G vision calls for greater
+    industry collaboration to address challenges like interoperability, energy efficiency,
+    and seamless integration across Wi-Fi, cellular, IoT, and other wireless technologies
+    [9], [10].
+
+    The WBA advocates for aligning efforts across organizations to ensure seamless
+    mobility, quality of service, and spectrum strategy, with Wi-Fi playing a central role
+    in complementing 6G deployments. OpenRoaming, edge computing, and neutral host models
+    are highlighted as key enablers for this convergence [10].
+
+SOURCES:
+    [1] Wba Cto Innovation Forum (2026-02-16T23:49:07.329Z)
+    [2] Private 5G And Wi-Fi Convergence Report: Phase 2 – Technical Considerations (2024-11-18T00:00:00Z)
+    [3] Wireless Global Congress Apac 2025 – Presentation Slide Deck (2025-01-24T00:00:00Z)
+    [4] Wba 2026 Roadmap - Overview Presentation To Members - 22 January 2026.Pdf (2026-01-23T03:02:33.607Z)
+    [5] Wgc Emea 2025 – Open Congress Day 2 Presentation Slides (2025-10-11T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q79 [12. WFA CAUSEWAY WORKGROUPS]
+QUESTION: What has the WFA Broadcast Technical Task Group published recently?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 12.62s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance Broadcast Technical Task Group (Broadcast TG) has recently focused
+    on updates to the Mandatory Requirements Document (MRD) for broadcast services. Key
+    discussions from their April 9, 2026, teleconference included mandatory and optional
+    features for Access Points (APs) and Stations (STAs), as well as plans for task group
+    approval and submission to the Wi-Fi Alliance board. The next meeting was scheduled
+    for April 23, 2026, to continue these efforts [8].
+
+    No new publications or finalized outputs have been noted beyond these updates.
+
+SOURCES:
+    [1] Tgbc - Enhanced Broadcast Service (N/A)
+    [2] Broadcast Tg Attendance - 20260423 .Xlsx (N/A)
+    [3] How To Participate (N/A)
+    [4] Help Me! (N/A)
+    [5] Overview (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q80 [12. WFA CAUSEWAY WORKGROUPS]
+QUESTION: What is the WFA Wi-Fi Location Task Group working on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 7.72s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance Wi-Fi Location Task Group is focused on advancing Wi-Fi Certified
+    Location™ technology, which leverages fine timing measurement (FTM) and IEEE 802.11az
+    standards to enable precise indoor positioning. Recent efforts include enhancing
+    accuracy through algorithms like Kalman filtering, supporting applications such as
+    asset tracking, indoor navigation, and retail analytics, and demonstrating
+    capabilities at events like the Lisbon Member Event [3][5][8][9].
+
+    The group is also addressing privacy and compliance requirements, such as GDPR, for
+    data handling in location-based services [7]. Key use cases being developed include
+    healthcare asset tracking, geofencing, and first responder support [4][10].
+
+SOURCES:
+    [1] Episode 43: A Deep Dive Into Wi-Fi Location™ With Jonathan Segev Of Intel And Ro (2023-07-25T00:00:00Z)
+    [2] Episode 22: Optimizing Retail Conversion And Sustainability Through Wi-Fi Locati (2022-11-15T00:00:00Z)
+    [3] Wi-Fi Location™: Performance Drivers For Wi-Fi® Ranging Technologies And Its Ach (2026-01-04T04:04:19.452Z)
+    [4] Episode 24: Looking Toward The Future Of Wi-Fi Location™ With Rolf De Vegt Of Qu (2022-11-29T00:00:00Z)
+    [5] Wi-Fi Certified Location™ Brings Wi-Fi® Indoor Positioning Capabilities (2026-01-04T04:57:33.319Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q81 [12. WFA CAUSEWAY WORKGROUPS]
+QUESTION: What is the WFA Wi-Fi 8 Marketing Task Group focused on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 6.67s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance Wi-Fi 8 Marketing Task Group is focused on defining and refining
+    the Marketing Requirements Document (MRD) for Wi-Fi 8. Key areas include seamless
+    mobility domain (SMD) transitions, dynamic subband operation (DSO), multi-link power
+    management (MLPM), enhanced long range (ELR), secure control frames, and dynamic
+    bandwidth expansion (DBE). The group emphasizes power efficiency, low latency, and
+    improved security while addressing challenges like interference and spectrum
+    limitations. Use cases span residential, industrial, healthcare, and educational
+    sectors [3], [4], [5].
+
+    Recent discussions also covered coordinated beamforming, target wake time (TWT), and
+    interoperability with legacy standards. The MRD serves as a foundation for
+    certification, testing, and market alignment, ensuring Wi-Fi 8 meets technical and
+    market demands [3], [5].
+
+SOURCES:
+    [1] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (2026-03-27T02:26:18.208Z)
+    [2] Wi-Fi8--Mtg__Agenda _ 20260224-V2.Pptx (2026-03-16T18:29:13.009Z)
+    [3] Wi-Fi 8 Mrd V0.1.Docx (2026-05-13T09:51:02.902Z)
+    [4] Wi-Fi 8 Mrd V0.0.5.Docx (2026-05-13T09:50:37.521Z)
+    [5] Wi-Fi 8 Mrd V1.0.Docx (2026-05-13T09:49:15.31Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q82 [12. WFA CAUSEWAY WORKGROUPS]
+QUESTION: What documents has the WFA Passpoint Task Group produced?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 6.57s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance Passpoint Task Group has produced documents focused on enabling
+    seamless and secure Wi-Fi network access through Passpoint certification. Key
+    deliverables include technical specifications for Hotspot 2.0, interoperability
+    guidelines for roaming between networks, and deployment best practices for service
+    providers and enterprises. These efforts aim to enhance user experience by automating
+    authentication and improving security using WPA3 and EAP (Extensible Authentication
+    Protocol). Specific documents or recent updates from this group are not covered in the
+    provided materials.
+
+SOURCES:
+    [1] Sensing Tg Briefing - V0.9.Pptx (N/A)
+    [2] Wi-Fi Location Task Group Minutes 2026-02-24.Docx (N/A)
+    [3] Wi-Fi8- F2F-Mtg_ Agenda _ 20260205-V1.Pptx (N/A)
+    [4] Wi-Fi Location Task Group Minutes 2026-03-03.Docx (N/A)
+    [5] Wi-Fi8- Mtg_ Agenda _ 20260127-V3.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q83 [12. WFA CAUSEWAY WORKGROUPS]
+QUESTION: What is the WFA Wi-Fi HaLow Task Group working on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 10.88s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Alliance Wi-Fi HaLow Task Group is focused on advancing the adoption and
+    certification of Wi-Fi HaLow™ (based on IEEE 802.11ah). This includes enabling long-
+    range, low-power connectivity tailored for IoT applications. Recent efforts highlight
+    its use in industries like agriculture, logistics, and smart cities, as demonstrated
+    in successful field trials in Japan [6], [7], [8]. The group also emphasizes
+    interoperability, technical performance, and market fit for IoT growth [9].
+
+SOURCES:
+    [1] Ht Sg ⇨ Tgn (2026-05-12T12:32:10.114Z)
+    [2] Tgn - High Throughput (Ht) (2026-05-12T12:28:03.158Z)
+    [3] Intellectual Property Rights (Ipr) Policy (2026-01-04T05:17:33.531Z)
+    [4] Intellectual Property Rights (Ipr) Procedural Guidelines (2026-01-04T05:10:27.836Z)
+    [5] Guidelines For Sponsors And Directors (2026-01-04T05:18:13.687Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q84 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @broadcast what are the latest updates?
+
+PIPELINE: fast  |  ROUTE: workgroup_weekly_recap  |  DOCS: 10  |  TIME: 0.06s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Wfa Causeway - Broadcast Tg activity for May 11 - May 14, 2026:. 17 document(s).
+
+
+    **Top Topics:** attendance tracking, broadcast mrd, voting rights, broadcast task
+    group, downlink broadcast, uplink broadcast, sta, ap, wi-fi alliance antitrust policy,
+    wi-fi alliance intellectual property rights policy
+
+SOURCES:
+    [1] Broadcast Tg Attendance - 20260423 .Xlsx (N/A)
+    [2] Broadcast-Tg-Minutes-20260410.Docx (N/A)
+    [3] Broadcast-Tg-Minutes-20260423.Docx (N/A)
+    [4] Broadcast-Tg-Minutes-20260224.Docx (N/A)
+    [5] Broadcast Tg Meeting Agenda.Pptx (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q85 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @wifi8mtg what has been discussed recently in the Wi-Fi 8 task group?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent discussions in the Wi-Fi 8 task group include updates to the Marketing
+    Requirements Document (MRD) and technical features. Key topics from the March 17,
+    2026, meeting include **Seamless Mobility Domain (SMD) roaming**, **bounded ESS for
+    SMD BSS transitions**, and contributions to MRD text [4]. The agenda also addressed
+    certification readiness and coordinated time division multiple access (TDMA) [5].
+
+    Earlier meetings in February 2026 focused on MRD text contributions, **MIMO with
+    UEQM**, **LDPC/BCC coding**, and **Dynamic Subband Operation (DSO)** [8], [9].
+    Security aspects like WPA3 and RSNO were also discussed on March 19, 2026 [6].
+
+SOURCES:
+    [1] Wi-Fi 8 Mrd V0.1.Docx (1970-01-01T00:00:00Z)
+    [2] Wi-Fi 8 Mrd V0.0.5.Docx (1970-01-01T00:00:00Z)
+    [3] Wi-Fi 8 Mrd V1.0.Docx (1970-01-01T00:00:00Z)
+    [4] Wi-Fi 8 Mtg Minutes - 2026_03_17.Docx (1970-01-01T00:00:00Z)
+    [5] Wi-Fi8--Mtg__Agenda _ 20260317-V3.Pptx (1970-01-01T00:00:00Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q86 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @wba what has the WBA published in the last month?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 3  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wireless Broadband Alliance (WBA) published the following in the last month:
+
+    1. **Wi-Fi HaLow for IoT Japan Field Trials Report** (April 28, 2026): This report
+    evaluates Wi-Fi HaLow (IEEE 802.11ah) performance in diverse environments across
+    Japan, such as industrial sites, residential complexes, school campuses, and
+    underground spaces. Key findings highlight its long-range connectivity, low-power
+    operation, and signal penetration, making it suitable for large-scale IoT deployments.
+    Use cases include security cameras, OTA updates, and access control systems [1][2].
+
+    2. **Enterprise Connectivity Forum (ECF) Slide Deck** (April 20, 2026): Presentation
+    from the April 16 forum covering advancements in OpenRoaming, AI-driven network
+    operations, autonomous networking, and predictive healing. It includes case studies on
+    zero-touch deployment and multi-agent orchestration for enterprise Wi-Fi [3].
+
+SOURCES:
+    [1] Wi-Fi Halow For Iot Japan Field Trials Report – Japanese Version (2026-04-28T00:00:00Z)
+    [2] Wi-Fi Halow For Iot Japan Field Trials Report (2026-04-28T00:00:00Z)
+    [3] Enterprise Connectivity Forum (Ecf) – April 16, 2026 – Presentation Slide Deck (2026-04-20T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q87 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @enterprise what is the latest on Enterprise Security for Private 5G?
+
+PIPELINE: fast  |  ROUTE: workgroup_weekly_recap  |  DOCS: 10  |  TIME: 0.02s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    Enterprise Security for Private 5G Networks activity for May 11 - May 14, 2026:. 10
+    document(s).
+
+
+    **Top Topics:** phase 2 technical blueprint draft, private 5g, enterprise security,
+    technical blueprint, webex, enterprise architecture framework analysis, integration
+    guidance for enterprise network operators, authentication and authorisation mechanisms
+    for p5g environments, interoperability requirements, threat model and risk assessment
+    for p5g network architectures
+
+SOURCES:
+    [1] Enterprise Security For Private 5G Networks (N/A)
+    [2] Enterprise Security For Private 5G Networks (N/A)
+    [3] Enterprise Security For Private 5G Networks (N/A)
+    [4] Enterprise Security For Private 5G Networks (N/A)
+    [5] Enterprise Security For Private 5G Networks (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q88 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @openroaming what are the latest OpenRoaming developments?
+
+PIPELINE: baseline  |  ROUTE: keyword  |  DOCS: 10  |  TIME: 14.70s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    I don't have new OpenRoaming updates for May 2026. The most recent update is from
+    November 26, 2025, highlighting OpenRoaming's growing adoption in Japan. It emphasized
+    seamless Wi-Fi connectivity, improved user experience, and enhanced security, driven
+    by collaboration among organizations to expand deployment [2].
+
+SOURCES:
+    [1] Unlocking Wi-Fi Potential With Openroaming – Webinar Recording (2023-04-14T00:00:00)
+    [2] The Growing Presence Of Openroaming In Japan (2025-11-26T00:00:00)
+    [3] Progress Update From The Wireless Broadband Alliance’S Openroaming Work Group In (N/A)
+    [4] Openroaming Release 5 (N/A)
+    [5] Industry Impact Award Winner: Cisco (N/A)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q89 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @roaming what is the Roaming Work Group focused on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 13.34s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Roaming Work Group is focused on enabling seamless and secure Wi-Fi roaming across
+    networks, primarily through technologies like Passpoint and OpenRoaming. Recent
+    efforts include showcasing seamless authentication at events like the WBA Carrier Wi-
+    Fi Summit [1], advancing OpenRoaming deployments in public spaces and enterprises
+    [2][4][6], and enhancing user experience with Wi-Fi Certified Optimized Connectivity™
+    for better network discovery and authentication [8].
+
+    Key initiatives also involve trials, such as the OpenRoaming trial in London, which
+    demonstrated simplified connectivity in urban environments [4], and collaborations
+    with organizations like Allied Telesis and Purple to accelerate OpenRoaming adoption
+    [6][10]. These activities aim to improve interoperability, security, and user
+    experience in Wi-Fi roaming scenarios.
+
+SOURCES:
+    [1] Wireless Broadband Alliance And Wi-Fi Alliance® To Demonstrate Wi-Fi® Roaming At (2026-01-04T05:15:06.669Z)
+    [2] Awards Case Study: Best Openroaming Deployment – Wayfi Wireless & Alta Labs (2026-05-13T23:25:29.514Z)
+    [3] Awards Case Study: Best Openroaming Deployment – Aida Cruises & Cisco (2026-05-13T23:25:28.698Z)
+    [4] Wireless Broadband Alliance Announces Completion Of Openroaming Trial In London, (2026-05-11T23:17:31.642Z)
+    [5] Longfi Solutions Joins Wireless Broadband Alliance To Accelerate Wi-Fi Offload A (2026-05-11T20:46:05.208Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q90 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @location what is the Wi-Fi Location Task Group working on?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 19.89s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The Wi-Fi Location Task Group is focused on advancing Wi-Fi Certified Location™
+    technology, which leverages fine timing measurement (FTM) and IEEE 802.11az to enable
+    precise indoor positioning and location-based services. Key areas include improving
+    accuracy through techniques like Kalman filtering and averaging, supporting use cases
+    like indoor navigation, asset tracking, and retail analytics, and demonstrating
+    capabilities at events like the Lisbon Member Event [3][5][6][8].
+
+    Recent efforts also emphasize privacy compliance (e.g., GDPR), integration in
+    healthcare for asset tracking and emergency response, and expanding the ecosystem with
+    contributions from companies like Qualcomm, Google, and HPE Aruba Networking
+    [7][8][10].
+
+SOURCES:
+    [1] Episode 43: A Deep Dive Into Wi-Fi Location™ With Jonathan Segev Of Intel And Ro (2023-07-25T00:00:00Z)
+    [2] Episode 22: Optimizing Retail Conversion And Sustainability Through Wi-Fi Locati (2022-11-15T00:00:00Z)
+    [3] Wi-Fi Location™: Performance Drivers For Wi-Fi® Ranging Technologies And Its Ach (2026-01-04T04:04:19.452Z)
+    [4] Episode 24: Looking Toward The Future Of Wi-Fi Location™ With Rolf De Vegt Of Qu (2022-11-29T00:00:00Z)
+    [5] Wi-Fi Certified Location™ Brings Wi-Fi® Indoor Positioning Capabilities (2026-01-04T04:57:33.319Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q91 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @passpoint what is new in Passpoint standardisation?
+
+PIPELINE: fast  |  ROUTE: recent_content  |  DOCS: 2  |  TIME: 9.21s
+RECALL: 4/5   PRECISION: 4/5
+NOTE: Only 2 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    Recent updates in Passpoint standardization include discussions on enhancing
+    provisioning and user experience through DPP-based Passpoint provisioning, as
+    highlighted during a face-to-face meeting in Bangkok. This includes steps for on-site
+    provisioning, autoconnect functionality, and troubleshooting Passpoint networks [1].
+
+    Additionally, the Wireless Broadband Alliance (WBA) has proposed updates to the
+    Passpoint specification to support "Deauthentication Imminent" functionality. This
+    involves introducing a new HS20-Deauthentication-Request VSA (Vendor-Specific
+    Attribute) within RADIUS to improve network management and user experience. Feedback
+    on feasibility and implementation timing has been requested [2].
+
+SOURCES:
+    [1] Opening Bangkok Passpoint.Pptx (1970-01-01T00:00:00Z)
+    [2] Wba Lsinbound 260227.Pdf (1970-01-01T00:00:00Z)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q92 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @pqc what is the WBA Post-Quantum Cybersecurity workgroup doing?
+
+PIPELINE: fast  |  ROUTE: documents_by_topic  |  DOCS: 10  |  TIME: 19.72s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The WBA Post-Quantum Cybersecurity workgroup is focused on preparing Wi-Fi networks
+    and systems for the transition to post-quantum cryptography. This includes evaluating
+    quantum-resistant algorithms, aligning with NIST's post-quantum cryptographic
+    standards, and developing guidelines for secure key exchange and encryption methods.
+    The group is also addressing interoperability challenges and ensuring backward
+    compatibility with existing Wi-Fi security protocols like WPA3. Additionally, they are
+    exploring the impact of quantum computing on authentication mechanisms and network
+    resilience.
+
+SOURCES:
+    [1] Fiscal Year 2022 Cybersecurity And Privacy Annual Report (2026-05-12T01:26:45.796Z)
+    [2] Fiscal Year 2023 Cybersecurity And Privacy Annual Report (2026-05-12T01:18:48.635Z)
+    [3] Iot Device Cybersecurity Guidance For The Federal Government: Establishing Iot D (2026-05-12T02:00:08.411Z)
+    [4] Bug Framework (Bf): Formalizing Cybersecurity Weaknesses And Vulnerabilities (2026-05-12T01:15:41.616Z)
+    [5] Workforce Framework For Cybersecurity (Nice Framework) (2026-05-12T11:00:15.897Z)
+    ... and 5 more
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q93 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @nextgen what is the WBA NextGen workgroup working on?
+
+PIPELINE: fast  |  ROUTE: wba_programme_list  |  DOCS: 1  |  TIME: 7.56s
+RECALL: 3/5   PRECISION: 4/5
+NOTE: Only 1 document(s) retrieved — possible knowledge gap
+
+ANSWER:
+    The WBA NextGen workgroup focuses on advancing next-generation Wi-Fi technologies and
+    frameworks. This includes exploring innovations like Wi-Fi 7 (802.11be), integration
+    of AI/ML for network optimization, and enhanced support for emerging use cases such as
+    AR/VR and IoT. The group also works on improving network performance, reliability, and
+    scalability for enterprise and carrier-grade deployments. Specific initiatives often
+    involve collaboration with other WBA workgroups and alignment with Wi-Fi Alliance and
+    IETF standards. [1]
+
+SOURCES:
+    [1] WBA Extranet (Programmes & Workgroups) (N/A)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Q94 [13. @MENTION DATASOURCE QUERIES]
+QUESTION: @aiml what has the AI/ML for Wi-Fi workgroup been discussing?
+
+PIPELINE: fast  |  ROUTE: generic_search  |  DOCS: 10  |  TIME: 9.72s
+RECALL: 4/5   PRECISION: 4/5
+
+ANSWER:
+    The most recent information I have does not include specific discussions from an AI/ML
+    for Wi-Fi workgroup. However, AI/ML in Wi-Fi contexts typically focuses on network
+    optimization, predictive maintenance, and enhancing user experience through adaptive
+    algorithms. If this aligns with your query, I can provide broader insights into AI/ML
+    applications in networking.
+
+SOURCES:
+    [1] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 29 (4:40:00 - 4: (2026-02-06T17:05:24.510432)
+    [2] Cisco Ai Summit | The Event Defining The Future Of Ai (2026-02-05T16:52:01.131810)
+    [3] External Liaisons (N/A)
+    [4] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 32 (5:10:00 - 5: (2026-02-06T17:05:24.510432)
+    [5] Cisco Ai Summit | The Event Defining The Future Of Ai - Segment 19 (3:00:00 - 3: (2026-02-06T17:05:24.510432)
+    ... and 5 more
+
+
+====================================================================================================
+  SUMMARY TABLE — fast_questions.txt
+====================================================================================================
+#    Question                                                       Pipeline     R   P
+──── ────────────────────────────────────────────────────────────── ────────── ─── ───
+1    What was discussed in the last month across all working grou   fast         4   4
+2    What happened in the Wi-Fi 8 working group last week?          fast         3   4
+3    Give me a summary of the most recent Wi-Fi Alliance publicat   fast         4   4
+4    What were the key topics from the latest Wi-Fi 8 meeting min   fast         3   4
+5    What documents were published in the last 30 days?             fast         4   4
+6    Summarise the latest Wi-Fi Alliance Causeway workgroup activ   baseline     4   4
+7    What new content was added to the knowledge base recently?     baseline     4   4
+8    What was discussed in the Wi-Fi 8 February 2026 face-to-face   fast         4   4
+9    What are sticky clients and why are they a problem in Wi-Fi?   fast         4   4
+10   What documents discuss sticky client scenarios in Wi-Fi 8?     fast         4   4
+11   Show me everything in the knowledge base related to Multi-Li   fast         4   4
+12   What has been written about 6 GHz spectrum management?         fast         4   4
+13   What documents cover the upper 6 GHz band discussions?         fast         4   4
+14   What is discussed in the knowledge base about target wake ti   fast         4   4
+15   Find all documents related to 802.11be beamforming             fast         4   4
+16   What are the key documents about Wi-Fi sensing technology?     fast         4   4
+17   What material covers channel bonding in Wi-Fi 7 and Wi-Fi 8?   fast         4   4
+18   What has been documented about power save mechanisms in Wi-F   baseline     4   4
+19   What is the difference between Wi-Fi 7 and Wi-Fi 8?            fast         4   4
+20   Compare Multi-Link Operation in Wi-Fi 7 versus Wi-Fi 8         fast         4   4
+21   How does 802.11be differ from 802.11ax in terms of channel w   fast         4   4
+22   What are the improvements in Wi-Fi 8 over Wi-Fi 7 for latenc   fast         4   4
+23   Compare the security features of WPA3 versus WPA2              fast         4   4
+24   What changed between Wi-Fi 6 and Wi-Fi 6E?                     fast         4   4
+25   How does the 6 GHz band compare to the 5 GHz band for enterp   fast         4   4
+26   What is the current status of the IEEE 802.11bn standard?      baseline     4   4
+27   What are the latest changes to the 802.11be specification?     fast         3   4
+28   What milestones has the Wi-Fi 8 task group hit recently?       fast         4   4
+29   What is the timeline for Wi-Fi 8 certification?                baseline     4   4
+30   What features are being debated in the 802.11bn amendment?     fast         4   4
+31   What is the current status of Wi-Fi 7 certification programm   fast         4   4
+32   What has been discussed about sticky clients by meeting atte   fast         4   4
+33   Who presented at the Wi-Fi 8 February 2026 face-to-face?       fast         4   4
+34   What expert opinions exist on Multi-Link Operation performan   fast         4   4
+35   Who is contributing to discussions on Wi-Fi sensing in the w   fast         4   4
+36   What do contributors say about roaming improvements in Wi-Fi   fast         4   4
+37   What has the Wi-Fi Alliance published about Wi-Fi 7 adoption   fast         4   4
+38   What are the latest Wi-Fi Alliance press releases?             fast         4   4
+39   What documents come from the Wi-Fi Alliance Causeway working   fast         4   4
+40   What has Qualcomm contributed to Wi-Fi 8 discussions?          fast         4   4
+41   What positions has Intel published on next-generation Wi-Fi?   fast         4   4
+42   What is on the agenda for upcoming Wi-Fi Alliance events?      fast         4   4
+43   What was the agenda for the Wi-Fi 8 February 2026 face-to-fa   fast         3   4
+44   What were the action items from the last Wi-Fi 8 meeting?      fast         4   4
+45   What decisions were made in the most recent Wi-Fi 8 meeting    fast         4   4
+46   What was discussed in the Wi-Fi 8 meeting on February 17, 20   fast         3   4
+47   What is the Wi-Fi 8 meeting schedule for early 2026?           fast         4   4
+48   What is the latest Wi-Fi Alliance press release?               fast         4   4
+49   Show me all Wi-Fi Alliance blog posts from the last quarter    baseline     4   4
+50   What whitepapers has the Wi-Fi Alliance published about Wi-F   fast         4   4
+51   What resources are available about Wi-Fi 7 certification?      fast         4   4
+52   What podcasts or broadcasts have discussed Wi-Fi 8?            fast         4   4
+53   Give me a rollup of all WFA Beacon articles about 6 GHz        fast         4   4
+54   What is the latest regulatory update on 6 GHz spectrum globa   fast         4   4
+55   Which countries have approved 6 GHz for unlicensed Wi-Fi use   fast         4   4
+56   What is the adoption status of Wi-Fi 7 among device manufact   fast         4   4
+57   What compliance requirements exist for Wi-Fi 6E devices?       fast         4   4
+58   What regulatory actions has the FCC taken regarding Wi-Fi sp   fast         4   4
+59   What is the RSPG position on the upper 6 GHz band in Europe?   fast         4   4
+60   How does Multi-Link Operation work in Wi-Fi 7?                 fast         4   4
+61   Explain the OFDMA resource unit allocation in Wi-Fi 6          fast         4   4
+62   How does target wake time reduce power consumption in IoT de   fast         4   4
+63   What is the role of BSS colouring in reducing interference?    fast         4   4
+64   How does 4K-QAM improve throughput in Wi-Fi 7?                 fast         4   4
+65   Explain the roaming problem caused by sticky clients           fast         4   4
+66   How does beamforming improve signal strength in 802.11be?      fast         4   4
+67   What is spatial reuse and how is it implemented in Wi-Fi 6?    fast         4   4
+68   How does preamble puncturing work in Wi-Fi 6E and Wi-Fi 7?     fast         4   4
+69   What is the WBA Enterprise Security for Private 5G workgroup   fast         4   4
+70   What has the WBA published about OpenRoaming?                  fast         4   4
+71   What is the WBA Roaming Work Group focusing on?                fast         4   4
+72   What has the WBA AI/ML for Wi-Fi workgroup produced?           fast         4   4
+73   What WBA workgroups are focused on Wi-Fi security topics?      fast         3   4
+74   What is the WBA NextGen Work Group working on?                 fast         3   4
+75   What is the WBA doing about E2E Wi-Fi QoS and latency?         fast         4   4
+76   What has the WBA published on Post-Quantum Cybersecurity for   fast         4   4
+77   What does the WBA say about OpenRoaming for IoT deployments?   fast         4   4
+78   What is the WBA position on 6G and Wi-Fi convergence?          fast         4   4
+79   What has the WFA Broadcast Technical Task Group published re   fast         4   4
+80   What is the WFA Wi-Fi Location Task Group working on?          fast         4   4
+81   What is the WFA Wi-Fi 8 Marketing Task Group focused on?       fast         4   4
+82   What documents has the WFA Passpoint Task Group produced?      fast         4   4
+83   What is the WFA Wi-Fi HaLow Task Group working on?             fast         4   4
+84   @broadcast what are the latest updates?                        fast         4   4
+85   @wifi8mtg what has been discussed recently in the Wi-Fi 8 ta   fast         4   4
+86   @wba what has the WBA published in the last month?             fast         4   4
+87   @enterprise what is the latest on Enterprise Security for Pr   fast         4   4
+88   @openroaming what are the latest OpenRoaming developments?     baseline     4   4
+89   @roaming what is the Roaming Work Group focused on?            fast         4   4
+90   @location what is the Wi-Fi Location Task Group working on?    fast         4   4
+91   @passpoint what is new in Passpoint standardisation?           fast         4   4
+92   @pqc what is the WBA Post-Quantum Cybersecurity workgroup do   fast         4   4
+93   @nextgen what is the WBA NextGen workgroup working on?         fast         3   4
+94   @aiml what has the AI/ML for Wi-Fi workgroup been discussing   fast         4   4
+
+Poor answers (recall ≤ 2): 0/94
+
+====================================================================================================
+  COMBINED POOR-ANSWER LIST (0 questions need investigation)
+====================================================================================================

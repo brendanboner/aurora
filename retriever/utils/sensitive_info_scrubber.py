@@ -101,7 +101,7 @@ class SensitiveInfoScrubber:
     # Phone number patterns (dial-in)
     PHONE_PATTERNS = [
         (r'(?:dial[\s-]?in|call[\s-]?in)[\s:]*\+?[\d\s\(\)\-\.]+(?:ext|x)?\.?\s*\d*', 'dialin_number'),
-        (r'(?:phone|tel|telephone)[\s:]*\+?[\d\s\(\)\-\.]+(?:ext|x)?\.?\s*\d*', 'phone_number'),
+        (r'\b(?:phone|tel|telephone)\b[\s:]*\+?[\d\s\(\)\-\.]+(?:ext|x)?\.?\s*\d*', 'phone_number'),
         (r'\+?1?[\s\-\.]?\(?\d{3}\)?[\s\-\.]?\d{3}[\s\-\.]?\d{4}', 'formatted_phone'),
         (r'(?:conference|meeting)\s+(?:phone|number|line)[\s:]*\+?[\d\s\(\)\-\.]+', 'conference_phone'),
     ]

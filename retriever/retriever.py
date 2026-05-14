@@ -152,6 +152,19 @@ class DatasourceScheduleInfo(BaseModel):
     last_scraped_at: Optional[str]
 
 
+class ScrapeOverrideRequest(BaseModel):
+    """Optional overrides for a manual scrape trigger."""
+    since_date: Optional[str] = Field(
+        None,
+        description=(
+            "Override the lookback window (ISO date, e.g. '2026-04-14'). "
+            "The scraper fetches content updated on or after this date, "
+            "ignoring last_scraped_at. Documents already in the graph are "
+            "skipped unless their content hash has changed."
+        ),
+    )
+
+
 class SchedulerStatus(BaseModel):
     """Status of the scheduler and scrapers"""
     scheduler_running: bool
@@ -1040,43 +1053,56 @@ async def retrieve_content(request: ContentRetrieveRequest):
 
 @app.post("/scrape/datasource/{datasource_id}")
 @require_role(["admin", "superadmin"])
-async def trigger_datasource_scrape(datasource_id: str, user: Optional[dict] = Depends(get_user_context)):
+async def trigger_datasource_scrape(
+    datasource_id: str,
+    overrides: Optional[ScrapeOverrideRequest] = None,
+    user: Optional[dict] = Depends(get_user_context),
+):
     """
     Manually trigger a scrape for a single datasource.
     Requires admin or superadmin role.
-    
+
     Args:
-        datasource_id: The datasource identifier (e.g., 'wfa_causeway_wifi7mtg')
-    
+        datasource_id: The datasource identifier (e.g., 'wba_extranet')
+        overrides: Optional body with a ``since_date`` field (ISO date string)
+                   to backfill from a specific date regardless of last_scraped_at.
+
     Note: For Causeway datasources, consider using /scrape/all to share authentication.
     """
     logger.info(f"Manual datasource scrape triggered by {user['email']} (role: {user['role']}): {datasource_id}")
-    
+
     datasource = retriever_service.config_manager.get_datasource_config(datasource_id)
-    
+
     # Check if datasource exists and has a scraper_type
     if not datasource.get('scraper_type'):
         raise HTTPException(
             status_code=404,
             detail=f"Datasource '{datasource_id}' not found or has no scraper configured"
         )
-    
+
     scraper_type = datasource['scraper_type']
-    
+
     if scraper_type not in SCRAPER_CLASSES:
         raise HTTPException(
             status_code=400,
             detail=f"Datasource '{datasource_id}' uses unknown scraper type '{scraper_type}'"
         )
-    
+
     datasource_name = datasource.get('name', datasource_id)
     resource_url = datasource.get('resource_url', 'N/A')
     last_scraped = datasource.get('last_scraped_at')
     last_scraped_str = last_scraped.isoformat() if last_scraped else 'never'
-    
-    logger.info(f"Manual scrape triggered for datasource: {datasource_name} ({datasource_id})")
+
+    if overrides and overrides.since_date:
+        datasource['since_date'] = overrides.since_date
+        logger.info(
+            f"Manual scrape triggered for datasource: {datasource_name} ({datasource_id}) "
+            f"[since_date override: {overrides.since_date}]"
+        )
+    else:
+        logger.info(f"Manual scrape triggered for datasource: {datasource_name} ({datasource_id})")
     logger.info(f"  Scraper: {scraper_type}, URL: {resource_url}, Last scraped: {last_scraped_str}")
-    
+
     # Run scraper in background for just this one datasource
     asyncio.create_task(
         retriever_service._run_scraper_for_datasources(
@@ -1085,13 +1111,14 @@ async def trigger_datasource_scrape(datasource_id: str, user: Optional[dict] = D
             [datasource]  # Single datasource in list
         )
     )
-    
+
     return {
         "status": "started",
         "message": f"Scrape started for {datasource_name}",
         "datasource_id": datasource_id,
         "datasource_name": datasource_name,
-        "scraper_type": scraper_type
+        "scraper_type": scraper_type,
+        **({"since_date": overrides.since_date} if overrides and overrides.since_date else {}),
     }
 
 

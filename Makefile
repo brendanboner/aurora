@@ -357,6 +357,12 @@ release-oracle:        ship-oracle        deploy-oracle
 release-content-creator: ship-content-creator deploy-content-creator
 release-kg-view:       ship-kg-view       deploy-kg-view
 
+# Reset WBA Extranet child community last_scraped_at so the next scrape treats
+# every community as a first run (30-day lookback instead of 1-day incremental).
+# Use after a failed/empty scrape that incorrectly set the timestamps.
+reset-wba-communities:
+	$(call ssm-run,docker exec aurora-neo4j cypher-shell -u $$NEO4J_USER -p $$NEO4J_PASSWORD "MATCH (d:DataSource) WHERE d.datasource_id STARTS WITH 'wba_extranet_' SET d.last_scraped_at = null RETURN count(d) AS reset;")
+
 # =============================================================================
 # AWS ECR Login
 # =============================================================================

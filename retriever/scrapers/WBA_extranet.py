@@ -1324,6 +1324,17 @@ class WBAExtranetScraper(BaseScraper):
         batch_id = self.start_batch(root_id)
         logger.info(f"WBA Extranet batch_id={batch_id}")
 
+        # Optional since_date override — bypasses per-community first-run detection.
+        # Set by the manual trigger endpoint body: {"since_date": "2026-04-14"}.
+        since_override: Optional[datetime] = None
+        since_override_str = datasource_config.get("since_date")
+        if since_override_str:
+            try:
+                since_override = date_parse(str(since_override_str)).replace(tzinfo=timezone.utc)
+                logger.info(f"WBA Extranet: since_date override = {since_override.date().isoformat()}")
+            except Exception as _exc:
+                logger.warning(f"WBA Extranet: invalid since_date '{since_override_str}': {_exc}")
+
         items_processed = 0
         try:
             # Discover communities via API (preferred) or HTML scraping
@@ -1376,7 +1387,13 @@ class WBAExtranetScraper(BaseScraper):
 
                 # Decide first-run vs. incremental window.
                 first_run = self._is_first_run_for_community(community_datasource_id)
-                if first_run:
+                if since_override:
+                    since = since_override
+                    doc_limit = None
+                    logger.info(
+                        f"  {community.name}: since_date override — fetching since {since.date().isoformat()}"
+                    )
+                elif first_run:
                     since = datetime.now(timezone.utc) - timedelta(days=self.FIRST_RUN_DAYS)
                     doc_limit: Optional[int] = self.FIRST_RUN_DOC_LIMIT
                     logger.info(

@@ -292,9 +292,15 @@ def get_answer_generator_messages(
     import re
     is_workgroup_query = bool(re.search(r'(what|which)\s+(workgroups?|datasources?|groups?|wgs?)\s+(are|is|have|has|discussed|mentioned|talking|working)', question.lower()))
 
-    # Detect explicit-source latest-fallback: no recent updates from this source,
-    # but we're showing the most recent docs we DO have.
-    is_latest_fallback = any(d.get('_explicit_source_latest_fallback') for d in documents) if documents else False
+    # Detect latest-fallback variants:
+    # - explicit: @mention source had no recent content
+    # - inferred: workgroup extracted from query text had no recent content
+    # - upcoming: no upcoming events found, showing most recent past events instead
+    is_latest_fallback = any(
+        d.get('_explicit_source_latest_fallback') or d.get('_no_recent_updates_showing_latest')
+        for d in documents
+    ) if documents else False
+    is_upcoming_past_fallback = any(d.get('_no_upcoming_found_showing_past') for d in documents) if documents else False
     
     # Extract graph context
     if graph_context:
@@ -347,20 +353,30 @@ def get_answer_generator_messages(
             )
         else:
             # Data is genuinely older than 30 days — use the anchoring / fallback behaviour.
-            if is_latest_fallback:
-                # User explicitly targeted a source (@mention) but it has no recent content.
-                # Tell the LLM to clearly say there are no recent updates and present what we have.
+            if is_upcoming_past_fallback:
+                # No upcoming events found; showing the most recent past events instead.
+                data_horizon_block = (
+                    f"**DATA HORIZON: No upcoming events are scheduled in the knowledge base. "
+                    f"The most recent event information is from {data_horizon} ({_horizon_age_days} day(s) ago).**\n"
+                    f"- Open your answer by noting that no upcoming events are currently listed, "
+                    f"and then summarise the most recent past events from the documents provided.\n"
+                    f"- Example phrasing: \"There are no upcoming events currently scheduled in the knowledge base. "
+                    f"The most recent events I have information on are...\"\n"
+                    f"- Do NOT fabricate future event dates."
+                )
+            elif is_latest_fallback:
+                # Source (explicit or inferred workgroup) had no recent content.
                 data_horizon_block = (
                     f"**DATA HORIZON: The most recent document in your notes is from {data_horizon}"
                     f" ({_horizon_age_days} day(s) ago).{_oldest_clause}**\n"
-                    f"- **IMPORTANT: No recent updates found for this source.** "
-                    f"You must open your answer by explicitly stating that there are no new updates "
-                    f"within the recent period, and that the last known update was from {data_horizon}. "
+                    f"- **IMPORTANT: No recent updates found for this period.** "
+                    f"Open your answer by explicitly stating that there are no new updates "
+                    f"within the requested period, and that the last known update was from {data_horizon}. "
                     f"Then briefly summarise what that update contained. "
                     f"For example: \"There are no recent updates from this source. "
                     f"The last update I have was from {data_horizon}: [summary].\"\n"
                     f"- Do NOT pad the answer with content from other unrelated sources. "
-                    f"Stick strictly to the documents provided, which are all from the explicitly requested source.\n"
+                    f"Stick strictly to the documents provided.\n"
                     f"- If the user might want to see similar recent content from related sources, "
                     f"you may briefly offer: \"Would you like me to show recent updates from related sources?\""
                 )

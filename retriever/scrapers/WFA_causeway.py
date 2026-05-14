@@ -23,11 +23,10 @@ Configuration:
 import asyncio
 from bs4 import BeautifulSoup
 import re
-from datetime import datetime
+from datetime import datetime, date, timezone
 from dateutil.relativedelta import relativedelta
 from urllib.parse import urljoin, urlparse
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, timezone
 import logging
 import io
 from docx import Document
@@ -933,169 +932,166 @@ class WFACausewayScraper(BaseScraper):
             return "[Excel text extraction failed - file may be corrupted or in old .xls format]"
     
     async def scrape_calendar(
-        self, 
-        group_url: str, 
+        self,
+        group_url: str,
         datasource_id: str,
         last_scraped_at: Optional[datetime] = None,
         max_events: int = -1
     ) -> List[str]:
         """
         Scrape calendar pages to discover event links.
-        
-        Works backwards from 6 months ahead through history:
-        - Initial scrape (last_scraped_at=None): Go back to January 2015
-        - Subsequent scrapes: Stop when hitting a past event
-        
+
+        Works backwards from 6 months ahead, stopping at a computed cutoff:
+        - Initial scrape (last_scraped_at=None): back to initial_backfill_max_months (default 12)
+        - Subsequent scrapes: back to last_scraped_at date
+
+        Events older than the cutoff are skipped, preventing retroactive scraping.
+
         Args:
             group_url: Base document URL for the working group
             datasource_id: Datasource ID for tracking
             last_scraped_at: Timestamp of last scrape (None = initial scrape)
             max_events: Maximum number of events to collect (-1 = unlimited)
-            
+
         Returns:
             List of event page URLs to scrape
         """
+        from calendar import monthrange
+
         now = datetime.now()
-        today = now.date()
-        
+
         # Start from 6 months ahead and work backwards
-        # This captures far-future events while still being quick if empty
-        start_date = now + relativedelta(months=6)
-        start_year = start_date.year
-        start_month = start_date.month
-        
-        # Hard stop: January 2015
-        MIN_YEAR = 2015
-        MIN_MONTH = 1
-        
+        start_dt = now + relativedelta(months=6)
+        start_year = start_dt.year
+        start_month = start_dt.month
+
+        is_initial_scrape = last_scraped_at is None
+
+        # Compute how far back to collect events.
+        # - Initial: cap to the configured backfill window (default 12 months) so a brand-new
+        #   datasource cannot flood the graph with its entire history back to 2015.
+        # - Incremental: only fetch events since the last successful scrape.
+        if is_initial_scrape:
+            backfill_months = 12
+            if self.config_manager:
+                try:
+                    backfill_months = int(
+                        self.config_manager.get_global_config().get(
+                            "initial_backfill_max_months", 12
+                        )
+                    )
+                except Exception:
+                    pass
+            stop_date = (datetime.now() - relativedelta(months=backfill_months)).date()
+            mode_label = f"initial scrape (backfill {backfill_months} months, back to {stop_date})"
+        else:
+            stop_date = last_scraped_at.date() if hasattr(last_scraped_at, 'date') else datetime.now().date()
+            mode_label = f"incremental (since {stop_date})"
+
         base_calendar_url = group_url.replace('/document', '/calendar')
-        
+
         event_urls = []
         seen_urls = set()
-        is_initial_scrape = last_scraped_at is None
-        
+
         logger.info(f"Scraping calendar backwards from {start_year}/{start_month} (6 months ahead)")
-        logger.info(f"  Mode: {'initial scrape (back to Jan 2015)' if is_initial_scrape else 'incremental (until past event)'}")
+        logger.info(f"  Mode: {mode_label}")
         if max_events >= 0:
             logger.info(f"  Max events limit: {max_events}")
-        
+
         # Extract working group name from URL for matching event links
         wg_match = re.search(r'/wg/([^/]+)/', group_url)
         if not wg_match:
             logger.error(f"Could not extract working group from URL: {group_url}")
             return event_urls
-        
+
         working_group = wg_match.group(1)
         # Pattern captures the date from the URL: /wg/{group}/calendar/event/{id}/{YYYY-MM-DD}
         event_link_pattern = re.compile(rf'/wg/{working_group}/calendar/event/(\d+)/(\d{{4}}-\d{{2}}-\d{{2}})')
-        
+
         try:
             self.update_heartbeat()
             self.update_current_processing(
-                Event(name="Fetching calendar", event_type="meeting", start_date="", 
+                Event(name="Fetching calendar", event_type="meeting", start_date="",
                       datasource_id=datasource_id),
                 "loading calendar pages"
             )
-            
+
             current_year = start_year
             current_month = start_month
-            should_stop = False
-            
-            while not should_stop:
+
+            while True:
                 # Check if we've hit the max events limit
                 if max_events >= 0 and len(event_urls) >= max_events:
                     logger.info(f"Reached max events limit ({max_events}), stopping calendar scrape")
                     break
-                
-                # Check if we've gone past the hard stop (January 2015)
-                if current_year < MIN_YEAR or (current_year == MIN_YEAR and current_month < MIN_MONTH):
-                    logger.info(f"Reached hard stop: January {MIN_YEAR}")
+
+                # Stop when the entire month is before the cutoff date
+                _, last_day = monthrange(current_year, current_month)
+                month_end = date(current_year, current_month, last_day)
+                if month_end < stop_date:
+                    logger.info(f"Reached cutoff {stop_date} at {current_year}/{current_month}, stopping")
                     break
-                
+
                 page_url = f"{base_calendar_url}/month/{current_year}/{current_month}"
                 logger.debug(f"Fetching calendar page: {page_url}")
-                
+
                 async with self.session.get(page_url) as response:
                     if response.status != 200:
                         logger.warning(f"Failed to fetch calendar: HTTP {response.status}")
-                        # Move to previous month and continue
                         if current_month == 1:
                             current_year -= 1
                             current_month = 12
                         else:
                             current_month -= 1
                         continue
-                    
+
                     html = await response.text()
-                
+
                 page_soup = BeautifulSoup(html, 'html.parser')
-                
-                # Find all anchor tags with href matching the event pattern
+
                 all_links = page_soup.find_all('a', href=True)
                 page_event_count = 0
-                found_past_event = False
-                
+
                 for link in all_links:
-                    # Check max_events limit before adding more
                     if max_events >= 0 and len(event_urls) >= max_events:
                         break
-                    
+
                     href = link.get('href', '')
                     match = event_link_pattern.search(href)
                     if match:
-                        event_id = match.group(1)
                         event_date_str = match.group(2)
-                        
-                        # Parse the event date from URL
+
                         try:
                             event_date = datetime.strptime(event_date_str, '%Y-%m-%d').date()
                         except ValueError:
                             logger.warning(f"Could not parse event date from URL: {href}")
                             continue
-                        
-                        # For non-initial scrapes, check if we hit a past event
-                        if not is_initial_scrape and event_date < today:
-                            found_past_event = True
-                            logger.debug(f"Found past event ({event_date_str}), will stop after this month")
-                        
-                        # Build full URL
+
+                        # Skip events older than the cutoff — don't even request their pages
+                        if event_date < stop_date:
+                            logger.debug(f"Skipping old event ({event_date_str} < {stop_date})")
+                            continue
+
                         full_url = urljoin('https://groups.wi-fi.org', href)
-                        
-                        # Avoid duplicates
+
                         if full_url not in seen_urls:
                             seen_urls.add(full_url)
                             event_urls.append(full_url)
                             page_event_count += 1
                             event_name = link.get_text(strip=True)
                             logger.debug(f"Found event link: {event_name} ({event_date_str}) -> {full_url}")
-                
+
                 logger.debug(f"Found {page_event_count} events on {current_year}/{current_month}")
-                
-                # Stopping conditions for non-initial scrapes
-                if not is_initial_scrape:
-                    if found_past_event:
-                        logger.info(f"Found past event on {current_year}/{current_month}, stopping backward traversal")
-                        should_stop = True
-                    elif page_event_count == 0:
-                        # No events on this page - check if the month itself is in the past
-                        # A month is "in the past" if we're past its last day
-                        from calendar import monthrange
-                        _, last_day = monthrange(current_year, current_month)
-                        month_end = datetime(current_year, current_month, last_day).date()
-                        if month_end < today:
-                            logger.info(f"Empty past month {current_year}/{current_month}, stopping backward traversal")
-                            should_stop = True
-                
+
                 # Move to previous month
                 if current_month == 1:
                     current_year -= 1
                     current_month = 12
                 else:
                     current_month -= 1
-                
+
                 self.update_heartbeat()
-            
-            # Warn if no events found at all (potential selector/URL issue)
+
             if len(event_urls) == 0:
                 logger.warning(
                     f"No events found across all calendar pages for {working_group}. "
@@ -1103,12 +1099,12 @@ class WFACausewayScraper(BaseScraper):
                 )
             else:
                 logger.info(f"Discovered {len(event_urls)} events from calendar")
-            
+
         except Exception as e:
             logger.error(f"Error scraping calendar: {e}")
             import traceback
             logger.debug(traceback.format_exc())
-        
+
         return event_urls
     
     async def scrape_event_page(self, event_url: str, datasource_id: str) -> Optional[Event]:

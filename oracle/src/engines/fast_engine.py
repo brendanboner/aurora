@@ -784,22 +784,91 @@ class FastEngine:
                 "end": first.get("rollup_end"),
             }
         
-        # Build RouteResult
-        route_result = RouteResult(
-            route_id=plan.route_id,
-            nodes=results,
-            rollup=rollup,
-            execution_time_ms=query_time_ms,
-            node_count=len(results),
-            cache_hit=False
-        )
-        
-        # Cache the result
-        await self.fast_cache.set_result(plan, route_result)
-        
         retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
         logger.info(f"PostgreSQL rollup query: {len(results)} results in {query_time_ms}ms")
-        
+
+        # For explicit @mention queries with no rollup data (or empty-summary rollups),
+        # fall back to DATASOURCE_LATEST so the user gets "last known content from this
+        # source" instead of a blank answer.
+        def _rollup_has_content(r: dict) -> bool:
+            # Checks both the rollup-specific fields AND the doc fields _nodes_to_documents reads.
+            # This ensures alignment: a rollup counts as "useful" only if its summary/links
+            # will actually produce usable content for the LLM or rollup-compose path.
+            rollup_summary = (r.get("rollup_summary") or "").strip()
+            links = r.get("links") or []
+            # rollup_summary is the canonical content field for PostgreSQL rollup records
+            return len(rollup_summary) > 20 or len(links) > 0
+
+        useful_rollups = [r for r in results if _rollup_has_content(r)]
+        logger.info(
+            f"Rollup content check: total={len(results)} useful={len(useful_rollups)} "
+            f"explicit={getattr(plan, 'explicit_datasource_filter', False)} workgroups={plan.workgroups}"
+        )
+        if not useful_rollups and getattr(plan, 'explicit_datasource_filter', False) and plan.workgroups:
+            logger.info(
+                f"No useful PostgreSQL rollup for explicit @mention datasources={plan.workgroups}, "
+                f"trying DATASOURCE_LATEST from Neo4j"
+            )
+            repo = get_repo()
+            logger.info(f"DATASOURCE_LATEST repo={repo is not None} template={self.template_registry.get_template(RouteId.DATASOURCE_LATEST) is not None}")
+            latest_template = self.template_registry.get_template(RouteId.DATASOURCE_LATEST)
+            if latest_template and repo:
+                try:
+                    latest_params = {"workgroups": plan.workgroups, "limit": 10}
+                    fallback_results = repo.client.execute_query(latest_template.cypher, latest_params)
+                    latest_nodes = latest_template.execute_post_process(fallback_results)
+                    if latest_nodes:
+                        for r in latest_nodes:
+                            r['_no_recent_updates_showing_latest'] = True
+                        logger.info(
+                            f"DATASOURCE_LATEST found {len(latest_nodes)} historical docs "
+                            f"for @mention datasources={plan.workgroups}"
+                        )
+                        route_result = RouteResult(
+                            route_id=plan.route_id,
+                            nodes=latest_nodes,
+                            rollup=None,
+                            execution_time_ms=query_time_ms,
+                            node_count=len(latest_nodes),
+                            cache_hit=False,
+                        )
+                        return route_result, retrieval_time_ms
+                    else:
+                        logger.warning(
+                            f"DATASOURCE_LATEST also empty for datasources={plan.workgroups}"
+                        )
+                except Exception as e:
+                    logger.warning(f"DATASOURCE_LATEST fallback in rollup path failed: {e}")
+
+        # Build RouteResult using useful_rollups (content-filtered) to avoid
+        # passing empty placeholder rollups to the LLM.
+        final_nodes = useful_rollups if useful_rollups else results
+        rollup_from_nodes = None
+        if useful_rollups and useful_rollups[0].get("rollup_id"):
+            first = useful_rollups[0]
+            rollup_from_nodes = {
+                "id": first["rollup_id"],
+                "summary": first["rollup_summary"],
+                "key_events": first.get("key_events", []),
+                "key_decisions": first.get("key_decisions", []),
+                "top_topics": first.get("top_topics", []),
+                "links": first.get("links", []),
+                "start": first.get("rollup_start"),
+                "end": first.get("rollup_end"),
+            }
+        route_result = RouteResult(
+            route_id=plan.route_id,
+            nodes=final_nodes,
+            rollup=rollup_from_nodes,
+            execution_time_ms=query_time_ms,
+            node_count=len(final_nodes),
+            cache_hit=False
+        )
+
+        # Cache only when we have useful content (not empty rollups)
+        if useful_rollups:
+            await self.fast_cache.set_result(plan, route_result)
+
         return route_result, retrieval_time_ms
     
     async def _retrieve_neo4j_data(
@@ -889,6 +958,26 @@ class FastEngine:
             except Exception:
                 pass
         
+        # Strip empty placeholder nodes before fallback logic — nodes that have no title,
+        # no URL, and no summary (rollup placeholders) produce LLM hallucination.
+        # Filtering them here ensures the fallback chain (DATASOURCE_LATEST etc.) fires
+        # correctly when a workgroup has no recent content rather than stale placeholders.
+        def _node_has_content(r: dict) -> bool:
+            if any(k in r for k in ("recent_documents", "recent_events", "recent_activity", "sample_resources")):
+                return True  # grouped node — content is nested
+            title = r.get("title") or r.get("name") or ""
+            url = r.get("url") or ""
+            summary = r.get("summary") or r.get("description") or ""
+            return bool(title and title != "Untitled") or bool(url) or len(summary) > 10
+
+        before_filter = len(processed_results)
+        processed_results = [r for r in processed_results if _node_has_content(r)]
+        if len(processed_results) < before_filter:
+            logger.info(
+                f"Dropped {before_filter - len(processed_results)} empty placeholder nodes "
+                f"(route={self._get_route_id_str(plan)}) — will trigger fallback chain"
+            )
+
         # Fallback: If no results and query had date filters, retry without dates
         if len(processed_results) == 0 and (params.get('start_date') or params.get('end_date') or params.get('relative_days')):
             logger.info(
@@ -908,8 +997,8 @@ class FastEngine:
                 fallback_params
             )
             fallback_time_ms = int((time.time() - fallback_start) * 1000)
-            processed_results = template.execute_post_process(fallback_results)
-            
+            processed_results = [r for r in template.execute_post_process(fallback_results) if _node_has_content(r)]
+
             if len(processed_results) > 0:
                 logger.info(f"Fallback succeeded: retrieved {len(processed_results)} undated documents")
                 query_time_ms += fallback_time_ms
@@ -965,27 +1054,58 @@ class FastEngine:
                     except Exception as e:
                         logger.warning(f"DATASOURCE_LATEST fallback failed: {e}")
             else:
-                # Inferred filter — safe to expand to all datasources
-                logger.info(
-                    f"Zero results with inferred workgroups filter, expanding to all datasources "
-                    f"(route={self._get_route_id_str(plan)}, workgroups={params['workgroups']})"
-                )
-                fallback_params = params.copy()
-                fallback_params['workgroups'] = []
+                # Inferred workgroup filter — first try DATASOURCE_LATEST for that workgroup
+                # so the user gets "no updates this period, but last known content was…"
+                # rather than silently expanding to all datasources.
+                latest_template = self.template_registry.get_template(RouteId.DATASOURCE_LATEST)
+                used_latest_for_inferred = False
+                if latest_template and params.get('workgroups'):
+                    try:
+                        latest_params = {
+                            "workgroups": params['workgroups'],
+                            "limit": params.get('limit', 10),
+                        }
+                        fallback_start = time.time()
+                        fallback_results = repo.client.execute_query(
+                            latest_template.cypher,
+                            latest_params
+                        )
+                        fallback_time_ms = int((time.time() - fallback_start) * 1000)
+                        processed_results = latest_template.execute_post_process(fallback_results)
+                        query_time_ms += fallback_time_ms
+                        if len(processed_results) > 0:
+                            logger.info(
+                                f"DATASOURCE_LATEST (inferred workgroup) fallback: "
+                                f"{len(processed_results)} docs — no recent updates in time window"
+                            )
+                            for r in processed_results:
+                                r['_no_recent_updates_showing_latest'] = True
+                            used_latest_for_inferred = True
+                    except Exception as e:
+                        logger.warning(f"DATASOURCE_LATEST (inferred) fallback failed: {e}")
 
-                fallback_start = time.time()
-                fallback_results = repo.client.execute_query(
-                    template.cypher,
-                    fallback_params
-                )
-                fallback_time_ms = int((time.time() - fallback_start) * 1000)
-                processed_results = template.execute_post_process(fallback_results)
+                if not used_latest_for_inferred:
+                    # Expand to all datasources as last resort
+                    logger.info(
+                        f"Zero results with inferred workgroups filter, expanding to all datasources "
+                        f"(route={self._get_route_id_str(plan)}, workgroups={params['workgroups']})"
+                    )
+                    fallback_params = params.copy()
+                    fallback_params['workgroups'] = []
 
-                if len(processed_results) > 0:
-                    logger.info(f"Cross-datasource fallback succeeded: retrieved {len(processed_results)} documents")
-                    query_time_ms += fallback_time_ms
-                else:
-                    logger.warning("Cross-datasource fallback also returned zero results")
+                    fallback_start = time.time()
+                    fallback_results = repo.client.execute_query(
+                        template.cypher,
+                        fallback_params
+                    )
+                    fallback_time_ms = int((time.time() - fallback_start) * 1000)
+                    processed_results = template.execute_post_process(fallback_results)
+
+                    if len(processed_results) > 0:
+                        logger.info(f"Cross-datasource fallback succeeded: retrieved {len(processed_results)} documents")
+                        query_time_ms += fallback_time_ms
+                    else:
+                        logger.warning("Cross-datasource fallback also returned zero results")
 
         if len(processed_results) == 0 and self._should_retry_recent_content_without_topics(plan, params):
             logger.info(
@@ -1052,7 +1172,32 @@ class FastEngine:
                             logger.warning("Tier-4 GENERIC_SEARCH fallback also returned zero results")
                     except Exception as gs_err:
                         logger.warning(f"Tier-4 GENERIC_SEARCH fallback failed: {gs_err}")
-        
+
+        # UPCOMING_EVENTS special fallback: if still zero, show the most recent past events
+        # so the user gets something useful ("no upcoming events, but here were the most recent")
+        if len(processed_results) == 0 and self._get_route_id_str(plan) == RouteId.UPCOMING_EVENTS.value:
+            past_template = self.template_registry.get_template(RouteId.PAST_EVENTS)
+            if past_template:
+                logger.info("UPCOMING_EVENTS returned 0 — falling back to PAST_EVENTS (365-day window)")
+                try:
+                    past_params = {k: v for k, v in params.items()}
+                    past_params['relative_days'] = 365
+                    past_params['start_date'] = None
+                    past_params['end_date'] = None
+                    fallback_start = time.time()
+                    fallback_results = repo.client.execute_query(past_template.cypher, past_params)
+                    fallback_time_ms = int((time.time() - fallback_start) * 1000)
+                    processed_results = past_template.execute_post_process(fallback_results)
+                    query_time_ms += fallback_time_ms
+                    if len(processed_results) > 0:
+                        logger.info(f"PAST_EVENTS fallback: {len(processed_results)} historical events found")
+                        for r in processed_results:
+                            r['_no_upcoming_found_showing_past'] = True
+                    else:
+                        logger.warning("PAST_EVENTS fallback also returned zero results")
+                except Exception as e:
+                    logger.warning(f"PAST_EVENTS fallback failed: {e}")
+
         # Check if we got a rollup (shouldn't happen for Neo4j queries now)
         rollup = None
         if processed_results and "rollup_id" in processed_results[0]:
@@ -1384,7 +1529,24 @@ class FastEngine:
             max_documents=self._get_max_documents(request),
         )
         
+        # Safety-net: drop any remaining empty/useless nodes that slipped through the
+        # early filter (e.g. from fallback paths that don't re-apply the filter).
+        documents = [
+            d for d in documents
+            if (d.title and d.title != "Untitled") or d.url or (d.summary and len(d.summary) > 10)
+        ]
+
         if not documents:
+            # When nodes are empty/useless but a pre-computed rollup exists (e.g.
+            # WORKGROUP_WEEKLY_RECAP with populated summary + links), use the rollup
+            # instead of raising zero_docs_fallback.  This covers @mention queries
+            # where the rollup was generated but has no individually-navigable
+            # document URLs (the rollup itself IS the content).
+            rollup = getattr(route_result, 'rollup', None)
+            if rollup and rollup.get("summary") and len((rollup.get("summary") or "").strip()) > 20:
+                logger.info("Documents empty but rollup has content — using rollup path")
+                return self._compose_from_rollup(plan, route_result, request)
+
             # All retrieval tiers (including generic_search) returned nothing.
             # Raise so query.py falls back to the baseline engine, which uses
             # vector/entity search and is far more likely to find relevant content.
@@ -1392,7 +1554,7 @@ class FastEngine:
                 f"zero_docs_fallback: no matching nodes after all retrieval tiers "
                 f"(route={getattr(plan, 'route_id', 'unknown')})"
             )
-        
+
         # Get LLM client
         client = get_llm_client()
         

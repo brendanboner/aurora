@@ -262,34 +262,26 @@ class TestGetDueDatasources:
         assert len(result) == 1
         assert result[0]["datasource_id"] == "ds_due"
     
-    def test_uses_updated_at_when_never_scraped(self, patched_neo4j):
-        """Should use updated_at as reference when last_scraped_at is None."""
+    def test_never_scraped_datasource_always_due(self, patched_neo4j):
+        """Never-scraped datasources should always appear in the due list."""
         from config_manager import ConfigManager
-        
+
         ds = {
             "datasource_id": "never_scraped",
             "scrape_schedule": "0 3 * * *",
             "last_scraped_at": None,
             "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
-            "created_at": datetime(2025, 12, 1, tzinfo=timezone.utc)
+            "created_at": datetime(2025, 12, 1, tzinfo=timezone.utc),
         }
-        
+
         patched_neo4j['repository'].get_scheduled_datasources.return_value = [ds]
-        
+
         cm = ConfigManager()
-        
-        # Track what reference time was passed
-        captured_ref = []
-        original_is_due = cm.is_schedule_due
-        def mock_is_due(schedule, ref):
-            captured_ref.append(ref)
-            return True
-        cm.is_schedule_due = mock_is_due
-        
-        cm.get_due_datasources()
-        
-        # Should have used updated_at since last_scraped_at is None
-        assert captured_ref[0] == ds["updated_at"]
+        result = cm.get_due_datasources()
+
+        # Never-scraped datasources skip the schedule check entirely — always due
+        assert len(result) == 1
+        assert result[0]["datasource_id"] == "never_scraped"
 
 
 class TestGetFullRefreshDatasources:

@@ -13,3 +13,17 @@ What has the IETF published about Wi-Fi 7?
 Show me recent IETF drafts on 6 GHz spectrum.
 What are Wi-Fi 8 Secure Control Frames?
 
+# --- WBA WORKGROUPS & EXTRANET ---
+What is the WBA Enterprise Security for Private 5G workgroup working on?
+What has the WBA published about OpenRoaming?
+What is the WBA Roaming Work Group focusing on?
+What has the WBA AI/ML for Wi-Fi workgroup produced?
+What WBA workgroups are focused on Wi-Fi security topics?
+
+# --- @MENTION DATASOURCE QUERIES ---
+@broadcast what are the latest updates?
+@wifi8mtg what has been discussed recently in the Wi-Fi 8 task group?
+@wba what has the WBA published in the last month?
+@enterprise what is the latest on Enterprise Security for Private 5G?
+@openroaming what are the latest OpenRoaming developments?
+

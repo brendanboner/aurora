@@ -81,16 +81,11 @@ class LocalRouter:
          RouteId.WBA_WORKGROUPS_OF),
 
         # "what is new / happening in [workgroup]"
-        (r"(what('?s|\s+is)\s+)?(new|happening|going\s+on|latest|recent)\s+(in|at|with|for)\s+(the\s+)?[\w\s\-\/]+\s*(workgroup|group|programme|program)?",
+        # NOTE: use \bworkgroup\b (not bare "group") to avoid matching "working groups"
+        (r"(what('?s|\s+is)\s+)?(new|happening|going\s+on|latest|recent)\s+(in|at|with|for)\s+(the\s+)?[\w\s\-\/]+\s*\b(workgroup|programme|program)\b",
          RouteId.WBA_RECENT_ACTIVITY),
-        (r"(what.{0,20}(in|at)\s+(the\s+)?[\w\s\-\/]+(workgroup|group|programme|program))",
+        (r"(what.{0,20}(in|at)\s+(the\s+)?[\w\s\-\/]+\b(workgroup|programme|program)\b)",
          RouteId.WBA_RECENT_ACTIVITY),
-
-        # "what was discussed in the last [workgroup] meeting"
-        (r"(what\s+was\s+|what\s+were\s+)(discussed|covered|talked\s+about|reviewed)\s+(in|at|during)\s+(the\s+)?(last|latest|recent|previous)\s+([\w\s\-\/]+)?\s*(meeting|call|session)",
-         RouteId.WBA_LAST_MEETING),
-        (r"(last|latest|recent|previous)\s+([\w\s\-\/]+)?\s*(meeting|call|session)\s+(notes?|summary|minutes?|recap)",
-         RouteId.WBA_LAST_MEETING),
 
         # === PEOPLE QUERIES (highest priority - very specific) ===
         # "who represents X at Y" / "who is X's representative"
@@ -134,7 +129,8 @@ class LocalRouter:
         
         # Person activity
         (r"(activity|contributions?|work|involvement|papers|presentations) (by|from|of)\s+[\w\s\-]+", RouteId.PERSON_ACTIVITY),
-        (r"what (has|did)\s+[\w\s\-]+\s+(do|say|contribute|present|work on|publish)", RouteId.PERSON_ACTIVITY),
+        # \b after verb prevents "do" matching "documented", "say" matching "saying", etc.
+        (r"what (has|did)\s+[\w\s\-]+\s+(do|say|contribute|present|work\s+on|publish)\b", RouteId.PERSON_ACTIVITY),
         # Match "John's work" but not "work in" (technical context)
         (r"[\w\s\-]+('s)\s+(contributions?|activity|work|papers|presentations|involvement)($|\s+(on|about|regarding|with))", RouteId.PERSON_ACTIVITY),
         
@@ -145,6 +141,8 @@ class LocalRouter:
         (r"[\w\s\-]+\s+or\s+[\w\s\-]+\s+(which|better|best)", RouteId.TOPIC_COMPARISON),
         (r"(compare|comparison)\s+(of|between)\s+", RouteId.TOPIC_COMPARISON),
         (r"what (are the )?(key )?improvements?.*?compared (to|with|against)", RouteId.TOPIC_COMPARISON),
+        (r"how does\s+[\w\s\-]+\s+compare\s+(to|with|against)\s+", RouteId.TOPIC_COMPARISON),
+        (r"(improvements?|changes?|differences?)\s+(in|of)\s+[\w\s\-]+\s+(over|from|vs\.?|versus)\s+", RouteId.TOPIC_COMPARISON),
         
         # === STATUS & PROGRESS QUERIES (high priority) ===
         (r"(status|state|progress) of\s+[\w\s\-]+", RouteId.STATUS_CHECK),
@@ -194,6 +192,8 @@ class LocalRouter:
         (r"(fcc|etsi|regulatory)\s+(rules?|requirements?)\s+for\s+", RouteId.REGULATORY_INFO),
         (r"(certification|compliance)\s+requirements?\s+for\s+", RouteId.REGULATORY_INFO),
         (r"legal\s+requirements?\s+(for|of)\s+", RouteId.REGULATORY_INFO),
+        (r"which\s+(countries|regions?|markets?|jurisdictions?)\s+(have|has|approved?|allowed?|authorized?|enabled?)", RouteId.REGULATORY_INFO),
+        (r"(approved?|allowed?|authorized?|enabled?)\s+[\w\s\-]+\s+(unlicensed|spectrum|band|frequency)", RouteId.REGULATORY_INFO),
         
         # === IETF-SPECIFIC QUERIES (before general org/recent patterns) ===
         # IETF meeting agenda by number (most specific - e.g. "IETF 120 agenda")
@@ -307,20 +307,38 @@ class LocalRouter:
         (r"(find|show|get|search for|locate)\s+(the )?meeting", RouteId.MEETING_BY_TITLE),
         (r"(minutes|notes|summary) (from|of)\s+(the )?meeting", RouteId.MEETING_MINUTES),
         
+        # Meeting search by title / agenda
+        (r"(what (was|is|were)|what's)\s+the\s+(agenda|schedule|topics?|programme)\s+(for|of|at)\s+", RouteId.MEETING_BY_TITLE),
+        # Meeting minutes — route to RECENT_CONTENT (MEETING_MINUTES has no template)
+        # RECENT_CONTENT will find meeting docs from WFA Causeway datasources
+        (r"meeting\s+(minutes|notes|summary)\b", RouteId.RECENT_CONTENT),
+        (r"(minutes|notes|summary)\s+(from|of)\s+(the\s+)?(last|latest|recent)\s+", RouteId.RECENT_CONTENT),
+
+        # "what was discussed in the last [workgroup] meeting" — WBA Extranet specific
+        # IMPORTANT: Kept AFTER general MEETING_MINUTES so WFA meeting minutes route correctly first
+        (r"(what\s+was\s+|what\s+were\s+)(discussed|covered|talked\s+about|reviewed)\s+(in|at|during)\s+(the\s+)?(last|latest|recent|previous)\s+([\w\s\-\/]+)?\s*(meeting|call|session)",
+         RouteId.WBA_LAST_MEETING),
+        (r"(last|latest|recent|previous)\s+([\w\s\-\/]+)?\s*(meeting|call|session)\s+(notes?|summary|minutes?|recap)",
+         RouteId.WBA_LAST_MEETING),
+
         # === DECISIONS ===
-        (r"(decisions?|decided)\s+(made|reached|taken|about)", RouteId.DECISIONS_IN_RANGE),
+        (r"(decisions?|decided)\s+(were\s+)?(made|reached|taken|about)", RouteId.DECISIONS_IN_RANGE),
         (r"what (was|were|has been) decided\s+(on|about)?", RouteId.DECISIONS_IN_RANGE),
         (r"key decisions?\s+(on|about|regarding)?", RouteId.DECISIONS_IN_RANGE),
         (r"recent decisions?\s+(on|about)?", RouteId.RECENT_DECISIONS),
         (r"latest decisions?\s+(on|about)?", RouteId.RECENT_DECISIONS),
         (r"decisions? (on|about|regarding)\s+[\w\s\-]+", RouteId.DECISIONS_BY_TOPIC),
-        
+
         # === ACTION ITEMS & TASKS ===
-        (r"(action items?|tasks?|todos?|follow[- ]?ups?)\s+(for|from|by)?", RouteId.ACTION_ITEMS_OPEN),
+        # NOTE: "tasks?" removed from first pattern to prevent "task group" matching
+        (r"\b(action items?|todos?|follow[- ]?ups?)\b", RouteId.ACTION_ITEMS_OPEN),
         (r"what needs to be done", RouteId.ACTION_ITEMS_OPEN),
         (r"(outstanding|open|pending) (items?|tasks?|actions?)", RouteId.ACTION_ITEMS_OPEN),
-        (r"(my|his|her|their|[\w\-]+('s)?)\s+(action items?|tasks?|assignments?)", RouteId.ACTION_ITEMS_BY_PERSON),
-        (r"(assigned to|for)\s+[\w\s\-]+", RouteId.ACTION_ITEMS_BY_PERSON),
+        # Possessive or pronoun must precede "action items|tasks|assignments" to avoid
+        # matching "Wi-Fi 8 task group" (where "8" + " " + "task" would falsely match)
+        (r"(my|his|her|their)\s+(action items?|tasks?|assignments?)", RouteId.ACTION_ITEMS_BY_PERSON),
+        (r"[\w\-]+'s\s+(action items?|tasks?|assignments?)", RouteId.ACTION_ITEMS_BY_PERSON),
+        (r"assigned to\s+[\w\s\-]+", RouteId.ACTION_ITEMS_BY_PERSON),
         
         # === STANDARDS & SPECIFICATIONS ===
         (r"(standard|spec|specification)\s+(status|progress|state)", RouteId.STANDARD_STATUS),
@@ -338,6 +356,11 @@ class LocalRouter:
         # Specific document queries
         (r"(recent|latest|new) (publications?|documents?|papers?|articles?|specs?|press releases?)", RouteId.RECENT_PUBLICATIONS),
         (r"press releases?(\s+about)?", RouteId.RECENT_PUBLICATIONS),
+        # "published/released in the last N days/week/month/quarter"
+        (r"(published|released|added|submitted)\s+(in\s+the\s+)?(last|past)\s+(\d+\s+days?|week|month|quarter|year)", RouteId.RECENT_PUBLICATIONS),
+        # "new content added to the knowledge base recently"
+        (r"new (content|documents?|articles?|publications?)\s+(added|ingested|uploaded)\s*(to|in|recently)?", RouteId.RECENT_CONTENT),
+        (r"what (content|documents?|articles?|publications?)\s+(was|were|has been|have been)\s+(added|published|released)\s+(recently|lately|this week|this month)?", RouteId.RECENT_CONTENT),
         (r"(find|show|get|search for)\s+(documents?|papers?|publications?)", RouteId.DOCUMENTS_BY_TOPIC),
         (r"documents? (on|about|regarding|covering|discussing|mention|mentioning|related to)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(papers?|articles?|specs?) (on|about|regarding)\s+", RouteId.DOCUMENTS_BY_TOPIC),
