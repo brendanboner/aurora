@@ -329,7 +329,7 @@ class WBAExtranetScraper(BaseScraper):
                 title=title,
                 url=url,
                 category="discussion",
-                content=body or None,
+                content=body or "",
                 summary=body[:500] if body else None,
                 publish_date=pub_date,
                 datasource_id=community_datasource_id,
@@ -950,7 +950,7 @@ class WBAExtranetScraper(BaseScraper):
                     title=title,
                     url=permalink,
                     category=category,
-                    content=body_text or None,
+                    content=body_text or "",
                     summary=summary,
                     publish_date=pub_date_iso,
                     datasource_id=community_datasource_id,
@@ -1057,7 +1057,7 @@ class WBAExtranetScraper(BaseScraper):
                 category="library" if any(
                     ext in title.lower() for ext in [".pdf", ".docx", ".pptx", ".xlsx", ".doc"]
                 ) else "discussion",
-                content=None,
+                content="",  # body fetched by digester on first ingest
                 publish_date=None,
                 datasource_id=community_datasource_id,
                 doc_type=doc_type,
@@ -1151,8 +1151,8 @@ class WBAExtranetScraper(BaseScraper):
             title=title,
             url=resource_url,
             category=category,
-            content=body_text[:2000] or None,
-            summary=body_text[:500] or None,
+            content=body_text[:2000] if body_text else "",
+            summary=body_text[:500] if body_text else None,
             publish_date=pub_date_iso,
             datasource_id=community_datasource_id,
             doc_type=doc_type,
