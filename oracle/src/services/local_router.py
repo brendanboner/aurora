@@ -719,6 +719,24 @@ class LocalRouter:
             "xrms": "XRMS",
             "xr": "XRMS",
             "sensing": "Sensing",
+            # WBA programme names
+            "openroaming": "OpenRoaming",
+            "open roaming": "OpenRoaming",
+            "ai/ml": "AI/ML",
+            "ai ml": "AI/ML",
+            "pqc": "PQC",
+            "post quantum": "PQC",
+            "post-quantum": "PQC",
+            "next gen hotspot": "Next Gen Hotspot",
+            "ngh": "Next Gen Hotspot",
+            "identity": "Identity",
+            # WFA Causeway task group long-form names
+            "wifi 8 task group": "Wi-Fi 8",
+            "wi-fi 8 task group": "Wi-Fi 8",
+            "wifi 7 task group": "Wi-Fi 7",
+            "wi-fi 7 task group": "Wi-Fi 7",
+            "location task group": "Location",
+            "sensing task group": "Sensing",
         }
         
         # Extract workgroup mentions from query (case-insensitive)

@@ -539,9 +539,15 @@ class QueryTemplateRegistry:
               WHERE coalesce(r.archived, false) = false
               WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days,
                    CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01')
-                   AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
+                        AND datetime(r.publish_date) >= datetime('2000-01-01')
+                        AND datetime(r.publish_date) <= datetime()
+                        THEN datetime(r.publish_date)
+                        // Video resources: scraped_at is a reliable recency proxy (upload ≈ scrape for continuous runs)
+                        WHEN r.category = 'video' AND r.scraped_at IS NOT NULL
+                             AND datetime(r.scraped_at) >= datetime('2020-01-01')
+                        THEN datetime(r.scraped_at)
+                        ELSE datetime('1970-01-01')
+                   END as effective_date
               WHERE effective_date >= max_threshold
                 AND effective_date < datetime()
 
@@ -2811,7 +2817,12 @@ ORDER BY e.start_date DESC
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
                       AND datetime(r.publish_date) >= datetime('2000-01-01')
                       AND datetime(r.publish_date) <= datetime()
-                 THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END AS effective_date
+                      THEN datetime(r.publish_date)
+                      WHEN r.category = 'video' AND r.scraped_at IS NOT NULL
+                           AND datetime(r.scraped_at) >= datetime('2020-01-01')
+                      THEN datetime(r.scraped_at)
+                      ELSE datetime('1970-01-01')
+                 END AS effective_date
             ORDER BY effective_date DESC
             LIMIT $limit
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)

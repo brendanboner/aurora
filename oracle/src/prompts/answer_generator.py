@@ -59,6 +59,9 @@ Only trigger this if the DATA HORIZON is older than 30 days relative to today. I
   - Areas: Large organisational units (Security, Routing, Internet, WIT, etc.)
   - Working Groups: Chartered to produce specific deliverables (QUIC WG, TLS WG, BGP etc.)
   - When discussing IETF content, cite the RFC number or I-D name (e.g., draft-ietf-quic-transport) where known
+
+**SOURCE QUALITY — video transcripts:**
+Sources marked ⟨video transcript⟩ are transcripts from recorded presentations or conference talks. They reflect speaker perspectives and industry discussion but are NOT authoritative specifications. When a standards-body document (WFA whitepaper, WBA report, IEEE draft, IETF RFC) and a ⟨video transcript⟩ both cover the same topic, cite the document for definitive technical claims and the video only as supporting context. For questions about what a working group has formally decided or specified, do not rely on video transcripts as primary evidence.
 """
 
 ANSWER_GENERATOR_SYSTEM_PERSONALIZED = """You are an expert on wireless networking and Wi-Fi technology who has personally attended every Wi-Fi Alliance meeting, reviewed every working group document, and participated in every relevant industry discussion. You speak from deep first-hand knowledge and memory.
@@ -108,6 +111,9 @@ Only trigger this if the DATA HORIZON is older than 30 days relative to today. I
   - Areas: Large organisational units (Security, Routing, Internet, WIT, etc.)
   - Working Groups: Chartered to produce specific deliverables (QUIC WG, TLS WG, BGP etc.)
   - When discussing IETF content, cite the RFC number or I-D name (e.g., draft-ietf-quic-transport) where known
+
+**SOURCE QUALITY — video transcripts:**
+Sources marked ⟨video transcript⟩ are transcripts from recorded presentations or conference talks. They reflect speaker perspectives and industry discussion but are NOT authoritative specifications. When a standards-body document (WFA whitepaper, WBA report, IEEE draft, IETF RFC) and a ⟨video transcript⟩ both cover the same topic, cite the document for definitive technical claims and the video only as supporting context. For questions about what a working group has formally decided or specified, do not rely on video transcripts as primary evidence.
 """
 
 ANSWER_GENERATOR_USER = """**Question:** {question}
@@ -237,21 +243,31 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
         topics = ", ".join(doc.get("topics", [])) or "None"
         orgs = ", ".join(doc.get("organizations", [])) or "None"
         datasource = doc.get("datasource_id", "Unknown source")
-        
+        category = doc.get("category", "")
+
+        # Epoch placeholder (1970-01-01) means the scraper found no real date.
+        # Treat it identically to a missing date so the LLM doesn't cite "1970".
+        _EPOCH_PREFIXES = ("1970-01-01", "1970-01", "1970")
+        is_epoch = bool(raw_date and any(raw_date.startswith(p) for p in _EPOCH_PREFIXES))
+
         # Build a date label that never leaks scraped_at as a fake publish date.
         # temporal_confidence='low' means no valid publish_date was found — the
         # document should be treated as reference material, not as recent news.
         temporal_confidence = doc.get("temporal_confidence", "high")
-        if raw_date and raw_date not in ("", "Unknown date", "unknown"):
+        if raw_date and not is_epoch and raw_date not in ("", "Unknown date", "unknown"):
             date_display = raw_date
-        elif temporal_confidence == "low":
+        elif temporal_confidence == "low" or is_epoch:
             date_display = "publication date unknown — treat as reference material, not recent news"
         else:
             date_display = "date not recorded"
-        
+
+        # Video/transcript sources get an explicit label so the LLM can apply
+        # appropriate weight (useful context, not primary specification).
+        source_note = " ⟨video transcript⟩" if category == "video" else ""
+
         # URL is intentionally not labeled here — the LLM echoes labeled fields
         # (e.g. "URL:") verbatim into the answer text, producing "[2]URL: ..." noise.
-        formatted.append(f"""[{i}] **{title}** ({datasource}, {date_display})
+        formatted.append(f"""[{i}] **{title}**{source_note} ({datasource}, {date_display})
    {url}
    Topics: {topics} | Orgs: {orgs}
    {summary}

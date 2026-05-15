@@ -201,7 +201,9 @@ def main():
         
         for i, d in enumerate(documents[:10], 1):  # Show top 10
             title = d.get('title', 'Untitled')
-            date = d.get('publish_date') or d.get('date', 'N/A')
+            _raw_date = d.get('publish_date') or d.get('date') or ''
+            _epoch = _raw_date.startswith(('1970-01-01', '1970-01', '1970-')) if _raw_date else False
+            date = 'N/A' if (_epoch or not _raw_date) else _raw_date
             url = d.get('url', 'N/A')
             
             print(f"\n[{i}] {title}")

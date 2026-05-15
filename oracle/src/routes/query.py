@@ -297,7 +297,57 @@ async def query(
                         logger.info(f"[{query_id}] Cleaned question: {clean_question[:100]}...")
                     else:
                         logger.debug(f"[{query_id}] No matching datasources found for mentions: {mentions}")
-            
+
+            # Plain-text datasource aliases — activates when the query contains a
+            # well-known source name without an @mention and no explicit filter is set.
+            # Uses the same prefix-expansion as @mention resolution so "causeway"
+            # expands to all wfa_causeway_* child datasources automatically.
+            # Longer/more-specific aliases MUST come before shorter ones.
+            # Patterns containing "workgroup", "programme", or a programme name
+            # after the org prefix are safe to filter — "Compare WBA and WFA" is not.
+            _TEXT_DATASOURCE_ALIASES = {
+                "wfa causeway":       "wfa_causeway",
+                "causeway":           "wfa_causeway",
+                "wba extranet":       "wba_extranet",
+                "extranet":           "wba_extranet",
+                "wba workgroup":      "wba_extranet",
+                "wba programme":      "wba_extranet",
+                "wba program":        "wba_extranet",
+                "wba ai/ml":          "wba_extranet",
+                "wba ai ml":          "wba_extranet",
+                "wba pqc":            "wba_extranet",
+                "wba iot":            "wba_extranet",
+                "wba openroaming":    "wba_extranet",
+                "wba open roaming":   "wba_extranet",
+                "wba next gen":       "wba_extranet",
+                "wba identity":       "wba_extranet",
+            }
+            if not (request.options and request.options.datasource_ids):
+                question_lower = request.question.lower()
+                for alias, prefix in _TEXT_DATASOURCE_ALIASES.items():
+                    if alias in question_lower:
+                        from neo4j_client import Neo4jClient as _Neo4jClient
+                        _nc = _Neo4jClient(
+                            uri=settings.neo4j_uri,
+                            user=settings.neo4j_user,
+                            password=settings.neo4j_password,
+                        )
+                        _rows = _nc.execute_query(
+                            "MATCH (ds:DataSource) WHERE ds.datasource_id STARTS WITH $prefix "
+                            "RETURN ds.datasource_id AS datasource_id",
+                            parameters={"prefix": prefix},
+                        )
+                        _ids = [r["datasource_id"] for r in (_rows or []) if r.get("datasource_id")]
+                        if _ids:
+                            if not request.options:
+                                from src.models.request import QueryOptions
+                                request.options = QueryOptions()
+                            request.options.datasource_ids = _ids
+                            logger.info(
+                                f"[{query_id}] Text-alias '{alias}' → {len(_ids)} datasource(s): {_ids[:5]}"
+                            )
+                        break
+
             # Determine which pipeline to use (A/B test or user override)
             options = request.options
             pipeline_override = getattr(options, 'pipeline_override', None) if options else None
