@@ -523,7 +523,7 @@ teams-test-stop:
 
 teams-test-prod: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Starting teams-agent on production EC2...$(NC)"
-	$(call ssm-run,cd $(EC2_DEPLOY_PATH) && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams up -d --force-recreate teams-agent)
+	$(call ssm-run,docker rm -f aurora-teams-agent 2>/dev/null || true; cd $(EC2_DEPLOY_PATH) && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams pull teams-agent && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams up -d teams-agent)
 	@echo "$(GREEN)✓ Teams agent started on EC2$(NC)"
 	@echo ""
 	@echo "$(CYAN)Tunnel open: EC2:$(TEAMS_BOT_PORT) → localhost:$(TEAMS_BOT_PORT)$(NC)"
