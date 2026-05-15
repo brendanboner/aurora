@@ -22,6 +22,7 @@
 # =============================================================================
 
 .PHONY: help test-all build-push-all build-push-parallel ship-all aws-login setup-oidc gh-secrets connect_aurora_ec2clean-all \
+        teams-test teams-test-stop teams-test-prod teams-test-stop-prod teams-test-tool teams-test-install \
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
@@ -466,3 +467,83 @@ clean-all:
 		cd $$service && $(MAKE) clean && cd ..; \
 	done
 	@echo "$(GREEN)✓ All services cleaned$(NC)"
+
+# =============================================================================
+# Teams App Test Tool
+# =============================================================================
+# Runs the bot + a local Teams-like UI that renders Adaptive Cards.
+# No manifest upload or IT approval required.
+#
+# Local  (Docker Compose Aurora):  make teams-test
+# Prod   (EC2 Aurora via tunnel):  make teams-test-prod   [blocks — keep open]
+#                                  make teams-test-tool   [new terminal]
+# Stop:                            make teams-test-stop / teams-test-stop-prod
+#
+# One-time:  make teams-test-install
+# =============================================================================
+
+TEAMS_BOT_PORT   ?= 3978
+TEAMS_TEST_CFG    = teams-agent/teamsapptesttool.config.json
+
+# Create the test tool config pointing at the local bot port
+$(TEAMS_TEST_CFG):
+	@printf '{"botMessagingEndpoint":"http://localhost:%s/api/messages"}\n' $(TEAMS_BOT_PORT) > $@
+	@echo "$(GREEN)✓ Created $(TEAMS_TEST_CFG)$(NC)"
+
+# Install @microsoft/teams-app-test-tool as a dev dependency (one-time)
+teams-test-install:
+	@echo "$(CYAN)Installing Teams App Test Tool...$(NC)"
+	cd teams-agent && npm install --save-dev @microsoft/teams-app-test-tool
+	@echo "$(GREEN)✓ Done — run 'make teams-test' to start$(NC)"
+
+# ── LOCAL ─────────────────────────────────────────────────────────────────────
+# Starts the Aurora Teams bot in Docker (local data) then opens the Test Tool.
+# Ctrl-C stops the Test Tool; then run 'make teams-test-stop' to clean up.
+
+teams-test: $(TEAMS_TEST_CFG)
+	@echo "$(CYAN)Starting Teams bot (local Aurora)...$(NC)"
+	docker compose --profile teams up -d teams-agent
+	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT)$(NC)"
+	@echo "$(CYAN)Opening Teams App Test Tool — browser will open automatically$(NC)"
+	cd teams-agent && npx teamsapptesttool start
+
+teams-test-stop:
+	@echo "$(CYAN)Stopping local Teams test environment...$(NC)"
+	@pkill -f "teamsapptesttool" 2>/dev/null && echo "$(GREEN)✓ Test tool stopped$(NC)" || true
+	docker compose stop teams-agent
+	@echo "$(GREEN)✓ teams-agent stopped$(NC)"
+
+# ── PRODUCTION ────────────────────────────────────────────────────────────────
+# Step 1 (this terminal — blocks while tunnel is open):
+#   make teams-test-prod
+# Step 2 (new terminal):
+#   make teams-test-tool
+# Stop:
+#   make teams-test-stop-prod
+
+teams-test-prod: $(TEAMS_TEST_CFG)
+	@echo "$(CYAN)Starting teams-agent on production EC2...$(NC)"
+	$(call ssm-run,cd $(EC2_DEPLOY_PATH) && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams up -d teams-agent)
+	@echo "$(GREEN)✓ Teams agent started on EC2$(NC)"
+	@echo ""
+	@echo "$(CYAN)Tunnel open: EC2:$(TEAMS_BOT_PORT) → localhost:$(TEAMS_BOT_PORT)$(NC)"
+	@echo "$(CYAN)Open a NEW terminal and run: make teams-test-tool$(NC)"
+	@echo "$(CYAN)Press Ctrl-C here to close the tunnel when done.$(NC)"
+	@echo ""
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSession \
+		--parameters '{"portNumber":["$(TEAMS_BOT_PORT)"],"localPortNumber":["$(TEAMS_BOT_PORT)"]}' \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION)
+
+# Launch the browser UI (run in a separate terminal while teams-test-prod tunnel is open)
+teams-test-tool: $(TEAMS_TEST_CFG)
+	@echo "$(CYAN)Opening Teams App Test Tool → localhost:$(TEAMS_BOT_PORT)$(NC)"
+	cd teams-agent && npx teamsapptesttool start
+
+teams-test-stop-prod:
+	@echo "$(CYAN)Stopping teams-agent on production EC2...$(NC)"
+	$(call ssm-run,$(EC2_COMPOSE) stop teams-agent)
+	@pkill -f "teamsapptesttool" 2>/dev/null || true
+	@echo "$(GREEN)✓ Production Teams test environment stopped$(NC)"
