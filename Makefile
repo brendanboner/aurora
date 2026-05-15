@@ -504,10 +504,10 @@ teams-test: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Starting Teams bot (local Aurora)...$(NC)"
 	docker compose --profile teams up -d --force-recreate teams-agent
 	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT)$(NC)"
-	@echo "$(CYAN)Starting Agents Playground on http://localhost:$(AGENTS_PLAYGROUND_PORT)$(NC)"
+	@echo "$(CYAN)Opening Agents Playground...$(NC)"
 	@cd teams-agent && ./node_modules/.bin/agentsplayground &
-	@sleep 2 && open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
-	@echo "$(GREEN)✓ Browser opened — send a message to the bot$(NC)"
+	@open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
+	@echo "$(GREEN)✓ Ready — send a message in the browser$(NC)"
 
 teams-test-stop:
 	@echo "$(CYAN)Stopping local Teams test environment...$(NC)"
@@ -555,12 +555,14 @@ teams-test-prod-oracle:
 		--region $(AWS_REGION)
 
 teams-test-prod: $(TEAMS_TEST_CFG)
-	@echo "$(CYAN)Bot will start on localhost:$(TEAMS_BOT_PORT) via npm (not Docker)$(NC)"
-	@echo "$(CYAN)Tunnels must already be open:  make teams-test-prod-backend  /  make teams-test-prod-oracle$(NC)"
-	@echo "$(GREEN)Once the bot says 'Bot started', open a new terminal and run: make teams-test-tool$(NC)"
+	@echo "$(CYAN)Clearing port $(TEAMS_BOT_PORT)...$(NC)"
 	@docker stop aurora-teams-agent 2>/dev/null || true
 	@lsof -ti:$(TEAMS_BOT_PORT) | xargs kill -9 2>/dev/null || true
-	@echo ""
+	@echo "$(CYAN)Opening Agents Playground (bot connects on first message)...$(NC)"
+	@cd teams-agent && ./node_modules/.bin/agentsplayground &
+	@open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
+	@echo "$(CYAN)Starting bot → production Aurora (tunnels must be open)$(NC)"
+	@echo "$(CYAN)  make teams-test-prod-backend  /  make teams-test-prod-oracle$(NC)"
 	cd teams-agent && \
 	BOT_ID= \
 	BOT_PASSWORD= \
