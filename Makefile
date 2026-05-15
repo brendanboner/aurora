@@ -556,6 +556,8 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Bot will start on localhost:$(TEAMS_BOT_PORT) via npm (not Docker)$(NC)"
 	@echo "$(CYAN)Tunnels must already be open:  make teams-test-prod-backend  /  make teams-test-prod-oracle$(NC)"
 	@echo "$(GREEN)Once the bot says 'Bot started', open a new terminal and run: make teams-test-tool$(NC)"
+	@docker stop aurora-teams-agent 2>/dev/null || true
+	@lsof -ti:$(TEAMS_BOT_PORT) | xargs kill -9 2>/dev/null || true
 	@echo ""
 	cd teams-agent && \
 	AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
