@@ -558,8 +558,8 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)    make teams-test-prod-backend$(NC)"
 	@echo "$(CYAN)    make teams-test-prod-oracle$(NC)"
 	@echo ""
-	AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
-	AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
+	AURORA_API_URL=http://host.docker.internal:$(PROD_BACKEND_LOCAL) \
+	AURORA_ORACLE_URL=http://host.docker.internal:$(PROD_ORACLE_LOCAL) \
 	docker compose --profile teams up -d --force-recreate teams-agent
 	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT) → prod data$(NC)"
 	cd teams-agent && npx agentsplayground
