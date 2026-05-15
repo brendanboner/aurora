@@ -165,14 +165,11 @@ export class AuroraUserService {
       return `aad:${activity.from.aadObjectId}`;
     }
 
-    // For emulator testing: use a default test email
-    if (activity.channelId === 'emulator' || activity.channelId === 'webchat') {
-      const testEmail = process.env.TEST_USER_EMAIL || 'test@example.com';
-      console.warn(`Using test email for emulator: ${testEmail}`);
-      return testEmail;
-    }
-
-    throw new Error('Unable to extract user email from Teams context');
+    // For emulator, webchat, or any test/local channel — fall back to TEST_USER_EMAIL
+    // The Teams App Test Tool sends channelId='msteams' without a real user identity.
+    const testEmail = process.env.TEST_USER_EMAIL || 'test@example.com';
+    console.warn(`[UserService] No user identity in activity (channelId: ${activity.channelId}), using TEST_USER_EMAIL: ${testEmail}`);
+    return testEmail;
   }
 
   /**
