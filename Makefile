@@ -514,36 +514,63 @@ teams-test-stop:
 	@echo "$(GREEN)✓ teams-agent stopped$(NC)"
 
 # ── PRODUCTION ────────────────────────────────────────────────────────────────
-# Step 1 (this terminal — blocks while tunnel is open):
-#   make teams-test-prod
-# Step 2 (new terminal):
-#   make teams-test-tool
-# Stop:
-#   make teams-test-stop-prod
+# Runs the bot LOCALLY (so callbacks work) but tunnels prod Aurora data.
+#
+# How it works:
+#   SSM port-forwards EC2 backend (172.24.0.15:8000) → localhost:8001
+#   SSM port-forwards EC2 oracle  (172.24.0.14:8000) → localhost:8002
+#   Local teams-agent Docker connects to those tunnelled ports.
+#
+# Usage:
+#   Terminal 1:  make teams-test-prod-backend   (keep open)
+#   Terminal 2:  make teams-test-prod-oracle    (keep open)
+#   Terminal 3:  make teams-test-prod           (bot + browser)
+#   Stop:        make teams-test-stop-prod
 
-teams-test-prod: $(TEAMS_TEST_CFG)
-	@echo "$(CYAN)Starting teams-agent on production EC2...$(NC)"
-	$(call ssm-run,docker rm -f aurora-teams-agent 2>/dev/null || true; cd $(EC2_DEPLOY_PATH) && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams pull teams-agent && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams up -d teams-agent)
-	@echo "$(GREEN)✓ Teams agent started on EC2$(NC)"
-	@echo ""
-	@echo "$(CYAN)Tunnel open: EC2:$(TEAMS_BOT_PORT) → localhost:$(TEAMS_BOT_PORT)$(NC)"
-	@echo "$(CYAN)Open a NEW terminal and run: make teams-test-tool$(NC)"
-	@echo "$(CYAN)Press Ctrl-C here to close the tunnel when done.$(NC)"
-	@echo ""
+# Prod backend container IP on EC2 (docker inspect aurora-backend)
+PROD_BACKEND_HOST ?= 172.24.0.15
+PROD_ORACLE_HOST  ?= 172.24.0.14
+PROD_SVC_PORT     ?= 8000
+PROD_BACKEND_LOCAL ?= 8001
+PROD_ORACLE_LOCAL  ?= 8002
+
+teams-test-prod-backend:
+	@echo "$(CYAN)SSM tunnel: EC2 backend → localhost:$(PROD_BACKEND_LOCAL)  (keep this terminal open)$(NC)"
 	@aws ssm start-session \
 		--target $(EC2_INSTANCE_ID) \
-		--document-name AWS-StartPortForwardingSession \
-		--parameters '{"portNumber":["$(TEAMS_BOT_PORT)"],"localPortNumber":["$(TEAMS_BOT_PORT)"]}' \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_BACKEND_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_BACKEND_LOCAL)"]}' \
 		--profile $(AWS_SSO_PROFILE) \
 		--region $(AWS_REGION)
 
-# Launch the browser UI (run in a separate terminal while teams-test-prod tunnel is open)
+teams-test-prod-oracle:
+	@echo "$(CYAN)SSM tunnel: EC2 oracle → localhost:$(PROD_ORACLE_LOCAL)  (keep this terminal open)$(NC)"
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_ORACLE_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_ORACLE_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION)
+
+teams-test-prod: $(TEAMS_TEST_CFG)
+	@echo "$(CYAN)Starting local bot → production Aurora (tunnels must be open)$(NC)"
+	@echo "$(CYAN)  Run in separate terminals first:$(NC)"
+	@echo "$(CYAN)    make teams-test-prod-backend$(NC)"
+	@echo "$(CYAN)    make teams-test-prod-oracle$(NC)"
+	@echo ""
+	AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
+	AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
+	docker compose --profile teams up -d --force-recreate teams-agent
+	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT) → prod data$(NC)"
+	cd teams-agent && npx agentsplayground
+
+# Launch only the browser UI (if bot is already running)
 teams-test-tool: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Opening Microsoft 365 Agents Playground → localhost:$(TEAMS_BOT_PORT)$(NC)"
 	cd teams-agent && npx agentsplayground
 
 teams-test-stop-prod:
-	@echo "$(CYAN)Stopping teams-agent on production EC2...$(NC)"
-	$(call ssm-run,$(EC2_COMPOSE) stop teams-agent)
-	@pkill -f "teamsapptesttool" 2>/dev/null || true
-	@echo "$(GREEN)✓ Production Teams test environment stopped$(NC)"
+	@echo "$(CYAN)Stopping Teams prod test environment...$(NC)"
+	@pkill -f "agentsplayground" 2>/dev/null || true
+	docker compose stop teams-agent
+	@echo "$(GREEN)✓ Stopped (close the two tunnel terminals manually)$(NC)"
