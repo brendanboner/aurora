@@ -502,7 +502,7 @@ teams-test-install:
 
 teams-test: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Starting Teams bot (local Aurora)...$(NC)"
-	docker compose --profile teams up -d teams-agent
+	docker compose --profile teams up -d --force-recreate teams-agent
 	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT)$(NC)"
 	@echo "$(CYAN)Opening Teams App Test Tool (agentsplayground) — browser will open automatically$(NC)"
 	cd teams-agent && npx agentsplayground
@@ -523,7 +523,7 @@ teams-test-stop:
 
 teams-test-prod: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Starting teams-agent on production EC2...$(NC)"
-	$(call ssm-run,cd $(EC2_DEPLOY_PATH) && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams up -d teams-agent)
+	$(call ssm-run,cd $(EC2_DEPLOY_PATH) && TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) $(EC2_COMPOSE) --profile teams up -d --force-recreate teams-agent)
 	@echo "$(GREEN)✓ Teams agent started on EC2$(NC)"
 	@echo ""
 	@echo "$(CYAN)Tunnel open: EC2:$(TEAMS_BOT_PORT) → localhost:$(TEAMS_BOT_PORT)$(NC)"
