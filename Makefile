@@ -536,9 +536,9 @@ teams-test-prod:
 		$(EC2_COMPOSE) --profile teams pull teams-agent && \
 		TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
 		$(EC2_COMPOSE) --profile teams up -d teams-agent && \
-		echo "Waiting 20s for bot to start..." && sleep 20 && \
+		sleep 20 && \
 		docker exec -d aurora-teams-agent node node_modules/.bin/agentsplayground && \
-		echo "Playground started on port $(AGENTS_PLAYGROUND_PORT)" \
+		echo playground-started \
 	)
 	@echo "$(GREEN)✓ Bot + Playground running on EC2$(NC)"
 	@echo "$(CYAN)Forwarding EC2:$(AGENTS_PLAYGROUND_PORT) → localhost:$(AGENTS_PLAYGROUND_PORT) — press Ctrl-C when done$(NC)"
