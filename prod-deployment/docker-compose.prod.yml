@@ -935,7 +935,8 @@ services:
     networks:
       - aurora-network
     ports:
-      - "127.0.0.1:3978:3978"   # SSM port-forward target for local test tool
+      - "127.0.0.1:3978:3978"    # Bot Framework endpoint
+      - "127.0.0.1:56150:56150"  # Agents Playground browser UI
     environment:
       BOT_ID: ${BOT_ID}
       BOT_PASSWORD: ${BOT_PASSWORD}
