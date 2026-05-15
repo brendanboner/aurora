@@ -504,8 +504,8 @@ teams-test: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Starting Teams bot (local Aurora)...$(NC)"
 	docker compose --profile teams up -d teams-agent
 	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT)$(NC)"
-	@echo "$(CYAN)Opening Teams App Test Tool — browser will open automatically$(NC)"
-	cd teams-agent && npx teamsapptesttool start
+	@echo "$(CYAN)Opening Teams App Test Tool (agentsplayground) — browser will open automatically$(NC)"
+	cd teams-agent && npx agentsplayground
 
 teams-test-stop:
 	@echo "$(CYAN)Stopping local Teams test environment...$(NC)"
@@ -539,8 +539,8 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 
 # Launch the browser UI (run in a separate terminal while teams-test-prod tunnel is open)
 teams-test-tool: $(TEAMS_TEST_CFG)
-	@echo "$(CYAN)Opening Teams App Test Tool → localhost:$(TEAMS_BOT_PORT)$(NC)"
-	cd teams-agent && npx teamsapptesttool start
+	@echo "$(CYAN)Opening Microsoft 365 Agents Playground → localhost:$(TEAMS_BOT_PORT)$(NC)"
+	cd teams-agent && npx agentsplayground
 
 teams-test-stop-prod:
 	@echo "$(CYAN)Stopping teams-agent on production EC2...$(NC)"

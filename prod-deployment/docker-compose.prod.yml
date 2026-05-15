@@ -930,8 +930,12 @@ services:
     image: ${ECR_REGISTRY}/aurora-teams-agent:${VERSION:-latest}
     container_name: aurora-teams-agent
     restart: unless-stopped
+    profiles:
+      - teams
     networks:
       - aurora-network
+    ports:
+      - "127.0.0.1:3978:3978"   # SSM port-forward target for local test tool
     environment:
       BOT_ID: ${BOT_ID}
       BOT_PASSWORD: ${BOT_PASSWORD}
