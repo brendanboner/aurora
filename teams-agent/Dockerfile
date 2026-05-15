@@ -28,8 +28,7 @@ RUN apk add --no-cache dumb-init
 
 # Copy package files and install production dependencies only
 COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production && \
+RUN npm ci --only=production && \
     npm install --no-save @microsoft/teams-app-test-tool
 
 # Copy built application from builder
