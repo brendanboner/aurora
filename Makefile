@@ -530,11 +530,13 @@ teams-test-stop:
 #   Stop:        make teams-test-stop-prod
 
 # Prod backend container IP on EC2 (docker inspect aurora-backend)
-PROD_BACKEND_HOST ?= 172.24.0.15
-PROD_ORACLE_HOST  ?= 172.24.0.14
-PROD_SVC_PORT     ?= 8000
+PROD_BACKEND_HOST  ?= 172.24.0.15
+PROD_ORACLE_HOST   ?= 172.24.0.14
+PROD_CC_HOST       ?= 172.24.0.18
+PROD_SVC_PORT      ?= 8000
 PROD_BACKEND_LOCAL ?= 8001
 PROD_ORACLE_LOCAL  ?= 8002
+PROD_CC_LOCAL      ?= 8003
 
 teams-test-prod-backend:
 	@echo "$(CYAN)SSM tunnel: EC2 backend → localhost:$(PROD_BACKEND_LOCAL)  (keep this terminal open)$(NC)"
@@ -554,6 +556,15 @@ teams-test-prod-oracle:
 		--profile $(AWS_SSO_PROFILE) \
 		--region $(AWS_REGION)
 
+teams-test-prod-cc:
+	@echo "$(CYAN)SSM tunnel: EC2 content-creator → localhost:$(PROD_CC_LOCAL)  (keep this terminal open)$(NC)"
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_CC_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_CC_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION)
+
 teams-test-prod: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Clearing port $(TEAMS_BOT_PORT)...$(NC)"
 	@docker stop aurora-teams-agent 2>/dev/null || true
@@ -568,6 +579,7 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	BOT_PASSWORD= \
 	AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
 	AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
+	AURORA_CONTENT_CREATOR_URL=http://localhost:$(PROD_CC_LOCAL) \
 	POSTGRES_HOST=localhost \
 	POSTGRES_PORT=5432 \
 	POSTGRES_USER=$${POSTGRES_USER:-aurora} \
