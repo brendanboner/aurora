@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ProfileIcon, BookIcon, BuildingIcon, BellIcon, CheckIcon, ResetIcon, WarningIcon } from '../components/icons';
 import { getUserPreferences, updateUserPreferences, getTopics, getOrganisations, getPeople, getTopicsHierarchy } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -63,14 +63,23 @@ const UserProfile = ({ initialSection, initialPreferencesTab }) => {
   const [hierarchyLoading, setHierarchyLoading] = useState(false);
 
   const location = useLocation();
+  const navigate = useNavigate();
   const path = location.pathname;
+  // Default to 'preferences' (Groups tab) so it's always the landing section
   const selectedSection = initialSection
     || (path.includes('/profile/preferences') || path.includes('/profile/memberships') ? 'preferences'
     : path.includes('/profile/topics') ? 'topics'
     : path.includes('/profile/organisations') ? 'organisations'
     : path.includes('/profile/people') ? 'people'
     : path.includes('/profile/notifications') ? 'notifications'
-    : null);
+    : 'preferences');
+
+  const PROFILE_NAV = [
+    { id: 'preferences',  label: 'Groups & Sources', path: '/profile/preferences' },
+    { id: 'topics',       label: 'Topics',            path: '/profile/topics' },
+    { id: 'organisations',label: 'Companies',         path: '/profile/organisations' },
+    { id: 'notifications',label: 'Notifications',     path: '/profile/notifications' },
+  ];
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -400,6 +409,21 @@ const UserProfile = ({ initialSection, initialPreferencesTab }) => {
           <p className="profile-email">Role: {user.role || 'user'}</p>
         </div>
       </div>
+
+      {/* Section navigation tabs */}
+      <nav className="profile-section-nav" role="tablist">
+        {PROFILE_NAV.map(item => (
+          <button
+            key={item.id}
+            role="tab"
+            aria-selected={selectedSection === item.id}
+            className={`profile-nav-tab${selectedSection === item.id ? ' active' : ''}`}
+            onClick={() => navigate(item.path)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
 
       {error && <div className="profile-error"><WarningIcon size={16} /> {error}</div>}
       {/* Success & saving indicators moved to bottom; show only after real changes */}

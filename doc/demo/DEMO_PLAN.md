@@ -51,11 +51,13 @@ Switch to the Aurora web tab.
 **Goal:** show that getting started is one SSO click and thirty seconds of setup.
 
 1. Click **Log in** → Cognito SSO → land on Aurora home. Narrate: _"No signup form. Automatic account created on first login."_
-2. Open **Preferences** → **Groups** tab.
-3. Expand "Wi-Fi Alliance" → "NextGen Wi-Fi" → click **Join** on `wba_extranet_nextgen_wifi`. Note the yellow member-only badge.
-4. Expand "IETF" → **Join** on `ietf_wg_spring`.
-5. Switch to **Technology** tab → search "Wi-Fi 8" → **Prefer**. Search "PQC" → **Prefer**.
-6. Sidebar shows "5 groups joined, 2 topics preferred".
+2. Click your avatar / **Profile** in the top-right. The profile page opens on the **Groups & Sources** tab by default.
+3. In the WBA Extranet section, click **Join** on:
+   - **Wi-Fi 8 - Ultra High Reliability** (gold member-only badge)
+   - **AI/ML for Wi-Fi**
+   - **5G & Wi-Fi Convergence**
+4. Switch to **Sources** tab → join **WFA Resource Page** and **IEEE 802.11**.
+5. Switch to **Technology** tab → star **Wi-Fi 8** and **PQC**.
 
 > "Sixty seconds. Aurora now knows what to dig into and what to leave aside. And it respects access control — you only see what you've joined."
 

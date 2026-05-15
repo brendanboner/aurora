@@ -251,13 +251,18 @@ what to leave aside. And it respects access control — you only see what you've
   action "1. Click Log in → SSO → land on Aurora home"
   pause "Done? (ENTER)"
 
-  action "2. Open Preferences → Groups → expand Wi-Fi Alliance → NextGen Wi-Fi"
-  action "   Click JOIN on wba_extranet_nextgen_wifi (note the yellow member-only badge)"
+  action "2. Click your avatar / Profile in the top-right → profile page opens"
+  action "   'Groups & Sources' tab is selected by default (new in this build)"
+  action "   Scroll to 'WBA Extranet' → find 'Wi-Fi 8 - Ultra High Reliability'"
+  action "   Click JOIN (note the gold member-only badge — this is gated content)"
+  action "   Also join 'AI/ML for Wi-Fi' and 'E2E Wi-Fi QoS, L4S & EDCA'"
+  printf "${DIM}  Real WBA workgroup names: Wi-Fi 7, Wi-Fi 8 - Ultra High Reliability,${RST}\n"
+  printf "${DIM}  AI/ML for Wi-Fi, 5G & Wi-Fi Convergence, Security & Post-Quantum Computing${RST}\n\n"
   pause "Done? (ENTER)"
 
-  action "3. Expand IETF → Join ietf_wg_spring"
-  action "4. Technology tab → search Wi-Fi 8 → Prefer | search PQC → Prefer"
-  pause "Done? Sidebar should show ~5 groups joined (ENTER)"
+  action "3. Switch to 'Sources' tab → join 'WFA Resource Page' and 'IEEE 802.11'"
+  action "4. Switch to 'Technology' tab → search Wi-Fi 8 → click star | search PQC → click star"
+  pause "Done? Groups joined, topics starred (ENTER)"
 
   speech "Sixty seconds. Aurora now knows what to dig into and what to leave aside.
 It respects access control — you only see what you've joined."
@@ -277,7 +282,7 @@ digests that require a login to reach."
   browser "@wba what's new in NextGen Wi-Fi this month"
   action "Type that into Aurora chat now. While it loads, speak the line above."
   pause "Query sent? (ENTER to show fallback tip)"
-  printf "${DIM}  Fallback if thin: @wba_extranet_iot_p5g latest activity${RST}\n\n"
+  printf "${DIM}  Fallback if thin: @wba what has the Wi-Fi 8 Ultra High Reliability workgroup done?${RST}\n\n"
   pause "Answer landed? Point out a named person and workgroup. (ENTER)"
 
   browser "What are the priorities of the IoT programme this quarter?"

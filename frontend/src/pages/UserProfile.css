@@ -11,7 +11,35 @@
   background-color: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
+  margin-bottom: 0;
+}
+
+.profile-section-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
   margin-bottom: 24px;
+  background-color: var(--card);
+  overflow-x: auto;
+}
+
+.profile-nav-tab {
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.profile-nav-tab:hover { color: var(--foreground); }
+.profile-nav-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 
 .profile-avatar {
