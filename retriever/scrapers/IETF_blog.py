@@ -231,6 +231,7 @@ class IETFBlogScraper(BaseScraper):
                 current_url = self._next_page_url(soup) or None
 
             logger.info(f"IETFBlogScraper complete — published {total_published} posts")
+            self.mark_datasource_scraped(datasource_id)
             self.end_batch(total_published)
 
         except Exception as exc:

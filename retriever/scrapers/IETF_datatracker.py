@@ -515,6 +515,7 @@ class IETFDatatrackerScraper(BaseScraper):
                 f"IETFDatatrackerScraper complete — "
                 f"{total_res} resources, {total_evt} events across {len(wg_map)} WGs"
             )
+            self.mark_datasource_scraped(datasource_id)
             self.end_batch(total_res + total_evt)
 
         except Exception as exc:

@@ -380,6 +380,7 @@ class NISTScraper(BaseScraper):
                 await asyncio.sleep(scraper_delay)
 
             logger.info(f"NISTScraper ({datasource_id}) complete — published {total_published}")
+            self.mark_datasource_scraped(datasource_id)
             self.end_batch(total_published)
 
         except Exception as exc:

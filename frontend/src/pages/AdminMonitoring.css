@@ -876,3 +876,22 @@
   color: var(--muted-foreground, #9ca3af);
   white-space: nowrap;
 }
+
+.mon-run-btn {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 16px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: #b91c1c;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.mon-run-btn:hover:not(:disabled) { opacity: 1; }
+.mon-run-btn:disabled, .mon-run-btn.running {
+  opacity: 0.35;
+  cursor: default;
+}

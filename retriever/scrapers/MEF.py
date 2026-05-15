@@ -304,6 +304,7 @@ class MEFScraper(BaseScraper):
                 page += 1
 
             logger.info(f"MEFScraper ({datasource_id}) complete — published {total_published}")
+            self.mark_datasource_scraped(datasource_id)
             self.end_batch(total_published)
 
         except Exception as exc:

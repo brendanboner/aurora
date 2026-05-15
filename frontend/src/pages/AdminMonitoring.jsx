@@ -187,7 +187,7 @@ function QueueGroup({ sourceKey, items, expanded, onToggle }) {
 
 // ── Scheduler section ─────────────────────────────────────────────────────────
 
-function SchedulerSection({ scheduler }) {
+function SchedulerSection({ scheduler, onRunNow, runningIds = new Set() }) {
   if (!scheduler) return null;
   const overdue = (scheduler.datasource_schedules || []).filter(d => d.overdue);
   const noSchedule = (scheduler.datasource_schedules || []).filter(d => !d.schedule);
@@ -232,15 +232,28 @@ function SchedulerSection({ scheduler }) {
       {overdue.length > 0 && (
         <div className="mon-sched-overdue">
           <div className="mon-sched-overdue-title">Overdue Sources</div>
-          {overdue.map(d => (
-            <div key={d.datasource_id} className="mon-sched-row overdue">
-              <span className="mon-sched-name">{d.name || d.datasource_id}</span>
-              <span className="mon-sched-cron">{d.schedule || 'no schedule'}</span>
-              <span className="mon-sched-last">
-                {d.last_scraped_at ? `last: ${timeAgo(d.last_scraped_at)}` : 'never scraped'}
-              </span>
-            </div>
-          ))}
+          {overdue.map(d => {
+            const running = runningIds.has(d.datasource_id);
+            return (
+              <div key={d.datasource_id} className="mon-sched-row overdue">
+                <span className="mon-sched-name">{d.name || d.datasource_id}</span>
+                <span className="mon-sched-cron">{d.schedule || 'no schedule'}</span>
+                <span className="mon-sched-last">
+                  {d.last_scraped_at ? `last: ${timeAgo(d.last_scraped_at)}` : 'never scraped'}
+                </span>
+                {onRunNow && (
+                  <button
+                    className={`mon-run-btn${running ? ' running' : ''}`}
+                    title="Run now"
+                    disabled={running}
+                    onClick={() => onRunNow(d.datasource_id)}
+                  >
+                    {running ? '…' : '▶'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -387,6 +400,23 @@ const AdminMonitoring = () => {
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState({});
   const [fixingStalled, setFixingStalled] = useState(false);
+  const [runningIds, setRunningIds]       = useState(new Set());
+
+  const handleRunNow = async (datasourceId) => {
+    setRunningIds(prev => new Set(prev).add(datasourceId));
+    try {
+      const res = await fetch(`/api/retriever/scrape/datasource/${datasourceId}`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      alert(`Failed to start scraper: ${err.message}`);
+    } finally {
+      setTimeout(() => setRunningIds(prev => {
+        const next = new Set(prev);
+        next.delete(datasourceId);
+        return next;
+      }), 8000);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -566,7 +596,7 @@ const AdminMonitoring = () => {
             badgeClass="warn"
             defaultOpen={false}
           >
-            <SchedulerSection scheduler={sched} />
+            <SchedulerSection scheduler={sched} onRunNow={handleRunNow} runningIds={runningIds} />
           </Section>
         )}
 
