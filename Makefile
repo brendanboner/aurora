@@ -575,7 +575,7 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	POSTGRES_DB=$${POSTGRES_DB:-aurora} \
 	TEST_USER_EMAIL=$(TEST_USER_EMAIL) \
 	TEST_USER_ID=$(TEST_USER_ID) \
-	bash -c 'export NVM_DIR="$$HOME/.nvm" && source "$$NVM_DIR/nvm.sh" && nvm use 18 && npm run dev'
+	bash -c 'export NVM_DIR="$$HOME/.nvm" && source "$$NVM_DIR/nvm.sh" && nvm use 20 && npm run dev'
 
 AGENTS_PLAYGROUND_PORT ?= 56150
 
