@@ -387,6 +387,13 @@ Determine what changes should be made to improve this agent."""
             """
         )
         return [self._row_to_dict(row) for row in rows]
+
+    def mark_run(self, agent_id: int) -> None:
+        """Stamp last_run_at without touching last_generated_at (no content was produced)."""
+        db.execute(
+            "UPDATE user_agent SET last_run_at = NOW() WHERE id = %s",
+            (agent_id,)
+        )
     
     def _row_to_model(self, row) -> UserAgent:
         """Convert database row to UserAgent model."""

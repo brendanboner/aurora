@@ -1,4 +1,4 @@
-"""Async scheduler responsible for invoking CreatorAgents."""
+"""Async scheduler responsible for invoking CreatorAgents and personal UserAgents."""
 from __future__ import annotations
 
 import asyncio
@@ -24,6 +24,7 @@ from .agent_service import AgentService
 from .generation_service import GenerationService
 from .knowledge_monitor import KnowledgeMonitor
 from .post_service import PostService
+from .user_agent_service import UserAgentService
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class AgentScheduler:
             "weekly-digest": timedelta(days=6),
         }
         self._agent_service = AgentService()
+        self._user_agent_service = UserAgentService()
         self._monitor = KnowledgeMonitor()
         self._generation_service = GenerationService()
         self._post_service = PostService()
@@ -79,8 +81,11 @@ class AgentScheduler:
                 continue
 
     async def tick(self) -> None:
-        """Single scheduler iteration."""
-        await asyncio.to_thread(self._process_agents)
+        """Single scheduler iteration — runs CreatorAgents and personal UserAgents."""
+        await asyncio.gather(
+            asyncio.to_thread(self._process_agents),
+            asyncio.to_thread(self._process_user_agents),
+        )
 
     def _process_agents(self) -> None:
         now = datetime.now(timezone.utc)
@@ -354,6 +359,66 @@ class AgentScheduler:
                 now.strftime("%A"),
             )
         return perspective
+
+    # ------------------------------------------------------------------
+    # Personal UserAgent scheduling
+    # ------------------------------------------------------------------
+
+    def _process_user_agents(self) -> None:
+        now = datetime.now(timezone.utc)
+        agents = self._user_agent_service.get_all_enabled_agents()
+        logger.info("Scheduler: %d enabled user agent(s) to check", len(agents))
+        for agent_dict in agents:
+            try:
+                self._execute_user_agent(agent_dict, now)
+            except Exception as exc:
+                logger.exception(
+                    "User agent %s (id=%s) run failed: %s",
+                    agent_dict.get("name"),
+                    agent_dict.get("id"),
+                    exc,
+                )
+
+    def _should_run_user_agent(self, agent_dict: dict, now: datetime) -> bool:
+        cadence = self._normalise_cadence(agent_dict.get("cadence", "daily"))
+        window = self._cadence_windows.get(cadence, timedelta(hours=23))
+        anchor = agent_dict.get("last_generated_at") or agent_dict.get("last_run_at")
+        if not anchor:
+            return True
+        if isinstance(anchor, str):
+            anchor = datetime.fromisoformat(anchor)
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        return now - anchor >= window
+
+    def _execute_user_agent(self, agent_dict: dict, now: datetime) -> None:
+        agent_name = agent_dict.get("name", f"user-agent-{agent_dict.get('id')}")
+        if not self._should_run_user_agent(agent_dict, now):
+            logger.debug(
+                "User agent %s not due yet (cadence=%s, last_generated_at=%s)",
+                agent_name,
+                agent_dict.get("cadence"),
+                agent_dict.get("last_generated_at"),
+            )
+            return
+        logger.info(
+            "Running user agent %s (id=%s, user_id=%s, cadence=%s)",
+            agent_name,
+            agent_dict.get("id"),
+            agent_dict.get("user_id"),
+            agent_dict.get("cadence"),
+        )
+        result = self._generation_service.generate_for_user_agent(agent_dict)
+        if result:
+            logger.info(
+                "User agent %s generated post %s", agent_name, result.get("post_id")
+            )
+        else:
+            # No content this cycle — stamp last_run_at so we don't retry every tick
+            logger.info("User agent %s: no content this cycle", agent_name)
+            self._user_agent_service.mark_run(agent_dict["id"])
+
+    # ------------------------------------------------------------------
 
     def _normalise_cadence(self, cadence: Optional[str]) -> str:
         if not cadence:
