@@ -41,13 +41,13 @@ const adapter = new BotFrameworkAdapter({
 });
 
 // Override createConnectorClient to replace localhost with host.docker.internal
-// This is needed when running in Docker on macOS to reach the emulator
+// Only applies when running inside Docker (RUNNING_IN_DOCKER=true).
+// When running via npm on the host, localhost IS the correct address.
 const originalCreateConnectorClient = adapter.createConnectorClient.bind(adapter);
 adapter.createConnectorClient = function(serviceUrl: string) {
-  // If we're in Docker and the service URL points to localhost, use host.docker.internal
-  if (serviceUrl && serviceUrl.includes('localhost')) {
+  if (process.env.RUNNING_IN_DOCKER === 'true' && serviceUrl && serviceUrl.includes('localhost')) {
     const dockerServiceUrl = serviceUrl.replace('localhost', 'host.docker.internal');
-    console.log(`Redirecting serviceUrl: ${serviceUrl} -> ${dockerServiceUrl}`);
+    console.log(`[Docker] Redirecting serviceUrl: ${serviceUrl} -> ${dockerServiceUrl}`);
     return originalCreateConnectorClient(dockerServiceUrl);
   }
   return originalCreateConnectorClient(serviceUrl);
@@ -90,11 +90,11 @@ server.post('/api/messages', async (req, res) => {
   console.log('Request body type:', req.body?.type);
   console.log('ServiceUrl from request:', req.body?.serviceUrl);
   
-  // Fix serviceUrl for Docker: replace localhost with host.docker.internal
-  if (req.body?.serviceUrl && req.body.serviceUrl.includes('localhost')) {
+  // Fix serviceUrl for Docker only — when running via npm on the host, leave it as-is
+  if (process.env.RUNNING_IN_DOCKER === 'true' && req.body?.serviceUrl && req.body.serviceUrl.includes('localhost')) {
     const originalUrl = req.body.serviceUrl;
     req.body.serviceUrl = req.body.serviceUrl.replace('localhost', 'host.docker.internal');
-    console.log(`Fixed serviceUrl: ${originalUrl} -> ${req.body.serviceUrl}`);
+    console.log(`[Docker] Fixed serviceUrl: ${originalUrl} -> ${req.body.serviceUrl}`);
   }
   
   try {

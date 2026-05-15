@@ -562,6 +562,8 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	@lsof -ti:$(TEAMS_BOT_PORT) | xargs kill -9 2>/dev/null || true
 	@echo ""
 	cd teams-agent && \
+	BOT_ID= \
+	BOT_PASSWORD= \
 	AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
 	AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
 	POSTGRES_HOST=localhost \
