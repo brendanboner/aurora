@@ -1,3 +1,8 @@
+// Polyfill globalThis.crypto for Node < 19 (needed by botbuilder JWT internals)
+if (typeof (globalThis as any).crypto === 'undefined') {
+  (globalThis as any).crypto = require('crypto').webcrypto;
+}
+
 import * as restify from 'restify';
 import * as path from 'path';
 import { BotFrameworkAdapter, ConversationState, MemoryStorage, UserState } from 'botbuilder';
