@@ -536,11 +536,7 @@ teams-test-prod:
 		$(EC2_COMPOSE) --profile teams pull teams-agent && \
 		TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
 		$(EC2_COMPOSE) --profile teams up -d teams-agent && \
-		echo "Waiting for bot health..." && \
-		for i in $$(seq 1 20); do \
-			wget -q --spider http://localhost:$(TEAMS_BOT_PORT)/api/health 2>/dev/null && break || true; \
-			sleep 2; \
-		done && \
+		echo "Waiting 20s for bot to start..." && sleep 20 && \
 		docker exec -d aurora-teams-agent node node_modules/.bin/agentsplayground && \
 		echo "Playground started on port $(AGENTS_PLAYGROUND_PORT)" \
 	)
