@@ -746,9 +746,9 @@ services:
     environment:
       - BOT_ID=${BOT_ID:-}
       - BOT_PASSWORD=${BOT_PASSWORD:-}
-      - AURORA_API_URL=http://backend:8000
-      - AURORA_ORACLE_URL=http://oracle:8000
-      - AURORA_CONTENT_CREATOR_URL=http://content_creator_service:8000
+      - AURORA_API_URL=${AURORA_API_URL:-http://backend:8000}
+      - AURORA_ORACLE_URL=${AURORA_ORACLE_URL:-http://oracle:8000}
+      - AURORA_CONTENT_CREATOR_URL=${AURORA_CONTENT_CREATOR_URL:-http://content_creator_service:8000}
       - AURORA_FRONTEND_URL=${AURORA_FRONTEND_URL:-http://localhost:3000}
       # PostgreSQL — stores conversation references for proactive messaging
       - POSTGRES_HOST=postgres
