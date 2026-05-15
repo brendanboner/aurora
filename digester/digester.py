@@ -1627,44 +1627,65 @@ class DocumentDigester:
         return True
     
     def _cleanup_stalled_batches_on_startup(self) -> int:
-        """Mark any in-progress batches as failed on startup.
+        """Resolve any in-progress batches that have been running too long.
 
-        When the digester restarts mid-run (crash, deploy, OOM kill) it leaves
-        IngestionBatch nodes stuck forever in 'retrieving' or 'digesting' status.
-        This one-time cleanup at startup prevents that accumulation and ensures
-        the monitoring page shows an accurate view of active work.
+        Batches that are older than stall_hours and still in an active status
+        are resolved as either 'completed' or 'failed':
+          - completed: items_scraped == 0 (empty run) OR items_digested >= items_scraped
+          - failed:    items still outstanding (genuine stall / crash mid-run)
 
-        Returns the number of batches cleaned up.
+        This runs on startup and periodically so that monitoring always reflects
+        reality without waiting for a service restart.
+
+        Returns the number of batches resolved.
         """
         if not self.graph_repository:
             return 0
-        stall_hours = 1  # anything older than this is definitely abandoned (was 2h)
+        stall_hours = 1
         try:
             result = self.graph_repository.client.execute_write(
                 f"""
                 MATCH (b:IngestionBatch)
                 WHERE b.status IN ['retrieving', 'digesting', 'scraping']
                   AND b.scrape_started_at < datetime() - duration('PT{stall_hours}H')
-                SET b.status        = 'failed',
-                    b.error_message = 'Auto-cleaned on digester startup: batch was '
-                                      + b.status + ' for over {stall_hours}h (service restart)',
-                    b.digest_completed_at = datetime()
-                RETURN count(b) AS fixed
+                WITH b,
+                     coalesce(b.items_scraped, 0)  AS scraped,
+                     coalesce(b.items_digested, 0) AS digested
+                WITH b, scraped, digested,
+                     CASE
+                       WHEN scraped = 0                THEN 'completed'
+                       WHEN digested >= scraped        THEN 'completed'
+                       ELSE                                 'failed'
+                     END AS new_status
+                SET b.status             = new_status,
+                    b.digest_completed_at = datetime(),
+                    b.error_message      = CASE
+                      WHEN new_status = 'failed'
+                      THEN 'Auto-cleaned: stalled for over {stall_hours}h ('
+                           + toString(digested) + '/' + toString(scraped) + ' items digested)'
+                      ELSE null
+                    END
+                RETURN
+                  count(b) AS fixed,
+                  sum(CASE WHEN new_status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                  sum(CASE WHEN new_status = 'failed'    THEN 1 ELSE 0 END) AS failed
                 """,
                 {},
             )
-            fixed = result[0]["fixed"] if result else 0
+            row = result[0] if result else {}
+            fixed     = row.get("fixed", 0)
+            completed = row.get("completed", 0)
+            failed    = row.get("failed", 0)
             if fixed > 0:
                 logger.warning(
-                    f"Startup cleanup: marked {fixed} stalled IngestionBatch node(s) as "
-                    f"failed (were stuck in retrieving/digesting for >{stall_hours}h). "
-                    f"This is normal after a service restart mid-run."
+                    f"Batch cleanup: resolved {fixed} stalled batch(es) "
+                    f"({completed} completed, {failed} failed — stalled >{stall_hours}h)."
                 )
             else:
-                logger.info("Startup cleanup: no stalled batches found — clean state.")
+                logger.info("Batch cleanup: no stalled batches found.")
             return fixed
         except Exception as exc:
-            logger.error(f"Startup batch cleanup failed (non-fatal): {exc}")
+            logger.error(f"Batch cleanup failed (non-fatal): {exc}")
             return 0
 
     async def run(self):
@@ -1682,18 +1703,18 @@ class DocumentDigester:
             # start consuming new messages — prevents monitoring noise.
             self._cleanup_stalled_batches_on_startup()
 
-            # Schedule periodic cleanup of stalled batches (every 2 hours).
-            # Batches accumulate when content=None or other validation errors
-            # prevent items from ever completing their batch counter.
+            # Periodically resolve stalled batches. Run every 30 minutes so
+            # that the monitoring page never shows a batch as stuck for more
+            # than ~30 min past the 1-hour stall threshold.
             import asyncio as _asyncio
 
             async def _periodic_batch_cleanup():
                 while True:
-                    await _asyncio.sleep(2 * 3600)  # 2 hours
+                    await _asyncio.sleep(30 * 60)  # 30 minutes
                     try:
                         fixed = self._cleanup_stalled_batches_on_startup()
                         if fixed:
-                            logger.info(f"Periodic cleanup: marked {fixed} stalled batch(es) as failed")
+                            logger.info(f"Periodic cleanup: resolved {fixed} stalled batch(es)")
                     except Exception as _exc:
                         logger.warning(f"Periodic batch cleanup failed (non-fatal): {_exc}")
 

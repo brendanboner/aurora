@@ -589,10 +589,16 @@ class BaseScraper:
                             f"setting status to digesting"
                         )
                 
+                # Always write the authoritative items_scraped here.
+                # The real-time increment_batch_scraped calls may have failed
+                # silently if Neo4j was briefly unavailable; without this the
+                # digester compares items_digested against a stale (low/zero)
+                # count and the batch never transitions to completed.
                 self.graph_repository.update_batch_status(
                     batch_id=batch_id,
                     status=status,
-                    scrape_completed_at=scrape_completed_at
+                    scrape_completed_at=scrape_completed_at,
+                    items_scraped=items_scraped,
                 )
                 logger.info(
                     f"Batch {batch_id} retrieval complete: "
