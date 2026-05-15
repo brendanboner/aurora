@@ -1647,7 +1647,10 @@ class DocumentDigester:
                 f"""
                 MATCH (b:IngestionBatch)
                 WHERE b.status IN ['retrieving', 'digesting', 'scraping']
-                  AND b.scrape_started_at < datetime() - duration('PT{stall_hours}H')
+                  AND (
+                    b.scrape_started_at IS NULL
+                    OR localdatetime(b.scrape_started_at) < localdatetime() - duration('PT{stall_hours}H')
+                  )
                 WITH b,
                      coalesce(b.items_scraped, 0)  AS scraped,
                      coalesce(b.items_digested, 0) AS digested
