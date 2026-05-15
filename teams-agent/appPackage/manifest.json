@@ -2,7 +2,7 @@
   "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
   "manifestVersion": "1.16",
   "version": "1.0.0",
-  "id": "{{APP_ID}}",
+  "id": "a0582778-e1dd-4326-8c77-d92ce9bb2656",
   "packageName": "com.aurora.teamsagent",
   "developer": {
     "name": "Aurora Team",
@@ -25,7 +25,7 @@
   "accentColor": "#4A90E2",
   "bots": [
     {
-      "botId": "{{BOT_ID}}",
+      "botId": "42cc3ee2-ac9d-464f-841a-82d4f809c23d",
       "scopes": ["personal", "team", "groupchat"],
       "supportsFiles": false,
       "isNotificationOnly": false,

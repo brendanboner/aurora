@@ -925,4 +925,28 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  teams-agent:
+    image: ${ECR_REGISTRY}/aurora-teams-agent:${VERSION:-latest}
+    container_name: aurora-teams-agent
+    restart: unless-stopped
+    networks:
+      - aurora-network
+    environment:
+      BOT_ID: ${BOT_ID}
+      BOT_PASSWORD: ${BOT_PASSWORD}
+      BOT_PORT: 3978
+      NODE_ENV: production
+      AURORA_API_URL: http://backend:8000
+      AURORA_ORACLE_URL: http://oracle:8000
+      AURORA_CONTENT_CREATOR_URL: http://content_creator_service:8000
+      AURORA_FRONTEND_URL: https://${DEPLOYMENT_DOMAIN}
+      TEST_USER_EMAIL: ${TEST_USER_EMAIL}
+      TEST_USER_ID: ${TEST_USER_ID}
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3978/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
       start_period: 10s

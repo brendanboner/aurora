@@ -100,7 +100,7 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, tog
       <Routes>
         {/* Teams Tab - Full screen, no header/sidebar */}
         <Route
-          path="/teams"
+          path="/teams-tab"
           element={
             <ProtectedRoute>
               <TeamsTab backendStatus={backendStatus} />
