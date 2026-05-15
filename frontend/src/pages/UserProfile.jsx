@@ -65,20 +65,23 @@ const UserProfile = ({ initialSection, initialPreferencesTab }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname;
-  // Default to 'preferences' (Groups tab) so it's always the landing section
+  // Default to 'preferences' (Groups & Sources tab) so it's always the landing section
   const selectedSection = initialSection
     || (path.includes('/profile/preferences') || path.includes('/profile/memberships') ? 'preferences'
-    : path.includes('/profile/topics') ? 'topics'
+    : path.includes('/profile/topics')        ? 'topics'
     : path.includes('/profile/organisations') ? 'organisations'
-    : path.includes('/profile/people') ? 'people'
+    : path.includes('/profile/people')        ? 'people'
     : path.includes('/profile/notifications') ? 'notifications'
+    : path.includes('/profile/agents')        ? null   // agent pages handle their own layout
+    : path.includes('/profile/my-agents')     ? null
     : 'preferences');
 
   const PROFILE_NAV = [
     { id: 'preferences',  label: 'Groups & Sources', path: '/profile/preferences' },
-    { id: 'topics',       label: 'Topics',            path: '/profile/topics' },
-    { id: 'organisations',label: 'Companies',         path: '/profile/organisations' },
-    { id: 'notifications',label: 'Notifications',     path: '/profile/notifications' },
+    { id: 'topics',       label: 'Technology',       path: '/profile/topics' },
+    { id: 'organisations',label: 'Organisations',    path: '/profile/organisations' },
+    { id: 'people',       label: 'People',           path: '/profile/people' },
+    { id: 'notifications',label: 'Notifications',    path: '/profile/notifications' },
   ];
 
   // Close dropdowns when clicking outside

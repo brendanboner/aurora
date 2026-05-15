@@ -16,10 +16,8 @@ import {
 import './PreferencesPanel.css';
 
 const TABS = [
-  { id: 'group',      label: 'Groups',      desc: 'Join or ignore WBA, IETF, and other workgroups' },
-  { id: 'source',     label: 'Sources',     desc: 'Prefer or ignore public data sources' },
-  { id: 'technology', label: 'Technology',  desc: 'Prefer technology topics' },
-  { id: 'company',    label: 'Companies',   desc: 'Prefer companies and organisations' },
+  { id: 'group',  label: 'Groups',  desc: 'Join or ignore WBA, WFA, IETF and other workgroups' },
+  { id: 'source', label: 'Sources', desc: 'Prefer or ignore public data sources' },
 ];
 
 /**

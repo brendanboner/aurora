@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './Header.css';
 import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 import { useAuth } from '../contexts/AuthContext';
-import WorkgroupPreferencesModal from './WorkgroupPreferencesModal';
 import LightbulbIcon from './icons/LightbulbIcon';
 
 const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showWorkgroupPrefs, setShowWorkgroupPrefs] = useState(false);
   const menuRef = useRef(null);
 
   const getUserInitials = () => {
@@ -103,9 +103,9 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
               </div>
               <button
                 className="user-menu-logout"
-                onClick={() => { setShowUserMenu(false); setShowWorkgroupPrefs(true); }}
+                onClick={() => { setShowUserMenu(false); navigate('/profile/preferences'); }}
               >
-                Source Preferences
+                Preferences
               </button>
               <button className="user-menu-logout" onClick={handleLogout}>
                 Logout
@@ -116,12 +116,6 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
       </div>
     </header>
 
-    {showWorkgroupPrefs && user?.id && (
-      <WorkgroupPreferencesModal
-        userId={user.id}
-        onClose={() => setShowWorkgroupPrefs(false)}
-      />
-    )}
   </>
   );
 };

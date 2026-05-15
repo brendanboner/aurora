@@ -32,12 +32,9 @@ const MAIN_ITEMS = [
 ];
 
 const PROFILE_ITEMS = [
-  { to: '/profile/topics', label: 'Topics', icon: ProfileIcon },
-  { to: '/profile/organisations', label: 'Organisations', icon: ProfileIcon },
-  { to: '/profile/people', label: 'People', icon: UsersIcon },
+  { to: '/profile/preferences', label: 'Preferences', icon: SettingsIcon, startsWith: true },
   { to: '/profile/agents', label: 'Follow Agents', icon: StarIcon },
   { to: '/profile/my-agents', label: 'My Agents', icon: StarIcon },
-  { to: '/profile/notifications', label: 'Notifications', icon: ProfileIcon },
 ];
 
 const ADMIN_ITEMS = [

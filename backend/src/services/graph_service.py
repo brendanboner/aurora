@@ -742,39 +742,77 @@ def get_datasource_tree() -> List[Dict[str, Any]]:
     so the frontend can build a hierarchy. Nodes with parent_datasource_id=None
     are roots; children reference their parent's datasource_id.
 
-    The UI distinguishes Source (category='public') from Group (category='workgroup').
+    IETF WG nodes are grouped under virtual area-parent nodes synthesised from
+    their area_acronym field (e.g. "ietf_area_sec" → "IETF Security Area").
+    Nodes with a parent are returned before orphan root nodes.
     """
     repo = get_repo()
     query = """
     MATCH (ds:DataSource)
     WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage', 'ietf_wg']
-    RETURN ds.datasource_id       AS datasource_id,
+    RETURN ds.datasource_id        AS datasource_id,
            coalesce(ds.display_name, ds.name, ds.datasource_id) AS name,
-           ds.source_type         AS source_type,
-           ds.fetch_url           AS fetch_url,
-           ds.area_acronym        AS area_acronym,
-           ds.area_name           AS area_name,
+           ds.source_type          AS source_type,
+           ds.fetch_url            AS fetch_url,
+           ds.area_acronym         AS area_acronym,
+           ds.area_name            AS area_name,
            ds.parent_datasource_id AS parent_datasource_id,
-           ds.description         AS description
+           ds.description          AS description
     ORDER BY ds.source_type DESC, name
     """
     results = repo.client.execute_query(query, {})
+
+    # Track IETF area virtual parents we need to synthesise
+    ietf_area_parents: dict = {}  # acronym → parent node dict
     nodes = []
+
     for r in results:
         source_type = r["source_type"] or ""
         category = "workgroup" if source_type in ("authenticated_portal", "ietf_wg") else "public"
+        area_acronym = r.get("area_acronym") or ""
+        parent_id = r.get("parent_datasource_id")
+
+        # For IETF WGs without an existing parent, synthesise a virtual area parent
+        if source_type == "ietf_wg" and area_acronym and not parent_id:
+            virtual_id = f"ietf_area_{area_acronym.lower()}"
+            if virtual_id not in ietf_area_parents:
+                area_name = r.get("area_name") or f"IETF {area_acronym.upper()} Area"
+                ietf_area_parents[virtual_id] = {
+                    "datasource_id": virtual_id,
+                    "name": area_name,
+                    "source_type": "ietf_wg",
+                    "category": "workgroup",
+                    "fetch_url": f"https://datatracker.ietf.org/wg/#{area_acronym.lower()}",
+                    "area_acronym": area_acronym,
+                    "area_name": area_name,
+                    "parent_datasource_id": None,
+                    "description": f"IETF {area_acronym.upper()} Area working groups",
+                }
+            parent_id = virtual_id
+
         nodes.append({
             "datasource_id": r["datasource_id"],
             "name": r["name"],
             "source_type": source_type,
             "category": category,
             "fetch_url": r.get("fetch_url"),
-            "area_acronym": r.get("area_acronym"),
+            "area_acronym": area_acronym,
             "area_name": r.get("area_name"),
-            "parent_datasource_id": r.get("parent_datasource_id"),
+            "parent_datasource_id": parent_id,
             "description": r.get("description"),
         })
-    return nodes
+
+    # Prepend virtual IETF area parents (they're roots, display before their children)
+    result = list(ietf_area_parents.values()) + nodes
+
+    # Sort: nodes with a parent (have a group) before true orphan roots, then alphabetically
+    parent_ids = {n["parent_datasource_id"] for n in result if n["parent_datasource_id"]}
+    result.sort(key=lambda n: (
+        0 if n["datasource_id"] in parent_ids or n["parent_datasource_id"] else 1,
+        n["name"] or "",
+    ))
+
+    return result
 
 
 def get_topics_tree() -> List[Dict[str, Any]]:
