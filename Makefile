@@ -541,8 +541,7 @@ teams-test-prod:
 			wget -q --spider http://localhost:$(TEAMS_BOT_PORT)/api/health 2>/dev/null && break || true; \
 			sleep 2; \
 		done && \
-		docker exec aurora-teams-agent sh -c 'printf "{\"botMessagingEndpoint\":\"http://localhost:3978/api/messages\"}" > /app/teamsapptesttool.config.json' && \
-		docker exec -d aurora-teams-agent sh -c 'cd /app && ./node_modules/.bin/agentsplayground' && \
+		docker exec -d aurora-teams-agent node node_modules/.bin/agentsplayground && \
 		echo "Playground started on port $(AGENTS_PLAYGROUND_PORT)" \
 	)
 	@echo "$(GREEN)✓ Bot + Playground running on EC2$(NC)"

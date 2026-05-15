@@ -29,13 +29,18 @@ RUN apk add --no-cache dumb-init
 # Copy package files and install production dependencies only
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production
+    npm ci --only=production && \
+    npm install --no-save @microsoft/teams-app-test-tool
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
 # Copy adaptive cards (needed at runtime)
 COPY src/adaptiveCards ./dist/adaptiveCards
+
+# Bake in Agents Playground config — points at the bot on localhost:3978
+RUN echo '{"botMessagingEndpoint":"http://localhost:3978/api/messages"}' \
+    > /app/teamsapptesttool.config.json
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -44,8 +49,8 @@ RUN addgroup -g 1001 -S nodejs && \
 
 USER nodejs
 
-# Expose bot port
-EXPOSE 3978
+# Expose bot port and Agents Playground port
+EXPOSE 3978 56150
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
