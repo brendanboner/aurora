@@ -553,16 +553,21 @@ teams-test-prod-oracle:
 		--region $(AWS_REGION)
 
 teams-test-prod: $(TEAMS_TEST_CFG)
-	@echo "$(CYAN)Starting local bot → production Aurora (tunnels must be open)$(NC)"
-	@echo "$(CYAN)  Run in separate terminals first:$(NC)"
-	@echo "$(CYAN)    make teams-test-prod-backend$(NC)"
-	@echo "$(CYAN)    make teams-test-prod-oracle$(NC)"
+	@echo "$(CYAN)Bot will start on localhost:$(TEAMS_BOT_PORT) via npm (not Docker)$(NC)"
+	@echo "$(CYAN)Tunnels must already be open:  make teams-test-prod-backend  /  make teams-test-prod-oracle$(NC)"
+	@echo "$(GREEN)Once the bot says 'Bot started', open a new terminal and run: make teams-test-tool$(NC)"
 	@echo ""
-	AURORA_API_URL=http://host.docker.internal:$(PROD_BACKEND_LOCAL) \
-	AURORA_ORACLE_URL=http://host.docker.internal:$(PROD_ORACLE_LOCAL) \
-	docker compose --profile teams up -d --force-recreate teams-agent
-	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT) → prod data$(NC)"
-	cd teams-agent && npx agentsplayground
+	cd teams-agent && \
+	AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
+	AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
+	POSTGRES_HOST=localhost \
+	POSTGRES_PORT=5432 \
+	POSTGRES_USER=$${POSTGRES_USER:-aurora} \
+	POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-aurora_password} \
+	POSTGRES_DB=$${POSTGRES_DB:-aurora} \
+	TEST_USER_EMAIL=$(TEST_USER_EMAIL) \
+	TEST_USER_ID=$(TEST_USER_ID) \
+	npm run dev
 
 # Launch only the browser UI (if bot is already running)
 teams-test-tool: $(TEAMS_TEST_CFG)
@@ -572,5 +577,5 @@ teams-test-tool: $(TEAMS_TEST_CFG)
 teams-test-stop-prod:
 	@echo "$(CYAN)Stopping Teams prod test environment...$(NC)"
 	@pkill -f "agentsplayground" 2>/dev/null || true
-	docker compose stop teams-agent
-	@echo "$(GREEN)✓ Stopped (close the two tunnel terminals manually)$(NC)"
+	@pkill -f "teams-agent.*npm" 2>/dev/null || true
+	@echo "$(GREEN)✓ Bot stopped (Ctrl-C in tunnel terminals to close them)$(NC)"
