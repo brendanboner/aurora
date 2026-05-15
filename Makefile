@@ -504,14 +504,16 @@ teams-test: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Starting Teams bot (local Aurora)...$(NC)"
 	docker compose --profile teams up -d --force-recreate teams-agent
 	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT)$(NC)"
-	@echo "$(CYAN)Opening Teams App Test Tool (agentsplayground) — browser will open automatically$(NC)"
-	cd teams-agent && npx agentsplayground
+	@echo "$(CYAN)Starting Agents Playground on http://localhost:$(AGENTS_PLAYGROUND_PORT)$(NC)"
+	@cd teams-agent && ./node_modules/.bin/agentsplayground &
+	@sleep 2 && open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
+	@echo "$(GREEN)✓ Browser opened — send a message to the bot$(NC)"
 
 teams-test-stop:
 	@echo "$(CYAN)Stopping local Teams test environment...$(NC)"
-	@pkill -f "teamsapptesttool" 2>/dev/null && echo "$(GREEN)✓ Test tool stopped$(NC)" || true
-	docker compose stop teams-agent
-	@echo "$(GREEN)✓ teams-agent stopped$(NC)"
+	@pkill -f "agentsplayground" 2>/dev/null || true
+	@docker compose stop teams-agent 2>/dev/null || true
+	@echo "$(GREEN)✓ Stopped$(NC)"
 
 # ── PRODUCTION ────────────────────────────────────────────────────────────────
 # Runs the bot LOCALLY (so callbacks work) but tunnels prod Aurora data.
@@ -571,13 +573,18 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	TEST_USER_ID=$(TEST_USER_ID) \
 	bash -c 'export NVM_DIR="$$HOME/.nvm" && source "$$NVM_DIR/nvm.sh" && nvm use 18 && npm run dev'
 
+AGENTS_PLAYGROUND_PORT ?= 56150
+
 # Launch only the browser UI (if bot is already running)
 teams-test-tool: $(TEAMS_TEST_CFG)
-	@echo "$(CYAN)Opening Microsoft 365 Agents Playground → localhost:$(TEAMS_BOT_PORT)$(NC)"
-	cd teams-agent && npx agentsplayground
+	@echo "$(CYAN)Starting Agents Playground on http://localhost:$(AGENTS_PLAYGROUND_PORT)$(NC)"
+	@cd teams-agent && ./node_modules/.bin/agentsplayground &
+	@sleep 2 && open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
+	@echo "$(GREEN)✓ Browser opened — send a message to start$(NC)"
 
 teams-test-stop-prod:
 	@echo "$(CYAN)Stopping Teams prod test environment...$(NC)"
 	@pkill -f "agentsplayground" 2>/dev/null || true
-	@pkill -f "teams-agent.*npm" 2>/dev/null || true
-	@echo "$(GREEN)✓ Bot stopped (Ctrl-C in tunnel terminals to close them)$(NC)"
+	@pkill -f "ts-node" 2>/dev/null || true
+	@lsof -ti:$(TEAMS_BOT_PORT) | xargs kill -9 2>/dev/null || true
+	@echo "$(GREEN)✓ Stopped (Ctrl-C in tunnel terminals to close them)$(NC)"
