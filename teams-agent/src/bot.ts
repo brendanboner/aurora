@@ -20,6 +20,9 @@ const AURORA_TOPIC_RE = /\b(wi-?fi|802\.1[01356]|ieee|ietf|wba|wfa|5g|6g|spectru
 // Question patterns (the message is asking something, not just stating)
 const QUESTION_RE = /(\?$|^(do|does|did|can|will|would|should|is|are|was|were|has|have|had|what|when|where|who|why|how)\b)/i;
 
+// Demo: conversations that have opted into group-simulation mode (for Agents Playground)
+const groupModeConversations = new Set<string>();
+
 // Commands that set a conversation-scoped default agent
 const SET_CHANNEL_AGENT_RE = /^setChannelAgent\s+@?aurora-([\w-]+)$/i;
 const CLEAR_CHANNEL_AGENT_RE = /^clearChannelAgent$/i;
@@ -81,6 +84,19 @@ export class AuroraBot extends TeamsActivityHandler {
           await context.sendActivity(
             `✅ This conversation is now scoped to **${slug}**. All messages will be answered through that agent.\n\nType \`clearChannelAgent\` to remove the scope.`
           );
+        }
+        // ── groupmode on / off — demo toggle for group-chat simulation ────
+        else if (lower === 'groupmode on' || lower === 'groupmode true') {
+          groupModeConversations.add(convId);
+          await context.sendActivity(
+            '✅ **Group mode ON** — Aurora will now respond to relevant Wi-Fi/standards ' +
+            'questions in this conversation as if it were a team channel. ' +
+            'Type `groupmode off` to disable.'
+          );
+        }
+        else if (lower === 'groupmode off' || lower === 'groupmode false') {
+          groupModeConversations.delete(convId);
+          await context.sendActivity('✅ **Group mode OFF** — back to direct-query mode.');
         }
         // ── clearChannelAgent ──────────────────────────────────────────────
         else if (CLEAR_CHANNEL_AGENT_RE.test(lower)) {
@@ -186,7 +202,7 @@ export class AuroraBot extends TeamsActivityHandler {
             // asked directly. Threshold: message must look like a question
             // AND mention a topic Aurora knows about.
             const convType = context.activity.conversation?.conversationType ?? 'personal';
-            const isGroupConv = convType !== 'personal';
+            const isGroupConv = convType !== 'personal' || groupModeConversations.has(convId);
             const looksLikeQuestion = QUESTION_RE.test(text) && text.length > 10;
             const isAuroraTopic = AURORA_TOPIC_RE.test(text);
 
@@ -331,6 +347,10 @@ Or use a channel webhook for named delivery: \`setAgentWebhook @aurora-<slug> ht
 • \`@aurora-<slug> <question>\` — Ask by slug (e.g. \`@aurora-alex-wireless What is Wi-Fi 7?\`)
 • \`setChannelAgent @aurora-<slug>\` — Lock this channel to one agent permanently
 • \`clearChannelAgent\` — Remove the channel lock
+
+**👥 Group Channel Mode**
+• \`groupmode on\` — Aurora listens for Wi-Fi/standards questions and adds context automatically
+• \`groupmode off\` — Back to direct-query mode
 
 **🔔 Proactive Updates**
 • \`subscribe @aurora-<slug>\` — Get push notifications when an agent posts
