@@ -29,7 +29,8 @@ export class AuroraUserService {
         // Backend trusts X-User-* headers from internal Docker network
         'X-User-Id': userId,
         'X-User-Email': this.devUserEmail,
-        'X-User-Role': 'user'
+        'X-User-Role': 'user',
+        ...(process.env.AURORA_SERVICE_TOKEN ? { 'X-Service-Token': process.env.AURORA_SERVICE_TOKEN } : {}),
       }
     });
   }

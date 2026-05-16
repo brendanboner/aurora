@@ -50,6 +50,7 @@ async def get_user_context(
     x_user_id: Optional[str] = Header(None),
     x_user_email: Optional[str] = Header(None),
     x_user_role: Optional[str] = Header(None),
+    x_service_token: Optional[str] = Header(None),
 ) -> Optional[dict]:
     """
     Extract user context from headers.
@@ -77,9 +78,15 @@ async def get_user_context(
         ...     else:
         ...         print("Service-to-service call")
     """
+    import os as _os
+    _service_token = _os.environ.get("AURORA_SERVICE_TOKEN", "")
     if not x_user_id:
-        return None
-    
+        # Allow internal service calls with a pre-shared token + explicit user headers
+        if _service_token and x_service_token == _service_token and x_user_email:
+            x_user_id = _os.environ.get("TEST_USER_ID") or f"svc-{x_user_email}"
+        else:
+            return None
+
     user_context = {
         "user_id": x_user_id,
         "email": x_user_email or "unknown",
