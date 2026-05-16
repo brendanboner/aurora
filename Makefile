@@ -23,6 +23,7 @@
 
 .PHONY: help test-all build-push-all build-push-parallel ship-all aws-login setup-oidc gh-secrets connect_aurora_ec2clean-all \
         teams-test teams-test-stop teams-test-prod teams-test-stop-prod teams-test-tool teams-test-install \
+        teams-test-prod-backend teams-test-prod-oracle teams-test-prod-cc \
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
@@ -526,6 +527,43 @@ teams-test-stop:
 
 AGENTS_PLAYGROUND_PORT ?= 56150
 TST_CFG = '{"botMessagingEndpoint":"http://localhost:$(TEAMS_BOT_PORT)/api/messages"}'
+
+# Container IPs on EC2 (stable unless containers are recreated)
+PROD_BACKEND_HOST  ?= 172.24.0.15
+PROD_ORACLE_HOST   ?= 172.24.0.14
+PROD_CC_HOST       ?= 172.24.0.18
+PROD_SVC_PORT      ?= 8000
+PROD_BACKEND_LOCAL ?= 8001
+PROD_ORACLE_LOCAL  ?= 8002
+PROD_CC_LOCAL      ?= 8003
+
+# SSM port-forwards — run each in its own terminal, keep open while testing
+teams-test-prod-backend:
+	@echo "$(CYAN)SSM tunnel: production backend → localhost:$(PROD_BACKEND_LOCAL)  (keep open)$(NC)"
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_BACKEND_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_BACKEND_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION)
+
+teams-test-prod-oracle:
+	@echo "$(CYAN)SSM tunnel: production oracle → localhost:$(PROD_ORACLE_LOCAL)  (keep open)$(NC)"
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_ORACLE_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_ORACLE_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION)
+
+teams-test-prod-cc:
+	@echo "$(CYAN)SSM tunnel: production content-creator → localhost:$(PROD_CC_LOCAL)  (keep open)$(NC)"
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_CC_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_CC_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) \
+		--region $(AWS_REGION)
 
 teams-test-prod:
 	@echo "$(CYAN)Starting teams-agent on EC2 (production data)...$(NC)"
