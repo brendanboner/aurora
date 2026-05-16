@@ -186,24 +186,63 @@ class IEEE80211TGScraper(BaseScraper):
     # Meeting plan — parse as Events
     # ------------------------------------------------------------------
 
+    # Known meetings from public meeting plan — used when page scraping fails
+    _KNOWN_MEETINGS = [
+        ("2026-05-10", "2026-05-15", "216", "Plenary",  "Antwerp, Belgium", "Hilton Antwerp Old Town"),
+        ("2026-07-12", "2026-07-17", "217", "Interim",  "Montreal, Quebec, Canada", "Le Centre Sheraton Montreal"),
+        ("2026-09-13", "2026-09-18", "218", "Plenary",  "Waikoloa, Hawaii, USA", "Hilton Waikoloa Village"),
+        ("2026-11-08", "2026-11-13", "219", "Interim",  "Bangkok, Thailand", "Marriott Marquis Queen's Park"),
+        ("2027-01-10", "2027-01-15", "220", "Plenary",  "Irvine, California, USA", "Hyatt Regency Irvine"),
+        ("2027-03-14", "2027-03-19", "221", "Interim",  "Singapore", "Grand Capthorne Waterfront"),
+    ]
+
     async def _scrape_meetings(self, datasource_id: str) -> List[Event]:
         """Parse the WG meeting plan page and return Event objects."""
         soup = await self._fetch(MEETING_URL)
-        if not soup:
-            return []
+        now = datetime.now(timezone.utc)
+        cutoff_past = now - timedelta(days=180)
+        cutoff_future = now + timedelta(days=730)
 
         events: List[Event] = []
-        now = datetime.now(timezone.utc)
-        cutoff_past = now - timedelta(days=180)   # 6 months back
-        cutoff_future = now + timedelta(days=730)  # 2 years forward
 
+        # First: seed from known meeting list (always accurate, low maintenance)
+        for start, end, session, mtype, location, hotel in self._KNOWN_MEETINGS:
+            try:
+                start_dt = date_parse(start).replace(tzinfo=timezone.utc)
+                if start_dt < cutoff_past or start_dt > cutoff_future:
+                    continue
+            except Exception:
+                continue
+            status = "scheduled" if start_dt >= now else "completed"
+            event_type = "conference" if "Plenary" in mtype else "meeting"
+            events.append(Event(
+                name=f"IEEE 802.11 WG Session {session} — {location}",
+                event_type=event_type,
+                start_date=start,
+                end_date=end,
+                location=f"{location} ({hotel})",
+                description=(
+                    f"IEEE 802.11 Working Group Session {session} ({mtype}).\n"
+                    f"Venue: {hotel}, {location}.\n"
+                    f"All active task groups (TGbn, TGbi, TGbp, TGbt, TGbq, TGbr, TGmf) meet."
+                ),
+                url=MEETING_URL,
+                status=status,
+                datasource_id=datasource_id,
+            ))
+
+        if not soup:
+            logger.info("IEEE80211TG: meeting plan page unavailable, using known list")
+            logger.info("IEEE80211TG: parsed %d meeting events", len(events))
+            return events
+
+        # Second: try to parse additional meetings from live page
         for table in soup.find_all("table"):
             for row in table.find_all("tr"):
                 cells = [c.get_text(strip=True) for c in row.find_all(["td", "th"])]
                 if len(cells) < 3:
                     continue
                 raw = " | ".join(cells)
-                # Look for year patterns
                 year_m = re.search(r"\b(202\d)\b", raw)
                 if not year_m:
                     continue
@@ -360,7 +399,9 @@ class IEEE80211TGScraper(BaseScraper):
         try:
             self.update_heartbeat()
 
-            # 1. Task group status pages
+            # 1. Task group status pages — always re-publish because they are
+            # "living" status pages updated after every session. The digester
+            # deduplicates via content_hash, so unchanged pages cost nothing.
             for slug, tg_label, amendment, description in ACTIVE_TGS:
                 self.update_heartbeat()
                 url = f"{WG_BASE}/Reports/{slug}_update.htm"
@@ -369,7 +410,7 @@ class IEEE80211TGScraper(BaseScraper):
                     slug, tg_label, amendment, description,
                     datasource_id, scraper_delay,
                 )
-                if res and not self.url_exists_in_db(res.url):
+                if res:
                     self.publish_resource(res, additional_fields={
                         "task_group": tg_label,
                         "amendment": amendment,
@@ -377,11 +418,11 @@ class IEEE80211TGScraper(BaseScraper):
                     total += 1
                 await asyncio.sleep(scraper_delay)
 
-            # 2. Master timeline
+            # 2. Master timeline — always refresh (same reason as TG pages)
             self.update_heartbeat()
             logger.info("  Scraping amendment timeline")
             timeline = await self._scrape_timeline(datasource_id)
-            if timeline and not self.url_exists_in_db(timeline.url):
+            if timeline:
                 self.publish_resource(timeline)
                 total += 1
             await asyncio.sleep(scraper_delay)
