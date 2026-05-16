@@ -710,7 +710,7 @@ def get_listable_datasources() -> List[Dict[str, Any]]:
     repo = get_repo()
     query = """
     MATCH (ds:DataSource)
-    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage', 'ietf_wg']
+    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage', 'ietf_wg', 'ieee_wg']
     RETURN ds.datasource_id AS datasource_id,
            coalesce(ds.display_name, ds.name, ds.datasource_id) AS name,
            ds.source_type AS source_type,
@@ -723,7 +723,7 @@ def get_listable_datasources() -> List[Dict[str, Any]]:
     datasources = []
     for record in results:
         source_type = record["source_type"] or ""
-        category = "workgroup" if source_type in ("authenticated_portal", "ietf_wg") else "public"
+        category = "workgroup" if source_type in ("authenticated_portal", "ietf_wg", "ieee_wg") else "public"
         datasources.append({
             "datasource_id": record["datasource_id"],
             "name": record["name"],
@@ -749,7 +749,7 @@ def get_datasource_tree() -> List[Dict[str, Any]]:
     repo = get_repo()
     query = """
     MATCH (ds:DataSource)
-    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage', 'ietf_wg']
+    WHERE ds.source_type IN ['authenticated_portal', 'scraped_webpage', 'ietf_wg', 'ieee_wg']
     RETURN ds.datasource_id        AS datasource_id,
            coalesce(ds.display_name, ds.name, ds.datasource_id) AS name,
            ds.source_type          AS source_type,
@@ -768,7 +768,7 @@ def get_datasource_tree() -> List[Dict[str, Any]]:
 
     for r in results:
         source_type = r["source_type"] or ""
-        category = "workgroup" if source_type in ("authenticated_portal", "ietf_wg") else "public"
+        category = "workgroup" if source_type in ("authenticated_portal", "ietf_wg", "ieee_wg") else "public"
         area_acronym = r.get("area_acronym") or ""
         parent_id = r.get("parent_datasource_id")
 
