@@ -63,13 +63,32 @@ export class AuroraBot extends TeamsActivityHandler {
       try {
         const convId = context.activity.conversation.id;
 
+        // ── EXPLICIT COMMANDS — checked first, always override any agent scope ──
+        // clear / reset / exit — escape from any scoped workgroup context
+        if (CLEAR_CHANNEL_AGENT_RE.test(lower)) {
+          await conversationReferenceStore.setDefaultAgent(convId, null);
+          groupModeConversations.delete(convId);
+          await context.sendActivity('✅ Cleared. Back to general questions.');
+        }
+        // groupmode on / off
+        else if (/^groupmode\s+(on|true)$/i.test(lower)) {
+          groupModeConversations.add(convId);
+          await context.sendActivity(
+            '✅ **Group mode ON** — Aurora will respond to Wi-Fi/standards questions in ' +
+            'this conversation without being directly @mentioned.\n\n' +
+            '_Type `groupmode off` or `clear` to disable._'
+          );
+        }
+        else if (/^groupmode\s+(off|false)$/i.test(lower)) {
+          groupModeConversations.delete(convId);
+          await context.sendActivity('✅ **Group mode OFF** — back to direct-query mode.');
+        }
         // ── Agent slug routing: @aurora-<slug> <question> ──────────────────
-        const slugMatch = text.match(AGENT_SLUG_RE);
-        if (slugMatch) {
+        else if (text.match(AGENT_SLUG_RE)) {
+          const slugMatch = text.match(AGENT_SLUG_RE)!;
           const slug = slugMatch[1].toLowerCase();
           const question = text.replace(AGENT_SLUG_RE, '').trim();
           if (question) {
-            // Temporary default agent (30 min TTL) when the user uses a slug prefix
             await conversationReferenceStore.setDefaultAgent(convId, `aurora-${slug}`, 30);
             await this.agentHandler.handleAskAgentBySlug(context, `aurora-${slug}`, question);
           } else {
@@ -82,26 +101,8 @@ export class AuroraBot extends TeamsActivityHandler {
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.setDefaultAgent(convId, slug);
           await context.sendActivity(
-            `✅ Scoped to **${slug}**. All messages will be answered through that agent.\n\n_Type \`clear\` or \`reset\` to return to general questions._`
+            `✅ Scoped to **${slug}**. All messages answered through that agent.\n\n_Type \`clear\` to return to general questions._`
           );
-        }
-        // ── groupmode on / off — demo toggle for group-chat simulation ────
-        else if (lower === 'groupmode on' || lower === 'groupmode true') {
-          groupModeConversations.add(convId);
-          await context.sendActivity(
-            '✅ **Group mode ON** — Aurora will now respond to relevant Wi-Fi/standards ' +
-            'questions in this conversation as if it were a team channel. ' +
-            'Type `groupmode off` to disable.'
-          );
-        }
-        else if (lower === 'groupmode off' || lower === 'groupmode false') {
-          groupModeConversations.delete(convId);
-          await context.sendActivity('✅ **Group mode OFF** — back to direct-query mode.');
-        }
-        // ── clearChannelAgent ──────────────────────────────────────────────
-        else if (CLEAR_CHANNEL_AGENT_RE.test(lower)) {
-          await conversationReferenceStore.setDefaultAgent(convId, null);
-          await context.sendActivity('✅ Channel agent scope cleared. Aurora will answer directly.');
         }
         // ── setAgentWebhook @aurora-<slug> https://... ─────────────────────
         else if (SET_WEBHOOK_RE.test(text)) {
