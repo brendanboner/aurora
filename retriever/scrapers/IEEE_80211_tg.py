@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 WG_BASE = "https://www.ieee802.org/11"
 
-# Active task group pages — (url_slug, tg_label, amendment, description)
+# ── 802.11 task group pages ─────────────────────────────────────────────────
+# (url_slug, tg_label, amendment, description) — slug builds the Reports URL
 ACTIVE_TGS = [
     ("tgbn",   "TGbn",  "802.11bn",  "Ultra High Reliability (Wi-Fi 8)"),
     ("tgbi",   "TGbi",  "802.11bi",  "Enhanced Privacy Protection"),
@@ -40,6 +41,28 @@ ACTIVE_TGS = [
     ("tgbr",   "TGbr",  "802.11br",  "Enhanced Light Communications"),
     ("tgm",    "TGmf",  "802.11mf",  "Maintenance Revision"),
 ]
+
+# ── 802.1 task group pages (1.ieee802.org) ──────────────────────────────────
+# (full URL, tg_label, amendment, description)
+TG_802_1 = [
+    ("https://1.ieee802.org/tsn/",         "TSN",          "802.1 TSN",   "Time-Sensitive Networking"),
+    ("https://1.ieee802.org/security/",    "Security",     "802.1 Sec",   "Security Task Group"),
+    ("https://1.ieee802.org/maintenance/", "Maintenance",  "802.1 Maint", "802.1 Maintenance Task Group"),
+]
+TIMELINE_802_1 = "https://1.ieee802.org/timelines/"
+MEETING_802_1  = "https://1.ieee802.org/wg-calendar/"
+
+# ── 802.3 task group pages (www.ieee802.org/3/) ─────────────────────────────
+# (relative path from 802.3 base, label, amendment, description)
+TG_802_3 = [
+    ("dj", "P802.3dj", "802.3dj", "200/400/800 Gb/s & 1.6 Tb/s Ethernet"),
+    ("dg", "P802.3dg", "802.3dg", "100 Mb/s Long-Reach Single Pair Ethernet"),
+    ("dk", "P802.3dk", "802.3dk", "Bidirectional Optical Access PHYs"),
+    ("dm", "P802.3dm", "802.3dm", "Asymmetrical Electrical Automotive Ethernet"),
+    ("ds", "P802.3ds", "802.3ds", "200 Gb/s per Wavelength MMF PHYs"),
+    ("dt", "P802.3dt", "802.3dt", "Ethernet Metadata Services"),
+]
+WG_BASE_803 = "https://www.ieee802.org/3"
 
 TIMELINE_URL    = f"{WG_BASE}/Reports/802.11_Timelines.htm"
 MEETING_URL     = f"{WG_BASE}/Meetings/Meeting_Plan.html"
@@ -373,15 +396,97 @@ class IEEE80211TGScraper(BaseScraper):
         return resources
 
     # ------------------------------------------------------------------
+    # 802.1 and 802.3 task group scrapers
+    # ------------------------------------------------------------------
+
+    async def _scrape_generic_tg_page(
+        self,
+        url: str,
+        tg_label: str,
+        amendment: str,
+        description: str,
+        datasource_id: str,
+        wg_prefix: str,
+    ) -> Optional[Resource]:
+        """Scrape any publicly accessible task group page."""
+        soup = await self._fetch(url)
+        if not soup:
+            return None
+        content = await self._text(soup, cap=12000)
+        if not content:
+            return None
+        publish_date = self._extract_date(content)
+        return Resource(
+            title=f"IEEE {amendment} ({tg_label}) — {description} — Status",
+            url=url,
+            category="working_group_document",
+            content=content,
+            publish_date=publish_date,
+            datasource_id=datasource_id,
+            doc_type="status",
+        )
+
+    async def _scrape_802_1(
+        self, datasource_id: str, scraper_delay: float
+    ) -> int:
+        """Scrape IEEE 802.1 task group pages."""
+        total = 0
+        for url, label, amendment, desc in TG_802_1:
+            self.update_heartbeat()
+            logger.info("  Scraping %s: %s", label, url)
+            res = await self._scrape_generic_tg_page(
+                url, label, amendment, desc, datasource_id, "802.1"
+            )
+            if res:
+                self.publish_resource(res, additional_fields={"task_group": label})
+                total += 1
+            await asyncio.sleep(scraper_delay)
+
+        # 802.1 timeline
+        tl_soup = await self._fetch(TIMELINE_802_1)
+        if tl_soup:
+            content = await self._text(tl_soup, cap=12000)
+            if content:
+                self.publish_resource(Resource(
+                    title="IEEE 802.1 Amendment Timelines — TSN, Security, Maintenance",
+                    url=TIMELINE_802_1,
+                    category="working_group_document",
+                    content=content,
+                    publish_date=datetime.now(timezone.utc).date().isoformat(),
+                    datasource_id=datasource_id,
+                    doc_type="status",
+                ))
+                total += 1
+        return total
+
+    async def _scrape_802_3(
+        self, datasource_id: str, scraper_delay: float
+    ) -> int:
+        """Scrape IEEE 802.3 task force pages."""
+        total = 0
+        for slug, label, amendment, desc in TG_802_3:
+            url = f"{WG_BASE_803}/{slug}/index.html"
+            self.update_heartbeat()
+            logger.info("  Scraping %s: %s", label, url)
+            res = await self._scrape_generic_tg_page(
+                url, label, amendment, desc, datasource_id, "802.3"
+            )
+            if res:
+                self.publish_resource(res, additional_fields={"task_group": label})
+                total += 1
+            await asyncio.sleep(scraper_delay)
+        return total
+
+    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
     async def run_scraper(self, datasource_config: Dict[str, Any] = None):
         """
-        Scrape IEEE 802.11 task group status pages, timeline, meetings,
-        and recent session report links.
+        Scrape IEEE 802.11, 802.1, and 802.3 task group status pages,
+        timelines, meetings, and recent session report links.
 
-        All content comes from www.ieee802.org/11/ (public, no login required).
+        All content comes from public IEEE 802 Working Group pages.
         """
         if datasource_config is None:
             datasource_config = self.get_datasource_config("ieee802_11_tg")
@@ -445,6 +550,16 @@ class IEEE80211TGScraper(BaseScraper):
                     self.publish_resource(res)
                     total += 1
             await asyncio.sleep(scraper_delay)
+
+            # 5. IEEE 802.1 task groups (TSN, Security, Maintenance)
+            self.update_heartbeat()
+            logger.info("  Scraping IEEE 802.1 task groups")
+            total += await self._scrape_802_1(datasource_id, scraper_delay)
+
+            # 6. IEEE 802.3 task forces
+            self.update_heartbeat()
+            logger.info("  Scraping IEEE 802.3 task forces")
+            total += await self._scrape_802_3(datasource_id, scraper_delay)
 
             logger.info("IEEE80211TGScraper complete — %d items published", total)
             self.mark_datasource_scraped(datasource_id)

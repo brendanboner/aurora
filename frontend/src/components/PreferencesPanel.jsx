@@ -53,7 +53,8 @@ export default function PreferencesPanel({ userId, defaultTab = 'group', onClose
     let cancelled = false;
     setLoading(true);
 
-    Promise.all([
+    // allSettled so a failed auth/user call doesn't blank the whole panel
+    Promise.allSettled([
       getDatasourceTree(),
       getTopicTree(),
       getOrganisations(500, 0),
@@ -63,18 +64,19 @@ export default function PreferencesPanel({ userId, defaultTab = 'group', onClose
     ])
       .then(([tree, topics, orgs, mems, sprefs, prefs]) => {
         if (cancelled) return;
-        setDatasourceTree(tree || []);
-        setTopicTree(topics || []);
-        setOrganisations((orgs?.items || orgs || []).map((o) => ({
+        setDatasourceTree(tree.status === 'fulfilled' ? (tree.value || []) : []);
+        setTopicTree(topics.status === 'fulfilled' ? (topics.value || []) : []);
+        const orgVal = orgs.status === 'fulfilled' ? (orgs.value?.items || orgs.value || []) : [];
+        setOrganisations(orgVal.map((o) => ({
           id: o.org_id || o.id,
           name: o.name,
           parentId: null,
         })));
-        setMemberships(mems || { joined: [], ignored: [] });
-        setSourcePrefs(sprefs || []);
-        setUserPrefs(prefs || {});
+        setMemberships(mems.status === 'fulfilled' ? (mems.value || { joined: [], ignored: [] }) : { joined: [], ignored: [] });
+        setSourcePrefs(sprefs.status === 'fulfilled' ? (sprefs.value || []) : []);
+        setUserPrefs(prefs.status === 'fulfilled' ? (prefs.value || {}) : {});
+        if (tree.status === 'rejected') console.warn('DatasourceTree failed:', tree.reason);
       })
-      .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
