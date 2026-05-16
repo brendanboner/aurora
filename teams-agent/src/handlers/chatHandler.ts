@@ -48,22 +48,23 @@ export class ChatHandler {
       // Query Oracle (oracle also handles any remaining @mentions in cleanQuestion)
       const response = await this.oracleService.query(auroraUser.id, cleanQuestion, undefined, datasourceIds);
       
-      // Send response as card with text summary for emulator compatibility
+      // Send as Adaptive Card only. Setting `text` alongside `attachments` causes
+      // the Agents Playground (and some Teams clients) to render both separately,
+      // resulting in a duplicate response. The card already contains the full answer
+      // and sources; the fallback `speak` field covers plain-text clients.
       const card = buildOracleResponseCard(response, question);
-      const sourceCount = response.documents?.length || 0;
-      
-      // Format all sources as links
+
       let sourceLinks = '';
       if (response.documents && response.documents.length > 0) {
-        sourceLinks = '\n\n📚 **Sources:**\n' + response.documents.map((doc, idx) => 
+        sourceLinks = '\n\n📚 **Sources:**\n' + response.documents.map((doc, idx) =>
           `${idx + 1}. [${doc.title}](${doc.url})`
         ).join('\n');
       }
-      
-      const summary = `${response.answer || 'Here are the results from Aurora Oracle:'}${sourceLinks}`;
-      await context.sendActivity({ 
-        text: summary,
-        attachments: [card] 
+      const plainText = `${response.answer || 'Here are the results from Aurora Oracle:'}${sourceLinks}`;
+
+      await context.sendActivity({
+        attachments: [card],
+        speak: plainText,   // screen-reader / plain-text fallback, not rendered as a second bubble
       });
       
       // If there are suggestions, mention them
