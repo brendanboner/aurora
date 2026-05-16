@@ -526,17 +526,11 @@ ANNOUNCE_IMPORTANCE ?= high
 
 teams-test-announce:
 	@echo "$(CYAN)Pushing announcement to all conversations...$(NC)"
-	@python3 -c "\
-import json, urllib.request, sys; \
-payload = json.dumps({'title':'$(ANNOUNCE_TITLE)','summary':'$(ANNOUNCE_SUMMARY)','tags':['802.11bn','Wi-Fi 8','TGbn','IEEE'],'importance':'$(ANNOUNCE_IMPORTANCE)','scope':'all'}).encode(); \
-req = urllib.request.Request('http://localhost:$(TEAMS_BOT_PORT)/internal/push-announcement', data=payload, headers={'Content-Type':'application/json'}, method='POST'); \
-try: \
-  resp = urllib.request.urlopen(req, timeout=5); \
-  print('✓ Queued:', json.load(resp)); \
-except Exception as e: \
-  print('Error:', e); \
-  print('Is the bot running? Try: make teams-test'); \
-  sys.exit(1)" && echo "$(GREEN)✓ Announcement queued$(NC)" || true
+	@printf '{"title":"Aurora Update: IEEE 802.11bn D2.0 ballot May 2026","summary":"TGbn resolved ~60%% of D1.0 comments. D2.0 ballot at Antwerp session (May 10-15, Hilton Old Town). Topics: coordinated spatial reuse, distributed resource units.","importance":"high","scope":"all"}' \
+		| curl -s -X POST http://localhost:$(TEAMS_BOT_PORT)/internal/push-announcement \
+			-H "Content-Type: application/json" --data-binary @- \
+		&& echo "$(GREEN)✓ Announcement queued$(NC)" \
+		|| echo "$(RED)✗ Bot not running — start with: make teams-test$(NC)"
 
 # ── PRODUCTION ────────────────────────────────────────────────────────────────
 # Bot AND Agents Playground run on EC2 inside the Docker network.
