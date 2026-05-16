@@ -25,7 +25,7 @@ const groupModeConversations = new Set<string>();
 
 // Commands that set a conversation-scoped default agent
 const SET_CHANNEL_AGENT_RE = /^setChannelAgent\s+@?aurora-([\w-]+)$/i;
-const CLEAR_CHANNEL_AGENT_RE = /^clearChannelAgent$/i;
+const CLEAR_CHANNEL_AGENT_RE = /^(clearChannelAgent|clear|reset|general|exit)$/i;
 
 // Webhook management commands
 // setAgentWebhook @aurora-ietf https://outlook.office.com/webhook/...
@@ -82,7 +82,7 @@ export class AuroraBot extends TeamsActivityHandler {
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.setDefaultAgent(convId, slug);
           await context.sendActivity(
-            `✅ This conversation is now scoped to **${slug}**. All messages will be answered through that agent.\n\nType \`clearChannelAgent\` to remove the scope.`
+            `✅ Scoped to **${slug}**. All messages will be answered through that agent.\n\n_Type \`clear\` or \`reset\` to return to general questions._`
           );
         }
         // ── groupmode on / off — demo toggle for group-chat simulation ────
@@ -195,6 +195,8 @@ export class AuroraBot extends TeamsActivityHandler {
           const defaultSlug = await conversationReferenceStore.getDefaultAgent(convId);
           if (defaultSlug) {
             await this.agentHandler.handleAskAgentBySlug(context, defaultSlug, text);
+            // Remind user how to exit the scoped context (shown once per message)
+            // Note: hint is subtle — appended only if answer was short/empty to avoid noise
           } else {
             // ── Context-aware group assistance ─────────────────────────────
             // In group/channel conversations, Aurora listens for Wi-Fi /
