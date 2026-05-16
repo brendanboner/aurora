@@ -744,8 +744,8 @@ services:
     networks:
       - aurora-network
     environment:
-      - BOT_ID=${BOT_ID:-}
-      - BOT_PASSWORD=${BOT_PASSWORD:-}
+      - BOT_ID=
+      - BOT_PASSWORD=
       - RUNNING_IN_DOCKER=true
       - AURORA_API_URL=${AURORA_API_URL:-http://backend:8000}
       - AURORA_ORACLE_URL=${AURORA_ORACLE_URL:-http://oracle:8000}
