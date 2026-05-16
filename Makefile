@@ -23,7 +23,7 @@
 
 .PHONY: help test-all build-push-all build-push-parallel ship-all aws-login setup-oidc gh-secrets connect_aurora_ec2clean-all \
         teams-test teams-test-stop teams-test-prod teams-test-stop-prod teams-test-tool teams-test-install \
-        teams-test-prod-backend teams-test-prod-oracle teams-test-prod-cc \
+        teams-test-announce teams-test-prod-backend teams-test-prod-oracle teams-test-prod-cc \
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
@@ -515,6 +515,22 @@ teams-test-stop:
 	@pkill -f "agentsplayground" 2>/dev/null || true
 	@docker compose stop teams-agent 2>/dev/null || true
 	@echo "$(GREEN)✓ Stopped$(NC)"
+
+# Push a system announcement to all group channels (demo: shows proactive broadcast)
+# Usage: make teams-test-announce
+#        make teams-test-announce TITLE="..." SUMMARY="..." IMPORTANCE=critical
+ANNOUNCE_TITLE    ?= Aurora Update: IEEE 802.11bn (Wi-Fi 8) D2.0 ballot opens May 2026
+ANNOUNCE_SUMMARY  ?= TGbn has resolved ~60% of D1.0 ballot comments. D2.0 expected to go to WG ballot at the May Antwerp session (Session 216, May 10-15, Hilton Antwerp Old Town). Key resolved topics: coordinated spatial reuse, distributed resource units, channel access improvements.
+ANNOUNCE_TAGS     ?= ["802.11bn","Wi-Fi 8","TGbn","IEEE","ballot","Antwerp"]
+ANNOUNCE_IMPORTANCE ?= high
+
+teams-test-announce:
+	@echo "$(CYAN)Pushing announcement to all group channels...$(NC)"
+	@curl -s -X POST http://localhost:$(TEAMS_BOT_PORT)/internal/push-announcement \
+		-H "Content-Type: application/json" \
+		-d "{\"title\":\"$(ANNOUNCE_TITLE)\",\"summary\":\"$(ANNOUNCE_SUMMARY)\",\"tags\":$(ANNOUNCE_TAGS),\"importance\":\"$(ANNOUNCE_IMPORTANCE)\",\"scope\":\"all\"}" \
+		| python3 -m json.tool || echo "Bot not running locally — start with make teams-test first"
+	@echo "$(GREEN)✓ Announcement queued$(NC)"
 
 # ── PRODUCTION ────────────────────────────────────────────────────────────────
 # Bot AND Agents Playground run on EC2 inside the Docker network.

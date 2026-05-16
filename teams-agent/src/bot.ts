@@ -14,6 +14,12 @@ import { conversationReferenceStore } from './services/conversationReferenceStor
 // Regex: matches @aurora-<slug> at the start of a message
 const AGENT_SLUG_RE = /^@aurora-([\w-]+)\s*/i;
 
+// Keywords that indicate a message is about Wi-Fi / standards topics Aurora can help with
+const AURORA_TOPIC_RE = /\b(wi-?fi|802\.1[01356]|ieee|ietf|wba|wfa|5g|6g|spectrum|standard|amendment|certification|handover|roaming|tgbn|802\.11bn|wi-fi\s*8|wi-?fi\s*7|mlr?o|ofdma|qos|latency|throughput|passpoint|openroaming|tsn|pqc|post.quantum|ambient.power|ultra.high.reliability)\b/i;
+
+// Question patterns (the message is asking something, not just stating)
+const QUESTION_RE = /(\?$|^(do|does|did|can|will|would|should|is|are|was|were|has|have|had|what|when|where|who|why|how)\b)/i;
+
 // Commands that set a conversation-scoped default agent
 const SET_CHANNEL_AGENT_RE = /^setChannelAgent\s+@?aurora-([\w-]+)$/i;
 const CLEAR_CHANNEL_AGENT_RE = /^clearChannelAgent$/i;
@@ -174,7 +180,22 @@ export class AuroraBot extends TeamsActivityHandler {
           if (defaultSlug) {
             await this.agentHandler.handleAskAgentBySlug(context, defaultSlug, text);
           } else {
-            await this.chatHandler.handleQuestion(context, text);
+            // ── Context-aware group assistance ─────────────────────────────
+            // In group/channel conversations, Aurora listens for Wi-Fi /
+            // standards questions and offers relevant context without being
+            // asked directly. Threshold: message must look like a question
+            // AND mention a topic Aurora knows about.
+            const convType = context.activity.conversation?.conversationType ?? 'personal';
+            const isGroupConv = convType !== 'personal';
+            const looksLikeQuestion = QUESTION_RE.test(text) && text.length > 10;
+            const isAuroraTopic = AURORA_TOPIC_RE.test(text);
+
+            if (isGroupConv && looksLikeQuestion && isAuroraTopic) {
+              // Respond as a helpful context addition, not a full bot takeover
+              await this.chatHandler.handleGroupContextQuestion(context, text);
+            } else {
+              await this.chatHandler.handleQuestion(context, text);
+            }
           }
         }
       } catch (error) {

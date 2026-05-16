@@ -354,25 +354,35 @@ Product managers can build agents that watch a single workgroup."
 
 act5() {
   clear
-  header "ACT 5 — What's Next: Teams" "24:00 → 27:30"
+  header "ACT 5 — Teams: Group Intelligence + Broadcasts" "24:00 → 27:30"
 
-  speech "The same agents and queries will be available directly in Microsoft Teams —
-where most of you already live.
+  speech "Aurora isn't just a personal chat tool. It works in team channels too —
+and it's smart about when to speak up.
 
-This is what the Teams experience looks like. You ask the same questions,
-get the same answers, subscribe to an agent's feed — all inside a Teams chat.
+Two scenarios: the bot listening in a group conversation and proactively
+adding context; and the system broadcasting a critical standards update
+to every relevant channel automatically."
 
-We have the backend plumbed. IT provisioning is in progress.
-Target: live in corporate Teams by end of next week."
-
-  action "Show the Teams mockup / TEAMS_SHOWCASE.md screenshot on screen."
-  action "Point at the three key scenarios:"
-  printf "     ${WHT}feed                           → personal digest card in Teams${RST}\n"
-  printf "     ${WHT}@wba IoT call last week         → same Oracle, same answer${RST}\n"
-  printf "     ${WHT}subscribe @aurora-wifi-8-brief  → agent posts land in chat${RST}\n"
+  action "Open the Agents Playground. Make sure it's connected to the bot."
   echo
+  action "SCENARIO A — Group context awareness:"
+  printf "     ${WHT}Type this in the Playground (simulating a colleague's message):${RST}\n"
+  browser "do we know how Wi-Fi 8 will affect handover between APs?"
+  action "The bot detects a standards question and adds relevant context."
+  action "Point out: it didn't wait to be asked directly — it recognised the topic."
+  pause "Response appeared? (ENTER)"
 
-  speech "No new tool to learn. Aurora goes to where you already work."
+  echo
+  action "SCENARIO B — System announcement (new terminal):"
+  printf "     ${DIM}  make teams-test-announce${RST}\n"
+  printf "     ${DIM}  (pushes an IEEE 802.11bn D2.0 ballot update to all channels)${RST}\n\n"
+  printf "     ${WHT}Run this in a separate terminal, then watch the Playground.${RST}\n"
+  action "The announcement appears as a broadcast — no user triggered it."
+  pause "Announcement delivered? (ENTER)"
+
+  speech "Two patterns: reactive (bot responds when the conversation needs it)
+and proactive (system pushes breaking updates automatically).
+Both work across personal chat AND team channels. No new tool to learn."
 
   pause "Ready to close? (ENTER)"
   segment_timer 27

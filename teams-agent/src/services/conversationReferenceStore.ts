@@ -177,6 +177,24 @@ export class ConversationReferenceStore {
     return default_agent_slug;
   }
 
+  /** Retrieve all group/channel conversations (for broadcast announcements). */
+  async getAllGroupConversations(): Promise<StoredConversationReference[]> {
+    const res = await getPool().query<StoredConversationReference>(
+      `SELECT * FROM teams_conversation_references
+       WHERE conversation_type IN ('channel', 'groupChat', 'group')
+       ORDER BY updated_at DESC`
+    );
+    return res.rows;
+  }
+
+  /** Retrieve ALL conversations (personal + group) — for wide announcements. */
+  async getAllConversations(): Promise<StoredConversationReference[]> {
+    const res = await getPool().query<StoredConversationReference>(
+      'SELECT * FROM teams_conversation_references ORDER BY updated_at DESC'
+    );
+    return res.rows;
+  }
+
   /** Bulk-update aurora_user_id once identity is resolved. */
   async linkAuroraUser(conversationId: string, auroraUserId: string): Promise<void> {
     await getPool().query(

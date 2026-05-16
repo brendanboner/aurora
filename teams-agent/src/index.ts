@@ -196,6 +196,37 @@ server.post('/internal/push-user-agent-update', async (req, res) => {
   });
 });
 
+/**
+ * System announcement endpoint — push important Aurora updates to group channels.
+ *
+ * POST /internal/push-announcement
+ * Body: { title, summary, body?, tags?, importance?, scope? }
+ *   importance: 'critical' | 'high' | 'normal'
+ *   scope: 'groups' (default) | 'all'
+ */
+server.post('/internal/push-announcement', async (req, res) => {
+  const body = req.body ?? {};
+  if (!body?.title || !body?.summary) {
+    res.json({ error: 'title and summary are required' });
+    return;
+  }
+
+  console.log(`[${new Date().toISOString()}] Announcement push: "${body.title}" (importance=${body.importance ?? 'normal'}, scope=${body.scope ?? 'groups'})`);
+
+  res.json({ status: 'queued', title: body.title });
+
+  proactiveMessenger.pushAnnouncement({
+    title:      body.title,
+    summary:    body.summary,
+    body:       body.body,
+    tags:       body.tags,
+    importance: body.importance,
+    scope:      body.scope,
+  }).catch((err) => {
+    console.error('[internal/push-announcement] Delivery error:', err);
+  });
+});
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('\n\n🛑 SIGTERM signal received: closing HTTP server');

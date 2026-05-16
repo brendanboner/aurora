@@ -184,5 +184,49 @@ export class ProactiveMessenger {
     );
     return { sent, errors };
   }
+
+  /**
+   * Push a system-level announcement to all group/channel conversations.
+   * Used for important Aurora system updates or critical knowledge events.
+   * scope: 'groups' = only channel/groupChat, 'all' = every conversation.
+   */
+  async pushAnnouncement(payload: {
+    title: string;
+    summary: string;
+    body?: string;
+    tags?: string[];
+    importance?: string;
+    scope?: 'groups' | 'all';
+  }): Promise<{ sent: number; errors: number; total: number }> {
+    const scope = payload.scope ?? 'groups';
+    const refs = scope === 'all'
+      ? await conversationReferenceStore.getAllConversations()
+      : await conversationReferenceStore.getAllGroupConversations();
+
+    if (!refs.length) {
+      console.log('[ProactiveMessenger] pushAnnouncement: no target conversations');
+      return { sent: 0, errors: 0, total: 0 };
+    }
+
+    const importanceEmoji = payload.importance === 'critical' ? '🚨'
+      : payload.importance === 'high' ? '⚡'
+      : '📢';
+
+    const tags = payload.tags ?? [];
+    const tagsText = tags.length ? `\n\n🏷️ ${tags.join('  ·  ')}` : '';
+    const bodyPreview = payload.body ? `\n\n${payload.body.slice(0, 300)}${payload.body.length > 300 ? '…' : ''}` : '';
+
+    const text = `${importanceEmoji} **Aurora System Update**\n\n**${payload.title}**\n\n${payload.summary}${bodyPreview}${tagsText}`;
+    const activity = MessageFactory.text(text);
+
+    let sent = 0, errors = 0;
+    for (const ref of refs) {
+      const ok = await this.botPush(ref, activity, ref.conversation_id);
+      ok ? sent++ : errors++;
+    }
+
+    console.log(`[ProactiveMessenger] Announcement "${payload.title}" → ${sent}/${refs.length} delivered`);
+    return { sent, errors, total: refs.length };
+  }
 }
 

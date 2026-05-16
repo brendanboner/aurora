@@ -89,5 +89,50 @@ export class ChatHandler {
       await context.sendActivity(`Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please check the logs for details.`);
     }
   }
-  
+
+  /**
+   * Context-aware group chat assistance.
+   * Called when someone in a group/channel asks a Wi-Fi/standards question
+   * without explicitly @mentioning the bot. Aurora offers brief, relevant context
+   * framed as a helpful addition to the conversation — not a takeover.
+   */
+  async handleGroupContextQuestion(context: TurnContext, question: string): Promise<void> {
+    try {
+      const email = this.userService.extractUserEmail(context.activity);
+      const displayName = context.activity.from.name || 'User';
+      const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+      const convId = context.activity.conversation?.id;
+      if (convId && auroraUser?.id) {
+        conversationReferenceStore.linkAuroraUser(convId, auroraUser.id).catch(() => {});
+      }
+
+      const response = await this.oracleService.query(
+        auroraUser.id,
+        question,
+        undefined,
+        undefined,
+      );
+
+      if (!response?.answer || response.answer.length < 20) return; // don't respond if nothing useful
+
+      // Trim to a concise group-friendly summary (max 3 sentences / 400 chars)
+      let briefAnswer = response.answer.replace(/\[\d+\]/g, '').trim();
+      const sentences = briefAnswer.match(/[^.!?]+[.!?]+/g) ?? [];
+      briefAnswer = sentences.slice(0, 3).join(' ').trim() || briefAnswer.slice(0, 400);
+
+      const topSource = response.documents?.[0];
+      const sourceNote = topSource?.url
+        ? `\n\n📎 Source: [${topSource.title || 'Reference'}](${topSource.url})`
+        : '';
+
+      await context.sendActivity(
+        `💡 **Aurora can add context here:**\n\n${briefAnswer}${sourceNote}\n\n` +
+        `_Ask me a follow-up or type \`help\` for more options._`
+      );
+    } catch (error) {
+      // Silent failure in group context — don't disrupt the conversation
+      console.warn('[ChatHandler] Group context question failed silently:', error instanceof Error ? error.message : error);
+    }
+  }
+
 }
