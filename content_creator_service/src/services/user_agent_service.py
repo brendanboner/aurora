@@ -394,6 +394,20 @@ Determine what changes should be made to improve this agent."""
             "UPDATE user_agent SET last_run_at = NOW() WHERE id = %s",
             (agent_id,)
         )
+
+    def mark_error(self, agent_id: int, error_message: str) -> None:
+        """Record a generation failure so the UI can surface it with a fix action."""
+        db.execute(
+            "UPDATE user_agent SET last_error = %s, last_error_at = NOW(), last_run_at = NOW() WHERE id = %s",
+            (error_message[:2000], agent_id)
+        )
+
+    def clear_error(self, agent_id: int) -> None:
+        """Clear the error state after a successful generation or manual fix."""
+        db.execute(
+            "UPDATE user_agent SET last_error = NULL, last_error_at = NULL WHERE id = %s",
+            (agent_id,)
+        )
     
     def _row_to_model(self, row) -> UserAgent:
         """Convert database row to UserAgent model."""

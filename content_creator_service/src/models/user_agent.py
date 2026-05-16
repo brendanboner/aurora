@@ -58,6 +58,10 @@ class UserAgent(UserAgentBase):
     updated_at: datetime
     last_run_at: Optional[datetime] = None
     last_generated_at: Optional[datetime] = None
+
+    # Error state — set when generation fails, cleared on success
+    last_error: Optional[str] = None
+    last_error_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

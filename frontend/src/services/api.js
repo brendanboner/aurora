@@ -631,6 +631,11 @@ export const triggerMyAgentGeneration = async (agentId) => {
   return response.data;
 };
 
+export const fixMyAgentPrompt = async (agentId) => {
+  const response = await apiClient.post(`/content_creator_service/user_agents/${agentId}/fix-prompt`);
+  return response.data;
+};
+
 export const submitMyAgentPostFeedback = async (payload) => {
   const response = await apiClient.post('/content_creator_service/user_agents/feedback', payload);
   return response.data;

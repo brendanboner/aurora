@@ -9,6 +9,7 @@ import {
   updateMyAgent,
   deleteMyAgent,
   triggerMyAgentGeneration,
+  fixMyAgentPrompt,
 } from '../services/api';
 
 const initialForm = {
@@ -36,6 +37,7 @@ const MyAgents = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmPending, setConfirmPending] = useState(false);
   const [generatingAgentId, setGeneratingAgentId] = useState(null);
+  const [fixingAgentId, setFixingAgentId] = useState(null);
   const [togglingFeedAgentId, setTogglingFeedAgentId] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState({
     title: '',
@@ -190,6 +192,22 @@ const MyAgents = () => {
     }
   };
 
+  const handleFix = async (agent) => {
+    setFixingAgentId(agent.id);
+    setStatusMessage(null);
+    setError(null);
+    try {
+      const result = await fixMyAgentPrompt(agent.id);
+      setStatusMessage(`✓ ${agent.name}'s description has been rewritten to avoid content issues. Run now to try again.`);
+      await loadAgents();
+    } catch (err) {
+      console.error('Fix prompt failed', err);
+      setError(`Could not auto-fix ${agent.name}'s prompt. Try editing it manually.`);
+    } finally {
+      setFixingAgentId(null);
+    }
+  };
+
   const handleFeedVisibilityToggle = async (agent) => {
     setTogglingFeedAgentId(agent.id);
     setStatusMessage(null);
@@ -243,6 +261,35 @@ const MyAgents = () => {
           <span>{error}</span>
         </div>
       )}
+
+      {/* Generation failure banners — one per agent with a last_error */}
+      {agents.filter(a => a.last_error).map(agent => {
+        const isContentFilter = agent.last_error?.toLowerCase().includes('content_filter') ||
+          agent.last_error?.toLowerCase().includes('responsibleai') ||
+          agent.last_error?.toLowerCase().includes('jailbreak');
+        return (
+          <div key={`err-${agent.id}`} className="my-agents-fix-banner">
+            <WarningIcon size={16} />
+            <span>
+              <strong>{agent.name}</strong> was unable to create content
+              {isContentFilter ? ' due to a prompt issue.' : '.'}
+            </span>
+            {isContentFilter ? (
+              <button
+                className="fix-banner-btn"
+                disabled={fixingAgentId === agent.id}
+                onClick={() => handleFix(agent)}
+              >
+                {fixingAgentId === agent.id ? 'Fixing…' : 'Fix?'}
+              </button>
+            ) : (
+              <button className="fix-banner-btn secondary" onClick={() => handleEdit(agent)}>
+                Edit agent
+              </button>
+            )}
+          </div>
+        );
+      })}
 
       <div className="my-agents-grid">
         <section className="my-agents-list">

@@ -43,11 +43,14 @@ const ADMIN_ITEMS = [
   { to: '/admin/monitoring', label: 'Monitoring', icon: MonitoringIcon },
   { to: '/admin/agents', label: 'Creator Agents', icon: StarIcon },
   { to: '/admin/system-config', label: 'System Config', icon: SettingsIcon },
+  { to: '/admin/chat-sessions', label: 'Chat Sessions', icon: ChatIcon },
+  { to: '/admin/feedback', label: 'Feedback', icon: FeedbackIcon },
+];
+
+const ADMIN_ADVANCED_ITEMS = [
   { to: '/admin/content-quality', label: 'Content Quality', icon: TargetIcon },
   { to: '/admin/oracle-settings', label: 'Oracle Settings', icon: SettingsIcon },
-  { to: '/admin/chat-sessions', label: 'Chat Sessions', icon: ChatIcon },
   { to: '/admin/dlq', label: 'Dead Letter Queue', icon: AlertCircleIcon },
-  { to: '/admin/feedback', label: 'Feedback', icon: FeedbackIcon },
   { to: '/admin/curation', label: 'Topic Curation', icon: ToolIcon },
 ];
 
@@ -62,6 +65,7 @@ const Sidebar = ({ isOpen, onClose, backendStatus }) => {
   const [expandedGroups, setExpandedGroups] = useState({
     profile: true,
     admin: false,
+    advanced: false,
   });
 
   const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
@@ -175,6 +179,24 @@ const Sidebar = ({ isOpen, onClose, backendStatus }) => {
               {expandedGroups.admin && (
                 <div className="drawer-submenu">
                   {renderItems(ADMIN_ITEMS, true)}
+                  {/* Advanced submenu nested inside Admin */}
+                  <button
+                    type="button"
+                    className={`drawer-item nested drawer-group-toggle ${expandedGroups.advanced ? 'expanded' : ''}`}
+                    onClick={() => toggleGroup('advanced')}
+                    style={{ paddingLeft: '2rem' }}
+                  >
+                    <span className="drawer-item-icon"><ToolIcon size={16} /></span>
+                    <span className="drawer-item-label">Advanced</span>
+                    <span className="drawer-group-chevron">
+                      <ChevronDownIcon style={{ width: 12, height: 12 }} />
+                    </span>
+                  </button>
+                  {expandedGroups.advanced && (
+                    <div className="drawer-submenu" style={{ paddingLeft: '0.75rem' }}>
+                      {renderItems(ADMIN_ADVANCED_ITEMS, true)}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

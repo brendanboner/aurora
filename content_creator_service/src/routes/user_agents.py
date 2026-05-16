@@ -188,7 +188,57 @@ async def trigger_manual_generation(
         raise
     except Exception as e:
         logger.error(f"Failed to trigger manual generation: {e}")
+        # Persist the error so the UI can surface a fix notification
+        try:
+            _user_agent_service.mark_error(agent_id, str(e))
+        except Exception:
+            pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate content: {str(e)}"
         )
+
+
+@router.post("/{agent_id}/fix-prompt")
+async def fix_agent_prompt(
+    agent_id: int,
+    x_user_id: str = Header(..., alias="X-User-Id"),
+) -> dict:
+    """Use the LLM to rewrite the agent description to avoid content-filter issues,
+    apply it, clear the error state, and return the new description."""
+    agent = _user_agent_service.get_user_agent(x_user_id, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    from ..llm_client import get_llm_client
+    llm = get_llm_client()
+
+    system_prompt = (
+        "You are a helpful editor. Rewrite the user's AI agent description so it is "
+        "clear, professional, and avoids any language that could be misread as a "
+        "jailbreak or prompt injection (e.g. 'ignore previous instructions', 'act as', "
+        "role-play framing, or aggressive instruction-style directives). "
+        "Keep the intent and topics identical. Return ONLY the rewritten description "
+        "with no preamble."
+    )
+    user_prompt = f"Original description:\n{agent.project_description or agent.persona or ''}"
+
+    try:
+        result = llm.generate(system_prompt, user_prompt, temperature_override=0.3)
+        new_description = (result or {}).get("body") or (result or {}).get("summary") or ""
+        if not new_description and isinstance(result, str):
+            new_description = result
+        if not new_description:
+            raise ValueError("LLM returned empty rewrite")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not generate fix: {e}")
+
+    # Apply the rewrite and clear the error
+    from ..models.user_agent import UserAgentUpdate
+    _user_agent_service.update_user_agent(
+        x_user_id, agent_id,
+        UserAgentUpdate(project_description=new_description)
+    )
+    _user_agent_service.clear_error(agent_id)
+
+    return {"new_description": new_description}

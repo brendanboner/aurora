@@ -378,6 +378,11 @@ class AgentScheduler:
                     agent_dict.get("id"),
                     exc,
                 )
+                # Persist the error so the UI can surface it with a fix action
+                try:
+                    self._user_agent_service.mark_error(agent_dict["id"], str(exc))
+                except Exception:
+                    pass
 
     def _should_run_user_agent(self, agent_dict: dict, now: datetime) -> bool:
         cadence = self._normalise_cadence(agent_dict.get("cadence", "daily"))
@@ -413,6 +418,8 @@ class AgentScheduler:
             logger.info(
                 "User agent %s generated post %s", agent_name, result.get("post_id")
             )
+            # Clear any previous error on success
+            self._user_agent_service.clear_error(agent_dict["id"])
         else:
             # No content this cycle — stamp last_run_at so we don't retry every tick
             logger.info("User agent %s: no content this cycle", agent_name)
