@@ -2,6 +2,7 @@ import { TurnContext } from 'botbuilder';
 import { AuroraUserService } from '../services/auroraUserService';
 import { AuroraOracleService } from '../services/auroraOracleService';
 import { buildOracleResponseCard } from '../helpers/cardBuilder';
+import { conversationReferenceStore } from '../services/conversationReferenceStore';
 import axios from 'axios';
 
 export class ChatHandler {
@@ -22,8 +23,13 @@ export class ChatHandler {
       const email = this.userService.extractUserEmail(context.activity);
       const displayName = context.activity.from.name || 'User';
 
-      // Get or create Aurora user
+      // Get or create Aurora user, then link this conversation so personal agent
+      // notifications can find the user's Teams channel via aurora_user_id.
       const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+      const convId = context.activity.conversation?.id;
+      if (convId && auroraUser?.id) {
+        conversationReferenceStore.linkAuroraUser(convId, auroraUser.id).catch(() => {});
+      }
 
       // Parse @source mentions (e.g. "@wba what happened this week" or "@iot last meeting")
       // Agent mentions (@AgentName) are handled by agentHandler — here we handle datasource mentions.
