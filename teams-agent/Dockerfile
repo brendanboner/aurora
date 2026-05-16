@@ -58,5 +58,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the bot
-CMD ["node", "dist/index.js"]
+# Start bot + Agents Playground together
+# BOT_ID must be empty for the playground to connect (no JWT validation)
+CMD ["sh", "-c", "node node_modules/.bin/agentsplayground & node dist/index.js"]
