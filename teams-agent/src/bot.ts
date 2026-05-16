@@ -54,11 +54,21 @@ export class AuroraBot extends TeamsActivityHandler {
       await this.saveConversationRef(context);
 
       // Strip Teams @mention tags: "<at>Bot Name</at> actual message"
+      // Also strip plain-text bot name prefixes that Agents Playground may inject
       const rawText = context.activity.text?.trim() || '';
-      const text = rawText.replace(/<at>[^<]*<\/at>/gi, '').trim();
-      const lower = text.toLowerCase();
+      let text = rawText.replace(/<at>[^<]*<\/at>/gi, '').trim();
+      // Strip plain-text bot mention prefix (e.g. "Test Bot groupmode on" → "groupmode on")
+      const botName = (context.activity.recipient?.name || '').trim();
+      if (botName && text.toLowerCase().startsWith(botName.toLowerCase())) {
+        text = text.slice(botName.length).trim();
+      }
+      // Also strip generic "aurora " prefix
+      if (/^aurora\s+/i.test(text)) {
+        text = text.replace(/^aurora\s+/i, '').trim();
+      }
+      const lower = text.toLowerCase().trim();
 
-      console.log(`[${new Date().toISOString()}] Received message from ${context.activity.from.name}: ${text}`);
+      console.log(`[${new Date().toISOString()}] Received message from ${context.activity.from.name}: "${text}" (lower="${lower}"`);
 
       try {
         const convId = context.activity.conversation.id;
@@ -70,16 +80,14 @@ export class AuroraBot extends TeamsActivityHandler {
           groupModeConversations.delete(convId);
           await context.sendActivity('✅ Cleared. Back to general questions.');
         }
-        // groupmode on / off
-        else if (/^groupmode\s+(on|true)$/i.test(lower)) {
+        // groupmode on / off — accept "groupmode on", "group mode on", "groupmode", etc.
+        else if (/^group\s*mode\s*(on|true|enable|1)?$/i.test(lower)) {
           groupModeConversations.add(convId);
           await context.sendActivity(
-            '✅ **Group mode ON** — Aurora will respond to Wi-Fi/standards questions in ' +
-            'this conversation without being directly @mentioned.\n\n' +
-            '_Type `groupmode off` or `clear` to disable._'
+            '✅ **Group mode ON**\n\nAurora will now watch for Wi-Fi and standards questions in this conversation and add context automatically — no @mention needed.\n\nType a question about Wi-Fi 8, handover, 802.11bn etc.\nType `groupmode off` or `clear` to turn off.'
           );
         }
-        else if (/^groupmode\s+(off|false)$/i.test(lower)) {
+        else if (/^group\s*mode\s*(off|false|disable|0)$/i.test(lower)) {
           groupModeConversations.delete(convId);
           await context.sendActivity('✅ **Group mode OFF** — back to direct-query mode.');
         }
@@ -200,17 +208,18 @@ export class AuroraBot extends TeamsActivityHandler {
             // Note: hint is subtle — appended only if answer was short/empty to avoid noise
           } else {
             // ── Context-aware group assistance ─────────────────────────────
-            // In group/channel conversations, Aurora listens for Wi-Fi /
-            // standards questions and offers relevant context without being
-            // asked directly. Threshold: message must look like a question
-            // AND mention a topic Aurora knows about.
+            // Group/channel conversations OR personal conversations in groupmode:
+            // When the message is a Wi-Fi/standards question, respond with
+            // brief contextual framing ("Aurora can add context here").
+            // In real Teams group chats the bot only receives @mentioned messages;
+            // after @mention stripping, the remaining text is the actual question.
             const convType = context.activity.conversation?.conversationType ?? 'personal';
-            const isGroupConv = convType !== 'personal' || groupModeConversations.has(convId);
-            const looksLikeQuestion = QUESTION_RE.test(text) && text.length > 10;
+            const wasGroupMentioned = rawText.includes('<at>') && convType !== 'personal';
+            const isGroupConv = convType !== 'personal' || groupModeConversations.has(convId) || wasGroupMentioned;
+            const looksLikeQuestion = QUESTION_RE.test(text) && text.length > 8;
             const isAuroraTopic = AURORA_TOPIC_RE.test(text);
 
             if (isGroupConv && looksLikeQuestion && isAuroraTopic) {
-              // Respond as a helpful context addition, not a full bot takeover
               await this.chatHandler.handleGroupContextQuestion(context, text);
             } else {
               await this.chatHandler.handleQuestion(context, text);

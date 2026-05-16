@@ -525,12 +525,18 @@ ANNOUNCE_TAGS     ?= ["802.11bn","Wi-Fi 8","TGbn","IEEE","ballot","Antwerp"]
 ANNOUNCE_IMPORTANCE ?= high
 
 teams-test-announce:
-	@echo "$(CYAN)Pushing announcement to all group channels...$(NC)"
-	@curl -s -X POST http://localhost:$(TEAMS_BOT_PORT)/internal/push-announcement \
-		-H "Content-Type: application/json" \
-		-d "{\"title\":\"$(ANNOUNCE_TITLE)\",\"summary\":\"$(ANNOUNCE_SUMMARY)\",\"tags\":$(ANNOUNCE_TAGS),\"importance\":\"$(ANNOUNCE_IMPORTANCE)\",\"scope\":\"all\"}" \
-		| python3 -m json.tool || echo "Bot not running locally — start with make teams-test first"
-	@echo "$(GREEN)✓ Announcement queued$(NC)"
+	@echo "$(CYAN)Pushing announcement to all conversations...$(NC)"
+	@python3 -c "\
+import json, urllib.request, sys; \
+payload = json.dumps({'title':'$(ANNOUNCE_TITLE)','summary':'$(ANNOUNCE_SUMMARY)','tags':['802.11bn','Wi-Fi 8','TGbn','IEEE'],'importance':'$(ANNOUNCE_IMPORTANCE)','scope':'all'}).encode(); \
+req = urllib.request.Request('http://localhost:$(TEAMS_BOT_PORT)/internal/push-announcement', data=payload, headers={'Content-Type':'application/json'}, method='POST'); \
+try: \
+  resp = urllib.request.urlopen(req, timeout=5); \
+  print('✓ Queued:', json.load(resp)); \
+except Exception as e: \
+  print('Error:', e); \
+  print('Is the bot running? Try: make teams-test'); \
+  sys.exit(1)" && echo "$(GREEN)✓ Announcement queued$(NC)" || true
 
 # ── PRODUCTION ────────────────────────────────────────────────────────────────
 # Bot AND Agents Playground run on EC2 inside the Docker network.
