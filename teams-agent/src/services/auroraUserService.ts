@@ -225,9 +225,9 @@ export class AuroraUserService {
    */
   private getMockUser(email: string): AuroraUser {
     return {
-      id: `mock-user-${Buffer.from(email).toString('base64').substring(0, 10)}`,
+      id: process.env.TEST_USER_ID || `mock-user-${Buffer.from(email).toString('base64').substring(0, 10)}`,
       email: email,
-      display_name: 'Test User',
+      display_name: email.split('@')[0],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };

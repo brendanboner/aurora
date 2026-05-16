@@ -769,6 +769,7 @@ services:
       - TEST_USER_EMAIL=${TEST_USER_EMAIL:-}
       - TEST_USER_ID=${TEST_USER_ID:-}
       - AURORA_SERVICE_TOKEN=${AURORA_SERVICE_TOKEN:-}
+      - USE_MOCK_DATA=true
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3978/api/health || exit 1"]
       interval: 30s
