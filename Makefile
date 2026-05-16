@@ -566,7 +566,7 @@ teams-test-prod-cc:
 		--region $(AWS_REGION)
 
 teams-test-prod:
-	@echo "$(CYAN)Starting teams-agent + Agents Playground on EC2...$(NC)"
+	@echo "$(CYAN)Starting teams-agent + Agents Playground on EC2 (takes ~30s)...$(NC)"
 	$(call ssm-run, \
 		docker rm -f aurora-teams-agent 2>/dev/null || true && \
 		cd $(EC2_DEPLOY_PATH) && \
@@ -574,7 +574,7 @@ teams-test-prod:
 		$(EC2_COMPOSE) --profile teams pull teams-agent && \
 		BOT_ID= BOT_PASSWORD= TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
 		$(EC2_COMPOSE) --profile teams up -d teams-agent && \
-		sleep 20 && echo ready \
+		sleep 20 && echo container-ready \
 	)
 	@echo "$(GREEN)✓ Bot + Playground running on EC2 (single tunnel: port $(AGENTS_PLAYGROUND_PORT))$(NC)"
 	@open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
