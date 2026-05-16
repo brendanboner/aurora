@@ -66,7 +66,8 @@ export default function PreferencesPanel({ userId, defaultTab = 'group', onClose
         if (cancelled) return;
         setDatasourceTree(tree.status === 'fulfilled' ? (tree.value || []) : []);
         setTopicTree(topics.status === 'fulfilled' ? (topics.value || []) : []);
-        const orgVal = orgs.status === 'fulfilled' ? (orgs.value?.items || orgs.value || []) : [];
+        const rawOrgs = orgs.status === 'fulfilled' ? orgs.value : null;
+        const orgVal = Array.isArray(rawOrgs) ? rawOrgs : (Array.isArray(rawOrgs?.items) ? rawOrgs.items : []);
         setOrganisations(orgVal.map((o) => ({
           id: o.org_id || o.id,
           name: o.name,
