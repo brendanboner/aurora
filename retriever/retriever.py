@@ -22,7 +22,7 @@ from pydantic import BaseModel, HttpUrl, Field
 from scrapers import (
     WFAScraper, WFACausewayScraper, WBAScraper, WBAExtranetScraper,
     IETFBlogScraper, IETFDatatrackerScraper,
-    IEEE802Scraper, MEFScraper, NISTScraper, ONFScraper, DMTFScraper,
+    IEEE802Scraper, IEEE80211TGScraper, MEFScraper, NISTScraper, ONFScraper, DMTFScraper,
 )
 from scrapers.base import BaseScraper, Resource
 from config_manager import ConfigManager
@@ -67,6 +67,7 @@ SCRAPER_CLASSES: Dict[str, Type[BaseScraper]] = {
     "ietf_blog": IETFBlogScraper,
     "ietf_datatracker": IETFDatatrackerScraper,
     "ieee802": IEEE802Scraper,
+    "ieee802_11_tg": IEEE80211TGScraper,
     "mef": MEFScraper,
     "nist": NISTScraper,
     "onf": ONFScraper,

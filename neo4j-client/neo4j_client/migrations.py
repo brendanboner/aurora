@@ -823,6 +823,35 @@ class Migrations:
                 "consecutive_duplicates_limit": 5,
                 "description": "IEEE 802.3 Ethernet working group — Ethernet standards, amendments, and technical specifications",
             },
+            {
+                "datasource_id": "ieee802_11_tg",
+                "name": "IEEE 802.11 Task Groups & Amendments",
+                "display_name": "IEEE 802.11 Task Groups",
+                "org_id": "ieee",
+                "source_type": "scraped_webpage",
+                "fetch_url": "https://www.ieee802.org/11/",
+                "has_events": True,
+                "scraper_type": "ieee802_11_tg",
+                "resource_url": "https://www.ieee802.org/11/Reports/",
+                "scrape_schedule": "0 4 * * 1",
+                "run_on_startup": True,
+                "check_content_hash": False,
+                "publish_weight": 1.2,
+                "update_weight": 1.0,
+                "event_weight": 0.9,
+                "temporal_extraction_days": 60,
+                "scraper_delay": 2.0,
+                "max_resources": 100,
+                "max_redirects": 5,
+                "discovery_mode": "incremental",
+                "consecutive_duplicates_limit": 0,
+                "description": (
+                    "IEEE 802.11 active task group status pages covering TGbn (802.11bn/Wi-Fi 8), "
+                    "TGbi, TGbp, TGbt, TGbq, TGbr, TGmf — ballot status, timelines, "
+                    "leadership, plenary reports, and upcoming meeting schedule. "
+                    "All data sourced from public www.ieee802.org/11/ pages."
+                ),
+            },
         ]
 
         query = """

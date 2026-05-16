@@ -12,6 +12,7 @@ from .WBA_extranet import WBAExtranetScraper
 from .IETF_blog import IETFBlogScraper
 from .IETF_datatracker import IETFDatatrackerScraper
 from .IEEE802 import IEEE802Scraper
+from .IEEE_80211_tg import IEEE80211TGScraper
 from .MEF import MEFScraper
 from .NIST import NISTScraper
 from .ONF import ONFScraper
@@ -26,6 +27,7 @@ ALL_SCRAPERS = {
     "IETFBlogScraper": IETFBlogScraper,
     "IETFDatatrackerScraper": IETFDatatrackerScraper,
     "IEEE802Scraper": IEEE802Scraper,
+    "IEEE80211TGScraper": IEEE80211TGScraper,
     "MEFScraper": MEFScraper,
     "NISTScraper": NISTScraper,
     "ONFScraper": ONFScraper,
@@ -41,7 +43,8 @@ __all__ = [
     'IETFBlogScraper',
     'IETFDatatrackerScraper',
     'IEEE802Scraper',
-    'MEFScraper',
+    'IEEE80211TGScraper',
+    'MEF Scraper',
     'NISTScraper',
     'ONFScraper',
     'DMTFScraper',
