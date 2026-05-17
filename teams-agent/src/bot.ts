@@ -207,21 +207,18 @@ export class AuroraBot extends TeamsActivityHandler {
             // Remind user how to exit the scoped context (shown once per message)
             // Note: hint is subtle — appended only if answer was short/empty to avoid noise
           } else {
-            // ── Context-aware group assistance ─────────────────────────────
-            // Group/channel conversations OR personal conversations in groupmode:
-            // When the message is a Wi-Fi/standards question, respond with
-            // brief contextual framing ("Aurora can add context here").
-            // In real Teams group chats the bot only receives @mentioned messages;
-            // after @mention stripping, the remaining text is the actual question.
+            // ── Routing for group vs personal ──────────────────────────────
+            // Direct @mention (group or personal) → full answer, always.
+            // groupmode passive listening (no @mention) → brief context snippet.
             const convType = context.activity.conversation?.conversationType ?? 'personal';
-            const wasGroupMentioned = rawText.includes('<at>') && convType !== 'personal';
-            const isGroupConv = convType !== 'personal' || groupModeConversations.has(convId) || wasGroupMentioned;
-            const looksLikeQuestion = QUESTION_RE.test(text) && text.length > 8;
-            const isAuroraTopic = AURORA_TOPIC_RE.test(text);
+            const wasDirectlyMentioned = rawText.includes('<at>');
+            const isPassiveGroupMode = groupModeConversations.has(convId) && !wasDirectlyMentioned;
 
-            if (isGroupConv && looksLikeQuestion && isAuroraTopic) {
+            if (isPassiveGroupMode && QUESTION_RE.test(text) && AURORA_TOPIC_RE.test(text)) {
+              // Bot is passively listening in groupmode — add brief context without taking over
               await this.chatHandler.handleGroupContextQuestion(context, text);
             } else {
+              // Directly addressed (personal chat or @mention in group) — give the full answer
               await this.chatHandler.handleQuestion(context, text);
             }
           }
