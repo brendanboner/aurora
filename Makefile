@@ -582,17 +582,20 @@ teams-test-prod-cc:
 		--region $(AWS_REGION)
 
 teams-test-prod:
-	@echo "$(CYAN)Starting teams-agent + Agents Playground on EC2 (takes ~30s)...$(NC)"
+	@echo "$(CYAN)Starting teams-agent + Agents Playground on EC2 (takes ~35s)...$(NC)"
 	$(call ssm-run, \
+		aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 716121312929.dkr.ecr.us-east-1.amazonaws.com 2>/dev/null && \
 		docker rm -f aurora-teams-agent 2>/dev/null || true && \
 		cd $(EC2_DEPLOY_PATH) && \
 		BOT_ID= BOT_PASSWORD= TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
 		$(EC2_COMPOSE) --profile teams pull teams-agent && \
 		BOT_ID= BOT_PASSWORD= TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
 		$(EC2_COMPOSE) --profile teams up -d teams-agent && \
-		sleep 20 && echo container-ready \
+		sleep 20 && \
+		docker exec -d aurora-teams-agent node node_modules/.bin/agentsplayground && \
+		sleep 3 && echo playground-started \
 	)
-	@echo "$(GREEN)✓ Bot + Playground running on EC2 (single tunnel: port $(AGENTS_PLAYGROUND_PORT))$(NC)"
+	@echo "$(GREEN)✓ Bot + Playground on EC2 — opening tunnel to port $(AGENTS_PLAYGROUND_PORT)$(NC)"
 	@open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
 	@aws ssm start-session \
 		--target $(EC2_INSTANCE_ID) \
