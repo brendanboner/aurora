@@ -58,7 +58,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start bot in background, wait for it to be ready, then start playground in foreground.
-# Playground in foreground keeps the container alive and is what the SSM tunnel reaches.
-# BOT_ID must be empty (set via docker-compose) for the playground to connect without JWT.
-CMD ["sh", "-c", "node dist/index.js & sleep 15 && node node_modules/.bin/agentsplayground"]
+# Start the bot only. The Agents Playground is started separately:
+#   Local:  make teams-test  (starts playground on the Mac)
+#   EC2:    make teams-test-prod  (starts playground via docker exec)
+CMD ["node", "dist/index.js"]
