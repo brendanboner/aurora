@@ -30,15 +30,47 @@ function extractEntities(text: string): string[] {
 /** True when a question looks like a follow-up referencing prior context. */
 function isFollowUp(question: string, memory: ConvMemory): boolean {
   const q = question.toLowerCase();
-  // Short question heuristic
-  const wordCount = q.split(/\s+/).length;
-  if (wordCount > 12) return false;
-  // Pronoun / demonstrative reference
-  const followUpTriggers = /\b(who|which|what|when|where|they|them|their|he|she|it|this|that|those|these|there|his|her|its)\b/i;
-  if (followUpTriggers.test(question)) return true;
-  // Mentions an entity from the previous answer
-  const lowerEntities = memory.keyEntities.map(e => e.toLowerCase());
-  return lowerEntities.some(e => q.includes(e));
+  if (q.split(/\s+/).length > 12) return false;
+
+  // All previous content lowercased for membership checks
+  const prevContext = (memory.question + ' ' + memory.answerSummary +
+    ' ' + memory.keyEntities.join(' ')).toLowerCase();
+
+  // ── Step 1: detect "naming" patterns that signal a NEW entity ──────────
+  // Patterns: "who is X", "what is X", "tell me about X", "who are X"
+  // X = the words after the verb — if ANY of those words are not in
+  // the previous context, this is a new query, not a follow-up.
+  const namingMatch = q.match(/^(?:who|what)\s+(?:is|are|was|were|does|did)\s+(.+)/i) ||
+                      q.match(/^(?:tell me about|about|find|search for)\s+(.+)/i);
+  if (namingMatch) {
+    const subject = namingMatch[1].trim();
+    // Remove pronouns and common filler — what remains are the actual named entities
+    const pronouns = new Set(['they','them','their','he','she','it','this','that','those',
+      'these','there','his','her','its','else','other','others','another','one','ones',
+      'who','what','which','when','where','why','how','all','both','each','every']);
+    // Only treat capitalised words or identifier-like tokens as "new entities".
+    // Generic lowercase words (verbs like "decide", adjectives) are not entity signals.
+    const originalSubject = namingMatch[1].trim();
+    const subjectEntityWords = originalSubject.split(/\s+/).filter(w => {
+      const wl = w.toLowerCase();
+      if (pronouns.has(wl) || w.length <= 2) return false;
+      // Must look like a proper noun: starts with capital, or is ALL-CAPS, or contains digits
+      return /^[A-Z]/.test(w) || /^[A-Z]{2,}$/.test(w) || /\d/.test(w);
+    });
+    // If subject has no proper-noun candidates → fall through to pronoun check
+    if (subjectEntityWords.length === 0) { /* fall through */ }
+    // If ANY proper-noun candidate is not in the previous exchange → new query
+    else if (subjectEntityWords.some(w => !prevContext.includes(w.toLowerCase()))) return false;
+  }
+
+  // ── Step 2: pronoun / demonstrative reference → follow-up ──────────────
+  // "who led that", "what did they decide", "who else was involved"
+  const pronounRef = /\b(they|them|their|he|she|it|this|that|those|these|there|his|her|its)\b/i;
+  if (pronounRef.test(question)) return true;
+
+  // ── Step 3: reuses a known entity from previous answer → follow-up ─────
+  const memEntitiesLower = memory.keyEntities.map(e => e.toLowerCase());
+  return memEntitiesLower.some(e => q.includes(e));
 }
 
 /** Build a contextualised question by prepending last exchange. */
