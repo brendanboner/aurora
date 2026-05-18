@@ -204,6 +204,10 @@ run_warmup() {
     "What is the difference between Wi-Fi 7 and Wi-Fi 8?"
     "@wifi8mtg what has been discussed recently in the Wi-Fi 8 task group?"
     "What has Qualcomm contributed to Wi-Fi 8 discussions?"
+    "What is the current status of 802.11bn?"
+    "What compliance requirements exist for Wi-Fi 6E devices?"
+    "Explain the roaming problem caused by sticky clients"
+    "What is the latest on the IEEE 802.11bn March 2026 plenary?"
   )
 
   for q in "${queries[@]}"; do
