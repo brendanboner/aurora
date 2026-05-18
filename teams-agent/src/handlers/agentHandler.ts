@@ -94,8 +94,11 @@ export class AgentHandler {
     const agentLines = agents.length > 0
       ? agents.map((a) => {
           const desc = (a.description || a.persona || '').slice(0, 80);
-          const slug = a.teams_slug ? `\`@${a.teams_slug}\`` : '_no slug_';
-          return `• **${a.name}** — ${slug}\n  ${desc}`;
+          // Display slug without aurora- prefix — users type @ietf not @aurora-ietf
+          const displaySlug = a.teams_slug
+            ? `\`@${a.teams_slug.replace(/^aurora-/, '')}\``
+            : '_no slug_';
+          return `• **${a.name}** — ${displaySlug}\n  ${desc}`;
         }).join('\n\n')
       : '_(none configured)_';
 

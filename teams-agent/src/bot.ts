@@ -11,8 +11,17 @@ import { ChatHandler } from './handlers/chatHandler';
 import { AgentHandler } from './handlers/agentHandler';
 import { conversationReferenceStore } from './services/conversationReferenceStore';
 
-// Regex: matches @aurora-<slug> at the start of a message
-const AGENT_SLUG_RE = /^@aurora-([\w-]+)\s*/i;
+// Matches @<slug> or @aurora-<slug> at the start of a message.
+// The @ is required to avoid matching regular words as agent names.
+// In Teams group chat the @ is preserved in plain text (only stripped
+// when wrapped in <at></at> tags, which only happens for the bot itself).
+const AGENT_SLUG_RE = /^@(?:aurora-)?([\w-]+)(?:\s|$)/i;
+
+/** Normalise a slug/mention to the canonical aurora-<slug> form. */
+function canonicalSlug(raw: string): string {
+  const s = raw.toLowerCase().replace(/^@/, '').replace(/^aurora-/, '');
+  return `aurora-${s}`;
+}
 
 // Keywords that indicate a message is about Wi-Fi / standards topics Aurora can help with
 const AURORA_TOPIC_RE = /\b(wi-?fi|802\.1[01356]|ieee|ietf|wba|wfa|5g|6g|spectrum|standard|amendment|certification|handover|roaming|tgbn|802\.11bn|wi-fi\s*8|wi-?fi\s*7|mlr?o|ofdma|qos|latency|throughput|passpoint|openroaming|tsn|pqc|post.quantum|ambient.power|ultra.high.reliability)\b/i;
@@ -24,7 +33,7 @@ const QUESTION_RE = /(\?$|^(do|does|did|can|will|would|should|is|are|was|were|ha
 const groupModeConversations = new Set<string>();
 
 // Commands that set a conversation-scoped default agent
-const SET_CHANNEL_AGENT_RE = /^setChannelAgent\s+@?aurora-([\w-]+)$/i;
+const SET_CHANNEL_AGENT_RE = /^setChannelAgent\s+@?(?:aurora-)?([\w-]+)$/i;
 const CLEAR_CHANNEL_AGENT_RE = /^(clearChannelAgent|clear|reset|general|exit)$/i;
 
 // Webhook management commands
@@ -91,14 +100,14 @@ export class AuroraBot extends TeamsActivityHandler {
           groupModeConversations.delete(convId);
           await context.sendActivity('Group mode off.');
         }
-        // ── Agent slug routing: @aurora-<slug> <question> ──────────────────
+        // ── Agent slug routing: @<slug> or @aurora-<slug> + question ──────
         else if (text.match(AGENT_SLUG_RE)) {
           const slugMatch = text.match(AGENT_SLUG_RE)!;
-          const slug = slugMatch[1].toLowerCase();
+          const slug = canonicalSlug(slugMatch[1]);
           const question = text.replace(AGENT_SLUG_RE, '').trim();
           if (question) {
-            await conversationReferenceStore.setDefaultAgent(convId, `aurora-${slug}`, 30);
-            await this.agentHandler.handleAskAgentBySlug(context, `aurora-${slug}`, question);
+            await conversationReferenceStore.setDefaultAgent(convId, slug, 30);
+            await this.agentHandler.handleAskAgentBySlug(context, slug, question);
           } else {
             await this.agentHandler.handleAgentSuggestions(context);
           }
@@ -106,7 +115,7 @@ export class AuroraBot extends TeamsActivityHandler {
         // ── setChannelAgent @aurora-<slug> ─────────────────────────────────
         else if (SET_CHANNEL_AGENT_RE.test(text)) {
           const m = text.match(SET_CHANNEL_AGENT_RE)!;
-          const slug = `aurora-${m[1].toLowerCase()}`;
+          const slug = canonicalSlug(m[1]);
           await conversationReferenceStore.setDefaultAgent(convId, slug);
           await context.sendActivity(
             `Scoped to **${slug}**. All messages answered through that agent.\n\n_Type \`clear\` to return to general questions._`

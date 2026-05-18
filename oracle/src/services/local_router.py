@@ -803,6 +803,14 @@ class LocalRouter:
             "tgmf": "802.11mf",
             "tgwng": "WNG",
             "wireless next generation": "WNG",
+            # IETF working groups — map to datasource names used in IETF_WG_UPDATES
+            "tls working group": "TLS",
+            "tls wg": "TLS",
+            "quic working group": "QUIC",
+            "quic wg": "QUIC",
+            "bgp": "BGP",
+            "bess": "BESS",
+            "bgp enabled services": "BESS",
         }
         
         # Extract workgroup mentions from query (case-insensitive)
