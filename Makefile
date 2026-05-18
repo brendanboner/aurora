@@ -502,7 +502,8 @@ teams-test-install:
 # Ctrl-C stops the Test Tool; then run 'make teams-test-stop' to clean up.
 
 teams-test: $(TEAMS_TEST_CFG)
-	@echo "$(CYAN)Starting Teams bot (local Aurora)...$(NC)"
+	@echo "$(CYAN)Starting Teams bot (local Aurora — requires Docker)...$(NC)"
+	@docker info >/dev/null 2>&1 || (echo "$(RED)✗ Docker is not running. Start Docker Desktop or use 'make teams-test-prod' for production testing (no Docker needed).$(NC)" && exit 1)
 	docker compose --profile teams up -d --force-recreate teams-agent
 	@echo "$(GREEN)✓ Bot running on localhost:$(TEAMS_BOT_PORT)$(NC)"
 	@echo "$(CYAN)Opening Agents Playground...$(NC)"
