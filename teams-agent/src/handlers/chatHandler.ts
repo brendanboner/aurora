@@ -244,7 +244,7 @@ export class ChatHandler {
 
       if (!response?.answer || response.answer.length < 20) return;
 
-      if (response.answer) remember(convId, question, response.answer);
+      if (response.answer) remember(convId, question, response.answer, response.documents);
 
       const sentences = response.answer.replace(/\[\d+\]/g, '').match(/[^.!?]+[.!?]+/g) ?? [];
       const brief = sentences.slice(0, 3).join(' ').trim() || response.answer.slice(0, 400);
@@ -269,20 +269,44 @@ export class ChatHandler {
     const convId = context.activity.conversation?.id ?? 'default';
     const mem = recall(convId);
 
-    if (!mem || !mem.documents?.length) {
-      await context.sendActivity('No recent answer to enhance. Ask a question first, then type `enhance`.');
+    if (!mem) {
+      await context.sendActivity('No recent answer to enhance — conversation history is reset when the bot restarts. Ask a question first, then type `enhance` in the same session.');
       return;
     }
 
-    await context.sendActivity(`Fetching source documents for a deeper answer on: *${mem.question}*`);
+    if (!mem.documents?.length) {
+      // Memory exists but no source documents — re-query first to get documents
+      await context.sendActivity(`Re-running *${mem.question}* to retrieve source documents…`);
+      try {
+        const email = this.userService.extractUserEmail(context.activity);
+        const auroraUser = await this.userService.getOrCreateUser(email, context.activity.from.name || 'User');
+        const response = await withTimeout(
+          this.oracleService.query(auroraUser.id, mem.question),
+          30000, 'pre-enhance query'
+        );
+        if (response?.documents?.length) {
+          remember(convId, mem.question, response.answer || mem.answerSummary, response.documents);
+        } else {
+          await context.sendActivity('No source documents found for that question. The enhance feature works best with factual queries that return cited sources.');
+          return;
+        }
+      } catch {
+        await context.sendActivity('Could not retrieve source documents right now. Please try again.');
+        return;
+      }
+    }
+
+    const freshMem = recall(convId)!;
+    await context.sendActivity(`Fetching source documents for a deeper answer on: *${freshMem.question}*`);
 
     try {
       const email = this.userService.extractUserEmail(context.activity);
       const displayName = context.activity.from.name || 'User';
       const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+      const currentMem = recall(convId)!;
 
       const enhanced = await withTimeout(
-        this.oracleService.enhance(auroraUser.id, mem.question, mem.documents),
+        this.oracleService.enhance(auroraUser.id, currentMem.question, currentMem.documents!),
         45000,
         'enhance query'
       );
@@ -292,7 +316,7 @@ export class ChatHandler {
         return;
       }
 
-      const sourceLinks = mem.documents.slice(0, 5)
+      const sourceLinks = currentMem.documents!.slice(0, 5)
         .map((d, i) => `${i + 1}. [${d.title}](${d.url})`)
         .join('\n');
 
