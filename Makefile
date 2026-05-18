@@ -533,13 +533,21 @@ teams-test-announce:
 		|| echo "$(RED)✗ Bot not running — start with: make teams-test$(NC)"
 
 # ── PRODUCTION ────────────────────────────────────────────────────────────────
-# Bot runs on EC2 inside the Docker network (calls backend/oracle/content_creator natively).
-# Agents Playground runs LOCALLY on this Mac — avoids docker exec -d process group issues.
-# SSM tunnel: EC2:3978 → localhost:3978  (bot endpoint)
+# Bot + Playground run LOCALLY on this Mac against prod services via SSM tunnels.
+# This avoids the serviceUrl callback problem: Bot Framework expects to reply to
+# the same host that sent the message; if bot and playground are co-located on
+# localhost the serviceUrl (localhost:56150) works in both directions.
 #
-# Usage (ONE terminal):
-#   make teams-test-prod      starts bot on EC2, playground locally, blocks on tunnel
-#   make teams-test-stop-prod stops the bot container on EC2
+# Architecture:
+#   Mac: bot (Node 20) on :3978  +  playground on :56150
+#   SSM tunnels: EC2 backend → localhost:8001, EC2 oracle → localhost:8010
+#
+# Usage (ONE terminal — blocks until Ctrl-C):
+#   make teams-test-prod       open tunnels + start bot + playground + browser
+#   make teams-test-stop-prod  kill bot + playground
+
+# Node 20 is required (node_modules built for it; system node may be newer)
+NODE_20 ?= $(HOME)/.nvm/versions/node/v20.20.2/bin/node
 
 AGENTS_PLAYGROUND_PORT ?= 56150
 TST_CFG = '{"botMessagingEndpoint":"http://localhost:$(TEAMS_BOT_PORT)/api/messages"}'
@@ -582,30 +590,34 @@ teams-test-prod-cc:
 		--region $(AWS_REGION)
 
 teams-test-prod: $(TEAMS_TEST_CFG)
-	@echo "$(CYAN)Starting teams-agent on EC2 (takes ~25s)...$(NC)"
-	$(call ssm-run, \
-		aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 716121312929.dkr.ecr.us-east-1.amazonaws.com 2>/dev/null && \
-		docker rm -f aurora-teams-agent 2>/dev/null || true && \
-		cd $(EC2_DEPLOY_PATH) && \
-		BOT_ID= BOT_PASSWORD= TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
-		$(EC2_COMPOSE) --profile teams pull teams-agent && \
-		BOT_ID= BOT_PASSWORD= TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
-		$(EC2_COMPOSE) --profile teams up -d teams-agent && \
-		sleep 15 && \
-		docker exec aurora-teams-agent wget -q -O- http://localhost:3978/api/health && \
-		echo bot-ready \
-	)
-	@echo "$(GREEN)✓ Bot on EC2 — starting local Agents Playground$(NC)"
+	@echo "$(CYAN)Opening SSM tunnels to production backend + oracle...$(NC)"
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_BACKEND_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_BACKEND_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) &
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_ORACLE_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_ORACLE_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) &
+	@sleep 5
+	@echo "$(CYAN)Starting bot locally (Node 20) against production services...$(NC)"
+	@cd teams-agent && \
+		BOT_ID= BOT_PASSWORD= BOT_PORT=$(TEAMS_BOT_PORT) NODE_ENV=production \
+		AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
+		AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
+		TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
+		AURORA_SERVICE_TOKEN= \
+		$(NODE_20) dist/index.js &
+	@sleep 3
+	@echo "$(CYAN)Starting Agents Playground...$(NC)"
 	@cd teams-agent && ./node_modules/.bin/agentsplayground &
 	@sleep 2
 	@open http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
-	@echo "$(GREEN)✓ Opening SSM tunnel: EC2:$(TEAMS_BOT_PORT) → localhost:$(TEAMS_BOT_PORT)  (keep open)$(NC)"
-	@aws ssm start-session \
-		--target $(EC2_INSTANCE_ID) \
-		--document-name AWS-StartPortForwardingSession \
-		--parameters '{"portNumber":["$(TEAMS_BOT_PORT)"],"localPortNumber":["$(TEAMS_BOT_PORT)"]}' \
-		--profile $(AWS_SSO_PROFILE) \
-		--region $(AWS_REGION)
+	@echo "$(GREEN)✓ Ready — bot :$(TEAMS_BOT_PORT) · playground :$(AGENTS_PLAYGROUND_PORT) · backend :$(PROD_BACKEND_LOCAL) · oracle :$(PROD_ORACLE_LOCAL)$(NC)"
+	@echo "$(YELLOW)Ctrl-C to stop, then run: make teams-test-stop-prod$(NC)"
+	@wait
 
 # Launch only the browser UI against local bot
 teams-test-tool: $(TEAMS_TEST_CFG)
@@ -617,5 +629,8 @@ teams-test-tool: $(TEAMS_TEST_CFG)
 teams-test-stop-prod:
 	@echo "$(CYAN)Stopping Teams prod test environment...$(NC)"
 	@pkill -f "agentsplayground" 2>/dev/null || true
-	$(call ssm-run, docker stop aurora-teams-agent 2>/dev/null || true)
+	@pkill -f "dist/index.js" 2>/dev/null || true
+	@pkill -f "portNumber.*$(PROD_BACKEND_LOCAL)" 2>/dev/null || true
+	@pkill -f "portNumber.*$(PROD_ORACLE_LOCAL)" 2>/dev/null || true
+	@echo "$(GREEN)✓ Stopped$(NC)"
 	@echo "$(GREEN)✓ Stopped$(NC)"
