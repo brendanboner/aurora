@@ -131,18 +131,18 @@ export class AuroraBot extends TeamsActivityHandler {
           await conversationReferenceStore.removeWebhookUrl(convId, slug);
           await context.sendActivity(`Webhook removed for **${slug}**. Bot push will be used instead if subscribed.`);
         }
-        // ── subscribe @aurora-<slug> ───────────────────────────────────────
-        else if (/^subscribe\s+@?aurora-([\w-]+)$/i.test(lower)) {
-          const m = text.match(/^subscribe\s+@?aurora-([\w-]+)$/i)!;
+        // ── subscribe @aurora-<slug> or subscribe @<slug> ─────────────────
+        else if (/^subscribe\s+@?(?:aurora-)?([\w-]+)$/i.test(lower)) {
+          const m = text.match(/^subscribe\s+@?(?:aurora-)?([\w-]+)$/i)!;
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.subscribe(convId, slug);
           await context.sendActivity(
             `Subscribed to **${slug}**. You'll receive a message when there's new content. Type \`unsubscribe @${slug}\` to stop.`
           );
         }
-        // ── unsubscribe @aurora-<slug> ─────────────────────────────────────
-        else if (/^unsubscribe\s+@?aurora-([\w-]+)$/i.test(lower)) {
-          const m = text.match(/^unsubscribe\s+@?aurora-([\w-]+)$/i)!;
+        // ── unsubscribe @aurora-<slug> or unsubscribe @<slug> ─────────────
+        else if (/^unsubscribe\s+@?(?:aurora-)?([\w-]+)$/i.test(lower)) {
+          const m = text.match(/^unsubscribe\s+@?(?:aurora-)?([\w-]+)$/i)!;
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.unsubscribe(convId, slug);
           await context.sendActivity(`Unsubscribed from **${slug}**.`);

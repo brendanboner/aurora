@@ -554,6 +554,9 @@ AGENTS_PLAYGROUND_PORT ?= 56150
 TST_CFG = '{"botMessagingEndpoint":"http://localhost:$(TEAMS_BOT_PORT)/api/messages"}'
 
 # Container IPs on EC2 (stable unless containers are recreated)
+PROD_POSTGRES_HOST ?= 172.24.0.3
+PROD_POSTGRES_PORT ?= 5432
+PROD_POSTGRES_LOCAL ?= 5433
 PROD_BACKEND_HOST  ?= 172.24.0.15
 PROD_ORACLE_HOST   ?= 172.24.0.14
 PROD_CC_HOST       ?= 172.24.0.18
@@ -597,8 +600,9 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	@pkill -f "portNumber.*$(PROD_BACKEND_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_ORACLE_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_CC_LOCAL)" 2>/dev/null || true
+	@pkill -f "portNumber.*$(PROD_POSTGRES_LOCAL)" 2>/dev/null || true
 	@sleep 1
-	@echo "$(CYAN)Opening SSM tunnels to production backend, oracle, content-creator...$(NC)"
+	@echo "$(CYAN)Opening SSM tunnels to production services...$(NC)"
 	@aws ssm start-session \
 		--target $(EC2_INSTANCE_ID) \
 		--document-name AWS-StartPortForwardingSessionToRemoteHost \
@@ -614,13 +618,20 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 		--document-name AWS-StartPortForwardingSessionToRemoteHost \
 		--parameters '{"host":["$(PROD_CC_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_CC_LOCAL)"]}' \
 		--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) &
-	@sleep 6
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_POSTGRES_HOST)"],"portNumber":["$(PROD_POSTGRES_PORT)"],"localPortNumber":["$(PROD_POSTGRES_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) &
+	@sleep 7
 	@echo "$(CYAN)Starting bot locally (Node 20) against production services...$(NC)"
 	@cd teams-agent && \
 		BOT_ID= BOT_PASSWORD= BOT_PORT=$(TEAMS_BOT_PORT) NODE_ENV=production \
 		AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
 		AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
 		AURORA_CONTENT_CREATOR_URL=http://localhost:$(PROD_CC_LOCAL) \
+		POSTGRES_HOST=localhost POSTGRES_PORT=$(PROD_POSTGRES_LOCAL) \
+		POSTGRES_USER=aurora POSTGRES_PASSWORD="u!Lse3pGb!" POSTGRES_DB=aurora \
 		TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
 		USE_MOCK_DATA=true \
 		$(NODE_20) dist/index.js &
@@ -648,4 +659,5 @@ teams-test-stop-prod:
 	@pkill -f "portNumber.*$(PROD_BACKEND_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_ORACLE_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_CC_LOCAL)" 2>/dev/null || true
+	@pkill -f "portNumber.*$(PROD_POSTGRES_LOCAL)" 2>/dev/null || true
 	@echo "$(GREEN)✓ Stopped$(NC)"
