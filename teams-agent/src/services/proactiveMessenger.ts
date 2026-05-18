@@ -208,15 +208,15 @@ export class ProactiveMessenger {
       return { sent: 0, errors: 0, total: 0 };
     }
 
-    const importanceEmoji = payload.importance === 'critical' ? '🚨'
-      : payload.importance === 'high' ? '⚡'
-      : '📢';
+    const importanceLabel = payload.importance === 'critical' ? ' [Critical]'
+      : payload.importance === 'high' ? ' [High priority]'
+      : '';
 
     const tags = payload.tags ?? [];
-    const tagsText = tags.length ? `\n\n🏷️ ${tags.join('  ·  ')}` : '';
-    const bodyPreview = payload.body ? `\n\n${payload.body.slice(0, 300)}${payload.body.length > 300 ? '…' : ''}` : '';
+    const tagsText = tags.length ? `\n\nTopics: ${tags.join('  ·  ')}` : '';
+    const bodyPreview = payload.body ? `\n\n${payload.body.slice(0, 300)}${payload.body.length > 300 ? '...' : ''}` : '';
 
-    const text = `${importanceEmoji} **Aurora System Update**\n\n**${payload.title}**\n\n${payload.summary}${bodyPreview}${tagsText}`;
+    const text = `**Aurora Update${importanceLabel}**\n\n**${payload.title}**\n\n${payload.summary}${bodyPreview}${tagsText}`;
     const activity = MessageFactory.text(text);
 
     let sent = 0, errors = 0;

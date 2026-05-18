@@ -143,7 +143,7 @@ export class AuroraOracleService {
   private getMockResponse(question: string): OracleResponse {
     return {
       mode: 'answer',
-      answer: `**🧪 Mock Response** (Enable backend authentication for real data)\n\nYour question: "${question}"\n\nThis is sample data showing how Aurora would respond. With proper backend authentication, I would query the real knowledge base for accurate, source-backed answers about Wi-Fi, networking, and Extreme Networks products.`,
+      answer: `[Local test mode] Your question: "${question}"\n\nThis is a placeholder response. With production authentication, Aurora would query its knowledge base for source-backed answers about Wi-Fi, networking, and standards.`,
       documents: [
         {
           title: 'Example: Wi-Fi 7 Technology Overview',

@@ -29,21 +29,20 @@ export class FeedHandler {
       const posts = await this.feedService.getTopPosts(auroraUser.id, 5);
       
       if (posts.length === 0) {
-        await context.sendActivity('📭 No new posts in your feed today. Check back later or adjust your preferences in Aurora!');
+        await context.sendActivity('No posts in your feed today. Check back later or adjust your preferences in Aurora.');
         return;
       }
       
       // Send header message
-      await context.sendActivity(`📰 **Your Aurora Feed** (${posts.length} ${posts.length === 1 ? 'post' : 'posts'})`);
-      
+      await context.sendActivity(`**Your Aurora Feed** (${posts.length} ${posts.length === 1 ? 'post' : 'posts'})`);
+
       // Send each post as a card
       for (const post of posts) {
         const card = this.createFeedPostCard(post);
-        // Add text summary for emulator compatibility - include agent name and source links
         const content = post.summary || post.body;
         const firstSource = post.sources && post.sources.length > 0 ? post.sources[0] : null;
-        const sourceLink = firstSource && firstSource.url ? `\n\n📖 [Source: ${firstSource.title || 'View article'}](${firstSource.url})` : '';
-        const summary = `**${post.title}**\n👤 By ${post.agent_name}\n\n${content}${sourceLink}`;
+        const sourceLink = firstSource && firstSource.url ? `\n\n[${firstSource.title || 'View article'}](${firstSource.url})` : '';
+        const summary = `**${post.title}**\nBy ${post.agent_name}\n\n${content}${sourceLink}`;
         await context.sendActivity({ 
           text: summary,
           attachments: [card] 
@@ -89,7 +88,7 @@ export class FeedHandler {
       tags: post.tags.slice(0, 3).join(', ') || 'No tags',
       id: post.id,
       frontend_url: process.env.AURORA_FRONTEND_URL || 'http://localhost:3000',
-      importance_emoji: post.importance === 'critical' ? '🔴' : post.importance === 'high' ? '🟠' : '🟢'
+      importance_label: post.importance === 'critical' ? 'Critical' : post.importance === 'high' ? 'High' : 'Normal'
     };
     
     const cardPayload = template.expand({ $root: cardData });

@@ -161,7 +161,7 @@ export class ChatHandler {
       } catch (timeoutErr) {
         console.warn('[ChatHandler] Oracle timeout:', timeoutErr);
         await context.sendActivity(
-          `⏱ That query is taking longer than expected. Try rephrasing or adding more detail — for example, include the specific standard or working group name.`
+          `That query is taking longer than expected. Try rephrasing or adding more detail — for example, include the specific standard or working group name.`
         );
         return;
       }
@@ -192,11 +192,11 @@ export class ChatHandler {
       console.error('[ChatHandler] handleQuestion error:', error);
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 401 || error.response?.status === 403) {
-          await context.sendActivity('⚠️ Authentication error: The bot cannot access Aurora services. Please configure AURORA_SERVICE_TOKEN or check backend authentication settings.');
+          await context.sendActivity('Authentication error: the bot cannot access Aurora services. Please check the service configuration.');
           return;
         }
         if (error.response?.status === 503) {
-          await context.sendActivity('⚠️ The Aurora Oracle service is temporarily unavailable. Please try again in a moment.');
+          await context.sendActivity('Aurora is temporarily unavailable. Please try again in a moment.');
           return;
         }
       }

@@ -84,15 +84,15 @@ export class AgentHandler {
       : '_(none configured)_';
 
     const msg = [
-      `🤖 **Aurora Agents — Who can you talk to?**\n`,
-      `**📝 Creator Agents** (personalised personas)`,
+      `**Aurora Agents**\n`,
+      `**Creator Agents** (personalised personas)`,
       agentLines,
       ``,
-      `**🏛 Working Groups & Organisations** (knowledge graph)`,
+      `**Working Groups & Organisations** (knowledge graph)`,
       listWorkingGroupSlugs(),
       ``,
-      `💡 Use: \`@aurora-<slug> your question\``,
-      `📰 Subscribe to updates: \`subscribe @aurora-<slug>\``,
+      `Use: \`@aurora-slug your question\``,
+      `Subscribe to updates: \`subscribe @aurora-slug\``,
     ].join('\n');
 
     await context.sendActivity(msg);
@@ -113,14 +113,14 @@ export class AgentHandler {
     const agent = await agentService.findAgentByName(agentName);
     if (!agent) {
       await context.sendActivity(
-        `❌ Could not find an agent matching "**${agentName}**". Type \`agents\` to see available agents.`
+        `No agent found matching "${agentName}". Type \`agents\` to see what's available.`
       );
       return;
     }
 
     await agentService.followAgent(agent.id, auroraUser.id);
     await context.sendActivity(
-      `✅ You are now following **${agent.name}**! Their posts will appear in your feed. Type \`feed\` to see your latest content.`
+      `Now following **${agent.name}**. Their posts will appear in your feed.`
     );
   }
 
@@ -139,13 +139,13 @@ export class AgentHandler {
     const agent = await agentService.findAgentByName(agentName);
     if (!agent) {
       await context.sendActivity(
-        `❌ Could not find an agent matching "**${agentName}**". Type \`agents\` to see available agents.`
+        `No agent found matching "${agentName}". Type \`agents\` to see what's available.`
       );
       return;
     }
 
     await agentService.unfollowAgent(agent.id, auroraUser.id);
-    await context.sendActivity(`✅ You have unfollowed **${agent.name}**.`);
+    await context.sendActivity(`Unfollowed **${agent.name}**.`);
   }
 
   /**
@@ -190,7 +190,7 @@ export class AgentHandler {
 
     if (!matchedAgent) {
       await context.sendActivity(
-        `❌ Could not find an agent matching the start of "**${rawArgs}**". Type \`agents\` to see available agents.`
+        `No agent found matching "${rawArgs}". Type \`agents\` to see what's available.`
       );
       return;
     }
@@ -213,8 +213,6 @@ export class AgentHandler {
       llm_temperature_override: matchedAgent.llm_temperature_override ?? null,
     };
 
-    await context.sendActivity(`💬 Asking **${matchedAgent.name}**: *${question}*...`);
-
     const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
 
     if (!response.answer && (!response.documents || response.documents.length === 0)) {
@@ -222,12 +220,11 @@ export class AgentHandler {
       return;
     }
 
-    // Build the same clickable Adaptive Card used for direct Oracle queries
     const card = buildOracleResponseCard(response, question);
 
     let sourceLinks = '';
     if (response.documents && response.documents.length > 0) {
-      sourceLinks = '\n\n📚 **Sources:**\n' + response.documents.slice(0, 5).map((doc, idx) =>
+      sourceLinks = '\n\n**Sources:**\n' + response.documents.slice(0, 5).map((doc, idx) =>
         `${idx + 1}. [${doc.title}](${doc.url})`
       ).join('\n');
     }
@@ -259,7 +256,7 @@ export class AgentHandler {
         expertise_standards: agent.expertise_standards || [],
         llm_temperature_override: agent.llm_temperature_override ?? null,
       };
-      await context.sendActivity(`💬 Asking **${agent.name}** (\`@${teamsSlug}\`): *${question}*...`);
+      await context.sendActivity(`Asking **${agent.name}**...`);
       const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
       await this.sendOracleResponse(context, agent.name, response, question);
       return;
@@ -278,7 +275,7 @@ export class AgentHandler {
         expertise_standards: [],
         llm_temperature_override: null,
       };
-      await context.sendActivity(`🏛 Asking **${wg.name}** (\`@${teamsSlug}\`): *${question}*...`);
+      await context.sendActivity(`Asking **${wg.name}**...`);
       const response = await this.oracleService.query(auroraUser.id, question, wgPersona);
       await this.sendOracleResponse(context, wg.name, response, question);
       return;
@@ -286,7 +283,7 @@ export class AgentHandler {
 
     // 3. Nothing matched
     await context.sendActivity(
-      `❌ No agent or working group found for \`@${teamsSlug}\`.\n\nType \`agents\` to see all available slugs.`
+      `No agent or working group found for \`@${teamsSlug}\`. Type \`agents\` to see available slugs.`
     );
   }
 
@@ -302,7 +299,7 @@ export class AgentHandler {
     }
 
     const sourceLinks = response.documents?.length
-      ? '\n\n📚 **Sources:**\n' + response.documents.slice(0, 5).map((doc: any, idx: number) =>
+      ? '\n\n**Sources:**\n' + response.documents.slice(0, 5).map((doc: any, idx: number) =>
           `${idx + 1}. [${doc.title}](${doc.url})`
         ).join('\n')
       : '';

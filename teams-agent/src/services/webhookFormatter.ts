@@ -47,7 +47,7 @@ export async function postToWebhook(
               {
                 type: 'Column',
                 width: 'auto',
-                items: [{ type: 'TextBlock', text: '🤖', size: 'Large' }],
+                items: [{ type: 'TextBlock', text: 'A', size: 'Large', weight: 'Bolder' }],
               },
               {
                 type: 'Column',
@@ -79,7 +79,7 @@ export async function postToWebhook(
     ],
     actions: [
       ...(payload.source_url
-        ? [{ type: 'Action.OpenUrl', title: '🔗 View source', url: payload.source_url }]
+        ? [{ type: 'Action.OpenUrl', title: 'View source', url: payload.source_url }]
         : []),
     ],
     // Note: imBack actions are not supported in webhook-posted cards (no bot session).
