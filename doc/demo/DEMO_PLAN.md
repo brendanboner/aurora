@@ -155,7 +155,7 @@ Who is chairing that group?
 Switch to **Group Chat** tab. Type:
 
 ```
-@Test Bot what is the current status of 802.11bn?
+@Aurora what is the current status of 802.11bn?
 ```
 
 > "Same full answer in a group channel. Now here's the interesting part."
@@ -163,7 +163,7 @@ Switch to **Group Chat** tab. Type:
 Still in group chat, type `groupmode on`. Then (simulating a colleague):
 
 ```
-@Test Bot do we know how Wi-Fi 8 will affect handover between APs?
+@Aurora do we know how Wi-Fi 8 will affect handover between APs?
 ```
 
 > "Aurora adds context to the group conversation without disrupting it — it recognised a standards question and contributed."
@@ -229,8 +229,8 @@ Who is chairing that group?
 
 **Teams group chat (after groupmode on):**
 ```
-@Test Bot what is the current status of 802.11bn?
-@Test Bot do we know how Wi-Fi 8 will affect handover between APs?
+@Aurora what is the current status of 802.11bn?
+@Aurora do we know how Wi-Fi 8 will affect handover between APs?
 ```
 
 **Fallback set:**
@@ -258,7 +258,7 @@ make teams-test-announce
 ```
 
 - Personal chat: bot responds to everything, full Adaptive Cards.
-- Group Chat tab: @mention the bot with `@Test Bot [question]`.
+- Group Chat tab: @mention the bot with `@Aurora [question]`.
 - `groupmode on` enables passive listening for standards questions.
 - `clear` or `reset` exits any workgroup scope.
 - `@5g`, `@wba`, `@wifi8mtg` scope answers to that datasource.
