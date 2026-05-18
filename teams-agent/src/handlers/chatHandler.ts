@@ -79,8 +79,13 @@ function enrichWithContext(question: string, memory: ConvMemory): string {
   return `Context from previous question ("${memory.question}"): ${memory.answerSummary}\n\nFollow-up question: ${question}`;
 }
 
+/** Store answer in per-conversation memory. Exported so agent handlers can also save context. */
+export function rememberAnswer(convId: string, question: string, answer: string, docs?: Array<{ title: string; url: string; datasource_id?: string }>): void {
+  remember(convId, question, answer, docs);
+}
+
 /** Store answer in per-conversation memory. */
-function remember(convId: string, question: string, answer: string, docs?: Array<{ title: string; url: string }>): void {
+function remember(convId: string, question: string, answer: string, docs?: Array<{ title: string; url: string; datasource_id?: string }>): void {
   convMemory.set(convId, {
     question,
     answerSummary: answer.slice(0, 300),

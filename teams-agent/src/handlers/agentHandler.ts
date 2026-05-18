@@ -4,6 +4,7 @@ import { AuroraAgentService } from '../services/auroraAgentService';
 import { AuroraOracleService } from '../services/auroraOracleService';
 import { buildOracleResponseCard } from '../helpers/cardBuilder';
 import { getWorkingGroupBySlug, listWorkingGroupSlugs } from '../services/workingGroupResolver';
+import { rememberAnswer } from './chatHandler';
 
 const ORACLE_TIMEOUT_MS = 30_000;
 
@@ -354,6 +355,12 @@ export class AgentHandler {
     if (!response.answer && (!response.documents || response.documents.length === 0)) {
       await context.sendActivity(`**${speakerName}** couldn't find relevant information for that question.`);
       return;
+    }
+
+    // Store in conversation memory so 'enhance' works after any @slug query
+    const convId = context.activity.conversation?.id ?? 'default';
+    if (response.answer) {
+      rememberAnswer(convId, question, response.answer, response.documents);
     }
 
     const sourceLinks = response.documents?.length
