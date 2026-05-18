@@ -600,9 +600,11 @@ services:
     #   dockerfile: oracle/Dockerfile
     container_name: aurora-oracle
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8010:8000"
     networks:
       - aurora-network
-    # NO EXPOSED PORTS - accessed via auth service proxy
+    # Accessible internally via auth proxy; 8010 exposed for local SSM tunnelling
     environment:
       # Neo4j
       NEO4J_URI: bolt://neo4j:7687
@@ -954,4 +956,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-      start_period: 10s

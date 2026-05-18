@@ -509,6 +509,20 @@ class LocalRouter:
         if skip_user_prefs:
             logger.debug(f"Skipping user preference expansion for {route_id.value} (focused query)")
         
+        # For PERSON_PROFILE, extract the person name from "who is [Name]" patterns
+        if route_id in (RouteId.PERSON_PROFILE, RouteId.PERSON_ACTIVITY) and not entities.get("people"):
+            name_match = (
+                re.search(r"who is\s+([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)+)", question, re.IGNORECASE) or
+                re.search(r"who(?:'s| is)\s+(?:dr\.?|prof\.?|mr\.?|ms\.?|mrs\.?)?\s*([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)+)", question, re.IGNORECASE) or
+                re.search(r"(?:tell me about|about|find|search for)\s+([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)+)", question, re.IGNORECASE) or
+                re.search(r"(?:activity|contributions?|work|involvement) (?:by|from|of)\s+([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)+)", question, re.IGNORECASE) or
+                re.search(r"what (?:has|did)\s+([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)+)\s+(?:do|say|contribute|present|work\s+on|publish)", question, re.IGNORECASE)
+            )
+            if name_match:
+                person_name = name_match.group(1).strip()
+                entities["people"] = [person_name]
+                logger.info(f"Extracted person name for {route_id.value}: '{person_name}'")
+
         # For TOPIC_COMPARISON, workgroup names serve as comparison subjects when no
         # explicit topic entities were extracted (e.g. "wifi 7 vs wifi 8" lands in workgroups).
         if route_id == RouteId.TOPIC_COMPARISON and not entities.get("topics") and entities.get("workgroups"):

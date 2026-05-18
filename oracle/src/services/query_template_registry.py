@@ -2289,7 +2289,8 @@ class QueryTemplateRegistry:
             LIMIT $limit
             """
         )
-        
+        self.templates[RouteId.PERSON_PROFILE].post_process = self._post_process_person_profile
+
         # ORGANIZATION_REPRESENTATIVES - who represents X at Y
         self.templates[RouteId.ORGANIZATION_REPRESENTATIVES] = QueryTemplate(
             route_id=RouteId.ORGANIZATION_REPRESENTATIVES,
@@ -2896,3 +2897,56 @@ ORDER BY e.start_date DESC
             result.append(data)
 
         return sorted(result, key=lambda x: x["resource_count"], reverse=True)
+
+    @staticmethod
+    def _post_process_person_profile(results: List[Dict]) -> List[Dict]:
+        """Flatten PERSON_PROFILE rows into nodes the fast engine can render."""
+        nodes = []
+        for row in results:
+            affiliations = row.get("affiliations") or []
+            primary_aff = affiliations[0] if affiliations else {}
+            affil_text = "; ".join(
+                f"{a.get('role', 'member')} at {a['name']}"
+                for a in affiliations if a.get("name")
+            )
+            topics = row.get("topics") or []
+            recent = row.get("recent_resources") or []
+            summary_parts = []
+            if affil_text:
+                summary_parts.append(affil_text)
+            if topics:
+                summary_parts.append(f"Connected topics: {', '.join(topics[:5])}")
+            if recent:
+                titles = [r.get("title") for r in recent[:3] if r.get("title")]
+                if titles:
+                    summary_parts.append(f"Recent documents: {'; '.join(titles)}")
+            from datetime import date as _date
+            node = {
+                "id": row.get("person_id"),
+                "title": row.get("name"),
+                "name": row.get("name"),
+                "person_id": row.get("person_id"),
+                "email": row.get("email"),
+                "role": primary_aff.get("role"),
+                "organization": primary_aff.get("name"),
+                "affiliations": affiliations,
+                "topics": topics,
+                "summary": ". ".join(summary_parts) if summary_parts else None,
+                "type": "Person",
+                # Mark as current reference so answer generator doesn't apply "no updates" fallback
+                "datasource_id": "knowledge_graph",
+                "publish_date": str(_date.today()),
+                "temporal_confidence": "high",
+            }
+            nodes.append(node)
+            for res in (recent or []):
+                if res.get("id"):
+                    nodes.append({
+                        "id": res["id"],
+                        "title": res.get("title"),
+                        "date": res.get("date"),
+                        "url": res.get("url"),
+                        "summary": res.get("title"),
+                        "type": "Resource",
+                    })
+        return nodes
