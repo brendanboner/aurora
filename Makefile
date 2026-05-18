@@ -628,8 +628,10 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	@echo "$(CYAN)Starting Agents Playground...$(NC)"
 	@cd teams-agent && ./node_modules/.bin/agentsplayground &
 	@sleep 2
-	@open -g http://localhost:$(AGENTS_PLAYGROUND_PORT) 2>/dev/null || true
-	@echo "$(GREEN)✓ Ready — bot :$(TEAMS_BOT_PORT) · playground :$(AGENTS_PLAYGROUND_PORT) · backend :$(PROD_BACKEND_LOCAL) · oracle :$(PROD_ORACLE_LOCAL)$(NC)"
+	@echo "$(GREEN)✓ Ready$(NC)"
+	@echo "  Bot:        http://localhost:$(TEAMS_BOT_PORT)/api/health"
+	@echo "  Playground: http://localhost:$(AGENTS_PLAYGROUND_PORT)"
+	@echo "$(YELLOW)Open http://localhost:$(AGENTS_PLAYGROUND_PORT) in your browser$(NC)"
 	@echo "$(YELLOW)Ctrl-C or make teams-test-stop-prod to stop$(NC)"
 
 # Launch only the browser UI against local bot

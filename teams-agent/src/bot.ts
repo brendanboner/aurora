@@ -78,18 +78,18 @@ export class AuroraBot extends TeamsActivityHandler {
         if (CLEAR_CHANNEL_AGENT_RE.test(lower)) {
           await conversationReferenceStore.setDefaultAgent(convId, null);
           groupModeConversations.delete(convId);
-          await context.sendActivity('✅ Cleared. Back to general questions.');
+          await context.sendActivity('Cleared. Back to general questions.');
         }
         // groupmode on / off — accept "groupmode on", "group mode on", "groupmode", etc.
         else if (/^group\s*mode\s*(on|true|enable|1)?$/i.test(lower)) {
           groupModeConversations.add(convId);
           await context.sendActivity(
-            '✅ **Group mode ON**\n\nAurora will now watch for Wi-Fi and standards questions in this conversation and add context automatically — no @mention needed.\n\nType a question about Wi-Fi 8, handover, 802.11bn etc.\nType `groupmode off` or `clear` to turn off.'
+            'Group mode on.\n\nAurora will now watch for Wi-Fi and standards questions in this conversation and add context automatically — no @mention needed.\n\nType a question about Wi-Fi 8, handover, 802.11bn etc.\nType `groupmode off` or `clear` to turn off.'
           );
         }
         else if (/^group\s*mode\s*(off|false|disable|0)$/i.test(lower)) {
           groupModeConversations.delete(convId);
-          await context.sendActivity('✅ **Group mode OFF** — back to direct-query mode.');
+          await context.sendActivity('Group mode off.');
         }
         // ── Agent slug routing: @aurora-<slug> <question> ──────────────────
         else if (text.match(AGENT_SLUG_RE)) {
@@ -109,7 +109,7 @@ export class AuroraBot extends TeamsActivityHandler {
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.setDefaultAgent(convId, slug);
           await context.sendActivity(
-            `✅ Scoped to **${slug}**. All messages answered through that agent.\n\n_Type \`clear\` to return to general questions._`
+            `Scoped to **${slug}**. All messages answered through that agent.\n\n_Type \`clear\` to return to general questions._`
           );
         }
         // ── setAgentWebhook @aurora-<slug> https://... ─────────────────────
@@ -121,7 +121,7 @@ export class AuroraBot extends TeamsActivityHandler {
           // Also subscribe so bot push also works as a fallback
           await conversationReferenceStore.subscribe(convId, slug);
           await context.sendActivity(
-            `✅ Webhook set for **${slug}** in this conversation.\n\nWhen **${slug}** publishes new content, it will arrive with the agent's custom name and icon (as configured on the webhook).\n\nTo remove: \`removeAgentWebhook @${slug}\``
+            `Webhook set for **${slug}** in this conversation. Posts will arrive with the agent's custom name and icon.\n\nTo remove: \`removeAgentWebhook @${slug}\``
           );
         }
         // ── removeAgentWebhook @aurora-<slug> ──────────────────────────────
@@ -129,7 +129,7 @@ export class AuroraBot extends TeamsActivityHandler {
           const m = text.match(REMOVE_WEBHOOK_RE)!;
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.removeWebhookUrl(convId, slug);
-          await context.sendActivity(`✅ Webhook removed for **${slug}**. Bot push will be used instead if subscribed.`);
+          await context.sendActivity(`Webhook removed for **${slug}**. Bot push will be used instead if subscribed.`);
         }
         // ── subscribe @aurora-<slug> ───────────────────────────────────────
         else if (/^subscribe\s+@?aurora-([\w-]+)$/i.test(lower)) {
@@ -137,7 +137,7 @@ export class AuroraBot extends TeamsActivityHandler {
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.subscribe(convId, slug);
           await context.sendActivity(
-            `✅ Subscribed to proactive updates from **${slug}**.\n\nYou'll receive a message when there's new content. Type \`unsubscribe @${slug}\` to stop.`
+            `Subscribed to **${slug}**. You'll receive a message when there's new content. Type \`unsubscribe @${slug}\` to stop.`
           );
         }
         // ── unsubscribe @aurora-<slug> ─────────────────────────────────────
@@ -145,7 +145,7 @@ export class AuroraBot extends TeamsActivityHandler {
           const m = text.match(/^unsubscribe\s+@?aurora-([\w-]+)$/i)!;
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.unsubscribe(convId, slug);
-          await context.sendActivity(`✅ Unsubscribed from **${slug}** updates.`);
+          await context.sendActivity(`Unsubscribed from **${slug}**.`);
         }
         // ── subscriptions / my subscriptions ──────────────────────────────
         else if (lower === 'subscriptions' || lower === 'my subscriptions' || lower === 'following') {
@@ -153,12 +153,12 @@ export class AuroraBot extends TeamsActivityHandler {
           const slugs: string[] = ref?.subscribed_agent_slugs ?? [];
           if (slugs.length === 0) {
             await context.sendActivity(
-              `📭 You have no active subscriptions.\n\nType \`subscribe @aurora-<slug>\` to start receiving proactive updates. Type \`agents\` to see what's available.`
+              `No active subscriptions. Type \`subscribe @aurora-slug\` to receive updates from an agent, or \`agents\` to see what's available.`
             );
           } else {
             const list = slugs.map(s => `• \`${s}\``).join('\n');
             await context.sendActivity(
-              `🔔 **Your subscriptions (${slugs.length}):**\n\n${list}\n\nType \`unsubscribe @aurora-<slug>\` to remove one.`
+              `**Subscriptions (${slugs.length}):**\n\n${list}\n\nType \`unsubscribe @aurora-slug\` to remove one.`
             );
           }
         }
@@ -303,39 +303,17 @@ export class AuroraBot extends TeamsActivityHandler {
 
   private async sendWelcomeMessage(context: TurnContext): Promise<void> {
     const welcomeCard = CardFactory.heroCard(
-      '👋 Welcome to Aurora!',
-      'Your intelligent knowledge assistant',
+      'Aurora',
+      'Wi-Fi and standards intelligence, directly in Teams.',
       [],
       [],
       {
-        subtitle: 'I can help you stay informed and find information',
-        text: `
-**What I can do:**
+        text: `**Getting started**
 
-📰 **Personalized Content Feed**
-Get curated posts from industry experts and AI agents based on your interests.
-Command: \`feed\`
-
-🔮 **Knowledge Search**
-Ask me anything about Wi-Fi standards, technology, or industry news.
-Just type your question naturally!
-
-🤖 **Agent Personas**
-Talk to a specific creator agent: \`@aurora-<slug> your question\`
-Lock a channel to one agent: \`setChannelAgent @aurora-<slug>\`
-
-🔔 **Proactive Updates**
-Subscribe to an agent's feed: \`subscribe @aurora-<slug>\`
-Or use a channel webhook for named delivery: \`setAgentWebhook @aurora-<slug> https://...\`
-
-💡 **Examples:**
-• "feed" - View your content feed
-• "What's new in Wi-Fi 7?" - Ask a question
-• "@aurora-ietf What's happening in QUIC?" - Ask the IETF agent
-• "help" - See all commands
-
-**Ready to get started?** Try typing "feed" or ask me a question!
-        `
+• Type \`feed\` to see your personalised content feed
+• Ask any question — Aurora searches Wi-Fi Alliance, WBA, IETF, and IEEE sources
+• Type \`agents\` to see available expert agents
+• Type \`help\` for all commands`
       }
     );
 
@@ -343,59 +321,47 @@ Or use a channel webhook for named delivery: \`setAgentWebhook @aurora-<slug> ht
   }
 
   private async sendHelpMessage(context: TurnContext): Promise<void> {
-    const help = `📚 **Aurora Bot — Commands**
+    const help = `**Aurora — Commands**
 
-**📰 Feed**
+**Feed**
 • \`feed\` — Your personalised content feed
 
-**🤖 Agents**
-• \`agents\` — List all AI creator agents with their slugs
-• \`follow <name>\` / \`unfollow <name>\` — Follow or unfollow an agent
-• \`ask <name> <question>\` — Ask a specific agent
-
-**💬 Slug Routing**
-• \`@aurora-<slug> <question>\` — Ask by slug (e.g. \`@aurora-alex-wireless What is Wi-Fi 7?\`)
-• \`setChannelAgent @aurora-<slug>\` — Lock this channel to one agent permanently
+**Agents**
+• \`agents\` — List available AI agents
+• \`@aurora-slug question\` — Ask a specific agent (e.g. \`@aurora-wifi8 What is Wi-Fi 8?\`)
+• \`setChannelAgent @aurora-slug\` — Lock this channel to one agent
 • \`clearChannelAgent\` — Remove the channel lock
 
-**👥 Group Channel Mode**
-• \`groupmode on\` — Aurora listens for Wi-Fi/standards questions and adds context automatically
+**Group Channel Mode**
+• \`groupmode on\` — Aurora monitors for Wi-Fi and standards questions and adds context
 • \`groupmode off\` — Back to direct-query mode
 
-**🔔 Proactive Updates**
-• \`subscribe @aurora-<slug>\` — Get push notifications when an agent posts
-• \`unsubscribe @aurora-<slug>\` — Stop notifications
-• \`subscriptions\` — List your active subscriptions
-• \`setAgentWebhook @aurora-<slug> https://...\` — Use a Teams Incoming Webhook for branded delivery
-• \`removeAgentWebhook @aurora-<slug>\` — Remove the webhook
+**Proactive Updates**
+• \`subscribe @aurora-slug\` — Receive posts from an agent
+• \`unsubscribe @aurora-slug\` — Stop notifications
+• \`subscriptions\` — List active subscriptions
 
-**ℹ️ Other**
+**Other**
 • \`about\` — About Aurora
-• \`help\` or \`?\` — This message
+• \`help\` — This message
 
-💡 Or just type any question — Aurora will search its knowledge base.`;
+Or just type any question and Aurora will search its knowledge base.`;
 
     await context.sendActivity(help);
   }
 
   private async sendAboutMessage(context: TurnContext): Promise<void> {
-    const aboutText = `
-**About Aurora** 🌟
+    const aboutText = `**About Aurora**
 
-Aurora is an intelligent knowledge management system that combines:
-• **AI-Powered Content Creation** - Automated expert agents
-• **Knowledge Graphs** - Connected information about topics, organizations, and people
-• **Smart Search** - Natural language queries with contextual understanding
+Aurora is an intelligent knowledge system built on Wi-Fi Alliance, WBA, IETF, and IEEE standards content. It combines:
 
-**Your Personal Assistant**
-I connect you to Aurora's capabilities right here in Teams, providing:
-✅ Personalized content recommendations
-✅ Instant answers to your questions
-✅ Links to full documents and sources
-✅ Proactive updates when new content matches your interests
+• AI-powered expert agents that generate and curate content
+• A knowledge graph connecting topics, organisations, and people
+• Natural language search across member-only and public sources
 
-Built with ❤️ for staying informed about technology and industry standards.
-    `;
+In Teams, Aurora provides personalised content feeds, instant answers with source citations, and proactive updates when new content matches your interests.
+
+Type \`help\` for a list of commands.`;
 
     await context.sendActivity(MessageFactory.text(aboutText));
   }

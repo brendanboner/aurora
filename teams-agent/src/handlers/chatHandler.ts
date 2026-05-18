@@ -174,7 +174,7 @@ export class ChatHandler {
       const card = buildOracleResponseCard(response, question);
       let sourceLinks = '';
       if (response.documents?.length) {
-        sourceLinks = '\n\n📚 **Sources:**\n' + response.documents
+        sourceLinks = '\n\n**Sources:**\n' + response.documents
           .map((doc: any, idx: number) => `${idx + 1}. [${doc.title}](${doc.url})`)
           .join('\n');
       }
@@ -183,7 +183,7 @@ export class ChatHandler {
       await context.sendActivity({ attachments: [card], speak: plainText });
 
       if (response.suggestions?.length) {
-        const hint = `\n\n💡 **Related:**\n${response.suggestions.slice(0, 2)
+        const hint = `\n\n**Related:**\n${response.suggestions.slice(0, 2)
           .map((s: any) => `• "${s.suggestion}"`).join('\n')}`;
         await context.sendActivity(hint);
       }
@@ -248,11 +248,11 @@ export class ChatHandler {
       const brief = sentences.slice(0, 3).join(' ').trim() || response.answer.slice(0, 400);
       const topSource = response.documents?.[0];
       const sourceNote = topSource?.url
-        ? `\n\n📎 [${topSource.title || 'Source'}](${topSource.url})`
+        ? `\n\n[${topSource.title || 'Source'}](${topSource.url})`
         : '';
 
       await context.sendActivity(
-        `💡 **Aurora context:**\n\n${brief}${sourceNote}\n\n_Ask me directly for more detail._`
+        `**Aurora context:**\n\n${brief}${sourceNote}\n\n_Ask me directly for more detail._`
       );
     } catch {
       // Silent failure — never disrupt the group conversation
