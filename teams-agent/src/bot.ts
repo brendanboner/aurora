@@ -295,8 +295,8 @@ export class AuroraBot extends TeamsActivityHandler {
         }
       );
     } catch (err) {
-      // Non-fatal: proactive messaging just won't work for this conversation
-      console.warn('[AuroraBot] Could not store conversation reference:', (err as Error).message);
+      // Non-fatal: proactive messaging won't work for this conversation (expected when no DB)
+      console.debug('[AuroraBot] Could not store conversation reference:', (err as Error).message);
     }
   }
 
