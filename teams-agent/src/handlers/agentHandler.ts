@@ -304,8 +304,9 @@ export class AgentHandler {
       };
       await context.sendActivity(`Asking **${wg.name}**...`);
       try {
+        // Pass datasource_ids so results are scoped to this WG's sources, not all sources
         const response = await withTimeout(
-          this.oracleService.query(auroraUser.id, question, wgPersona),
+          this.oracleService.query(auroraUser.id, question, wgPersona, wg.datasource_ids),
           ORACLE_TIMEOUT_MS
         );
         await this.sendOracleResponse(context, wg.name, response, question);

@@ -14,6 +14,7 @@ export interface WorkingGroupPersona {
   tone_style: string;
   expertise_topics: string[];
   expertise_organisations: string[];
+  datasource_ids?: string[];  // Hard-filter to these datasources when querying oracle
 }
 
 /**
@@ -29,6 +30,7 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'technical',
     expertise_topics: ['internet standards', 'protocols', 'QUIC', 'TLS', 'HTTP', 'RFC'],
     expertise_organisations: ['IETF'],
+    datasource_ids: ['ietf_wg_quic', 'ietf_wg_tls', 'ietf_wg_6lo', 'ietf_wg_aipref', 'ietf_wg_pquip', 'ietf_wg_masque', 'ietf_wg_ace', 'ietf_wg_ipsecme', 'ietf_wg_mls', 'ietf_wg_secdispatch'],
   },
   {
     name: 'WBA (Wireless Broadband Alliance)',
@@ -38,6 +40,7 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'professional',
     expertise_topics: ['Wi-Fi roaming', 'OpenRoaming', 'Passpoint', 'AFC', 'carrier Wi-Fi'],
     expertise_organisations: ['WBA', 'Wireless Broadband Alliance'],
+    datasource_ids: ['wba', 'wba_extranet'],
   },
   {
     name: 'Wi-Fi Alliance',
@@ -47,6 +50,7 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'authoritative',
     expertise_topics: ['Wi-Fi certification', 'Wi-Fi 7', 'Wi-Fi 6E', 'WPA3', '6 GHz'],
     expertise_organisations: ['Wi-Fi Alliance'],
+    datasource_ids: ['wfa_resource_page', 'wfa_causeway_wifi7mtg', 'wfa_causeway_wifi8ttg', 'wfa_causeway_passpointmtg'],
   },
   {
     name: 'IEEE 802.11',
@@ -56,6 +60,7 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'technical',
     expertise_topics: ['IEEE 802.11', '802.11be', 'Wi-Fi 7', 'MLO', 'PHY', 'MAC'],
     expertise_organisations: ['IEEE', 'IEEE P802.11'],
+    datasource_ids: ['ieee802_11', 'ieee802_11_tg'],
   },
   {
     name: 'IEEE 802.15',
@@ -74,6 +79,7 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'technical',
     expertise_topics: ['QUIC', 'HTTP/3', 'transport protocols', 'RFC 9000', 'RFC 9369'],
     expertise_organisations: ['IETF', 'QUIC Working Group'],
+    datasource_ids: ['ietf_wg_quic'],
   },
   {
     name: 'TLS Working Group',
@@ -83,6 +89,7 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'technical',
     expertise_topics: ['TLS', 'TLS 1.3', 'DTLS', 'certificates', 'cryptography'],
     expertise_organisations: ['IETF', 'TLS Working Group'],
+    datasource_ids: ['ietf_wg_tls'],
   },
   {
     name: 'WBA Passpoint Project',
@@ -92,6 +99,7 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'professional',
     expertise_topics: ['Passpoint', 'Hotspot 2.0', 'HS2.0', 'ANQP', 'Wi-Fi offload'],
     expertise_organisations: ['WBA', 'Wi-Fi Alliance'],
+    datasource_ids: ['wba_extranet'],
   },
   {
     name: '3GPP',
