@@ -201,8 +201,7 @@ export class AuroraBot extends TeamsActivityHandler {
         }
         // ── Default: check for channel-scoped default agent first ──────────
         else if (text.length > 0) {
-          let defaultSlug: string | null = null;
-          try { defaultSlug = await conversationReferenceStore.getDefaultAgent(convId); } catch { /* no db */ }
+          const defaultSlug = await conversationReferenceStore.getDefaultAgent(convId);
           if (defaultSlug) {
             await this.agentHandler.handleAskAgentBySlug(context, defaultSlug, text);
             // Remind user how to exit the scoped context (shown once per message)
@@ -224,8 +223,10 @@ export class AuroraBot extends TeamsActivityHandler {
             }
           }
         }
-      } catch (error) {
-        console.error('[ERROR] Error handling message:', error);
+      } catch (error: any) {
+        const detail = error?.response?.data ?? error?.message ?? String(error);
+        console.error('[ERROR] Error handling message:', detail);
+        console.error(error);
         await context.sendActivity('Sorry, I encountered an error. Please try again or type "help" for assistance.');
       }
 
