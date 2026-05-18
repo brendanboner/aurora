@@ -201,7 +201,8 @@ export class AuroraBot extends TeamsActivityHandler {
         }
         // ── Default: check for channel-scoped default agent first ──────────
         else if (text.length > 0) {
-          const defaultSlug = await conversationReferenceStore.getDefaultAgent(convId);
+          let defaultSlug: string | null = null;
+          try { defaultSlug = await conversationReferenceStore.getDefaultAgent(convId); } catch { /* no db */ }
           if (defaultSlug) {
             await this.agentHandler.handleAskAgentBySlug(context, defaultSlug, text);
             // Remind user how to exit the scoped context (shown once per message)

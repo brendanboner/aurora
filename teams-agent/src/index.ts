@@ -73,8 +73,10 @@ adapter.createConnectorClient = function(serviceUrl: string) {
 
 // Error handler
 adapter.onTurnError = async (context, error) => {
-  console.error(`\n[onTurnError] unhandled error: ${error}`);
-  console.error(error);
+  const restErr = error as any;
+  const body = restErr?.response?.bodyAsText || restErr?.message || String(error);
+  console.error(`\n[onTurnError] ${restErr?.statusCode || ''} ${body.slice(0, 200)}`);
+  console.error('  convId:', context.activity.conversation?.id, '| serviceUrl:', context.activity.serviceUrl);
   
   try {
     await context.sendActivity('Sorry, something went wrong. Please try again.');
@@ -118,7 +120,10 @@ server.post('/api/messages', async (req, res) => {
   
   try {
     await adapter.process(req, res, async (context) => {
-      console.log('Processing activity:', context.activity.type, context.activity.text);
+      console.log('Processing activity:', context.activity.type, context.activity.text,
+        '| convId:', context.activity.conversation?.id,
+        '| activityId:', context.activity.id,
+        '| serviceUrl:', context.activity.serviceUrl);
       await bot.run(context);
       await conversationState.saveChanges(context);
       await userState.saveChanges(context);

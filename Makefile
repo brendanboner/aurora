@@ -596,8 +596,9 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 	@pkill -f "dist/index.js" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_BACKEND_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_ORACLE_LOCAL)" 2>/dev/null || true
+	@pkill -f "portNumber.*$(PROD_CC_LOCAL)" 2>/dev/null || true
 	@sleep 1
-	@echo "$(CYAN)Opening SSM tunnels to production backend + oracle...$(NC)"
+	@echo "$(CYAN)Opening SSM tunnels to production backend, oracle, content-creator...$(NC)"
 	@aws ssm start-session \
 		--target $(EC2_INSTANCE_ID) \
 		--document-name AWS-StartPortForwardingSessionToRemoteHost \
@@ -608,14 +609,20 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 		--document-name AWS-StartPortForwardingSessionToRemoteHost \
 		--parameters '{"host":["$(PROD_ORACLE_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_ORACLE_LOCAL)"]}' \
 		--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) &
-	@sleep 5
+	@aws ssm start-session \
+		--target $(EC2_INSTANCE_ID) \
+		--document-name AWS-StartPortForwardingSessionToRemoteHost \
+		--parameters '{"host":["$(PROD_CC_HOST)"],"portNumber":["$(PROD_SVC_PORT)"],"localPortNumber":["$(PROD_CC_LOCAL)"]}' \
+		--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) &
+	@sleep 6
 	@echo "$(CYAN)Starting bot locally (Node 20) against production services...$(NC)"
 	@cd teams-agent && \
 		BOT_ID= BOT_PASSWORD= BOT_PORT=$(TEAMS_BOT_PORT) NODE_ENV=production \
 		AURORA_API_URL=http://localhost:$(PROD_BACKEND_LOCAL) \
 		AURORA_ORACLE_URL=http://localhost:$(PROD_ORACLE_LOCAL) \
+		AURORA_CONTENT_CREATOR_URL=http://localhost:$(PROD_CC_LOCAL) \
 		TEST_USER_EMAIL=$(TEST_USER_EMAIL) TEST_USER_ID=$(TEST_USER_ID) \
-		AURORA_SERVICE_TOKEN= \
+		USE_MOCK_DATA=true \
 		$(NODE_20) dist/index.js &
 	@sleep 3
 	@echo "$(CYAN)Starting Agents Playground...$(NC)"
@@ -638,5 +645,5 @@ teams-test-stop-prod:
 	@pkill -f "dist/index.js" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_BACKEND_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_ORACLE_LOCAL)" 2>/dev/null || true
-	@echo "$(GREEN)✓ Stopped$(NC)"
+	@pkill -f "portNumber.*$(PROD_CC_LOCAL)" 2>/dev/null || true
 	@echo "$(GREEN)✓ Stopped$(NC)"
