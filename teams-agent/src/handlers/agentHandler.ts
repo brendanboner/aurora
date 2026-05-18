@@ -5,6 +5,17 @@ import { AuroraOracleService } from '../services/auroraOracleService';
 import { buildOracleResponseCard } from '../helpers/cardBuilder';
 import { getWorkingGroupBySlug, listWorkingGroupSlugs } from '../services/workingGroupResolver';
 
+const ORACLE_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 /**
  * Handles agent-related commands:
  *   agents                         — list all available agents
@@ -213,24 +224,19 @@ export class AgentHandler {
       llm_temperature_override: matchedAgent.llm_temperature_override ?? null,
     };
 
-    const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
-
-    if (!response.answer && (!response.documents || response.documents.length === 0)) {
-      await context.sendActivity(`**${matchedAgent.name}** could not find a relevant answer to that question.`);
-      return;
+    try {
+      const response = await withTimeout(
+        this.oracleService.query(auroraUser.id, question, agentPersona),
+        ORACLE_TIMEOUT_MS
+      );
+      await this.sendOracleResponse(context, matchedAgent.name, response, question);
+    } catch (err: any) {
+      const isTimeout = err?.message?.includes('timeout');
+      await context.sendActivity(isTimeout
+        ? `That query is taking too long. Try a more specific question.`
+        : `**${matchedAgent.name}** could not retrieve an answer right now. Please try again.`
+      );
     }
-
-    const card = buildOracleResponseCard(response, question);
-
-    let sourceLinks = '';
-    if (response.documents && response.documents.length > 0) {
-      sourceLinks = '\n\n**Sources:**\n' + response.documents.slice(0, 5).map((doc, idx) =>
-        `${idx + 1}. [${doc.title}](${doc.url})`
-      ).join('\n');
-    }
-    const summary = `**${matchedAgent.name}:** ${response.answer || 'Here are the results:'}${sourceLinks}`;
-
-    await context.sendActivity({ text: summary, attachments: [card] });
   }
 
   /**
@@ -257,8 +263,19 @@ export class AgentHandler {
         llm_temperature_override: agent.llm_temperature_override ?? null,
       };
       await context.sendActivity(`Asking **${agent.name}**...`);
-      const response = await this.oracleService.query(auroraUser.id, question, agentPersona);
-      await this.sendOracleResponse(context, agent.name, response, question);
+      try {
+        const response = await withTimeout(
+          this.oracleService.query(auroraUser.id, question, agentPersona),
+          ORACLE_TIMEOUT_MS
+        );
+        await this.sendOracleResponse(context, agent.name, response, question);
+      } catch (err: any) {
+        const isTimeout = err?.message?.includes('timeout');
+        await context.sendActivity(isTimeout
+          ? `That query is taking too long. Try a more specific question.`
+          : `**${agent.name}** could not retrieve an answer right now. Please try again.`
+        );
+      }
       return;
     }
 
@@ -276,8 +293,19 @@ export class AgentHandler {
         llm_temperature_override: null,
       };
       await context.sendActivity(`Asking **${wg.name}**...`);
-      const response = await this.oracleService.query(auroraUser.id, question, wgPersona);
-      await this.sendOracleResponse(context, wg.name, response, question);
+      try {
+        const response = await withTimeout(
+          this.oracleService.query(auroraUser.id, question, wgPersona),
+          ORACLE_TIMEOUT_MS
+        );
+        await this.sendOracleResponse(context, wg.name, response, question);
+      } catch (err: any) {
+        const isTimeout = err?.message?.includes('timeout');
+        await context.sendActivity(isTimeout
+          ? `That query is taking too long. Try a more specific question.`
+          : `**${wg.name}** could not retrieve an answer right now. Please try again.`
+        );
+      }
       return;
     }
 

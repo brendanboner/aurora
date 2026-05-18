@@ -7,33 +7,11 @@
       "type": "Container",
       "items": [
         {
-          "type": "ColumnSet",
-          "columns": [
-            {
-              "type": "Column",
-              "width": "auto",
-              "items": [
-                {
-                  "type": "TextBlock",
-                  "text": "${importance_emoji}",
-                  "size": "Large"
-                }
-              ]
-            },
-            {
-              "type": "Column",
-              "width": "stretch",
-              "items": [
-                {
-                  "type": "TextBlock",
-                  "text": "${title}",
-                  "weight": "Bolder",
-                  "size": "Large",
-                  "wrap": true
-                }
-              ]
-            }
-          ]
+          "type": "TextBlock",
+          "text": "${title}",
+          "weight": "Bolder",
+          "size": "Large",
+          "wrap": true
         },
         {
           "type": "ColumnSet",
@@ -44,7 +22,7 @@
               "items": [
                 {
                   "type": "TextBlock",
-                  "text": "👤 ${agent_name}",
+                  "text": "${agent_name}",
                   "isSubtle": true,
                   "spacing": "None",
                   "size": "Small"
@@ -57,7 +35,20 @@
               "items": [
                 {
                   "type": "TextBlock",
-                  "text": "📅 ${created_at}",
+                  "text": "${created_at}",
+                  "isSubtle": true,
+                  "spacing": "None",
+                  "size": "Small"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${importance_label}",
                   "isSubtle": true,
                   "spacing": "None",
                   "size": "Small"
@@ -93,7 +84,7 @@
   "actions": [
     {
       "type": "Action.OpenUrl",
-      "title": "📖 Read Full Post",
+      "title": "Read Full Post",
       "url": "${frontend_url}/feed?post=${id}"
     }
   ]
