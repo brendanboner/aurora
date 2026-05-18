@@ -45,17 +45,30 @@ const adapter = new BotFrameworkAdapter({
   appPassword: process.env.BOT_PASSWORD || ''
 });
 
-// Override createConnectorClient to replace localhost with host.docker.internal
-// Only applies when running inside Docker (RUNNING_IN_DOCKER=true).
-// When running via npm on the host, localhost IS the correct address.
+// Normalise serviceUrl so the bot can always reply to the playground.
+// The Agents Playground running on a Mac with Docker Desktop installed sends
+// serviceUrl=http://host.docker.internal:PORT, which resolves only when Docker
+// Desktop is running.  When we run the bot locally (not inside a container)
+// we need plain localhost instead.  Inside Docker we do the reverse.
+const IN_DOCKER = process.env.RUNNING_IN_DOCKER === 'true';
+
+function normaliseServiceUrl(serviceUrl: string): string {
+  if (!serviceUrl) return serviceUrl;
+  if (IN_DOCKER) {
+    // Container → replace localhost with host gateway so bot can reach Mac playground
+    return serviceUrl.replace(/localhost/g, 'host.docker.internal');
+  }
+  // Host → replace host.docker.internal with localhost (playground on same machine)
+  return serviceUrl.replace(/host\.docker\.internal/g, 'localhost');
+}
+
 const originalCreateConnectorClient = adapter.createConnectorClient.bind(adapter);
 adapter.createConnectorClient = function(serviceUrl: string) {
-  if (process.env.RUNNING_IN_DOCKER === 'true' && serviceUrl && serviceUrl.includes('localhost')) {
-    const dockerServiceUrl = serviceUrl.replace('localhost', 'host.docker.internal');
-    console.log(`[Docker] Redirecting serviceUrl: ${serviceUrl} -> ${dockerServiceUrl}`);
-    return originalCreateConnectorClient(dockerServiceUrl);
+  const normalised = normaliseServiceUrl(serviceUrl);
+  if (normalised !== serviceUrl) {
+    console.log(`[serviceUrl] ${serviceUrl} -> ${normalised}`);
   }
-  return originalCreateConnectorClient(serviceUrl);
+  return originalCreateConnectorClient(normalised);
 };
 
 // Error handler
@@ -95,11 +108,12 @@ server.post('/api/messages', async (req, res) => {
   console.log('Request body type:', req.body?.type);
   console.log('ServiceUrl from request:', req.body?.serviceUrl);
   
-  // Fix serviceUrl for Docker only — when running via npm on the host, leave it as-is
-  if (process.env.RUNNING_IN_DOCKER === 'true' && req.body?.serviceUrl && req.body.serviceUrl.includes('localhost')) {
-    const originalUrl = req.body.serviceUrl;
-    req.body.serviceUrl = req.body.serviceUrl.replace('localhost', 'host.docker.internal');
-    console.log(`[Docker] Fixed serviceUrl: ${originalUrl} -> ${req.body.serviceUrl}`);
+  if (req.body?.serviceUrl) {
+    const fixed = normaliseServiceUrl(req.body.serviceUrl);
+    if (fixed !== req.body.serviceUrl) {
+      console.log(`[serviceUrl] fixed incoming: ${req.body.serviceUrl} -> ${fixed}`);
+      req.body.serviceUrl = fixed;
+    }
   }
   
   try {
