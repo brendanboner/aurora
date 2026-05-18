@@ -163,7 +163,7 @@ export class AuroraBot extends TeamsActivityHandler {
           const slugs: string[] = ref?.subscribed_agent_slugs ?? [];
           if (slugs.length === 0) {
             await context.sendActivity(
-              `No active subscriptions. Type \`subscribe @aurora-slug\` to receive updates from an agent, or \`agents\` to see what's available.`
+              `No active subscriptions. Type \`subscribe @slug\` to receive updates from an agent, or \`agents\` to see what's available.`
             );
           } else {
             const list = slugs.map(s => `• \`@${s.replace(/^aurora-/, '')}\``).join('\n');
@@ -344,8 +344,8 @@ export class AuroraBot extends TeamsActivityHandler {
 
 **Agents**
 • \`agents\` — List available AI agents
-• \`@aurora-slug question\` — Ask a specific agent (e.g. \`@aurora-wifi8 What is Wi-Fi 8?\`)
-• \`setChannelAgent @aurora-slug\` — Lock this channel to one agent
+• \`@slug question\` — Ask a specific agent (e.g. \`@ietf What is new?\`, \`@wifi8mtg What was discussed?\`)
+• \`setChannelAgent @slug\` — Lock this channel to one agent
 • \`clearChannelAgent\` — Remove the channel lock
 
 **Group Channel Mode**
@@ -353,8 +353,8 @@ export class AuroraBot extends TeamsActivityHandler {
 • \`groupmode off\` — Back to direct-query mode
 
 **Proactive Updates**
-• \`subscribe @aurora-slug\` — Receive posts from an agent
-• \`unsubscribe @aurora-slug\` — Stop notifications
+• \`subscribe @slug\` — Receive posts from an agent
+• \`unsubscribe @slug\` — Stop notifications
 • \`subscriptions\` — List active subscriptions
 
 **Other**

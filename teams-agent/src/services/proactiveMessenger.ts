@@ -129,19 +129,21 @@ export class ProactiveMessenger {
 
   private buildBotCard(payload: FeedUpdatePayload) {
     const template = new ACData.Template(proactiveFeedCardTemplate);
-    const tagsStr = payload.tags.length > 0 ? payload.tags.slice(0, 5).join(', ') : 'General';
+    const tagsStr = payload.tags.length > 0 ? payload.tags.slice(0, 5).join(', ') : '';
+    const slugShort = (payload.agent_slug || '').replace(/^aurora-/, '');
     const data = {
-      agent_name:   payload.agent_name,
-      agent_slug:   payload.agent_slug,
-      title:        payload.title,
-      summary:      payload.summary || payload.title,
-      tags:         tagsStr,
-      published_at: payload.published_at
+      agent_name:      payload.agent_name,
+      agent_slug:      payload.agent_slug,
+      agent_slug_short: slugShort,
+      title:           payload.title,
+      summary:         payload.summary || payload.title,
+      tags:            tagsStr,
+      has_tags:        tagsStr.length > 0,
+      published_at:    payload.published_at
         ? new Date(payload.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      has_meta:     true,
-      source_url:   payload.source_url || '',
-      has_url:      !!payload.source_url,
+      source_url:      payload.source_url || '',
+      has_url:         !!payload.source_url,
     };
     const cardPayload = template.expand({ $root: data });
     return CardFactory.adaptiveCard(cardPayload);

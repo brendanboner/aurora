@@ -5,23 +5,10 @@
   "body": [
     {
       "type": "Container",
-      "style": "emphasis",
-      "bleed": true,
       "items": [
         {
           "type": "ColumnSet",
           "columns": [
-            {
-              "type": "Column",
-              "width": "auto",
-              "items": [
-                {
-                  "type": "TextBlock",
-                  "text": "🤖",
-                  "size": "Large"
-                }
-              ]
-            },
             {
               "type": "Column",
               "width": "stretch",
@@ -35,7 +22,7 @@
                 },
                 {
                   "type": "TextBlock",
-                  "text": "New update in your interest area",
+                  "text": "${published_at}",
                   "size": "Small",
                   "isSubtle": true,
                   "spacing": "None"
@@ -61,42 +48,35 @@
           "text": "${summary}",
           "wrap": true,
           "spacing": "Small",
-          "maxLines": 4
+          "maxLines": 5
         },
         {
-          "type": "FactSet",
-          "facts": [
-            {
-              "title": "Tags",
-              "value": "${tags}"
-            },
-            {
-              "title": "Published",
-              "value": "${published_at}"
-            }
-          ],
+          "type": "TextBlock",
+          "text": "${tags}",
+          "size": "Small",
+          "isSubtle": true,
           "spacing": "Small",
-          "isVisible": "${has_meta}"
+          "isVisible": "${has_tags}"
         }
       ]
     }
   ],
   "actions": [
     {
+      "type": "Action.OpenUrl",
+      "title": "Read source",
+      "url": "${source_url}",
+      "isVisible": "${has_url}"
+    },
+    {
       "type": "Action.Submit",
-      "title": "💬 Ask ${agent_name} about this",
+      "title": "Ask ${agent_name} a question",
       "data": {
         "msteams": {
           "type": "imBack",
-          "value": "@${agent_slug} Tell me more about: ${title}"
+          "value": "@${agent_slug_short} "
         }
       }
-    },
-    {
-      "type": "Action.OpenUrl",
-      "title": "🔗 View source",
-      "url": "${source_url}",
-      "isVisible": "${has_url}"
     }
   ]
 }
