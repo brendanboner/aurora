@@ -318,7 +318,28 @@ export class AgentHandler {
       return;
     }
 
-    // 3. Nothing matched
+    // 3. Try as a datasource filter (e.g. @wifi8mtg, @wfa, @broadcast)
+    // Strip aurora- prefix for datasource resolution
+    const datasourceSlug = teamsSlug.replace(/^aurora-/, '');
+    try {
+      const resolved = await this.oracleService.resolveMentionsToDatasourceIds([datasourceSlug]);
+      if (resolved.length > 0) {
+        console.log(`[AgentHandler] Routing @${datasourceSlug} as datasource filter: ${resolved}`);
+        const response = await withTimeout(
+          this.oracleService.query(
+            (await this.userService.getOrCreateUser(
+              this.userService.extractUserEmail(context.activity),
+              context.activity.from.name || 'User'
+            )).id,
+            question, undefined, resolved
+          ),
+          ORACLE_TIMEOUT_MS
+        );
+        await this.sendOracleResponse(context, datasourceSlug, response, question);
+        return;
+      }
+    } catch { /* fall through */ }
+
     await context.sendActivity(
       `No agent or working group found for \`@${teamsSlug}\`. Type \`agents\` to see available slugs.`
     );

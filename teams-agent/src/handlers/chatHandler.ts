@@ -13,7 +13,7 @@ interface ConvMemory {
   answerSummary: string;
   keyEntities: string[];
   ts: number;
-  documents?: Array<{ title: string; url: string }>;  // for enhance
+  documents?: Array<{ title: string; url: string; datasource_id?: string }>;  // for enhance
 }
 const convMemory = new Map<string, ConvMemory>();
 const MEMORY_TTL_MS = 30 * 60 * 1000;

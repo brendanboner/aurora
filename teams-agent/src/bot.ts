@@ -144,9 +144,10 @@ export class AuroraBot extends TeamsActivityHandler {
         else if (/^subscribe\s+@?(?:aurora-)?([\w-]+)$/i.test(lower)) {
           const m = text.match(/^subscribe\s+@?(?:aurora-)?([\w-]+)$/i)!;
           const slug = `aurora-${m[1].toLowerCase()}`;
+          const displaySlug = slug.replace(/^aurora-/, '');
           await conversationReferenceStore.subscribe(convId, slug);
           await context.sendActivity(
-            `Subscribed to **${slug}**. You'll receive a message when there's new content. Type \`unsubscribe @${slug}\` to stop.`
+            `Subscribed to **${displaySlug}**. You'll receive a message when there's new content. Type \`unsubscribe @${displaySlug}\` to stop.`
           );
         }
         // ── unsubscribe @aurora-<slug> or unsubscribe @<slug> ─────────────
@@ -154,7 +155,7 @@ export class AuroraBot extends TeamsActivityHandler {
           const m = text.match(/^unsubscribe\s+@?(?:aurora-)?([\w-]+)$/i)!;
           const slug = `aurora-${m[1].toLowerCase()}`;
           await conversationReferenceStore.unsubscribe(convId, slug);
-          await context.sendActivity(`Unsubscribed from **${slug}**.`);
+          await context.sendActivity(`Unsubscribed from **${slug.replace(/^aurora-/, '')}**.`);
         }
         // ── subscriptions / my subscriptions ──────────────────────────────
         else if (lower === 'subscriptions' || lower === 'my subscriptions' || lower === 'following') {
@@ -165,7 +166,7 @@ export class AuroraBot extends TeamsActivityHandler {
               `No active subscriptions. Type \`subscribe @aurora-slug\` to receive updates from an agent, or \`agents\` to see what's available.`
             );
           } else {
-            const list = slugs.map(s => `• \`${s}\``).join('\n');
+            const list = slugs.map(s => `• \`@${s.replace(/^aurora-/, '')}\``).join('\n');
             await context.sendActivity(
               `**Subscriptions (${slugs.length}):**\n\n${list}\n\nType \`unsubscribe @aurora-slug\` to remove one.`
             );

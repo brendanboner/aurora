@@ -203,11 +203,16 @@ export class AuroraOracleService {
    * Check if Oracle service is healthy
    */
   /** Call the oracle enhance endpoint with documents from a previous query. */
-  async enhance(userId: string, question: string, documents: Array<{ title: string; url: string }>): Promise<string> {
+  async enhance(userId: string, question: string, documents: Array<{ title: string; url: string; datasource_id?: string }>): Promise<string> {
+    // Ensure each document has datasource_id (required by /enhance)
+    const docsWithDs = documents.map(d => ({
+      ...d,
+      datasource_id: d.datasource_id || d.url?.match(/wi-fi\.org|wballiance|ieee|ietf/i)?.[0] || 'web',
+    }));
     const response = await this.apiClient.post('/enhance', {
       user_id: userId,
       question,
-      documents,
+      documents: docsWithDs,
     });
     return response.data?.enhanced_answer || response.data?.answer || '';
   }
