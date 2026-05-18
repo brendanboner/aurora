@@ -142,8 +142,9 @@ export class ProactiveMessenger {
       published_at:    payload.published_at
         ? new Date(payload.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      source_url:      payload.source_url || '',
-      has_url:         !!payload.source_url,
+      // Prefer the source URL; fall back to the Aurora feed page
+      source_url:      payload.source_url || (process.env.AURORA_FRONTEND_URL || 'https://aurora-octo.xcloudiq.com') + '/feed',
+      has_url:         true,
     };
     const cardPayload = template.expand({ $root: data });
     return CardFactory.adaptiveCard(cardPayload);

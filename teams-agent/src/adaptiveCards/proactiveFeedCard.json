@@ -47,8 +47,7 @@
           "type": "TextBlock",
           "text": "${summary}",
           "wrap": true,
-          "spacing": "Small",
-          "maxLines": 5
+          "spacing": "Small"
         },
         {
           "type": "TextBlock",
@@ -64,13 +63,12 @@
   "actions": [
     {
       "type": "Action.OpenUrl",
-      "title": "Read source",
-      "url": "${source_url}",
-      "isVisible": "${has_url}"
+      "title": "Open in Aurora",
+      "url": "${source_url}"
     },
     {
       "type": "Action.Submit",
-      "title": "Ask ${agent_name} a question",
+      "title": "Ask ${agent_name}",
       "data": {
         "msteams": {
           "type": "imBack",
