@@ -550,6 +550,11 @@ teams-test-announce:
 # Node 20 is required (node_modules built for it; system node may be newer)
 NODE_20 ?= $(HOME)/.nvm/versions/node/v20.20.2/bin/node
 
+# ngrok static domain — set once, enables proactive Teams notifications from EC2
+# Get yours at https://dashboard.ngrok.com/cloud-edge/domains
+# Usage: make teams-test-prod NGROK_DOMAIN=your-static-domain.ngrok-free.app
+NGROK_DOMAIN ?=
+
 AGENTS_PLAYGROUND_PORT ?= 56150
 TST_CFG = '{"botMessagingEndpoint":"http://localhost:$(TEAMS_BOT_PORT)/api/messages"}'
 
@@ -624,6 +629,22 @@ teams-test-prod: $(TEAMS_TEST_CFG)
 		--parameters '{"host":["$(PROD_POSTGRES_HOST)"],"portNumber":["$(PROD_POSTGRES_PORT)"],"localPortNumber":["$(PROD_POSTGRES_LOCAL)"]}' \
 		--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) &
 	@sleep 7
+	@if [ -n "$(NGROK_DOMAIN)" ]; then \
+		echo "$(CYAN)Starting ngrok tunnel ($(NGROK_DOMAIN))...$(NC)"; \
+		ngrok http --domain=$(NGROK_DOMAIN) $(TEAMS_BOT_PORT) > /tmp/ngrok.log 2>&1 & \
+		sleep 3; \
+		NGROK_URL="https://$(NGROK_DOMAIN)"; \
+		echo "$(GREEN)ngrok: $$NGROK_URL$(NC)"; \
+		aws ssm send-command \
+			--instance-ids $(EC2_INSTANCE_ID) \
+			--document-name AWS-RunShellScript \
+			--parameters "commands=[\"sed -i 's|TEAMS_AGENT_URL=.*|TEAMS_AGENT_URL=$$NGROK_URL|' /home/ec2-user/octo-rapid-aurora/prod-deployment/.env && docker exec aurora-content-creator sh -c 'kill -HUP 1' 2>/dev/null; docker restart aurora-content-creator\"]" \
+			--profile $(AWS_SSO_PROFILE) --region $(AWS_REGION) > /dev/null; \
+		echo "$(GREEN)EC2 content creator updated with TEAMS_AGENT_URL=$$NGROK_URL$(NC)"; \
+	else \
+		echo "$(YELLOW)No NGROK_DOMAIN set — proactive notifications disabled (type 'feed' to poll)$(NC)"; \
+		echo "$(YELLOW)To enable: make teams-test-prod NGROK_DOMAIN=your-domain.ngrok-free.app$(NC)"; \
+	fi
 	@echo "$(CYAN)Starting bot locally (Node 20) against production services...$(NC)"
 	@cd teams-agent && \
 		BOT_ID= BOT_PASSWORD= BOT_PORT=$(TEAMS_BOT_PORT) NODE_ENV=production \
@@ -660,4 +681,5 @@ teams-test-stop-prod:
 	@pkill -f "portNumber.*$(PROD_ORACLE_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_CC_LOCAL)" 2>/dev/null || true
 	@pkill -f "portNumber.*$(PROD_POSTGRES_LOCAL)" 2>/dev/null || true
+	@pkill -f "ngrok" 2>/dev/null || true
 	@echo "$(GREEN)✓ Stopped$(NC)"
