@@ -7,6 +7,8 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel
 
@@ -60,11 +62,34 @@ class TriggerResponse(BaseModel):
     job_id: Optional[str] = None
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _neo4j_client
+    try:
+        _neo4j_client = Neo4jClient(
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_user,
+            password=settings.neo4j_password,
+            database=settings.neo4j_database,
+            logger_instance=logger,
+        )
+        _neo4j_client.connect()
+        logger.info("Curator API: shared Neo4j client ready")
+    except Exception as e:
+        logger.warning(f"Curator API: could not pre-connect Neo4j ({e}); will fall back per-request")
+        _neo4j_client = None
+    yield
+    if _neo4j_client:
+        _neo4j_client.close()
+        logger.info("Curator API: Neo4j client closed")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Curator Service",
     description="Event reconciliation and topic organization service",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Instrument FastAPI with OpenTelemetry
@@ -74,6 +99,7 @@ if OTEL_AVAILABLE:
 # Global state - will be set by curator.py
 _scheduler = None
 _start_time: Optional[datetime] = None
+_neo4j_client: Optional[Neo4jClient] = None
 _job_state: dict = {
     "topic_organization": {
         "is_running": False,
@@ -98,6 +124,18 @@ def set_start_time(start_time: datetime):
     """Set the service start time."""
     global _start_time
     _start_time = start_time
+
+
+def set_neo4j_client(client: Neo4jClient):
+    """Share the long-lived Neo4j client from curator.py so stats endpoints avoid reconnect overhead."""
+    global _neo4j_client
+    _neo4j_client = client
+
+
+def _get_repo() -> Optional[GraphRepository]:
+    if _neo4j_client:
+        return GraphRepository(_neo4j_client, logger_instance=logger)
+    return None
 
 
 def update_job_state(job_name: str, **kwargs):
@@ -133,29 +171,32 @@ async def get_topic_stats(user: Optional[dict] = Depends(get_user_context)):
     Requires admin or superadmin role.
     """
     logger.info(f"Topic stats requested by {user['email']} (role: {user['role']})")
-    
+
+    repo = _get_repo()
+    owns_conn = False
     neo4j_client = None
+
     try:
-        # Connect to Neo4j
-        neo4j_client = Neo4jClient(
-            uri=settings.neo4j_uri,
-            user=settings.neo4j_user,
-            password=settings.neo4j_password,
-            database=settings.neo4j_database,
-            logger_instance=logger
-        )
-        neo4j_client.connect()
-        repo = GraphRepository(neo4j_client, logger_instance=logger)
-        
-        # Get counts
+        if repo is None:
+            # Fallback: create a short-lived connection (curator.py hasn't set the shared client yet)
+            neo4j_client = Neo4jClient(
+                uri=settings.neo4j_uri,
+                user=settings.neo4j_user,
+                password=settings.neo4j_password,
+                database=settings.neo4j_database,
+                logger_instance=logger
+            )
+            neo4j_client.connect()
+            repo = GraphRepository(neo4j_client, logger_instance=logger)
+            owns_conn = True
+
         total_topics = repo.count_nodes(Topic)
-        unorganized_topics = len(repo.get_unorganized_topics())
+        unorganized_topics = repo.count_unorganized_topics()
         organized_topics = total_topics - unorganized_topics
-        
-        # Determine curation mode
+
         threshold = settings.incremental_curation_threshold
         curation_mode = "incremental" if total_topics > threshold else "full"
-        
+
         return TopicStats(
             total_topics=total_topics,
             unorganized_topics=unorganized_topics,
@@ -167,7 +208,7 @@ async def get_topic_stats(user: Optional[dict] = Depends(get_user_context)):
         logger.error(f"Error getting topic stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if neo4j_client:
+        if owns_conn and neo4j_client:
             neo4j_client.close()
 
 

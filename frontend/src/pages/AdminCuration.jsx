@@ -1,41 +1,70 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getCuratorTopicStats, getCuratorStatus, triggerTopicCuration } from '../services/api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  getCuratorTopicStats,
+  getCuratorStatus,
+  triggerTopicCuration,
+  getTopicsHierarchy,
+} from '../services/api';
+import TopicTree from '../components/TopicTree';
 import './Admin.css';
 import { RefreshIcon, PlayIcon, CheckIcon, WarningIcon, HourglassIcon } from '../components/icons';
 
 const AdminCuration = () => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [statsError, setStatsError] = useState(null);
   const [topicStats, setTopicStats] = useState(null);
   const [curatorStatus, setCuratorStatus] = useState(null);
+  const [statsRefreshing, setStatsRefreshing] = useState(false);
+
+  const [hierarchyData, setHierarchyData] = useState(null);
+  const [hierarchyLoading, setHierarchyLoading] = useState(false);
+  const [hierarchyError, setHierarchyError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const hierarchyLoadedRef = useRef(false);
+
   const [triggering, setTriggering] = useState(false);
   const [triggerMessage, setTriggerMessage] = useState(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // Load stats without blocking the page — update in place
+  const loadStats = useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) setStatsRefreshing(true);
+    setStatsError(null);
     try {
       const [stats, status] = await Promise.all([
         getCuratorTopicStats(),
-        getCuratorStatus()
+        getCuratorStatus(),
       ]);
       setTopicStats(stats);
       setCuratorStatus(status);
     } catch (err) {
-      console.error('Failed to load curator data:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to load curator data');
+      setStatsError(err.response?.data?.detail || err.message || 'Failed to load curator data');
     } finally {
-      setLoading(false);
+      setStatsRefreshing(false);
+    }
+  }, []);
+
+  // Load topic hierarchy once — it's large and doesn't change frequently
+  const loadHierarchy = useCallback(async () => {
+    if (hierarchyLoadedRef.current) return;
+    hierarchyLoadedRef.current = true;
+    setHierarchyLoading(true);
+    setHierarchyError(null);
+    try {
+      const data = await getTopicsHierarchy();
+      setHierarchyData(data);
+    } catch (err) {
+      setHierarchyError(err.response?.data?.detail || err.message || 'Failed to load topic hierarchy');
+      hierarchyLoadedRef.current = false; // allow retry
+    } finally {
+      setHierarchyLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(loadData, 30000);
+    loadStats();
+    loadHierarchy();
+    const interval = setInterval(() => loadStats(), 30000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadStats, loadHierarchy]);
 
   const handleTriggerCuration = async () => {
     setTriggering(true);
@@ -43,117 +72,181 @@ const AdminCuration = () => {
     try {
       const result = await triggerTopicCuration();
       setTriggerMessage({ type: 'success', text: result.message || 'Curation job triggered successfully!' });
-      // Refresh status after triggering
-      setTimeout(loadData, 1000);
+      setTimeout(() => loadStats(false), 1500);
     } catch (err) {
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to trigger curation';
-      setTriggerMessage({ type: 'error', text: errorMsg });
+      setTriggerMessage({
+        type: 'error',
+        text: err.response?.data?.detail || err.message || 'Failed to trigger curation',
+      });
     } finally {
       setTriggering(false);
     }
   };
 
-  const getJobState = (jobName) => {
-    if (!curatorStatus?.jobs) return null;
-    return curatorStatus.jobs.find(j => j.name === jobName);
+  const handleRefreshHierarchy = () => {
+    hierarchyLoadedRef.current = false;
+    setHierarchyData(null);
+    loadHierarchy();
   };
 
+  const getJobState = (jobName) => curatorStatus?.jobs?.find(j => j.name === jobName) || null;
   const topicJob = getJobState('topic_organization');
   const isRunning = topicJob?.is_running || false;
 
   const formatDate = (dateStr) => {
     if (!dateStr) return 'Never';
-    const date = new Date(dateStr);
-    return date.toLocaleString();
+    return new Date(dateStr).toLocaleString();
   };
+
+  const topicCount = hierarchyData?.nodes ? Object.keys(hierarchyData.nodes).length : null;
 
   return (
     <div className="admin-container">
       <div className="admin-header">
         <h1>Topic Curation</h1>
-        <p>Manage knowledge graph topic hierarchy organization</p>
+        <p>Browse and manage the knowledge graph topic hierarchy</p>
       </div>
 
-      {error && <div className="admin-error"><WarningIcon size={16} /> {error}</div>}
-
-      {loading && !topicStats ? (
-        <div className="spinner" />
-      ) : (
-        <div className="admin-content">
-          {/* Topic Statistics */}
-          <div className="kg-stats-row">
-            <div className="kg-stat-card">
-              <div className="kg-stat-value">{topicStats?.total_topics || 0}</div>
-              <div className="kg-stat-label">Total Topics</div>
-            </div>
-            <div className="kg-stat-card">
-              <div className="kg-stat-value" style={{ color: 'var(--success)' }}>
-                {topicStats?.organized_topics || 0}
-              </div>
-              <div className="kg-stat-label"><CheckIcon size={14} /> Organized</div>
-            </div>
-            <div className="kg-stat-card">
-              <div className="kg-stat-value" style={{ color: topicStats?.unorganized_topics > 0 ? 'var(--warning)' : 'var(--success)' }}>
-                {topicStats?.unorganized_topics || 0}
-              </div>
-              <div className="kg-stat-label"><WarningIcon size={14} /> Unorganized</div>
-            </div>
-            <div className="kg-stat-card">
-              <div className="kg-stat-value">{topicStats?.curation_threshold || 0}</div>
-              <div className="kg-stat-label">Mode Threshold</div>
-            </div>
+      {/* Stats row — always visible; shows skeleton values until loaded */}
+      <div className="kg-stats-row">
+        <div className="kg-stat-card">
+          <div className="kg-stat-value">{topicStats?.total_topics ?? '—'}</div>
+          <div className="kg-stat-label">Total Topics</div>
+        </div>
+        <div className="kg-stat-card">
+          <div className="kg-stat-value" style={{ color: 'var(--success)' }}>
+            {topicStats?.organized_topics ?? '—'}
           </div>
-
-          {/* Curation Mode Info */}
-          <div className="curation-mode-card">
-            <h3>Current Curation Mode</h3>
-            <div className="curation-mode-info">
-              <span className={`curation-mode-badge ${topicStats?.curation_mode || 'full'}`}>
-                {topicStats?.curation_mode === 'incremental' ? 'INCREMENTAL' : 'FULL'}
-              </span>
-              <p className="curation-mode-description">
-                {topicStats?.curation_mode === 'incremental' ? (
-                  <>
-                    <strong>Incremental mode:</strong> Only unorganized topics will be processed.
-                    Each unorganized topic is clustered with nearby organized topics for context,
-                    ensuring proper integration into the existing hierarchy.
-                  </>
-                ) : (
-                  <>
-                    <strong>Full mode:</strong> All topics will be processed to build a unified hierarchy.
-                    This ensures comprehensive organization but uses more LLM calls.
-                  </>
-                )}
-              </p>
-              <p className="curation-mode-threshold">
-                Mode switches to incremental when total topics exceed {topicStats?.curation_threshold || 4000}.
-              </p>
-            </div>
+          <div className="kg-stat-label"><CheckIcon size={14} /> Organized</div>
+        </div>
+        <div className="kg-stat-card">
+          <div
+            className="kg-stat-value"
+            style={{ color: topicStats?.unorganized_topics > 0 ? 'var(--warning)' : 'var(--success)' }}
+          >
+            {topicStats?.unorganized_topics ?? '—'}
           </div>
+          <div className="kg-stat-label"><WarningIcon size={14} /> Unorganized</div>
+        </div>
+        <div className="kg-stat-card">
+          <div className="kg-stat-value">
+            <span className={`curation-mode-badge ${topicStats?.curation_mode || 'full'}`}>
+              {topicStats ? (topicStats.curation_mode === 'incremental' ? 'INC' : 'FULL') : '—'}
+            </span>
+          </div>
+          <div className="kg-stat-label">Curation Mode</div>
+        </div>
+      </div>
 
-          {/* Job Status */}
-          <div className="curation-job-card">
-            <div className="curation-job-header">
-              <h3>Topic Organization Job</h3>
-              <button 
-                className="btn btn-icon" 
-                onClick={loadData} 
-                title="Refresh status"
-                disabled={loading}
+      {statsError && <div className="admin-error"><WarningIcon size={16} /> {statsError}</div>}
+
+      {/* Two-column layout: topic browser | job controls */}
+      <div className="curation-layout">
+
+        {/* Topic hierarchy browser */}
+        <div className="curation-tree-panel">
+          <div className="curation-panel-header">
+            <h3>
+              Topic Hierarchy
+              {topicCount !== null && (
+                <span className="curation-topic-count">{topicCount.toLocaleString()} topics</span>
+              )}
+            </h3>
+            <div className="curation-panel-actions">
+              <input
+                className="curation-search"
+                type="search"
+                placeholder="Search topics…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+              <button
+                className="btn btn-icon"
+                onClick={handleRefreshHierarchy}
+                disabled={hierarchyLoading}
+                title="Reload hierarchy"
               >
                 <RefreshIcon size={16} />
               </button>
             </div>
-            
+          </div>
+
+          {hierarchyError && (
+            <div className="admin-error" style={{ margin: '0 0 12px' }}>
+              <WarningIcon size={16} /> {hierarchyError}
+              <button className="btn btn-sm" onClick={handleRefreshHierarchy} style={{ marginLeft: 8 }}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {hierarchyLoading ? (
+            <div className="curation-tree-loading">
+              <div className="spinner" />
+              <span>Loading topic hierarchy…</span>
+            </div>
+          ) : hierarchyData ? (
+            <div className="curation-tree-scroll">
+              <TopicTree
+                hierarchyData={hierarchyData}
+                selectedIds={new Set()}
+                onSelectionChange={() => {}}
+                isLoading={false}
+                searchTerm={searchTerm}
+              />
+            </div>
+          ) : !hierarchyError ? (
+            <div className="curation-tree-loading">
+              <div className="spinner" />
+              <span>Loading topic hierarchy…</span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Right panel: job controls */}
+        <div className="curation-controls-panel">
+
+          {/* Mode info */}
+          {topicStats && (
+            <div className="curation-mode-card">
+              <h3>Curation Mode</h3>
+              <div className="curation-mode-info">
+                <span className={`curation-mode-badge ${topicStats.curation_mode}`}>
+                  {topicStats.curation_mode === 'incremental' ? 'INCREMENTAL' : 'FULL'}
+                </span>
+                <p className="curation-mode-description">
+                  {topicStats.curation_mode === 'incremental' ? (
+                    <><strong>Incremental:</strong> Only unorganized topics will be processed.</>
+                  ) : (
+                    <><strong>Full:</strong> All topics rebuilt into a unified hierarchy.</>
+                  )}
+                </p>
+                <p className="curation-mode-threshold">
+                  Switches to incremental above {topicStats.curation_threshold.toLocaleString()} topics.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Job status */}
+          <div className="curation-job-card">
+            <div className="curation-job-header">
+              <h3>Topic Organization Job</h3>
+              <button
+                className="btn btn-icon"
+                onClick={() => loadStats(true)}
+                title="Refresh status"
+                disabled={statsRefreshing}
+              >
+                <RefreshIcon size={16} />
+              </button>
+            </div>
+
             <div className="curation-job-status">
               <div className="job-status-row">
                 <span className="job-status-label">Status:</span>
                 <span className={`job-status-value ${isRunning ? 'running' : 'idle'}`}>
-                  {isRunning ? (
-                    <><span className="spinner-small" /> Running...</>
-                  ) : (
-                    'Idle'
-                  )}
+                  {isRunning ? <><span className="spinner-small" /> Running…</> : 'Idle'}
                 </span>
               </div>
               <div className="job-status-row">
@@ -166,7 +259,7 @@ const AdminCuration = () => {
                 <div className="job-status-row">
                   <span className="job-status-label">Next Scheduled:</span>
                   <span className="job-status-value">
-                    <HourglassIcon size={14} /> {formatDate(topicJob?.next_run)}
+                    <HourglassIcon size={14} /> {formatDate(topicJob.next_run)}
                   </span>
                 </div>
               )}
@@ -178,7 +271,6 @@ const AdminCuration = () => {
               )}
             </div>
 
-            {/* Trigger Button */}
             <div className="curation-trigger-section">
               <button
                 className="btn btn-primary btn-lg"
@@ -186,35 +278,35 @@ const AdminCuration = () => {
                 disabled={triggering || isRunning}
               >
                 {triggering ? (
-                  <><span className="spinner-small" /> Triggering...</>
+                  <><span className="spinner-small" /> Triggering…</>
                 ) : isRunning ? (
-                  <><span className="spinner-small" /> Job Running...</>
+                  <><span className="spinner-small" /> Job Running…</>
                 ) : (
                   <><PlayIcon size={18} /> Run Topic Curation</>
                 )}
               </button>
-              
+
               {triggerMessage && (
                 <div className={`trigger-message ${triggerMessage.type}`}>
                   {triggerMessage.type === 'success' ? <CheckIcon size={16} /> : <WarningIcon size={16} />}
                   {triggerMessage.text}
                 </div>
               )}
-              
+
               <p className="curation-trigger-help">
                 {topicStats?.unorganized_topics > 0 ? (
                   <>
-                    There {topicStats.unorganized_topics === 1 ? 'is' : 'are'} <strong>{topicStats.unorganized_topics}</strong> unorganized 
-                    topic{topicStats.unorganized_topics === 1 ? '' : 's'} waiting to be integrated into the hierarchy.
+                    <strong>{topicStats.unorganized_topics}</strong> unorganized topic
+                    {topicStats.unorganized_topics === 1 ? '' : 's'} waiting to be integrated.
                   </>
-                ) : (
-                  'All topics are currently organized in the hierarchy.'
-                )}
+                ) : topicStats ? (
+                  'All topics are currently organized.'
+                ) : null}
               </p>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

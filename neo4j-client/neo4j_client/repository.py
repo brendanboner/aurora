@@ -792,9 +792,22 @@ class GraphRepository:
         
         results = self.client.execute_query(query)
         topics = [result.get("t", {}) for result in results]
-        
+
         self.logger.info(f"Retrieved {len(topics)} unorganized topics (no hierarchy relationships)")
         return topics
+
+    def count_unorganized_topics(self) -> int:
+        """Count topics with no ENCOMPASSES or SUBTOPIC_OF relationships without fetching nodes."""
+        query = """
+        MATCH (t:Topic)
+        WHERE NOT (t)-[:ENCOMPASSES]-()
+          AND NOT (t)-[:SUBTOPIC_OF]-()
+        RETURN count(t) AS count
+        """
+        results = self.client.execute_query(query)
+        count = results[0].get("count", 0) if results else 0
+        self.logger.debug(f"Counted {count} unorganized topics")
+        return count
 
     def get_events_by_datasource_and_date(
         self,
