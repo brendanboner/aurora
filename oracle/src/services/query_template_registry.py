@@ -2254,36 +2254,42 @@ class QueryTemplateRegistry:
             // Find the person
             MATCH (p:Person)
             WHERE ($people IS NULL OR size($people) = 0 OR p.name IN $people OR p.person_id IN $people)
-            
-            // Get their affiliations
+
+            // Get their org affiliations
             OPTIONAL MATCH (p)-[aff:AFFILIATED_WITH]->(o:Organization)
-            
+
+            // Get workgroup memberships (DataSource nodes they're MEMBER_OF)
+            OPTIONAL MATCH (p)-[:MEMBER_OF]->(ds:DataSource)
+
             // Get topics they're connected to
             OPTIONAL MATCH (p)-[:CONNECTED_TO]->(t:Topic)
-            
+
             // Get recent resources mentioning them - sort BEFORE aggregation
             OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
             WHERE r.publish_date IS NOT NULL
               AND coalesce(r.archived, false) = false
-            
+
             // Sort while r is still in scope, then aggregate
-            WITH p, o, aff, t, r
+            WITH p, o, aff, ds, t, r
             ORDER BY r.publish_date DESC
-            
+
             WITH p, o, aff,
-                 collect(DISTINCT t.name)[0..10] as topics,
+                 collect(DISTINCT ds.name)[0..5] as workgroups,
+                 collect(DISTINCT t.name)[0..5] as topics,
                  collect(DISTINCT {
                      id: r.url_hash,
                      title: r.title,
                      date: r.publish_date,
                      url: r.url
                  })[0..10] as recent_resources
-            
-            RETURN 
+
+            RETURN
                 p.name as name,
                 p.person_id as person_id,
                 p.email as email,
+                p.description as description,
                 collect(DISTINCT {name: o.name, role: aff.role})[0..5] as affiliations,
+                workgroups,
                 topics,
                 recent_resources
             LIMIT $limit
@@ -2890,17 +2896,29 @@ ORDER BY e.start_date DESC
                 f"{a.get('role', 'member')} at {a['name']}"
                 for a in affiliations if a.get("name")
             )
+            workgroups = row.get("workgroups") or []
             topics = row.get("topics") or []
             recent = row.get("recent_resources") or []
+            description = row.get("description") or ""
+
             summary_parts = []
-            if affil_text:
+            # Use stored description if available (richest source)
+            if description:
+                summary_parts.append(description)
+            elif affil_text:
                 summary_parts.append(affil_text)
-            if topics:
-                summary_parts.append(f"Connected topics: {', '.join(topics[:5])}")
+            # Add workgroup memberships
+            if workgroups:
+                wg_text = ", ".join(workgroups[:4])
+                summary_parts.append(f"Workgroup contributions: {wg_text}")
+            # Add topic context
+            if topics and not description:
+                summary_parts.append(f"Topic areas: {', '.join(topics[:4])}")
+            # Recent documents mentioning this person
             if recent:
                 titles = [r.get("title") for r in recent[:3] if r.get("title")]
                 if titles:
-                    summary_parts.append(f"Recent documents: {'; '.join(titles)}")
+                    summary_parts.append(f"Cited in: {'; '.join(titles)}")
             from datetime import date as _date
             node = {
                 "id": row.get("person_id"),
@@ -2911,6 +2929,7 @@ ORDER BY e.start_date DESC
                 "role": primary_aff.get("role"),
                 "organization": primary_aff.get("name"),
                 "affiliations": affiliations,
+                "workgroups": workgroups,
                 "topics": topics,
                 "summary": ". ".join(summary_parts) if summary_parts else None,
                 "type": "Person",
