@@ -148,30 +148,31 @@ run_setup() {
   echo "  Running health checks before the demo..."
   echo
 
+  # Detect whether we have an oracle tunnel open or are running locally
+  local oracle_url="${AURORA_ORACLE_URL:-http://localhost:8003}"
+  local prod_url="https://aurora.exiq.ai"
   local all_ok=true
 
-  # Oracle health
-  status_check "Oracle service" curl -sf http://localhost:8002/health || all_ok=false
+  printf "  Oracle URL: ${CYN}%s${RST}\n\n" "$oracle_url"
 
-  # Auth health
-  status_check "Auth service" curl -sf http://localhost:8001/health || all_ok=false
+  # Production EC2 services via HTTPS (always reachable from laptop)
+  status_check "Production EC2 reachable" curl -sf "${prod_url}/health" || all_ok=false
+  status_check "Production auth gateway"  curl -sf "${prod_url}/api/backend/health" || all_ok=false
 
-  # Backend health
-  status_check "Backend service" curl -sf http://localhost:8000/health || all_ok=false
+  # Oracle (via SSM tunnel or localhost)
+  status_check "Oracle service (${oracle_url})" \
+    curl -sf "${oracle_url}/health" || {
+      printf "  ${YLW}  → Open tunnel: make teams-test-prod-oracle  then set AURORA_ORACLE_URL=http://localhost:8002${RST}\n"
+      all_ok=false
+    }
 
-  # Redis reachable
-  status_check "Redis" docker compose exec -T redis redis-cli ping || all_ok=false
-
-  # Neo4j node count
-  status_check "Neo4j has data" bash -c 'docker compose exec -T neo4j cypher-shell -u neo4j -p "$(grep NEO4J_PASSWORD .env | cut -d= -f2)" "MATCH (n) RETURN count(n) as c" 2>/dev/null | grep -v "^c$" | grep -qE "^[1-9]"' || all_ok=false
-
-  # CLI smoke query
+  # CLI smoke query — uses AURORA_ORACLE_URL
   echo
-  printf "  Running smoke query (first call — may take 10–15 s cold)...\n"
+  printf "  Running smoke query (may take 10–15 s cold)...\n"
   if "$AURORA_CLI" --pipeline fast "What is the difference between Wi-Fi 7 and Wi-Fi 8?" 2>/dev/null | grep -q "Wi-Fi"; then
     printf "  %-45s${GRN}✓${RST}\n" "Smoke query returns content"
   else
-    printf "  %-45s${RED}✗ Thin or empty response — check oracle logs${RST}\n" "Smoke query"
+    printf "  %-45s${RED}✗ Thin or empty response${RST}\n" "Smoke query"
     all_ok=false
   fi
 
@@ -181,8 +182,9 @@ run_setup() {
   if $all_ok; then
     printf "${GRN}${BOLD}  ✅  All checks passed. Ready to demo.${RST}\n"
   else
-    printf "${RED}${BOLD}  ❌  One or more checks failed. Fix before presenting.${RST}\n"
-    printf "${DIM}  Run: docker compose logs -f oracle   to diagnose.${RST}\n"
+    printf "${RED}${BOLD}  ❌  One or more checks failed.${RST}\n"
+    printf "${DIM}  If oracle failed: run 'make teams-test-prod-oracle' in another terminal,\n"
+    printf "  then re-run with: AURORA_ORACLE_URL=http://localhost:8002 ./doc/demo/demo_runner.sh --setup${RST}\n"
   fi
   echo
 }
@@ -192,10 +194,17 @@ run_warmup() {
   clear
   header "🔥  Cache Warm-up" "$(date '+%H:%M')"
 
-  echo "  Flushing stale fast cache..."
-  docker compose exec -T redis redis-cli EVAL \
-    "local k=redis.call('keys',ARGV[1]) for i=1,#k,5000 do redis.call('del',unpack(k,i,math.min(i+4999,#k))) end return #k" \
-    0 "fast:*" 2>/dev/null && echo "  Cache flushed." || echo "  (Redis not reachable locally — flush on EC2 if needed)"
+  # Flush the production Redis fast cache via SSM
+  echo "  Flushing production fast cache via SSM..."
+  python3 - << 'PYEOF' 2>/dev/null && echo "  Cache flushed." || echo "  (SSM flush skipped — cache will warm on first query)"
+import boto3, time, os
+s = boto3.Session(profile_name=os.getenv("AWS_SSO_PROFILE","PowerUserAccess-716121312929"), region_name="us-east-1").client("ssm")
+r = s.send_command(InstanceIds=[os.getenv("EC2_INSTANCE_ID","i-083e73fca8dbe3191")], DocumentName="AWS-RunShellScript",
+  Parameters={"commands":["sudo -u ec2-user docker exec aurora-redis redis-cli EVAL \"local k=redis.call('keys',ARGV[1]) for i=1,#k,5000 do redis.call('del',unpack(k,i,math.min(i+4999,#k))) end return #k\" 0 fast:* 2>/dev/null || echo skipped"]})
+time.sleep(10)
+inv = s.get_command_invocation(CommandId=r["Command"]["CommandId"], InstanceId=os.getenv("EC2_INSTANCE_ID","i-083e73fca8dbe3191"))
+exit(0 if inv["Status"] == "Success" else 1)
+PYEOF
 
   echo
   local queries=(
