@@ -114,5 +114,5 @@ export function getWorkingGroupBySlug(teamsSlug: string): WorkingGroupPersona | 
 export function listWorkingGroupSlugs(): string {
   return WORKING_GROUP_REGISTRY.map((wg) =>
     `• **${wg.name}** — \`@${wg.slug}\``
-  ).join('\n');
+  ).join('\n\n');
 }

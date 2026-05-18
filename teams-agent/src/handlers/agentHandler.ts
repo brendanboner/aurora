@@ -96,13 +96,13 @@ export class AgentHandler {
 
     const msg = [
       `**Aurora Agents**\n`,
-      `**Creator Agents** (personalised personas)`,
+      `**Creator Agents** (personalised personas)\n`,
       agentLines,
-      ``,
-      `**Working Groups & Organisations** (knowledge graph)`,
+      `\n`,
+      `**Working Groups & Organisations** (knowledge graph)\n`,
       listWorkingGroupSlugs(),
-      ``,
-      `Use: \`@aurora-slug your question\``,
+      `\n`,
+      `Use: \`@aurora-slug your question\`\n`,
       `Subscribe to updates: \`subscribe @aurora-slug\``,
     ].join('\n');
 
@@ -328,8 +328,8 @@ export class AgentHandler {
 
     const sourceLinks = response.documents?.length
       ? '\n\n**Sources:**\n' + response.documents.slice(0, 5).map((doc: any, idx: number) =>
-          `${idx + 1}. [${doc.title}](${doc.url})`
-        ).join('\n')
+        `${idx + 1}. [${doc.title}](${doc.url})`
+      ).join('\n')
       : '';
 
     const answer = response.answer || 'Here are the relevant results:';

@@ -202,6 +202,16 @@ export class AuroraOracleService {
   /**
    * Check if Oracle service is healthy
    */
+  /** Call the oracle enhance endpoint with documents from a previous query. */
+  async enhance(userId: string, question: string, documents: Array<{ title: string; url: string }>): Promise<string> {
+    const response = await this.apiClient.post('/enhance', {
+      user_id: userId,
+      question,
+      documents,
+    });
+    return response.data?.enhanced_answer || response.data?.answer || '';
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       const response = await this.apiClient.get('/api/oracle/health');

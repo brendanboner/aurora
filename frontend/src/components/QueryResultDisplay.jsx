@@ -252,20 +252,15 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   };
 
   const renderCitationFragments = (value) => {
-    if (typeof value !== 'string') {
-      return value;
-    }
+    if (typeof value !== 'string') return value;
 
-    return value.split(/(\[\d+\])/g).map((part, idx) => {
-      const match = part.match(/^\[(\d+)\]$/);
-      if (!match) {
-        return part;
-      }
+    // Match both [1] and [Doc 1] citation formats
+    return value.split(/(\[Doc \d+\]|\[\d+\])/g).map((part, idx) => {
+      const match = part.match(/^\[(?:Doc )?(\d+)\]$/);
+      if (!match) return part;
 
       const url = citationUrlMap.get(match[1]);
-      if (!url) {
-        return <span key={idx} className="citation-ref">{part}</span>;
-      }
+      if (!url) return <span key={idx} className="citation-ref">{part}</span>;
 
       return (
         <a

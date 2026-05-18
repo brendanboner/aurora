@@ -9,10 +9,11 @@ import axios from 'axios';
 // In-memory store of the last exchange per conversation (TTL 30 min).
 // Used to enrich follow-up questions with context from the previous answer.
 interface ConvMemory {
-  question: string;          // last question asked
-  answerSummary: string;     // first 300 chars of last answer
-  keyEntities: string[];     // proper nouns extracted from the answer
+  question: string;
+  answerSummary: string;
+  keyEntities: string[];
   ts: number;
+  documents?: Array<{ title: string; url: string }>;  // for enhance
 }
 const convMemory = new Map<string, ConvMemory>();
 const MEMORY_TTL_MS = 30 * 60 * 1000;
@@ -79,12 +80,13 @@ function enrichWithContext(question: string, memory: ConvMemory): string {
 }
 
 /** Store answer in per-conversation memory. */
-function remember(convId: string, question: string, answer: string): void {
+function remember(convId: string, question: string, answer: string, docs?: Array<{ title: string; url: string }>): void {
   convMemory.set(convId, {
     question,
     answerSummary: answer.slice(0, 300),
     keyEntities: extractEntities(answer),
     ts: Date.now(),
+    documents: docs,
   });
 }
 
@@ -166,9 +168,9 @@ export class ChatHandler {
         return;
       }
 
-      // Store the exchange in conversation memory
+      // Store the exchange in conversation memory (including documents for enhance)
       if (response?.answer) {
-        remember(convId, question, response.answer);
+        remember(convId, question, response.answer, response.documents);
       }
 
       const card = buildOracleResponseCard(response, question);
@@ -256,6 +258,51 @@ export class ChatHandler {
       );
     } catch {
       // Silent failure — never disrupt the group conversation
+    }
+  }
+
+  /**
+   * Handle "enhance" command — re-run last question through the enhance endpoint
+   * which fetches and reads the source documents for a richer, cited answer.
+   */
+  async handleEnhance(context: TurnContext): Promise<void> {
+    const convId = context.activity.conversation?.id ?? 'default';
+    const mem = recall(convId);
+
+    if (!mem || !mem.documents?.length) {
+      await context.sendActivity('No recent answer to enhance. Ask a question first, then type `enhance`.');
+      return;
+    }
+
+    await context.sendActivity(`Fetching source documents for a deeper answer on: *${mem.question}*`);
+
+    try {
+      const email = this.userService.extractUserEmail(context.activity);
+      const displayName = context.activity.from.name || 'User';
+      const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+
+      const enhanced = await withTimeout(
+        this.oracleService.enhance(auroraUser.id, mem.question, mem.documents),
+        45000,
+        'enhance query'
+      );
+
+      if (!enhanced) {
+        await context.sendActivity('Could not produce an enhanced answer. Please try again.');
+        return;
+      }
+
+      const sourceLinks = mem.documents.slice(0, 5)
+        .map((d, i) => `${i + 1}. [${d.title}](${d.url})`)
+        .join('\n');
+
+      await context.sendActivity(`**Enhanced answer:**\n\n${enhanced}\n\n**Sources:**\n${sourceLinks}`);
+    } catch (err: any) {
+      const isTimeout = err?.message?.includes('timeout');
+      await context.sendActivity(isTimeout
+        ? 'That is taking too long. Try a shorter question first.'
+        : 'Could not fetch the source documents right now. Please try again.'
+      );
     }
   }
 }

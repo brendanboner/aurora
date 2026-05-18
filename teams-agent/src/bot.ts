@@ -166,6 +166,10 @@ export class AuroraBot extends TeamsActivityHandler {
         else if (lower === 'feed' || lower === 'show feed' || lower === 'my feed') {
           await this.feedHandler.handleShowFeedCommand(context, 5);
         }
+        // ── enhance ───────────────────────────────────────────────────────
+        else if (lower === 'enhance' || lower === 'enhance answer' || lower === 'more detail') {
+          await this.chatHandler.handleEnhance(context);
+        }
         // ── agents / list agents ──────────────────────────────────────────
         else if (lower === 'agents' || lower === 'list agents' || lower === 'show agents') {
           await this.agentHandler.handleListAgents(context);
@@ -326,6 +330,7 @@ export class AuroraBot extends TeamsActivityHandler {
 
 **Feed**
 • \`feed\` — Your personalised content feed
+• \`enhance\` — Re-run the last answer with full source document analysis for deeper citations
 
 **Agents**
 • \`agents\` — List available AI agents

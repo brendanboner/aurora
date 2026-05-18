@@ -232,14 +232,17 @@
 }
 
 .message-assistant .message-text {
-  background-color: var(--response-surface);
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .message-assistant .query-result-display {
-  background-color: var(--response-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  padding: 14px;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .message-text.error {
