@@ -84,7 +84,12 @@ export class AgentHandler {
     const auroraUser = await this.userService.getOrCreateUser(email, displayName);
 
     const agentService = new AuroraAgentService(auroraUser.id, email);
-    const agents = await agentService.listAgents();
+    let agents: any[] = [];
+    try {
+      agents = await agentService.listAgents();
+    } catch {
+      // Content creator service unavailable — show working groups only
+    }
 
     const agentLines = agents.length > 0
       ? agents.map((a) => {
