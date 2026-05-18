@@ -62,6 +62,16 @@
   ],
   "actions": [
     {
+      "type": "Action.Submit",
+      "title": "Read full post",
+      "data": {
+        "msteams": {
+          "type": "imBack",
+          "value": "show"
+        }
+      }
+    },
+    {
       "type": "Action.OpenUrl",
       "title": "Open in Aurora",
       "url": "${source_url}"

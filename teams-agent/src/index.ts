@@ -170,6 +170,7 @@ server.post('/internal/push-feed-update', async (req, res) => {
     post_id:       body.post_id      || 0,
     title:         body.title,
     summary:       body.summary      || '',
+    body:          body.body,        // full post body for inline reading
     tags:          body.tags         || [],
     source_url:    body.source_url,
     published_at:  body.published_at,

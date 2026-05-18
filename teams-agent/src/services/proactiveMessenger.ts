@@ -10,6 +10,7 @@ export interface FeedUpdatePayload {
   post_id: number;
   title: string;
   summary: string;
+  body?: string;       // full post body for inline reading
   tags: string[];
   source_url?: string;
   published_at?: string;
@@ -21,10 +22,14 @@ export interface UserAgentUpdatePayload {
   post_id: number;
   title: string;
   summary: string;
+  body?: string;
   tags: string[];
   source_url?: string;
   published_at?: string;
 }
+
+// In-memory store: conversation → last delivered post (so 'show' works without an ID)
+export const lastPostByConv = new Map<string, { title: string; body: string; agent_name: string }>();
 
 /**
  * Sends a proactive feed update to all conversations subscribed to the given agent slug.
@@ -62,6 +67,9 @@ export class ProactiveMessenger {
     const botCard = this.buildBotCard(payload);
     const botActivity = MessageFactory.attachment(botCard);
 
+    // Pre-cache the post body so conversations can 'show' it inline
+    const postBody = payload.body || payload.summary;
+
     let sent = 0, errors = 0, webhookCount = 0, botCount = 0;
 
     for (const convId of allConvIds) {
@@ -81,8 +89,14 @@ export class ProactiveMessenger {
         }
       } else {
         // Bot push via continueConversation
-        await this.botPush(refMap.get(convId), botActivity, convId)
-          ? (botCount++, sent++) : errors++;
+        const ok = await this.botPush(refMap.get(convId), botActivity, convId);
+        if (ok) {
+          botCount++; sent++;
+          // Store post so the user can type 'show' to read full content inline
+          lastPostByConv.set(convId, { title: payload.title, body: postBody, agent_name: payload.agent_name });
+        } else {
+          errors++;
+        }
       }
     }
 

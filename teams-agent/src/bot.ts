@@ -10,6 +10,7 @@ import { FeedHandler } from './handlers/feedHandler';
 import { ChatHandler } from './handlers/chatHandler';
 import { AgentHandler } from './handlers/agentHandler';
 import { conversationReferenceStore } from './services/conversationReferenceStore';
+import { lastPostByConv } from './services/proactiveMessenger';
 
 // Matches @<slug> or @aurora-<slug> at the start of a message.
 // The @ is required to avoid matching regular words as agent names.
@@ -170,6 +171,15 @@ export class AuroraBot extends TeamsActivityHandler {
             await context.sendActivity(
               `**Subscriptions (${slugs.length}):**\n\n${list}\n\nType \`unsubscribe @aurora-slug\` to remove one.`
             );
+          }
+        }
+        // ── show — inline full post from last proactive notification ─────
+        else if (lower === 'show' || lower === 'read more' || lower === 'full post') {
+          const post = lastPostByConv.get(convId);
+          if (!post) {
+            await context.sendActivity('No recent post to show. Subscribe to an agent and wait for a notification, then type `show`.');
+          } else {
+            await context.sendActivity(`**${post.title}**\n*By ${post.agent_name}*\n\n${post.body}`);
           }
         }
         // ── feed ──────────────────────────────────────────────────────────
@@ -340,6 +350,7 @@ export class AuroraBot extends TeamsActivityHandler {
 
 **Feed**
 • \`feed\` — Your personalised content feed
+• \`show\` — Read the full text of the last agent notification inline
 • \`enhance\` — Re-run the last answer with full source document analysis for deeper citations
 
 **Agents**

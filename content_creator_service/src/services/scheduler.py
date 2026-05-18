@@ -216,6 +216,7 @@ class AgentScheduler:
                     post_id=post_id,
                     title=payload.get("title") or event.title or f"Update from {agent.name}",
                     summary=payload.get("summary") or "",
+                    body=payload.get("body") or "",
                     tags=tags if isinstance(tags, list) else [],
                 )
             
