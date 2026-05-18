@@ -590,6 +590,12 @@ teams-test-prod-cc:
 		--region $(AWS_REGION)
 
 teams-test-prod: $(TEAMS_TEST_CFG)
+	@echo "$(CYAN)Cleaning up any stale instances...$(NC)"
+	@pkill -f "agentsplayground" 2>/dev/null || true
+	@pkill -f "dist/index.js" 2>/dev/null || true
+	@pkill -f "portNumber.*$(PROD_BACKEND_LOCAL)" 2>/dev/null || true
+	@pkill -f "portNumber.*$(PROD_ORACLE_LOCAL)" 2>/dev/null || true
+	@sleep 1
 	@echo "$(CYAN)Opening SSM tunnels to production backend + oracle...$(NC)"
 	@aws ssm start-session \
 		--target $(EC2_INSTANCE_ID) \
