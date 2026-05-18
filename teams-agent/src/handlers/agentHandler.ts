@@ -94,22 +94,23 @@ export class AgentHandler {
     const agentLines = agents.length > 0
       ? agents.map((a) => {
           const desc = (a.description || a.persona || '').slice(0, 80);
-          const slug = a.teams_slug ? ` — \`@${a.teams_slug}\`` : '';
-          return `• **${a.name}**${slug}\n  ${desc}`;
+          const slug = a.teams_slug ? `\`@${a.teams_slug}\`` : '_no slug_';
+          return `• **${a.name}** — ${slug}\n  ${desc}`;
         }).join('\n\n')
       : '_(none configured)_';
 
     const msg = [
-      `**Aurora Agents**\n`,
-      `**Creator Agents** (personalised personas)\n`,
+      `**Aurora Agents**`,
+      ``,
+      `**Creator Agents**`,
       agentLines,
-      `\n`,
-      `**Working Groups & Organisations** (knowledge graph)\n`,
+      ``,
+      `**Working Groups & Organisations**`,
       listWorkingGroupSlugs(),
-      `\n`,
-      `Use: \`@aurora-slug your question\`\n`,
-      `Subscribe to updates: \`subscribe @aurora-slug\``,
-    ].join('\n');
+      ``,
+      `Use: \`@aurora-slug your question\``,
+      `Subscribe: \`subscribe @slug\` (the aurora- prefix is optional)`,
+    ].join('\n\n');
 
     await context.sendActivity(msg);
   }
