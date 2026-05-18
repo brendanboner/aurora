@@ -265,6 +265,10 @@ class LocalRouter:
         (r"(this|last|past) month('s)?\s+(activities|summary|events)", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         (r"(give|show).*?(idea|summary|overview).*(last|past|this)\s+month", RouteId.WORKGROUP_MONTHLY_SUMMARY),
         
+        # "what is the latest on [specific IEEE/IETF standard + event]" → status check
+        # Catches: "what is the latest on the IEEE 802.11bn March 2026 plenary"
+        (r"what('s| is) (the )?latest on.*?(ieee|ietf|wba|wfa|802\.\d+|plenary|session|ballot|draft|amendment)", RouteId.STATUS_CHECK),
+
         # Recent updates (general)
         (r"what are the latest .*?(updates|news|developments|changes)", RouteId.RECENT_CONTENT),
         (r"recent (updates|changes|news|developments|activity)", RouteId.RECENT_CONTENT),
