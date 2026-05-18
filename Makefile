@@ -550,7 +550,7 @@ PROD_ORACLE_HOST   ?= 172.24.0.14
 PROD_CC_HOST       ?= 172.24.0.18
 PROD_SVC_PORT      ?= 8000
 PROD_BACKEND_LOCAL ?= 8001
-PROD_ORACLE_LOCAL  ?= 8002
+PROD_ORACLE_LOCAL  ?= 8010
 PROD_CC_LOCAL      ?= 8003
 
 # SSM port-forwards — run each in its own terminal, keep open while testing

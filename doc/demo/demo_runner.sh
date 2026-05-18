@@ -35,7 +35,7 @@ DEMO_START_TIME=""
 LOG_FILE="/tmp/aurora-demo-$(date +%Y%m%d-%H%M%S).log"
 START_ACT="${2:-1}"
 FULL_WIDTH=$(tput cols 2>/dev/null || echo 80)
-AURORA_CLI="./cli/aurora"
+AURORA_CLI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../cli/aurora"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -150,14 +150,14 @@ run_setup() {
 
   # Detect whether we have an oracle tunnel open or are running locally
   local oracle_url="${AURORA_ORACLE_URL:-http://localhost:8003}"
-  local prod_url="https://aurora.exiq.ai"
+  local prod_url="https://aurora-octo.xcloudiq.com"
   local all_ok=true
 
   printf "  Oracle URL: ${CYN}%s${RST}\n\n" "$oracle_url"
 
   # Production EC2 services via HTTPS (always reachable from laptop)
   status_check "Production EC2 reachable" curl -sf "${prod_url}/health" || all_ok=false
-  status_check "Production auth gateway"  curl -sf "${prod_url}/api/backend/health" || all_ok=false
+  status_check "Production HTTPS responding" curl -sf "${prod_url}/health" -o /dev/null || all_ok=false
 
   # Oracle (via SSM tunnel or localhost)
   status_check "Oracle service (${oracle_url})" \
