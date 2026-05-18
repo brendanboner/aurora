@@ -2302,51 +2302,32 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Find the SOURCE organization (the company whose people we want).
-            // Use CONTAINS matching so "Extreme Networks" matches "Extreme Networks, Inc."
-            // and the first match wins (most specific org name supplied by the router).
+            // Find the source organization
             MATCH (org:Organization)
             WHERE ANY(name IN $organizations
                       WHERE toLower(org.name) CONTAINS toLower(name)
                          OR toLower(name) CONTAINS toLower(org.name))
-            
-            // Find all people affiliated with that org
+
+            // Find people affiliated with that org
             MATCH (p:Person)-[aff:AFFILIATED_WITH]->(org)
-            
-            // Optionally boost people who appear in context-org documents (e.g. WBA docs)
+
+            // Count document mentions (activity signal) — no WHERE filter on optional match
             OPTIONAL MATCH (r:Resource)-[:MENTIONS]->(p)
-            WHERE coalesce(r.archived, false) = false
-              AND (
-                size($context_orgs) = 0
-                OR EXISTS {
-                    MATCH (r)-[:MENTIONS|PUBLISHED_BY]->(co:Organization)
-                    WHERE ANY(cn IN $context_orgs
-                              WHERE toLower(co.name) CONTAINS toLower(cn)
-                                 OR toLower(cn) CONTAINS toLower(co.name))
-                }
-              )
-            
+            WITH p, org, aff, count(DISTINCT r) as activity_count
+
             // Topics the person is connected to
             OPTIONAL MATCH (p)-[:CONNECTED_TO]->(t:Topic)
-            
-            WITH p, org, aff,
-                 count(DISTINCT r) as context_activity,
-                 collect(DISTINCT t.name)[0..5] as topics,
-                 collect(DISTINCT {
-                     title: r.title,
-                     date:  r.publish_date,
-                     url:   r.url
-                 })[0..3] as recent_activity
-            ORDER BY context_activity DESC, p.name ASC
-            
+            WITH p, org, aff, activity_count,
+                 collect(DISTINCT t.name)[0..5] as topics
+
             RETURN
-                p.name        as name,
-                p.email       as email,
-                aff.role      as role,
-                org.name      as organization,
+                p.name              as name,
+                p.email             as email,
+                aff.role            as role,
+                org.name            as organization,
                 topics,
-                context_activity as activity_count,
-                recent_activity
+                activity_count
+            ORDER BY p.importance DESC, activity_count DESC, p.name ASC
             LIMIT $limit
             """
         )

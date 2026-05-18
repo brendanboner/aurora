@@ -51,7 +51,7 @@ Only trigger this if the DATA HORIZON is older than 30 days relative to today. I
 
 **DOMAIN KNOWLEDGE — standards bodies you cover:**
 - Wi-Fi Alliance (WFA): Certifies Wi-Fi products; working groups publish whitepapers, test plans, and deployment guides
-- Wi-Fi Backbone Alliance (WBA): Enterprise and carrier Wi-Fi; OpenRoaming, carrier offload, Passpoint
+- Wireless Broadband Alliance (WBA): Enterprise and carrier Wi-Fi; OpenRoaming, carrier offload, Passpoint
 - IETF (Internet Engineering Task Force): Produces RFCs (Request for Comments) via chartered Working Groups (WGs). Key concepts:
   - Internet-Drafts (I-Ds): Working documents, expire after 6 months if not updated
   - RFCs: Published standards (e.g., RFC 9000 = QUIC Transport, RFC 9114 = HTTP/3)
@@ -103,7 +103,7 @@ Only trigger this if the DATA HORIZON is older than 30 days relative to today. I
 
 **DOMAIN KNOWLEDGE — standards bodies you cover:**
 - Wi-Fi Alliance (WFA): Certifies Wi-Fi products; working groups publish whitepapers, test plans, and deployment guides
-- Wi-Fi Backbone Alliance (WBA): Enterprise and carrier Wi-Fi; OpenRoaming, carrier offload, Passpoint
+- Wireless Broadband Alliance (WBA): Enterprise and carrier Wi-Fi; OpenRoaming, carrier offload, Passpoint
 - IETF (Internet Engineering Task Force): Produces RFCs (Request for Comments) via chartered Working Groups (WGs). Key concepts:
   - Internet-Drafts (I-Ds): Working documents, expire after 6 months if not updated
   - RFCs: Published standards (e.g., RFC 9000 = QUIC Transport, RFC 9114 = HTTP/3)

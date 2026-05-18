@@ -88,6 +88,11 @@ class LocalRouter:
          RouteId.WBA_RECENT_ACTIVITY),
 
         # === PEOPLE QUERIES (highest priority - very specific) ===
+        # "who do I talk to / who should I contact / who is the expert on X" → find people in org
+        (r"who (do i|should i|can i)\s+(talk to|contact|speak (to|with)|reach out to|ask)\s+(about|regarding|on|for)?", RouteId.ORGANIZATION_REPRESENTATIVES),
+        (r"who('s| is) (the\s+)?(expert|lead|contact|point of contact|poc|responsible|in charge|cto|ceo|chair)\s+(for|on|at|in|of)?", RouteId.ORGANIZATION_REPRESENTATIVES),
+        (r"(contact|reach|speak|talk)\s+(to|with)\s+(someone|anyone|the\s+right\s+person)", RouteId.ORGANIZATION_REPRESENTATIVES),
+
         # "who represents X at Y" / "who is X's representative"
         (r"who (represents?|is representing)\s+[\w\s\-]+\s+(at|in|for|on)\s+", RouteId.ORGANIZATION_REPRESENTATIVES),
         (r"(who is|who's)\s+[\w\s\-]+('s)?\s+(representative|rep|liaison|contact|member)", RouteId.ORGANIZATION_REPRESENTATIVES),
@@ -526,6 +531,25 @@ class LocalRouter:
                 person_name = name_match.group(1).strip()
                 entities["people"] = [person_name]
                 logger.info(f"Extracted person name for {route_id.value}: '{person_name}'")
+
+        # For ORGANIZATION_REPRESENTATIVES with no org, promote topic→org for well-known mappings
+        # e.g. "who do I talk to about Passpoint" → inject WBA so the template can find people
+        _topic_to_org = {
+            "passpoint": "Wireless Broadband Alliance",
+            "openroaming": "Wireless Broadband Alliance",
+            "openroaming network": "Wireless Broadband Alliance",
+            "wireless broadband": "Wireless Broadband Alliance",
+            "wi-fi certification": "Wi-Fi Alliance",
+            "wi-fi alliance": "Wi-Fi Alliance",
+        }
+        if route_id == RouteId.ORGANIZATION_REPRESENTATIVES and not entities.get("organizations"):
+            all_terms = [t.lower() for t in entities.get("topics", []) + entities.get("workgroups", [])]
+            for term in all_terms:
+                mapped = _topic_to_org.get(term)
+                if mapped:
+                    entities["organizations"] = [mapped]
+                    logger.info(f"ORGANIZATION_REPRESENTATIVES: inferred org '{mapped}' from topic '{term}'")
+                    break
 
         # For TOPIC_COMPARISON, workgroup names serve as comparison subjects when no
         # explicit topic entities were extracted (e.g. "wifi 7 vs wifi 8" lands in workgroups).
