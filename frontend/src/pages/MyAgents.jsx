@@ -10,6 +10,7 @@ import {
   deleteMyAgent,
   triggerMyAgentGeneration,
   fixMyAgentPrompt,
+  clearMyAgentPosts,
 } from '../services/api';
 
 const initialForm = {
@@ -198,13 +199,29 @@ const MyAgents = () => {
     setError(null);
     try {
       const result = await fixMyAgentPrompt(agent.id);
-      setStatusMessage(`✓ ${agent.name}'s description has been rewritten to avoid content issues. Run now to try again.`);
+      const purged = result?.posts_purged ?? 0;
+      setStatusMessage(
+        `✓ ${agent.name}'s description has been rewritten${purged > 0 ? ` and ${purged} flagged post${purged !== 1 ? 's' : ''} cleared` : ''}. Run now to generate fresh content.`
+      );
       await loadAgents();
     } catch (err) {
       console.error('Fix prompt failed', err);
       setError(`Could not auto-fix ${agent.name}'s prompt. Try editing it manually.`);
     } finally {
       setFixingAgentId(null);
+    }
+  };
+
+  const handleClearPosts = async (agent) => {
+    setStatusMessage(null);
+    setError(null);
+    try {
+      const result = await clearMyAgentPosts(agent.id);
+      setStatusMessage(`✓ Cleared ${result?.posts_purged ?? 0} post${(result?.posts_purged ?? 0) !== 1 ? 's' : ''} for ${agent.name}. Run now to generate fresh content.`);
+      await loadAgents();
+    } catch (err) {
+      console.error('Clear posts failed', err);
+      setError(`Could not clear posts for ${agent.name}.`);
     }
   };
 
@@ -275,13 +292,23 @@ const MyAgents = () => {
               {isContentFilter ? ' due to a prompt issue.' : '.'}
             </span>
             {isContentFilter ? (
-              <button
-                className="fix-banner-btn"
-                disabled={fixingAgentId === agent.id}
-                onClick={() => handleFix(agent)}
-              >
-                {fixingAgentId === agent.id ? 'Fixing…' : 'Fix?'}
-              </button>
+              <>
+                <button
+                  className="fix-banner-btn"
+                  disabled={fixingAgentId === agent.id}
+                  onClick={() => handleFix(agent)}
+                  title="Rewrite the description to avoid content filtering and clear old posts"
+                >
+                  {fixingAgentId === agent.id ? 'Fixing…' : 'Fix description'}
+                </button>
+                <button
+                  className="fix-banner-btn secondary"
+                  onClick={() => handleClearPosts(agent)}
+                  title="Delete all generated posts so the next run starts clean"
+                >
+                  Clear posts
+                </button>
+              </>
             ) : (
               <button className="fix-banner-btn secondary" onClick={() => handleEdit(agent)}>
                 Edit agent
@@ -398,7 +425,7 @@ const MyAgents = () => {
                   }))
                 }
                 rows={4}
-                placeholder="Describe what you are working on, for example: I am working on an investigation into sticky clients for the next generation of Wi-Fi, and I would like to keep updated with anything related to this."
+                placeholder="Describe what you are tracking and why. Mention the standards, working groups, or sources you care about. Example: I am tracking Wi-Fi 8 (IEEE 802.11bn) development for enterprise deployment. I want updates on UHR progress, ballot timelines, MLO enhancements, and chip-level implications. Primary sources: IEEE 802.11 task group (TGbn), WFA Causeway Wi-Fi 8 task group, and WBA enterprise Wi-Fi discussions."
                 required
               />
             </label>

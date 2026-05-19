@@ -151,14 +151,14 @@ What is new in IETF this week?
 **Goal:** Aurora curating content in your voice, on your topics.
 
 1. **My Agents** → **Create agent**:
-   - **Name:** `Wi-Fi 8 Daily Brief`
-   - **Persona:** `Senior wireless architect. Dry, technical tone. Focus on chip-side implications.`
-   - **Topics:** `802.11be, 802.11bn, latency optimization`
+   - **Name:** `Wi-Fi 8 Daily Briefing`
+   - **Project description:** `I am tracking Wi-Fi 8 (IEEE 802.11bn) development for enterprise and chip-level deployment. I want updates on Ultra High Reliability (UHR) progress, ballot timelines, MLO enhancements, latency improvements, and how Wi-Fi 8 compares to Wi-Fi 7 for enterprise use cases. My primary sources are the IEEE 802.11 task group (TGbn), WFA Causeway Wi-Fi 8 task group, and WBA enterprise Wi-Fi discussions.`
+   - **Focus and lane guidance:** `Focus on 802.11bn, 802.11be, chip-side implications, latency, and enterprise deployment. Ignore general Wi-Fi news not related to Wi-Fi 8 development.`
    - **Cadence:** `daily-digest`
 2. Click **Create** → **Run now**.
 3. Wait ~30 s. Feed shows the first post.
 
-> "Daily digests in your voice, on your topics. Architects build agents for customer briefings. PMs build agents that watch a single workgroup."
+> "One description. No prompt engineering. The agent works out what sources to read, what's new, and writes a briefing in the style you've described. Architects use this for customer briefings; PMs use it to track a single workgroup."
 
 ---
 

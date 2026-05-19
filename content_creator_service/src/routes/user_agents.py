@@ -233,12 +233,33 @@ async def fix_agent_prompt(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not generate fix: {e}")
 
-    # Apply the rewrite and clear the error
+    # Apply the rewrite, purge old posts (their content may re-trigger the filter),
+    # and clear the error so a fresh generation can succeed.
     from ..models.user_agent import UserAgentUpdate
+    from ..services.post_service import PostService
     _user_agent_service.update_user_agent(
         x_user_id, agent_id,
         UserAgentUpdate(project_description=new_description)
     )
+    purged = PostService().purge_agent_posts(agent_id)
     _user_agent_service.clear_error(agent_id)
 
-    return {"new_description": new_description}
+    return {"new_description": new_description, "posts_purged": purged}
+
+
+@router.post("/{agent_id}/clear-posts")
+async def clear_agent_posts(
+    agent_id: int,
+    x_user_id: str = Header(..., alias="X-User-Id"),
+) -> dict:
+    """Delete all posts for a personal agent and clear any error state.
+    Useful when generated content is problematic and you want a fresh start."""
+    agent = _user_agent_service.get_user_agent(x_user_id, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    from ..services.post_service import PostService
+    purged = PostService().purge_agent_posts(agent_id)
+    _user_agent_service.clear_error(agent_id)
+
+    return {"posts_purged": purged, "message": f"Cleared {purged} post(s). Run the agent again for fresh content."}
