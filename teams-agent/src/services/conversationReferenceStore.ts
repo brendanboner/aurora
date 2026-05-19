@@ -62,6 +62,20 @@ export class ConversationReferenceStore {
     const tenantId = (ref.conversation as any)?.tenantId ?? null;
     const botId    = ref.bot?.id ?? null;
     const convType = opts.conversationType ?? ref.conversation?.conversationType ?? 'personal';
+
+    // For personal chats: retire stale entries for this user so the most recent
+    // session is always the active one. Subscriptions and group shares are preserved
+    // because they live on group/channel rows which are never touched here.
+    if (convType === 'personal' && opts.auroraUserId) {
+      await withDb(() => getPool().query(
+        `DELETE FROM teams_conversation_references
+         WHERE aurora_user_id = $1
+           AND conversation_type = 'personal'
+           AND conversation_id <> $2`,
+        [opts.auroraUserId, convId]
+      ), undefined);
+    }
+
     await withDb(() => getPool().query(
       `INSERT INTO teams_conversation_references
          (conversation_id, service_url, tenant_id, bot_id, conversation_type, channel_id, aad_object_id, aurora_user_id)
@@ -158,10 +172,18 @@ export class ConversationReferenceStore {
   }
 
   async linkAuroraUser(conversationId: string, auroraUserId: string): Promise<void> {
-    await withDb(() => getPool().query(
-      `UPDATE teams_conversation_references SET aurora_user_id=$2,updated_at=NOW() WHERE conversation_id=$1`,
-      [conversationId, auroraUserId]
-    ), undefined);
+    await withDb(async () => {
+      // Retire stale personal-chat entries for this user before linking the new one
+      await getPool().query(
+        `DELETE FROM teams_conversation_references
+         WHERE aurora_user_id = $1 AND conversation_type = 'personal' AND conversation_id <> $2`,
+        [auroraUserId, conversationId]
+      );
+      await getPool().query(
+        `UPDATE teams_conversation_references SET aurora_user_id=$2,updated_at=NOW() WHERE conversation_id=$1`,
+        [conversationId, auroraUserId]
+      );
+    }, undefined);
   }
 
   async setWebhookUrl(conversationId: string, agentSlug: string, webhookUrl: string): Promise<void> {
