@@ -169,9 +169,11 @@ export class ProactiveMessenger {
   }
 
   /**
-   * Push a personal user-agent update directly to all Teams conversations
-   * linked to a specific Aurora user (via aurora_user_id).
-   * Used for "My Agents" project-scoped agents from /profile/my-agents.
+   * Push a personal user-agent update.
+   *
+   * Privacy rule: personal agents go to personal/direct chats ONLY by default.
+   * A group chat only receives the update if the user has explicitly opted that
+   * agent in via the 'share <agent-name>' command (stored in shared_personal_agents).
    */
   async pushUserAgentUpdate(payload: UserAgentUpdatePayload): Promise<{ sent: number; errors: number }> {
     const userRefs = await conversationReferenceStore.getForUser(payload.aurora_user_id);
@@ -181,27 +183,51 @@ export class ProactiveMessenger {
       return { sent: 0, errors: 0 };
     }
 
-    // Reuse the same card template — slug shown as agent name, no subscribe action needed
+    const agentNameLower = payload.agent_name.toLowerCase();
+
+    // Filter: personal chats always receive; group chats only if explicitly opted-in
+    const eligible = userRefs.filter(ref => {
+      const isPersonal = !ref.conversation_type || ref.conversation_type === 'personal';
+      if (isPersonal) return true;
+      // Group/channel: only if agent is in the shared list for this conversation
+      const shared: string[] = (ref as any).shared_personal_agents || [];
+      return shared.some((s: string) => s.toLowerCase() === agentNameLower);
+    });
+
+    if (eligible.length === 0) {
+      console.log(`[ProactiveMessenger] No eligible conversations for personal agent "${payload.agent_name}" — groups require explicit share`);
+      return { sent: 0, errors: 0 };
+    }
+
     const card = this.buildBotCard({
-      agent_slug:   payload.aurora_user_id,
+      agent_slug:   `user-${payload.aurora_user_id}`,
       agent_name:   payload.agent_name,
       post_id:      payload.post_id,
       title:        payload.title,
       summary:      payload.summary,
+      body:         payload.body,
       tags:         payload.tags,
       source_url:   payload.source_url,
       published_at: payload.published_at,
     });
     const activity = MessageFactory.attachment(card);
+    const postBody = payload.body || payload.summary;
 
     let sent = 0, errors = 0;
-    for (const ref of userRefs) {
+    for (const ref of eligible) {
       const ok = await this.botPush(ref, activity, ref.conversation_id);
-      ok ? sent++ : errors++;
+      if (ok) {
+        sent++;
+        const postEntry = { title: payload.title, body: postBody, agent_name: payload.agent_name };
+        lastPostByConv.set(ref.conversation_id, postEntry);
+        lastDeliveredPost = postEntry;
+      } else {
+        errors++;
+      }
     }
 
     console.log(
-      `[ProactiveMessenger] User-agent "${payload.title}" → ${sent} sent, ${errors} errors (user ${payload.aurora_user_id})`
+      `[ProactiveMessenger] Personal agent "${payload.agent_name}" → ${sent}/${eligible.length} sent (user ${payload.aurora_user_id})`
     );
     return { sent, errors };
   }

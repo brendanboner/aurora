@@ -12,6 +12,7 @@ export interface StoredConversationReference {
   aad_object_id: string | null;
   aurora_user_id: string | null;
   subscribed_agent_slugs: string[];
+  shared_personal_agents: string[];  // personal My-Agent names explicitly shared to this group
   default_agent_slug: string | null;
   default_agent_expires_at: Date | null;
 }
@@ -184,6 +185,41 @@ export class ConversationReferenceStore {
         [agentSlug]
       );
       return res.rows;
+    }, []);
+  }
+
+  /** Explicitly share a personal My-Agent with this group conversation. */
+  async sharePersonalAgent(conversationId: string, agentName: string): Promise<void> {
+    await withDb(() => getPool().query(
+      `UPDATE teams_conversation_references
+       SET shared_personal_agents = array_append(
+             shared_personal_agents, $2::TEXT
+           ), updated_at = NOW()
+       WHERE conversation_id = $1
+         AND NOT ($2 = ANY(shared_personal_agents))`,
+      [conversationId, agentName]
+    ), undefined);
+  }
+
+  /** Remove a personal My-Agent from this group conversation. */
+  async unsharePersonalAgent(conversationId: string, agentName: string): Promise<void> {
+    await withDb(() => getPool().query(
+      `UPDATE teams_conversation_references
+       SET shared_personal_agents = array_remove(shared_personal_agents, $2::TEXT),
+           updated_at = NOW()
+       WHERE conversation_id = $1`,
+      [conversationId, agentName]
+    ), undefined);
+  }
+
+  /** List personal agents explicitly shared to this conversation. */
+  async getSharedPersonalAgents(conversationId: string): Promise<string[]> {
+    return withDb(async () => {
+      const res = await getPool().query<{ shared_personal_agents: string[] }>(
+        `SELECT shared_personal_agents FROM teams_conversation_references WHERE conversation_id = $1`,
+        [conversationId]
+      );
+      return res.rows[0]?.shared_personal_agents ?? [];
     }, []);
   }
 }

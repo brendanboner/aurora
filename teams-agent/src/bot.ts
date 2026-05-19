@@ -173,6 +173,31 @@ export class AuroraBot extends TeamsActivityHandler {
             );
           }
         }
+        // ── share / unshare personal agent with this group ────────────────
+        // "share Wi-Fi 8 Daily Brief" — adds this My-Agent to the group opt-in list
+        else if (/^share\s+.+/i.test(lower)) {
+          const agentName = text.slice(6).trim();
+          const convType = context.activity.conversation?.conversationType ?? 'personal';
+          if (convType === 'personal') {
+            await context.sendActivity('Personal agent sharing is only needed for group chats. In personal chat your My-Agents always appear automatically.');
+          } else {
+            await conversationReferenceStore.sharePersonalAgent(convId, agentName);
+            await context.sendActivity(`**${agentName}** will now share posts to this group when they publish.\n\nTo stop: \`unshare ${agentName}\``);
+          }
+        }
+        else if (/^unshare\s+.+/i.test(lower)) {
+          const agentName = text.slice(8).trim();
+          await conversationReferenceStore.unsharePersonalAgent(convId, agentName);
+          await context.sendActivity(`**${agentName}** removed from this group's shared agents.`);
+        }
+        else if (lower === 'shared' || lower === 'shared agents') {
+          const shared = await conversationReferenceStore.getSharedPersonalAgents(convId);
+          if (shared.length === 0) {
+            await context.sendActivity('No personal agents are shared to this group.\n\nTo share one: `share Agent Name`');
+          } else {
+            await context.sendActivity(`**Personal agents shared here:**\n\n${shared.map(s => `• ${s}`).join('\n')}\n\nTo remove: \`unshare Agent Name\``);
+          }
+        }
         // ── show — inline full post from last proactive notification ─────
         else if (lower === 'show' || lower === 'read more' || lower === 'full post') {
           // Try per-conv first, fall back to the most recently delivered post globally
@@ -365,9 +390,12 @@ export class AuroraBot extends TeamsActivityHandler {
 • \`groupmode off\` — Back to direct-query mode
 
 **Proactive Updates**
-• \`subscribe @slug\` — Receive posts from an agent
+• \`subscribe @slug\` — Receive posts from a system agent in this chat
 • \`unsubscribe @slug\` — Stop notifications
 • \`subscriptions\` — List active subscriptions
+• \`share Agent Name\` — Share a personal My-Agent's output to this group *(group chats only)*
+• \`unshare Agent Name\` — Stop sharing
+• \`shared\` — List personal agents shared to this group
 
 **Other**
 • \`about\` — About Aurora
