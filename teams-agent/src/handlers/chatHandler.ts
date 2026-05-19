@@ -240,8 +240,9 @@ export class ChatHandler {
           25000,
           'oracle group query'
         );
-      } catch {
-        // Silent timeout in group context — don't disrupt the conversation
+      } catch (err: any) {
+        // Silent in group context — don't disrupt the conversation, but log for debugging
+        console.warn('[handleGroupContextQuestion] Oracle query failed:', err?.message || err);
         return;
       }
 
