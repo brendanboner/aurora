@@ -28,7 +28,9 @@ export interface UserAgentUpdatePayload {
   published_at?: string;
 }
 
-// In-memory store: conversation → last delivered post (so 'show' works without an ID)
+// Last delivered post — any conversation can read with 'show', not scoped per convId
+export let lastDeliveredPost: { title: string; body: string; agent_name: string } | null = null;
+// Keep per-conv map as well for potential future per-user scoping
 export const lastPostByConv = new Map<string, { title: string; body: string; agent_name: string }>();
 
 /**
@@ -92,8 +94,10 @@ export class ProactiveMessenger {
         const ok = await this.botPush(refMap.get(convId), botActivity, convId);
         if (ok) {
           botCount++; sent++;
-          // Store post so the user can type 'show' to read full content inline
-          lastPostByConv.set(convId, { title: payload.title, body: postBody, agent_name: payload.agent_name });
+          // Store post globally + per-conv so 'show' works from any conversation
+          const postEntry = { title: payload.title, body: postBody, agent_name: payload.agent_name };
+          lastPostByConv.set(convId, postEntry);
+          lastDeliveredPost = postEntry;
         } else {
           errors++;
         }

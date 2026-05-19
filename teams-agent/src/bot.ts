@@ -10,7 +10,7 @@ import { FeedHandler } from './handlers/feedHandler';
 import { ChatHandler } from './handlers/chatHandler';
 import { AgentHandler } from './handlers/agentHandler';
 import { conversationReferenceStore } from './services/conversationReferenceStore';
-import { lastPostByConv } from './services/proactiveMessenger';
+import { lastPostByConv, lastDeliveredPost } from './services/proactiveMessenger';
 
 // Matches @<slug> or @aurora-<slug> at the start of a message.
 // The @ is required to avoid matching regular words as agent names.
@@ -175,7 +175,8 @@ export class AuroraBot extends TeamsActivityHandler {
         }
         // ── show — inline full post from last proactive notification ─────
         else if (lower === 'show' || lower === 'read more' || lower === 'full post') {
-          const post = lastPostByConv.get(convId);
+          // Try per-conv first, fall back to the most recently delivered post globally
+          const post = lastPostByConv.get(convId) || lastDeliveredPost;
           if (!post) {
             await context.sendActivity('No recent post to show. Subscribe to an agent and wait for a notification, then type `show`.');
           } else {
