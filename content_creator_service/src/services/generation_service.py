@@ -1024,6 +1024,7 @@ class GenerationService:
             post_id=post_id,
             title=llm_response.get("title", "Untitled update"),
             summary=llm_response.get("summary") or "",
+            body=llm_response.get("body") or "",
             tags=llm_response.get("tags", topics) if isinstance(llm_response.get("tags", topics), list) else [],
         )
         
