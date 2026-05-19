@@ -40,9 +40,19 @@ export class AuroraAgentService {
   }
 
   /** List the current user's personal My-Agents from /user_agents. */
-  async listUserAgents(): Promise<Array<{ id: number; name: string; enabled: boolean; posting_cadence?: string }>> {
+  async listUserAgents(): Promise<Array<{ id: number; name: string; teams_slug?: string; enabled: boolean; posting_cadence?: string; project_description?: string; persona?: string }>> {
     const response = await this.apiClient.get('/user_agents');
     return response.data || [];
+  }
+
+  /** Find a personal My-Agent by its teams_slug. */
+  async getUserAgentBySlug(slug: string): Promise<{ id: number; name: string; teams_slug?: string; project_description?: string; persona?: string; expertise_topics?: string[]; tone_style?: string } | null> {
+    try {
+      const response = await this.apiClient.get(`/user_agents/by-slug/${encodeURIComponent(slug)}`);
+      return response.data;
+    } catch {
+      return null;
+    }
   }
 
   async followAgent(agentId: number, userId: string): Promise<void> {

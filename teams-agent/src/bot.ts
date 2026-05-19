@@ -195,9 +195,9 @@ export class AuroraBot extends TeamsActivityHandler {
         else if (lower === 'shared' || lower === 'shared agents') {
           const shared = await conversationReferenceStore.getSharedPersonalAgents(convId);
           if (shared.length === 0) {
-            await context.sendActivity('No personal agents are shared to this group.\n\nTo share one: `share Agent Name`');
+            await context.sendActivity('No personal agents are shared to this group.\n\nTo share one: `share @slug` or `share Agent Name`\nType `my agents` to see your agents and their slugs.');
           } else {
-            await context.sendActivity(`**Personal agents shared here:**\n\n${shared.map(s => `• ${s}`).join('\n')}\n\nTo remove: \`unshare Agent Name\``);
+            await context.sendActivity(`**Personal agents shared here:**\n\n${shared.map(s => `• ${s}`).join('\n')}\n\nTo remove: \`unshare @slug\` or \`unshare Agent Name\``);
           }
         }
         // ── show — inline full post from last proactive notification ─────

@@ -141,12 +141,17 @@ export class AgentHandler {
 
     const lines = myAgents.map(a => {
       const status = a.enabled ? 'active' : 'paused';
-      const cadence = a.posting_cadence ? ` · ${a.posting_cadence}` : '';
-      return `• **${a.name}** (${status}${cadence})\n  To share in a group: \`share ${a.name}\``;
+      const cadence = (a as any).posting_cadence ? ` · ${(a as any).posting_cadence}` : '';
+      const slug = (a as any).teams_slug;
+      const slugLine = slug ? `\`@${slug}\`` : '_(no slug)_';
+      const shareLine = slug
+        ? `Share to group: \`share @${slug}\``
+        : `Share to group: \`share ${a.name}\``;
+      return `• **${a.name}** — ${slugLine} (${status}${cadence})\n  ${shareLine}`;
     }).join('\n\n');
 
     await context.sendActivity(
-      `**Your personal agents** (from My Agents in Aurora)\n\n${lines}\n\nPersonal agent posts go to your direct chat. Type \`share Agent Name\` in a group to add that group.`
+      `**Your personal agents** (from My Agents in Aurora)\n\n${lines}\n\nAsk questions: \`@slug your question\`\nPost notifications go to your direct chat. Use \`share @slug\` in a group to forward posts there.`
     );
   }
 
@@ -351,7 +356,40 @@ export class AgentHandler {
       return;
     }
 
-    // 3. Try as a datasource filter (e.g. @wifi8mtg, @wfa, @broadcast)
+    // 3. Try as a personal My-Agent slug (e.g. @pqc-project, @open-roaming-agent)
+    try {
+      const personalAgent = await agentService.getUserAgentBySlug(teamsSlug);
+      if (personalAgent) {
+        const description = personalAgent.project_description || personalAgent.persona || '';
+        const persona = {
+          name: personalAgent.name,
+          persona: `You are ${personalAgent.name}. ${description}`,
+          tone_style: 'analytical' as const,
+          content_length_preference: 'medium',
+          expertise_topics: personalAgent.expertise_topics || [],
+          expertise_organisations: [] as string[],
+          expertise_standards: [] as string[],
+          llm_temperature_override: null,
+        };
+        await context.sendActivity(`Asking **${personalAgent.name}**...`);
+        try {
+          const response = await withTimeout(
+            this.oracleService.query(auroraUser.id, question, persona),
+            ORACLE_TIMEOUT_MS
+          );
+          await this.sendOracleResponse(context, personalAgent.name, response, question);
+        } catch (err: any) {
+          const isTimeout = err?.message?.includes('timeout');
+          await context.sendActivity(isTimeout
+            ? `That query is taking too long. Try a more specific question.`
+            : `**${personalAgent.name}** could not retrieve an answer right now. Please try again.`
+          );
+        }
+        return;
+      }
+    } catch { /* fall through */ }
+
+    // 4. Try as a datasource filter (e.g. @wifi8mtg, @wfa, @broadcast)
     // Strip aurora- prefix for datasource resolution
     const datasourceSlug = teamsSlug.replace(/^aurora-/, '');
     try {

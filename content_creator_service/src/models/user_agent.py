@@ -43,7 +43,8 @@ class UserAgent(UserAgentBase):
     """Complete user agent with all fields."""
     id: int
     user_id: str
-    
+    teams_slug: Optional[str] = None   # URL-safe slug for Teams @mentions
+
     # AI-generated fields
     expertise_topics: List[str] = Field(default_factory=list)
     expertise_organisations: List[str] = Field(default_factory=list)

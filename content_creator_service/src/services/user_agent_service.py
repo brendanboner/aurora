@@ -92,18 +92,22 @@ Extract the metadata as specified."""
             payload.scope_notes
         )
         
+        import re as _re
+        _slug = _re.sub(r'-+', '-', _re.sub(r'\s+', '-', _re.sub(r'[^a-z0-9\s-]', '', payload.name.lower()))).strip('-')
+
         row = db.fetch_one(
             """
             INSERT INTO user_agent (
-                user_id, name, project_description, scope_notes, cadence,
+                user_id, name, teams_slug, project_description, scope_notes, cadence,
                 show_in_feed, enabled, expertise_topics, expertise_organisations,
                 tone_style, persona, feedback_history
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
                 user_id,
                 payload.name,
+                _slug,
                 payload.project_description,
                 payload.scope_notes,
                 payload.cadence,
@@ -120,6 +124,14 @@ Extract the metadata as specified."""
             raise RuntimeError("Failed to create user agent")
         return self._row_to_model(row)
     
+    def get_user_agent_by_slug(self, user_id: str, slug: str) -> Optional[UserAgent]:
+        """Find a personal agent by its teams_slug."""
+        row = db.fetch_one(
+            "SELECT * FROM user_agent WHERE user_id = %s AND teams_slug = %s",
+            (user_id, slug),
+        )
+        return self._row_to_model(row) if row else None
+
     def get_user_agents(self, user_id: str) -> List[UserAgent]:
         """Get all agents for a specific user."""
         rows = db.fetch_all(

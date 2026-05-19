@@ -23,6 +23,18 @@ _user_agent_service = UserAgentService()
 _generation_service = GenerationService()
 
 
+@router.get("/by-slug/{slug}", response_model=UserAgent)
+async def get_user_agent_by_slug(
+    slug: str,
+    x_user_id: str = Header(..., alias="X-User-Id"),
+) -> UserAgent:
+    """Find a personal agent by its teams_slug."""
+    agent = _user_agent_service.get_user_agent_by_slug(x_user_id, slug)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"No personal agent with slug '{slug}'")
+    return agent
+
+
 @router.get("", response_model=List[UserAgent])
 async def get_user_agents(x_user_id: str = Header(..., alias="X-User-Id")) -> List[UserAgent]:
     """Get all personal agents for the authenticated user."""
