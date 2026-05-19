@@ -190,8 +190,12 @@ export class ProactiveMessenger {
       const isPersonal = !ref.conversation_type || ref.conversation_type === 'personal';
       if (isPersonal) return true;
       // Group/channel: only if agent is in the shared list for this conversation
+      // Use fuzzy match so "Wi-Fi 8 Daily Brief" matches "Wi-Fi 8 Daily Briefing"
       const shared: string[] = (ref as any).shared_personal_agents || [];
-      return shared.some((s: string) => s.toLowerCase() === agentNameLower);
+      return shared.some((s: string) => {
+        const sl = s.toLowerCase();
+        return sl === agentNameLower || sl.includes(agentNameLower) || agentNameLower.includes(sl);
+      });
     });
 
     if (eligible.length === 0) {
