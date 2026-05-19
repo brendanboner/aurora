@@ -311,7 +311,9 @@ Playground opens at `http://localhost:56150`.
 - Type `help` to confirm bot responds as "Aurora"
 - Personal chat: full answers, conversation memory, enhance
 - Group Chat tab: use `@Aurora [question]` — workgroup scoping with `@wba`, `@ietf`, `@wifi8mtg`
-- `groupmode on` enables passive listening for standards questions
+- `@Aurora groupmode on` enables passive listening for standards questions
+  - **Playground only**: works in the simulator because all messages are delivered to the bot
+  - **Real Teams**: requires `ChannelMessage.Read.Group` RSC permission (now in manifest) + admin consent at app installation — passive listening will work once IT deploys with consent granted
 - `subscribe @slug` to get proactive updates in the channel
 - `my agents` to see personal agents and share them to the group
 
