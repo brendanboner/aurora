@@ -211,6 +211,8 @@ Subscribe the group to a workgroup feed:
 ```
 > "Now this channel gets proactive updates from the Mister Multipath agent whenever it publishes."
 
+> **Note on passive listening (`groupmode`):** In the Agents Playground, the group chat only delivers @-mentioned messages to the bot — just like real Teams. Passive group monitoring (no @mention needed) requires the `ChannelMessage.Read.Group` RSC permission in the app manifest, which is there but requires admin consent at IT deployment. For the demo, show the direct `@Aurora question` flow in group chat — that works perfectly.
+
 **Scenario C — Proactive delivery:**
 
 Trigger `make teams-test-announce` in a separate terminal.
