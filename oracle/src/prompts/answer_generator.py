@@ -308,6 +308,23 @@ def get_answer_generator_messages(
     import re
     is_workgroup_query = bool(re.search(r'(what|which)\s+(workgroups?|datasources?|groups?|wgs?)\s+(are|is|have|has|discussed|mentioned|talking|working)', question.lower()))
 
+    # Detect workgroup activity queries ("what is new in X workgroup", "@wba what's new", etc.)
+    # These often have minimal document summaries — instruct the LLM to synthesize from titles.
+    is_workgroup_activity_query = bool(re.search(
+        r'(what.{0,20}(new|latest|happening|recent|updates?)\s.{0,30}(workgroup|programme|program|wba|ietf|ieee|wfa))'
+        r'|(workgroup.{0,20}(update|activity|news|summary|digest))'
+        r'|(new in.{0,40}(workgroup|programme|program))',
+        question.lower()
+    ))
+    # Also flag when most documents have thin summaries (stub content, not real summaries)
+    _stub_prefixes = ("uploaded by", "no summary", "")
+    _thin_doc_count = sum(
+        1 for d in (documents or [])
+        if not d.get("summary") or len(d.get("summary", "")) < 80
+        or any(d.get("summary", "").lower().startswith(p) for p in _stub_prefixes if p)
+    )
+    _has_thin_summaries = len(documents or []) > 0 and _thin_doc_count / max(len(documents or []), 1) >= 0.6
+
     # Detect latest-fallback variants:
     # - explicit: @mention source had no recent content
     # - inferred: workgroup extracted from query text had no recent content
@@ -470,7 +487,19 @@ def get_answer_generator_messages(
         workgroup_instruction = ""
         if is_workgroup_query:
             workgroup_instruction = "\n\n**IMPORTANT:** This question asks about which workgroups/datasources discussed a topic. Group your answer by datasource, clearly stating which datasources have relevant content and how many documents from each. For example: 'Topic X was discussed in the WFA Causeway Passpoint workgroup (1 document) and more broadly in the WFA Resource Center (37 documents).'"
-        
+        elif is_workgroup_activity_query or _has_thin_summaries:
+            workgroup_instruction = (
+                "\n\n**WORKGROUP ACTIVITY SYNTHESIS:** The documents listed represent recent activity "
+                "from a specific working group. Some summaries may be minimal. "
+                "Synthesize a meaningful activity report using ALL available signals: "
+                "document titles (they encode the topic and meeting context), document types "
+                "(presentation, agenda, contribution, meeting-minutes), and publish dates. "
+                "Group by document type if helpful. Identify the key themes and what the group "
+                "is actively working on. Do NOT just list counts — produce a useful briefing. "
+                "If a document title clearly indicates a major update (e.g. a presentation or "
+                "contribution), highlight it specifically."
+            )
+
         user_content = ANSWER_GENERATOR_USER.format(
             question=question,
             documents=docs_text,

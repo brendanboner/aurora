@@ -261,7 +261,11 @@ async def query(
                             WHERE toLower(ds.datasource_id) = toLower($mention)
                                OR toLower(coalesce(ds.display_name, ds.name, '')) CONTAINS toLower($mention)
                                OR toLower(ds.datasource_id) CONTAINS toLower($mention)
-                            RETURN ds.datasource_id AS datasource_id
+                            RETURN ds.datasource_id AS datasource_id,
+                              CASE WHEN toLower(ds.datasource_id) = toLower($mention) THEN 0 ELSE 1 END AS match_exact,
+                              CASE WHEN ds.parent_datasource_id IS NULL THEN 0 ELSE 1 END AS is_child,
+                              size(ds.datasource_id) AS id_len
+                            ORDER BY match_exact, is_child, id_len, ds.datasource_id
                             LIMIT 1
                         """, parameters={"mention": mention})
 

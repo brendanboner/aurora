@@ -60,7 +60,27 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
     tone_style: 'technical',
     expertise_topics: ['IEEE 802.11', '802.11be', 'Wi-Fi 7', 'MLO', 'PHY', 'MAC'],
     expertise_organisations: ['IEEE', 'IEEE P802.11'],
-    datasource_ids: ['ieee802_11', 'ieee802_11_tg'],
+    datasource_ids: ['ieee802_11', 'ieee802_11_tg'],   // 802.1 and 802.3 removed — use @ieee-802-1 / @ieee-802-3
+  },
+  {
+    name: 'IEEE 802.1 (TSN/Bridging)',
+    slug: 'aurora-ieee-802-1',
+    org_match: 'IEEE P802.1',
+    persona: 'You represent the IEEE 802.1 Working Group, covering bridging, VLANs, Time-Sensitive Networking (TSN), and network security standards.',
+    tone_style: 'technical',
+    expertise_topics: ['IEEE 802.1', 'TSN', 'bridging', 'VLANs', 'time-sensitive networking'],
+    expertise_organisations: ['IEEE'],
+    datasource_ids: ['ieee802_1'],
+  },
+  {
+    name: 'IEEE 802.3 (Ethernet)',
+    slug: 'aurora-ieee-802-3',
+    org_match: 'IEEE P802.3',
+    persona: 'You represent the IEEE 802.3 Working Group, covering Ethernet standards including high-speed variants (200G, 400G, 800G), optical, automotive, and power delivery.',
+    tone_style: 'technical',
+    expertise_topics: ['IEEE 802.3', 'Ethernet', 'high-speed Ethernet', 'power over Ethernet'],
+    expertise_organisations: ['IEEE'],
+    datasource_ids: ['ieee802_3'],
   },
   {
     name: 'IEEE 802.15',

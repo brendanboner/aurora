@@ -1448,18 +1448,18 @@ class FastEngine:
         # Build answer from rollup
         answer_parts = []
         
-        # Add summary
+        # Add summary (now a rich multi-line text from _generate_summary)
         if rollup.get("summary"):
             answer_parts.append(rollup["summary"])
-        
-        # Add key events
+
+        # Add key events (if not already embedded in summary)
         if rollup.get("key_events"):
             events = rollup["key_events"]
             if events:
                 answer_parts.append(f"\n\n**Key Events ({len(events)}):**")
-                for event in events[:5]:  # Top 5
+                for event in events[:5]:
                     answer_parts.append(f"- {event}")
-        
+
         # Add key decisions
         if rollup.get("key_decisions"):
             decisions = rollup["key_decisions"]
@@ -1470,19 +1470,19 @@ class FastEngine:
                         answer_parts.append(f"- {decision.get('title', 'Decision')}: {decision.get('summary', '')}")
                     else:
                         answer_parts.append(f"- {decision}")
-        
+
         # Add top topics
         if rollup.get("top_topics"):
             topics = rollup["top_topics"]
             if topics:
                 answer_parts.append(f"\n\n**Top Topics:** {', '.join(topics[:10])}")
-        
+
         answer = "\n".join(answer_parts)
-        
-        # Build documents from rollup links
+
+        # Build documents and citations from rollup links
         documents = []
         citations = []
-        
+
         if rollup.get("links"):
             for idx, link in enumerate(rollup["links"][:10], 1):
                 if isinstance(link, dict):
@@ -1494,15 +1494,13 @@ class FastEngine:
                         source=link.get("source", "rollup")
                     )
                     documents.append(doc)
-                    
-                    citation = Citation(
+                    citations.append(Citation(
                         index=idx,
                         document_url=doc.url,
                         title=doc.title,
                         excerpt=None
-                    )
-                    citations.append(citation)
-        
+                    ))
+
         logger.info(f"Composed answer from rollup: {len(answer)} chars, {len(documents)} docs")
         
         return answer, documents, citations

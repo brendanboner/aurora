@@ -566,7 +566,7 @@ class QueryTemplateRegistry:
                AND ($workgroups IS NULL OR size($workgroups) = 0
                  OR EXISTS {
                      MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                     WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups
+                     WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups)
                  })
                // Filter by topic if requested
                 AND ($topics IS NULL OR size($topics) = 0
@@ -719,7 +719,7 @@ class QueryTemplateRegistry:
             MATCH (ds:DataSource)
             WHERE ds.scraper_type = 'wfa_causeway' 
               AND ds.resource_url CONTAINS '/wg/'
-              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
+              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups))
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
@@ -774,7 +774,7 @@ class QueryTemplateRegistry:
             MATCH (ds:DataSource)
             WHERE ds.scraper_type = 'wfa_causeway' 
               AND ds.resource_url CONTAINS '/wg/'
-              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
+              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups))
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)
@@ -1152,7 +1152,7 @@ class QueryTemplateRegistry:
             WHERE ($workgroups IS NULL OR size($workgroups) = 0
                    OR EXISTS {
                        MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                       WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups
+                       WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups)
                    })
             
             // Get people mentioned in these meeting documents
@@ -1635,7 +1635,7 @@ class QueryTemplateRegistry:
               AND ($workgroups IS NULL OR size($workgroups) = 0
                     OR EXISTS {
                         MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                        WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups
+                        WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups)
                     })
               AND ($organizations IS NULL OR size($organizations) = 0
                     OR EXISTS {
@@ -1869,7 +1869,7 @@ class QueryTemplateRegistry:
             MATCH (ds:DataSource)
             WHERE ds.scraper_type = 'wfa_causeway' 
               AND ds.resource_url CONTAINS '/wg/'
-              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups)
+              AND ($workgroups IS NULL OR size($workgroups) = 0 OR ds.datasource_id IN $workgroups OR ds.name IN $workgroups OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups))
             
             // Find resources from these datasources in the date range
             MATCH (ds)<-[:INGESTED_FROM]-(r:Resource)

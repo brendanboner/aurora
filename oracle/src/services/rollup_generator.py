@@ -342,14 +342,14 @@ class RollupGenerator:
                  collect(DISTINCT r)[..20] as docs,
                  collect(DISTINCT t.name)[..10] as topics
             
-            RETURN 
+            RETURN
                 size(events) as event_count,
                 size(docs) as doc_count,
                 [event IN events | {id: event.url_hash, name: event.name, url: event.url, start_date: event.start_date}] as events,
-                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
+                [doc IN docs | {id: doc.url_hash, title: doc.title, summary: doc.summary, url: doc.url, category: doc.category, doc_type: doc.doc_type, publish_date: doc.publish_date}] as docs,
                 topics
             """
-            
+
             result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
                 "target_date": target_date.strftime("%Y-%m-%d")
@@ -392,8 +392,14 @@ class RollupGenerator:
                     links.append({"title": e["name"], "url": e["url"]})
             for d in record["docs"][:5]:
                 if d["url"]:
-                    links.append({"title": d["title"], "url": d["url"]})
-            
+                    links.append({
+                        "title": d["title"],
+                        "url": d["url"],
+                        "summary": d.get("summary") or "",
+                        "doc_type": d.get("doc_type") or d.get("category") or "",
+                        "date": d.get("publish_date") or "",
+                    })
+
             # Create rollup
             rollup = Rollup(
                 id=uuid.uuid4(),
@@ -468,10 +474,10 @@ class RollupGenerator:
                 size(events) as event_count,
                 size(docs) as doc_count,
                 [event IN events | {id: event.url_hash, name: event.name, url: event.url, start_date: event.start_date}] as events,
-                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
+                [doc IN docs | {id: doc.url_hash, title: doc.title, summary: doc.summary, url: doc.url, category: doc.category, doc_type: doc.doc_type, publish_date: doc.publish_date}] as docs,
                 topics
             """
-            
+
             result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
                 "week_start": week_start.strftime("%Y-%m-%d"),
@@ -515,8 +521,14 @@ class RollupGenerator:
                     links.append({"title": e["name"], "url": e["url"]})
             for d in record["docs"][:10]:
                 if d["url"]:
-                    links.append({"title": d["title"], "url": d["url"]})
-            
+                    links.append({
+                        "title": d["title"],
+                        "url": d["url"],
+                        "summary": d.get("summary") or "",
+                        "doc_type": d.get("doc_type") or d.get("category") or "",
+                        "date": d.get("publish_date") or "",
+                    })
+
             # Create rollup
             rollup = Rollup(
                 id=uuid.uuid4(),
@@ -591,10 +603,10 @@ class RollupGenerator:
                 size(events) as event_count,
                 size(docs) as doc_count,
                 [event IN events | {id: event.url_hash, name: event.name, url: event.url, start_date: event.start_date}] as events,
-                [doc IN docs | {id: doc.url_hash, title: doc.title, url: doc.url, category: doc.category, publish_date: doc.publish_date}] as docs,
+                [doc IN docs | {id: doc.url_hash, title: doc.title, summary: doc.summary, url: doc.url, category: doc.category, doc_type: doc.doc_type, publish_date: doc.publish_date}] as docs,
                 topics
             """
-            
+
             result = repo.client.execute_query(query, {
                 "workgroup_id": workgroup_id,
                 "month_start": month_start.strftime("%Y-%m-%d"),
@@ -638,7 +650,13 @@ class RollupGenerator:
                     links.append({"title": e["name"], "url": e["url"]})
             for d in record["docs"][:15]:
                 if d["url"]:
-                    links.append({"title": d["title"], "url": d["url"]})
+                    links.append({
+                        "title": d["title"],
+                        "url": d["url"],
+                        "summary": d.get("summary") or "",
+                        "doc_type": d.get("doc_type") or d.get("category") or "",
+                        "date": d.get("publish_date") or "",
+                    })
             
             # Create rollup
             rollup = Rollup(
@@ -678,32 +696,53 @@ class RollupGenerator:
         """Generate a human-readable summary from structured data."""
         period_desc = f"{start_date.strftime('%B %d, %Y')}" if period_type == "day" else \
                       f"{start_date.strftime('%B %d')} - {end_date.strftime('%B %d, %Y')}"
-        
+
         event_count = len(events)
         doc_count = len(docs)
-        
-        # Count decision documents
         decision_count = sum(1 for d in docs if d.get("category") and "decision" in d["category"].lower())
-        
-        # Build summary
-        summary_parts = [f"{workgroup_name} activity for {period_desc}:"]
-        
+
+        lines = [f"**{workgroup_name}** — {period_desc}"]
+
+        counts = []
         if event_count > 0:
-            summary_parts.append(f"{event_count} event(s)")
+            counts.append(f"{event_count} event(s)")
         if doc_count > 0:
-            summary_parts.append(f"{doc_count} document(s)")
+            counts.append(f"{doc_count} document(s)")
         if decision_count > 0:
-            summary_parts.append(f"including {decision_count} decision(s)")
-        
-        if event_count == 0 and doc_count == 0:
-            summary_parts.append("No activity recorded")
-        
-        # Add top events
+            counts.append(f"including {decision_count} decision(s)")
+        if not counts:
+            counts.append("No activity recorded")
+        lines.append(", ".join(counts) + ".")
+
         if events:
             event_names = [e["name"] for e in events[:3]]
-            summary_parts.append(f"Key events: {', '.join(event_names)}")
-        
-        return ". ".join(summary_parts) + "."
+            lines.append(f"Key events: {', '.join(event_names)}.")
+
+        # Document titles and available summaries
+        doc_lines = []
+        for d in docs[:8]:
+            title = (d.get("title") or "").strip()
+            if not title or title.lower() == "untitled":
+                continue
+            doc_type = d.get("doc_type") or d.get("category") or ""
+            date_str = d.get("publish_date") or ""
+            summary = (d.get("summary") or "").strip()
+
+            entry = f"- **{title}**"
+            if date_str:
+                entry += f" ({date_str})"
+            if doc_type:
+                entry += f" [{doc_type}]"
+            # Include summary when meaningful (skip "Uploaded by X" style stubs)
+            if summary and len(summary) > 80 and not summary.lower().startswith("uploaded by"):
+                entry += f": {summary[:400]}"
+            doc_lines.append(entry)
+
+        if doc_lines:
+            lines.append("Documents:")
+            lines.extend(doc_lines)
+
+        return "\n".join(lines)
     
     def _rollup_exists(
         self,
