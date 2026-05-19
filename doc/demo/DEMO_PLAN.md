@@ -1,35 +1,36 @@
 # Aurora — 30-Minute Demo Walkthrough
 
-**Date:** Monday 2026-05-18  
+**Date:** 2026-05-19 (updated)
 **Presenter:** Brendan Bonner — Office of the CTO, Rapid AI Innovation Team  
 **Audience:** Senior leadership; product managers, solution architects / field CTOs, innovators, standards/firmware/chip engineers.  
 **Format:** 30 min walkthrough + Q&A. Live on the production system.  
-**Teams status:** ✅ Live via Microsoft 365 Agents Playground — run `make teams-test-prod` to open.
+**Teams status:** ✅ Live via Microsoft 365 Agents Playground — run `make teams-test-prod NGROK_DOMAIN=anemia-pretext-morbidly.ngrok-free.dev`
 
 ---
 
 ## Pre-demo checklist (T-15 min)
 
 ```bash
+make teams-test-prod NGROK_DOMAIN=anemia-pretext-morbidly.ngrok-free.dev
 ./doc/demo/demo_runner.sh --setup   # automated health checks
 ./doc/demo/demo_runner.sh --warmup  # cache all queries < 2s
 ```
 
 Manual checks:
 - Production EC2 healthy — monitoring page, no stalled batches.
-- Smoke query warm: `What is the difference between Wi-Fi 7 and Wi-Fi 8?` < 8 s.
+- Smoke query warm: `What is the difference between Wi-Fi 7 and Wi-Fi 8?` < 3 s.
 - Browser: dark mode, Aurora web tab, zoomed to 125%.
-- **Teams (Act 5):** run `make teams-test-prod` in a terminal — browser opens at `http://localhost:56150`. Confirm bot is responding (`help` command).
+- Teams Playground open at `http://localhost:56150` — confirm Aurora responds to `help`.
 - Phone: Do Not Disturb. Slack: closed. Email: closed.
 
 ---
 
 ## Persona tuning
 
-- **Mostly Product Managers** → linger on Act 4 (custom agents), compress Act 3.
-- **Mostly Solution Architects / Field CTOs** → linger on Act 3 (cross-source synthesis), show source list.
-- **Mostly Standards/Firmware/Chip engineers** → linger on Act 2 (member-only content) and Act 5 (IEEE 802.11 task group updates).
-- **Mostly Innovators / OCTO** → linger on Act 5 (Teams group intelligence + announcements).
+- **Mostly Product Managers** → linger on Act 4 (personal agents + Teams feed), compress Act 3.
+- **Mostly Solution Architects / Field CTOs** → linger on Act 3 (cross-source synthesis + enhance), Act 5 (group intelligence).
+- **Mostly Standards/Firmware/Chip engineers** → linger on Act 2 (IEEE task groups), Act 5 (workgroup scoping + follow-up).
+- **Mostly Innovators / OCTO** → show Acts 4–5 in full; emphasise planetary Wi-Fi moment for levity.
 
 ---
 
@@ -52,8 +53,8 @@ Switch to the Aurora web tab.
 **Goal:** one SSO click, thirty seconds of setup.
 
 1. Click **Log in** → Cognito SSO → land on Aurora home.
-2. Click avatar / **Profile** → **Groups & Sources** tab opens by default.
-3. Join: **Wi-Fi 8 - Ultra High Reliability**, **AI/ML for Wi-Fi**, **5G & Wi-Fi Convergence** (gold member-only badges).
+2. Click avatar / **Profile** → **Groups & Sources** tab.
+3. Join: **Wi-Fi 8 - Ultra High Reliability**, **AI/ML for Wi-Fi**, **5G & Wi-Fi Convergence**.
 4. **Sources** tab → join **WFA Resource Page** and **IEEE 802.11 Task Groups**.
 5. **Technology** tab → star **Wi-Fi 8** and **PQC**.
 
@@ -63,7 +64,7 @@ Switch to the Aurora web tab.
 
 ### 7:00 — 14:00 · Act 2: Member-only + IEEE standards access
 
-**Goal:** content nobody can Google — including IEEE task group drafts.
+**Goal:** content nobody can Google.
 
 ```
 @wba what's new in NextGen Wi-Fi this month
@@ -73,13 +74,11 @@ Switch to the Aurora web tab.
 
 Point out a named person and workgroup. Click a source card.
 
-Second query — new since last demo:
-
 ```
 What is the current status of 802.11bn?
 ```
 
-> "This is from the public IEEE 802.11 task group pages — TGbn status page, ballot timeline, March 2026 plenary summary. Aurora now scrapes all active 802.11 task groups weekly: TGbn, TGbi, TGbp, TGbt, TGbq, TGbr, TGmf, plus 802.1 and 802.3."
+> "Public IEEE 802.11 task group pages — TGbn ballot timeline, March 2026 plenary summary. Aurora scrapes all active 802.11 task groups weekly."
 
 Follow-up — exercising conversation memory:
 
@@ -87,21 +86,23 @@ Follow-up — exercising conversation memory:
 Who is chairing that task group?
 ```
 
-> "Aurora remembers the previous answer and enriches the follow-up — it knows 'that task group' means TGbn."
+> "Aurora remembers the previous answer. 'That task group' means TGbn — Alfred Asterjadhi, new WG 1st Vice Chair."
 
 **Fallback:** `What compliance requirements exist for Wi-Fi 6E devices?`
 
 ---
 
-### 14:00 — 19:00 · Act 3: Cross-source synthesis
+### 14:00 — 19:00 · Act 3: Cross-source synthesis + deep read
+
+**Goal:** Aurora composes answers that no single document contains — then lets you go deeper.
 
 ```
 What is the difference between Wi-Fi 7 and Wi-Fi 8?
 ```
 
-> "This answer lives in seven places: IEEE 802.11bn task group pages, WFA certification proposals, WBA Extranet working-group discussions, and IETF drafts. No single document has it. Aurora composes one."
+> "This answer draws from IEEE 802.11bn task group pages, WFA certification proposals, WBA Extranet working-group discussions, and IETF drafts. No single document has it."
 
-Source list — call out IEEE, WFA, WBA, IETF all in one answer.
+Call out IEEE, WFA, WBA, IETF all in the source list.
 
 Follow-up:
 
@@ -109,11 +110,45 @@ Follow-up:
 Which of those benefits matters most for enterprise deployments?
 ```
 
-> "Context across turns. We're not restating the comparison — we're asking it to pivot."
+> "Context across turns — we're not restating the comparison, we're asking it to pivot."
+
+Now demonstrate the **Enhance** button or command:
+
+```
+enhance
+```
+
+> "Enhance fetches the actual source documents and re-reads them. The citations become clickable links with exact page references. This is the difference between a summary and a briefing."
 
 ---
 
-### 19:00 — 24:00 · Act 4: Create your own agent
+### 19:00 — 22:00 · Act 3b: Something unexpected — the IETF Planetary Networking moment
+
+**Goal:** show Aurora's breadth and create a memorable moment.
+
+```
+Does Wi-Fi work in space?
+```
+
+> "Watch what happens when you ask something Aurora shouldn't know about."
+
+Let it answer (will reference IETF InterPlanetary Networking research group, QUIC for deep-space communications, etc.).
+
+Follow-up:
+
+```
+What is new in IETF this week?
+```
+
+> "Back to Earth — same knowledge graph, same conversational memory. That Wi-Fi-in-space answer didn't break the session."
+
+> "The point: Aurora tracks IETF's full working group portfolio. The InterPlanetary Networking group is real. Engineers working on delay-tolerant protocols for space missions use the same base standards your Wi-Fi chips rely on."
+
+---
+
+### 22:00 — 26:00 · Act 4: Personal agents
+
+**Goal:** Aurora curating content in your voice, on your topics.
 
 1. **My Agents** → **Create agent**:
    - **Name:** `Wi-Fi 8 Daily Brief`
@@ -127,60 +162,68 @@ Which of those benefits matters most for enterprise deployments?
 
 ---
 
-### 24:00 — 28:30 · Act 5: Teams — group intelligence + announcements
+### 26:00 — 30:00 · Act 5: Teams — group intelligence
 
-**Goal:** Aurora works where teams already are, and adds value to conversations in progress.
+**Goal:** Aurora works where teams already are. Show the full loop.
 
-Switch to the Agents Playground browser tab (already open from `make teams-test-prod`).
+Switch to the Agents Playground browser tab.
 
-**Scenario A — Personal chat:**
+**Scenario A — Personal chat with follow-up:**
 
 ```
 feed
 ```
-> "Same feed as the web UI — agent posts, sources, tags — inside Teams."
+> "Same feed as the web UI — inside Teams."
 
 ```
-@wifi8mtg what has been discussed recently?
+@ietf what is new this week
 ```
-> "Full answer in Teams. Conversation memory means you can follow up immediately."
-
-```
-Who is chairing that group?
-```
-> "Aurora remembers the Wi-Fi 8 context and answers Alfred Asterjadhi — new WG 1st Vice Chair."
-
-**Scenario B — Group chat context awareness:**
-
-Switch to **Group Chat** tab. Type:
+> "Scoped to IETF. Full answer with sources."
 
 ```
-@Aurora what is the current status of 802.11bn?
+What was the most interesting topic?
 ```
-
-> "Same full answer in a group channel. Now here's the interesting part."
-
-Still in group chat, type `groupmode on`. Then (simulating a colleague):
+> "Aurora remembers the IETF context and follows up — no need to repeat yourself."
 
 ```
-@Aurora do we know how Wi-Fi 8 will affect handover between APs?
+enhance
 ```
+> "Fetches the source documents and gives a deeper answer with clickable citations — all without leaving Teams."
 
-> "Aurora adds context to the group conversation without disrupting it — it recognised a standards question and contributed."
+**Scenario B — Group channel with workgroup scoping:**
 
-**Scenario C — Proactive broadcast:**
+Switch to **Group Chat** tab.
 
-In a separate terminal: `make teams-test-announce`
+```
+@Aurora @wba what is the current status of 802.11bn?
+```
+> "Same full answer in a group channel, scoped to WBA sources."
 
-> "This is Aurora pushing a breaking standards update — IEEE 802.11bn D2.0 ballot opening — to every channel that has the bot, without anyone asking. Standards teams get notified automatically."
+```
+@Aurora who is Brendan Bonner
+```
+> "Aurora knows who's in the room. Brendan Bonner: Senior Principal Architect at Extreme Networks, WBA member, contributing to the Enterprise Security for Private 5G and Security & Post-Quantum Computing workgroups."
+
+Subscribe the group to a workgroup feed:
+
+```
+@Aurora subscribe @mister-multipath
+```
+> "Now this channel gets proactive updates from the Mister Multipath agent whenever it publishes."
+
+**Scenario C — Proactive delivery:**
+
+Trigger `make teams-test-announce` in a separate terminal.
+
+> "This is Aurora pushing a breaking standards update to every channel that has the bot. No one asked. Standards teams stay informed automatically."
 
 ---
 
-### 28:30 — 30:00 · Close & ask
+### Close & ask
 
-> "Aurora is a prototype from the Office of the CTO. The architecture is built. The data is flowing — IEEE, IETF, WBA, WFA, all updating weekly. Teams is live for testing; corporate provisioning is in progress with IT.
+> "Aurora is a prototype from the Office of the CTO. The architecture is built. The data is flowing — IEEE, IETF, WBA, WFA, all updating weekly. Teams is live for testing.
 >
-> Three things I'm asking from this room: nominate people for the pilot; tell us which working groups matter to your teams; tell us where this lands on your roadmap."
+> Three things I'm asking: nominate people for the pilot; tell us which working groups matter to your teams; tell us where this lands on your roadmap."
 
 ---
 
@@ -190,22 +233,19 @@ In a separate terminal: `make teams-test-announce`
 A: Neither knows your standards-body proceedings. Aurora is a domain-specific knowledge graph built on WBA Extranet, WFA Causeway, IETF, IEEE 802.11/802.1/802.3 — with answers that cite the specific document and meeting.
 
 **Q: Where does the data live?**  
-A: Everything in our corporate VPC — Postgres, Neo4j, Redis, EC2. The only outbound calls are to standards-body sites we have permission to read. No PII leaves Extreme.
+A: Everything in our corporate VPC — Postgres, Neo4j, Redis, EC2. No PII leaves Extreme.
 
 **Q: What about WBA member-only content licensing?**  
-A: We're a member; within membership terms. Aurora discards document bodies after parsing — we store only the synopsis. Not republishing; summarising for employees with access rights.
+A: We're a member; within membership terms. Aurora stores only the synopsis, not the full document. Not republishing; summarising for employees with access rights.
 
 **Q: How does Teams work without IT provisioning?**  
-A: Right now via the Microsoft 365 Agents Playground — a local testing tool that gives the full Teams experience. Corporate Teams app deployment is in progress with IT and will light up the same bot for every employee.
+A: Via the Microsoft 365 Agents Playground locally. Corporate Teams app deployment is in progress with IT.
 
 **Q: What does this cost?**  
-A: Single EC2 box. LLM cost ~$40–80/user/month at typical query volumes, dominated by the baseline pipeline. The fast pipeline (~70% of queries) is essentially free.
+A: Single EC2 box. LLM cost ~$40–80/user/month at typical query volumes.
 
 **Q: How do I get my workgroup added?**  
-A: Public bodies (IEEE, IETF) — we add a scraper in days. Member-only (WBA, WFA Causeway) — we need credentials and a workgroup list. WBA works today; same pattern extends to CableLabs, 3GPP, etc.
-
-**Q: What happens if a workgroup chair asks us to stop scraping?**  
-A: Hard kill switch per DataSource in the admin UI. Disabling removes it from results immediately.
+A: Public bodies (IEEE, IETF) — scraper in days. Member-only (WBA, WFA Causeway) — need credentials and workgroup list.
 
 ---
 
@@ -215,31 +255,40 @@ A: Hard kill switch per DataSource in the admin UI. Disabling removes it from re
 ```
 @wba what's new in NextGen Wi-Fi this month
 What is the current status of 802.11bn?
+Who is chairing that task group?
 What is the difference between Wi-Fi 7 and Wi-Fi 8?
 Which of those benefits matters most for enterprise deployments?
-@wifi8mtg what has been discussed recently in the Wi-Fi 8 task group?
+enhance
+```
+
+**The planetary moment:**
+```
+Does Wi-Fi work in space?
+What is new in IETF this week?
 ```
 
 **Teams personal chat:**
 ```
 feed
-@wifi8mtg what has been discussed recently?
-Who is chairing that group?
+@ietf what is new this week
+What was the most interesting topic?
+enhance
 ```
 
-**Teams group chat (after groupmode on):**
+**Teams group chat:**
 ```
-@Aurora what is the current status of 802.11bn?
-@Aurora do we know how Wi-Fi 8 will affect handover between APs?
+@Aurora @wba what is the current status of 802.11bn?
+@Aurora who is Brendan Bonner
+@Aurora subscribe @mister-multipath
 ```
 
 **Fallback set:**
 ```
 What has Qualcomm contributed to Wi-Fi 8 discussions?
-Summarise the latest Wi-Fi Alliance Causeway workgroup activity
 What compliance requirements exist for Wi-Fi 6E devices?
 Explain the roaming problem caused by sticky clients
 What is the latest on the IEEE 802.11bn March 2026 plenary?
+@wba who is Mark Hamilton
 ```
 
 ---
@@ -247,21 +296,24 @@ What is the latest on the IEEE 802.11bn March 2026 plenary?
 ## Teams setup for the demo (do this at T-15 min)
 
 ```bash
-# Start Teams bot on production EC2, open Agents Playground browser
-make teams-test-prod
+# Start everything — tunnels, bot, playground, ngrok for proactive delivery
+make teams-test-prod NGROK_DOMAIN=anemia-pretext-morbidly.ngrok-free.dev
 
-# In a second terminal, pre-test the bot
-# (browser should open automatically at http://localhost:56150)
+# In a second terminal, warm the cache
+./doc/demo/demo_runner.sh --warmup
 
 # Test announcement push
 make teams-test-announce
 ```
 
-- Personal chat: bot responds to everything, full Adaptive Cards.
-- Group Chat tab: @mention the bot with `@Aurora [question]`.
-- `groupmode on` enables passive listening for standards questions.
-- `clear` or `reset` exits any workgroup scope.
-- `@5g`, `@wba`, `@wifi8mtg` scope answers to that datasource.
+Playground opens at `http://localhost:56150`.
+
+- Type `help` to confirm bot responds as "Aurora"
+- Personal chat: full answers, conversation memory, enhance
+- Group Chat tab: use `@Aurora [question]` — workgroup scoping with `@wba`, `@ietf`, `@wifi8mtg`
+- `groupmode on` enables passive listening for standards questions
+- `subscribe @slug` to get proactive updates in the channel
+- `my agents` to see personal agents and share them to the group
 
 ---
 
