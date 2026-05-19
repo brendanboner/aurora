@@ -37,40 +37,38 @@ function isFollowUp(question: string, memory: ConvMemory): boolean {
   const prevContext = (memory.question + ' ' + memory.answerSummary +
     ' ' + memory.keyEntities.join(' ')).toLowerCase();
 
-  // ── Step 1: detect "naming" patterns that signal a NEW entity ──────────
-  // Patterns: "who is X", "what is X", "tell me about X", "who are X"
-  // X = the words after the verb — if ANY of those words are not in
-  // the previous context, this is a new query, not a follow-up.
-  const namingMatch = q.match(/^(?:who|what)\s+(?:is|are|was|were|does|did)\s+(.+)/i) ||
+  // ── Step 1: detect "naming/activity" patterns that signal a NEW entity ──
+  // Catches: "who is X", "what is X", "who has discussed X", "who talked about X"
+  const namingMatch = q.match(/^(?:who|what)\s+(?:is|are|was|were|does|did|has|have|had|discussed?|talked?|mentioned?)\s+(.+)/i) ||
                       q.match(/^(?:tell me about|about|find|search for)\s+(.+)/i);
   if (namingMatch) {
-    const subject = namingMatch[1].trim();
-    // Remove pronouns and common filler — what remains are the actual named entities
     const pronouns = new Set(['they','them','their','he','she','it','this','that','those',
       'these','there','his','her','its','else','other','others','another','one','ones',
       'who','what','which','when','where','why','how','all','both','each','every']);
-    // Only treat capitalised words or identifier-like tokens as "new entities".
-    // Generic lowercase words (verbs like "decide", adjectives) are not entity signals.
     const originalSubject = namingMatch[1].trim();
     const subjectEntityWords = originalSubject.split(/\s+/).filter(w => {
       const wl = w.toLowerCase();
       if (pronouns.has(wl) || w.length <= 2) return false;
-      // Must look like a proper noun: starts with capital, or is ALL-CAPS, or contains digits
       return /^[A-Z]/.test(w) || /^[A-Z]{2,}$/.test(w) || /\d/.test(w);
     });
-    // If subject has no proper-noun candidates → fall through to pronoun check
     if (subjectEntityWords.length === 0) { /* fall through */ }
-    // If ANY proper-noun candidate is not in the previous exchange → new query
     else if (subjectEntityWords.some(w => !prevContext.includes(w.toLowerCase()))) return false;
   }
 
+  // ── Step 1.5: version numbers / spec identifiers signal a topic shift ───
+  // "Wi-Fi 9" after a "Wi-Fi in space" discussion is a new query, not a follow-up.
+  // Any number in the question that doesn't appear in previous context = new topic.
+  const questionNumbers = question.match(/\b\d+(?:\.\d+)*\b/g) || [];
+  if (questionNumbers.some(n => !prevContext.includes(n))) return false;
+
   // ── Step 2: pronoun / demonstrative reference → follow-up ──────────────
-  // "who led that", "what did they decide", "who else was involved"
   const pronounRef = /\b(they|them|their|he|she|it|this|that|those|these|there|his|her|its)\b/i;
   if (pronounRef.test(question)) return true;
 
-  // ── Step 3: reuses a known entity from previous answer → follow-up ─────
-  const memEntitiesLower = memory.keyEntities.map(e => e.toLowerCase());
+  // ── Step 3: reuses a SPECIFIC known entity (≥6 chars) → follow-up ──────
+  // Short terms like "Wi-Fi" or "IEEE" are too generic; require longer entities
+  // to avoid false positives where every Wi-Fi question enriches from the last.
+  const memEntitiesLower = memory.keyEntities.map(e => e.toLowerCase()).filter(e => e.length >= 6);
   return memEntitiesLower.some(e => q.includes(e));
 }
 
