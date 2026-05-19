@@ -119,6 +119,37 @@ export class AgentHandler {
     await context.sendActivity(msg);
   }
 
+  /** List the user's personal My-Agents with share-command hints. */
+  async handleListMyAgents(context: TurnContext): Promise<void> {
+    const email = this.userService.extractUserEmail(context.activity);
+    const displayName = context.activity.from.name || 'User';
+    const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+    const agentService = new AuroraAgentService(auroraUser.id, email);
+
+    let myAgents: Array<{ id: number; name: string; enabled: boolean; posting_cadence?: string }> = [];
+    try {
+      myAgents = await agentService.listUserAgents();
+    } catch {
+      await context.sendActivity('Could not reach the content creator service right now. Please try again.');
+      return;
+    }
+
+    if (myAgents.length === 0) {
+      await context.sendActivity('You have no personal agents yet. Create them at aurora-octo.xcloudiq.com/profile/my-agents');
+      return;
+    }
+
+    const lines = myAgents.map(a => {
+      const status = a.enabled ? 'active' : 'paused';
+      const cadence = a.posting_cadence ? ` · ${a.posting_cadence}` : '';
+      return `• **${a.name}** (${status}${cadence})\n  To share in a group: \`share ${a.name}\``;
+    }).join('\n\n');
+
+    await context.sendActivity(
+      `**Your personal agents** (from My Agents in Aurora)\n\n${lines}\n\nPersonal agent posts go to your direct chat. Type \`share Agent Name\` in a group to add that group.`
+    );
+  }
+
   /** Follow an agent by name. */
   async handleFollowAgent(context: TurnContext, agentName: string): Promise<void> {
     if (!agentName.trim()) {

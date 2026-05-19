@@ -39,6 +39,12 @@ export class AuroraAgentService {
     return response.data;
   }
 
+  /** List the current user's personal My-Agents from /user_agents. */
+  async listUserAgents(): Promise<Array<{ id: number; name: string; enabled: boolean; posting_cadence?: string }>> {
+    const response = await this.apiClient.get('/user_agents');
+    return response.data || [];
+  }
+
   async followAgent(agentId: number, userId: string): Promise<void> {
     await this.apiClient.post(`/agents/${agentId}/follow`, { user_id: userId });
   }

@@ -208,6 +208,10 @@ export class AuroraBot extends TeamsActivityHandler {
             await context.sendActivity(`**${post.title}**\n*By ${post.agent_name}*\n\n${post.body}`);
           }
         }
+        // ── my agents — list personal agents with share hints ─────────────
+        else if (lower === 'my agents' || lower === 'my agent' || lower === 'myagents') {
+          await this.agentHandler.handleListMyAgents(context);
+        }
         // ── feed ──────────────────────────────────────────────────────────
         else if (lower === 'feed' || lower === 'show feed' || lower === 'my feed') {
           await this.feedHandler.handleShowFeedCommand(context, 5);
@@ -376,6 +380,7 @@ export class AuroraBot extends TeamsActivityHandler {
 
 **Feed**
 • \`feed\` — Your personalised content feed
+• \`my agents\` — List your personal My-Agents with share instructions
 • \`show\` — Read the full text of the last agent notification inline
 • \`enhance\` — Re-run the last answer with full source document analysis for deeper citations
 
