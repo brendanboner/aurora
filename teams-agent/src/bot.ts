@@ -72,9 +72,11 @@ export class AuroraBot extends TeamsActivityHandler {
       if (botName && text.toLowerCase().startsWith(botName.toLowerCase())) {
         text = text.slice(botName.length).trim();
       }
-      // Also strip generic "aurora " prefix
+      // Strip "aurora " or "@Aurora " prefix (Agents Playground sends plain @Aurora, not <at> tags)
       if (/^aurora\s+/i.test(text)) {
         text = text.replace(/^aurora\s+/i, '').trim();
+      } else if (/^@aurora\s+/i.test(text)) {
+        text = text.replace(/^@aurora\s+/i, '').trim();
       }
       const lower = text.toLowerCase().trim();
 
@@ -265,14 +267,20 @@ export class AuroraBot extends TeamsActivityHandler {
             // Direct @mention (group or personal) → full answer, always.
             // groupmode passive listening (no @mention) → brief context snippet.
             const convType = context.activity.conversation?.conversationType ?? 'personal';
-            const wasDirectlyMentioned = rawText.includes('<at>');
+            // Direct mention: <at> tags (real Teams) OR plain @Aurora (Agents Playground)
+            const wasDirectlyMentioned = rawText.includes('<at>') ||
+              /^@aurora\b/i.test(rawText.trim()) ||
+              (botName && rawText.trim().toLowerCase().startsWith(botName.toLowerCase()));
             const isPassiveGroupMode = groupModeConversations.has(convId) && !wasDirectlyMentioned;
 
-            if (isPassiveGroupMode && QUESTION_RE.test(text) && AURORA_TOPIC_RE.test(text)) {
-              // Bot is passively listening in groupmode — add brief context without taking over
-              await this.chatHandler.handleGroupContextQuestion(context, text);
+            if (isPassiveGroupMode) {
+              // Passive group mode: only respond if it's a standards/Wi-Fi question
+              if (QUESTION_RE.test(text) && AURORA_TOPIC_RE.test(text)) {
+                await this.chatHandler.handleGroupContextQuestion(context, text);
+              }
+              // Otherwise: completely silent — don't respond to off-topic messages
             } else {
-              // Directly addressed (personal chat or @mention in group) — give the full answer
+              // Directly addressed (personal chat or @mention in group) — full answer
               await this.chatHandler.handleQuestion(context, text);
             }
           }
