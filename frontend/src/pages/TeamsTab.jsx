@@ -9,7 +9,7 @@ import './TeamsTab.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { eventBus } from '../services/eventBus';
-import { initializeTeamsSDK, notifyTeamsSuccess, getTeamsSSOToken } from '../teams/teamsSdk';
+import { initializeTeamsSDK, notifyTeamsSuccess, getTeamsSSOToken, getTeamsContext } from '../teams/teamsSdk';
 import apiClient from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchSocialFeed, likePost, fetchPostComments, addPostComment } from '../services/api';
@@ -171,16 +171,41 @@ export const TeamsTab = ({ backendStatus = 'connected' }) => {
         // Attempt silent SSO via Teams token exchange if we don't have a user yet.
         // This lets users inside Teams skip the Cognito redirect login flow.
         if (!user) {
+          let ssoSucceeded = false;
           try {
             const ssoToken = await getTeamsSSOToken();
             if (ssoToken) {
               console.log('[TeamsTab] Exchanging Teams SSO token for Aurora session...');
               await apiClient.post('/auth/teams-sso', { token: ssoToken });
+              ssoSucceeded = true;
               // Auth context will pick up the new session cookie on next status check
             }
           } catch (ssoError) {
-            // Silent SSO failed — user will need to log in via normal Cognito flow
-            console.warn('[TeamsTab] Teams SSO exchange failed (will use normal login):', ssoError?.message);
+            console.warn('[TeamsTab] Teams SSO exchange failed, trying email fallback:', ssoError?.message);
+          }
+
+          // Email fallback: if Azure SSO is not yet configured, try matching the
+          // Teams userPrincipalName (corporate email) against Cognito-registered users.
+          if (!ssoSucceeded) {
+            try {
+              const ctx = getTeamsContext();
+              const upn = ctx.userPrincipalName || ctx.userId;
+              if (upn) {
+                console.log('[TeamsTab] Attempting email fallback for UPN:', upn);
+                await apiClient.post('/auth/teams-email-fallback', { email: upn, upn });
+                console.log('[TeamsTab] Email fallback auth succeeded for:', upn);
+                // Auth context will pick up the new teams_session cookie
+              }
+            } catch (fallbackError) {
+              const status = fallbackError?.response?.status;
+              if (status === 404) {
+                console.warn('[TeamsTab] Email fallback: no Aurora account for this Teams user. Ask an admin to add you.');
+              } else if (status === 403) {
+                console.warn('[TeamsTab] Email fallback disabled — Azure SSO credentials required.');
+              } else {
+                console.warn('[TeamsTab] Email fallback failed:', fallbackError?.message);
+              }
+            }
           }
         }
 
@@ -209,7 +234,13 @@ export const TeamsTab = ({ backendStatus = 'connected' }) => {
 
     // Get user ID from auth context
     if (!user) {
-      console.error('[TeamsTab] User not authenticated');
+      setMessages((prev) => [...prev, {
+        id: `msg-${Date.now()}-auth`,
+        type: 'system',
+        content: 'You need to be logged in to send messages. Please sign in to Aurora.',
+        author: 'System',
+        timestamp: new Date().toISOString(),
+      }]);
       return;
     }
 

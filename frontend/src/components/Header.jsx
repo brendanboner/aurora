@@ -64,7 +64,7 @@ const Header = ({ onMenuToggle, isMenuOpen }) => {
 
         <div className="header-wordmark">
           <span className="header-product-name">Aurora</span>
-          <span className="header-by-badge">by Agent One</span>
+          <span className="header-by-badge">by the Office of the CTO</span>
         </div>
       </div>
 

@@ -355,7 +355,84 @@ async def teams_sso_exchange(request: Request):
     return response
 
 
-@app.delete("/api/auth/teams-sso")
+
+
+@app.post("/api/auth/teams-email-fallback")
+@limiter.limit("20/minute")
+async def teams_email_fallback(request: Request):
+    """
+    Interim Teams auth fallback: if the Azure AD SSO exchange isn't configured,
+    a Teams tab can call this endpoint with the user's UPN (Teams userPrincipalName,
+    which is their corporate email address). If that email is already registered in
+    Aurora via Cognito, we issue a teams_session cookie and the user can query without
+    a Cognito redirect.
+
+    Security note: this trusts the email from the Teams JS SDK context without
+    cryptographic proof. It is safe for demo/internal use under Docker network
+    isolation, but should be disabled (TEAMS_EMAIL_FALLBACK_ENABLED=false) once
+    proper AZURE_TENANT_ID / AZURE_APP_CLIENT_ID are configured.
+    """
+    if not getattr(settings, "teams_email_fallback_enabled", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Teams email fallback is disabled. Configure Azure SSO credentials.",
+        )
+
+    body = await request.json()
+    email = (body.get("email") or "").lower().strip()
+    upn = (body.get("upn") or email).lower().strip()
+
+    if not email and not upn:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing 'email' or 'upn'")
+
+    lookup_email = email or upn
+
+    # Verify the user exists in Aurora (registered via Cognito)
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{settings.backend_service_url}/internal/lookup-user-by-email/{lookup_email}"
+            )
+    except Exception as e:
+        logger.error(f"Teams email fallback: backend lookup failed: {e}")
+        raise HTTPException(status_code=503, detail="User lookup service unavailable")
+
+    if resp.status_code == 404:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No Aurora account found for {lookup_email}. Ask an admin to create one.",
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="User lookup failed")
+
+    user_data = resp.json()
+    logger.info(f"Teams email fallback: issuing session for {lookup_email}")
+
+    user_info = {
+        "id": user_data["id"],
+        "email": user_data["email"],
+        "display_name": user_data.get("display_name") or user_data["email"],
+        "role": user_data.get("role", "user"),
+        "auth_method": "teams_email_fallback",
+    }
+
+    session_id = secrets.token_urlsafe(32)
+    store_teams_session(session_id, user_info)
+
+    response = JSONResponse(content={"status": "ok", "email": user_info["email"]})
+    response.set_cookie(
+        key="teams_session",
+        value=session_id,
+        httponly=True,
+        secure=settings.effective_cookie_secure,
+        samesite="none" if settings.effective_cookie_secure else "lax",
+        max_age=3600,
+        domain=settings.validated_cookie_domain,
+    )
+    return response
+
+
+
 async def teams_sso_logout(request: Request):
     """Clear a Teams SSO session (called when user logs out from within the Teams tab)."""
     session_id = request.cookies.get("teams_session")

@@ -27,7 +27,7 @@ const LoginPage = () => {
           <div className="login-header">
             <A1LogoMark size={56} />
             <h1 className="login-title">Aurora</h1>
-            <span className="login-by-badge">by Agent One</span>
+            <span className="login-by-badge">by the Office of the CTO</span>
             <p className="login-subtitle">Wi-Fi Alliance Knowledge Assistant</p>
           </div>
 

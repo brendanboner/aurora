@@ -133,7 +133,7 @@ const Sidebar = ({ isOpen, onClose, backendStatus }) => {
             <A1LogoMark size={30} />
             <div className="drawer-brand-text">
               <span className="drawer-brand-name">Aurora</span>
-              <span className="drawer-brand-sub">by Agent One</span>
+              <span className="drawer-brand-sub">by the Office of the CTO</span>
             </div>
           </div>
         </div>
