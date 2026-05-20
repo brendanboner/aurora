@@ -1,20 +1,27 @@
+/* ── Header — Agent ONE glassmorphism bar ───────────────────────────────── */
 .app-header {
-  height: 50px;
-  background-color: var(--menu-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  height: 52px;
+  background: var(--a1-glass-bg);
+  backdrop-filter: var(--a1-glass-blur);
+  -webkit-backdrop-filter: var(--a1-glass-blur);
+  border-bottom: 1px solid var(--a1-glass-border);
+  box-shadow: var(--a1-glass-shadow);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
+  position: relative;
+  z-index: var(--a1-z-header);
 }
 
+/* ── Brand / logo area ───────────────────────────────────────────────────── */
 .header-brand {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
+/* Hamburger button */
 .mobile-menu-btn {
   display: inline-flex;
   flex-direction: column;
@@ -23,18 +30,19 @@
   gap: 4px;
   background: none;
   border: none;
-  color: var(--foreground);
+  color: var(--a1-text-tertiary);
   cursor: pointer;
-  padding: 8px;
-  margin-left: -8px;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
-  border-radius: var(--radius);
-  width: 36px;
-  height: 36px;
+  padding: 7px;
+  border-radius: var(--a1-radius-md);
+  width: 34px;
+  height: 34px;
+  transition: background-color 0.18s ease, color 0.18s ease;
+  flex-shrink: 0;
 }
 
 .mobile-menu-btn:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--a1-hover-overlay);
+  color: var(--a1-text-primary);
 }
 
 .mobile-menu-btn span {
@@ -42,199 +50,165 @@
   height: 2px;
   border-radius: 999px;
   background: currentColor;
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+  display: block;
 }
 
 .mobile-menu-btn.open span:nth-child(1) {
   transform: translateY(6px) rotate(45deg);
 }
-
 .mobile-menu-btn.open span:nth-child(2) {
   opacity: 0;
 }
-
 .mobile-menu-btn.open span:nth-child(3) {
   transform: translateY(-6px) rotate(-45deg);
 }
 
-.header-title {
+/* Thin vertical divider between logo and wordmark */
+.header-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--a1-border-subtle);
+  flex-shrink: 0;
+}
+
+/* Wordmark: "Aurora by Agent One" */
+.header-wordmark {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  line-height: 1.05;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.brand-kicker {
-  color: var(--muted-foreground);
+.header-product-name {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  background: var(--a1-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+}
+
+.header-by-badge {
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--a1-text-tertiary);
+  background: var(--a1-primary-subtle);
+  border: 1px solid var(--a1-primary-border);
+  border-radius: var(--a1-radius-full);
+  padding: 2px 8px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
-.brand-name {
-  color: var(--foreground);
-  font-size: 18px;
-  font-weight: 300;
-  font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  letter-spacing: 0.3px;
-}
-
-.platform-text {
-  font-weight: 600;
-}
-
+/* ── Right-side actions ──────────────────────────────────────────────────── */
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
-.theme-toggle-btn {
-  border: 1px solid var(--border);
-  background-color: var(--menu-surface);
-  color: var(--muted-foreground);
-  height: 34px;
-  width: 34px;
-  border-radius: 999px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-}
-
-/* Bulb "on" state — light mode active */
-.theme-toggle-btn.theme-toggle-on {
-  color: #f5c400;
-  border-color: #f5c400;
-  box-shadow: 0 0 8px 2px rgba(245, 196, 0, 0.35);
-}
-
-.theme-toggle-btn:hover {
-  background-color: var(--secondary);
-  border-color: var(--primary);
-  color: var(--foreground);
-}
-
-.theme-toggle-btn.theme-toggle-on:hover {
-  border-color: #f5c400;
-  color: #f5c400;
-}
-
-.theme-toggle-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--ring);
-}
-
-.header-icon-btn {
-  background: none;
-  border: none;
-  color: var(--muted-foreground);
-  font-size: 20px;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: var(--radius);
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-}
-
-.header-icon-btn:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  color: var(--foreground);
-}
-
+/* ── User avatar button ──────────────────────────────────────────────────── */
 .user-badge-container {
   position: relative;
 }
 
-.user-badge {
+.user-avatar-btn {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: var(--muted);
-  border: 2px solid var(--border);
+  background: var(--a1-surface-2);
+  border: 1px solid var(--a1-border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  padding: 0;
 }
 
-.user-badge:hover {
-  border-color: var(--primary);
+.user-avatar-btn:hover {
+  border-color: var(--a1-primary);
+  box-shadow: 0 0 0 3px var(--a1-primary-subtle);
 }
 
+.user-initials {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--a1-text-primary);
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+/* ── User dropdown menu ──────────────────────────────────────────────────── */
 .user-menu {
   position: absolute;
-  top: 45px;
+  top: calc(100% + 10px);
   right: 0;
-  background-color: var(--menu-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: var(--a1-surface-0);
+  border: 1px solid var(--a1-border);
+  border-radius: var(--a1-radius-lg);
+  box-shadow: var(--a1-shadow-lg);
   min-width: 220px;
   z-index: 1001;
   overflow: hidden;
+  backdrop-filter: blur(12px);
 }
 
 .user-menu-info {
-  padding: 16px;
-  border-bottom: 1px solid var(--border);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--a1-border);
 }
 
 .user-menu-email {
-  color: var(--foreground);
-  font-size: 14px;
+  color: var(--a1-text-primary);
+  font-size: 13px;
   font-weight: 500;
-  margin-bottom: 4px;
   word-break: break-word;
+  margin-bottom: 3px;
 }
 
 .user-menu-role {
-  color: var(--muted-foreground);
-  font-size: 12px;
+  color: var(--a1-text-tertiary);
+  font-size: 11px;
   text-transform: capitalize;
+  letter-spacing: 0.04em;
 }
 
-.user-menu-logout {
+.user-menu-item {
   width: 100%;
-  padding: 12px 16px;
+  padding: 11px 16px;
   background: none;
   border: none;
-  color: var(--foreground);
-  font-size: 14px;
+  color: var(--a1-text-secondary);
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  display: block;
+}
+
+.user-menu-item:hover {
+  background-color: var(--a1-hover-overlay);
+  color: var(--a1-text-primary);
 }
 
 .user-menu-logout:hover {
-  background-color: var(--secondary);
-}
-
-.grid-icon {
-  font-size: 18px;
+  color: var(--a1-error);
+  background-color: rgba(248, 113, 113, 0.06);
 }
 
 @media (max-width: 768px) {
   .app-header {
-    padding: 0 16px;
+    padding: 0 14px;
   }
-
-  .brand-name {
+  .header-product-name {
     font-size: 14px;
   }
-
-  .brand-kicker {
-    font-size: 10px;
+  .header-by-badge {
+    display: none;
   }
 }
+

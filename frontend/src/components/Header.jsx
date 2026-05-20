@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Header.css';
-import ExtremeNetworksLogo from './ExtremeNetworksLogo';
+import A1LogoMark from './A1LogoMark';
 import { useAuth } from '../contexts/AuthContext';
-import LightbulbIcon from './icons/LightbulbIcon';
 
-const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
+const Header = ({ onMenuToggle, isMenuOpen }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -13,8 +12,6 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
 
   const getUserInitials = () => {
     if (!user) return 'U';
-    
-    // Try to get initials from email
     if (user.email) {
       const emailParts = user.email.split('@')[0].split('.');
       if (emailParts.length > 1) {
@@ -22,7 +19,6 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
       }
       return user.email[0].toUpperCase();
     }
-    
     return 'U';
   };
 
@@ -35,25 +31,19 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
     setShowUserMenu(!showUserMenu);
   };
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setShowUserMenu(false);
       }
     };
-
     if (showUserMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showUserMenu]);
 
   return (
-    <>
     <header className="app-header">
       <div className="header-brand">
         <button
@@ -67,56 +57,48 @@ const Header = ({ onMenuToggle, isMenuOpen, theme, onThemeToggle }) => {
           <span></span>
           <span></span>
         </button>
-        <ExtremeNetworksLogo height={36} />
-        <div className="header-title">
-          <span className="brand-kicker">Office of the CTO</span>
-          <span className="brand-name"><b>Aurora</b></span>
+
+        <A1LogoMark size={34} />
+
+        <div className="header-divider" />
+
+        <div className="header-wordmark">
+          <span className="header-product-name">Aurora</span>
+          <span className="header-by-badge">by Agent One</span>
         </div>
       </div>
 
       <div className="header-actions">
-        <button
-          type="button"
-          className={`theme-toggle-btn${theme === 'light' ? ' theme-toggle-on' : ''}`}
-          onClick={onThemeToggle}
-          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-          aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-        >
-          <LightbulbIcon size={20} filled={theme === 'light'} />
-        </button>
-        <div 
-          className="user-badge-container"
-          ref={menuRef}
-        >
-          <div 
-            className="user-badge" 
+        <div className="user-badge-container" ref={menuRef}>
+          <button
+            className="user-avatar-btn"
             title={user?.email || 'User'}
             onClick={toggleUserMenu}
+            aria-label="User menu"
           >
-            {getUserInitials()}
-          </div>
+            <span className="user-initials">{getUserInitials()}</span>
+          </button>
+
           {showUserMenu && (
             <div className="user-menu">
               <div className="user-menu-info">
                 <div className="user-menu-email">{user?.email}</div>
-                <div className="user-menu-role">Role: {user?.role || 'user'}</div>
+                <div className="user-menu-role">{user?.role || 'user'}</div>
               </div>
               <button
-                className="user-menu-logout"
+                className="user-menu-item"
                 onClick={() => { setShowUserMenu(false); navigate('/profile/preferences'); }}
               >
                 Preferences
               </button>
-              <button className="user-menu-logout" onClick={handleLogout}>
-                Logout
+              <button className="user-menu-item user-menu-logout" onClick={handleLogout}>
+                Sign out
               </button>
             </div>
           )}
         </div>
       </div>
     </header>
-
-  </>
   );
 };
 

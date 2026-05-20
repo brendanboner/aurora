@@ -1,11 +1,14 @@
+/* ── Sidebar — Agent ONE dark glass drawer ───────────────────────────────── */
+
 .sidebar-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(17, 20, 32, 0.24);
-  backdrop-filter: blur(2px);
+  background: rgba(10, 11, 18, 0.50);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.22s ease;
+  transition: opacity 0.24s ease;
   z-index: 1190;
 }
 
@@ -16,19 +19,21 @@
 
 .sidebar-drawer {
   position: fixed;
-  top: 12px;
-  left: 12px;
-  bottom: 12px;
-  width: min(320px, calc(100vw - 24px));
-  background: var(--menu-surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.22);
+  top: 10px;
+  left: 10px;
+  bottom: 10px;
+  width: min(300px, calc(100vw - 20px));
+  background: rgba(19, 20, 31, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--a1-border);
+  border-radius: var(--a1-radius-2xl);
+  box-shadow: var(--a1-shadow-lg), 0 0 40px rgba(85, 98, 246, 0.06);
   display: flex;
   flex-direction: column;
-  transform: translateX(calc(-100% - 28px));
-  transition: transform 0.24s ease;
-  z-index: 1200;
+  transform: translateX(calc(-100% - 20px));
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: var(--a1-z-sidebar);
   overflow: hidden;
 }
 
@@ -36,77 +41,104 @@
   transform: translateX(0);
 }
 
+/* ── Drawer header ───────────────────────────────────────────────────────── */
 .drawer-header {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.75rem;
-  padding: 0.95rem 1rem 0.8rem;
-  border-bottom: 1px solid var(--border);
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--a1-border-subtle);
 }
 
 .drawer-brand {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 10px;
 }
 
 .drawer-brand-text {
   display: flex;
   flex-direction: column;
-  line-height: 1.05;
+  line-height: 1.1;
 }
 
 .drawer-brand-name {
-  color: var(--foreground);
-  font-size: 1rem;
+  font-size: 15px;
   font-weight: 700;
+  background: var(--a1-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
+.drawer-brand-sub {
+  font-size: 10px;
+  color: var(--a1-text-tertiary);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ── Navigation ──────────────────────────────────────────────────────────── */
 .drawer-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 0.6rem 0.75rem 0.9rem;
+  padding: 10px 10px 14px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--a1-border) transparent;
 }
 
 .drawer-section {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 2px;
 }
 
 .drawer-divider {
   height: 1px;
-  background: var(--border);
-  margin: 0.55rem 0.25rem;
+  background: var(--a1-border-subtle);
+  margin: 8px 6px;
 }
 
+/* Navigation items */
 .drawer-item {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.7rem 0.75rem;
-  border-radius: 12px;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--a1-radius-lg);
   text-decoration: none;
-  color: var(--muted-foreground);
-  transition: all 0.18s ease;
+  color: var(--a1-text-secondary);
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
   font-size: inherit;
   font-family: inherit;
-  border: none;
+  border: 1px solid transparent;
   background: none;
   width: 100%;
   text-align: left;
   cursor: pointer;
+  position: relative;
 }
 
 .drawer-item:hover {
-  background: var(--secondary);
-  color: var(--foreground);
+  background: var(--a1-hover-overlay);
+  color: var(--a1-text-primary);
 }
 
 .drawer-item.active {
-  background: rgba(137, 129, 229, 0.16);
-  color: var(--foreground);
+  background: var(--a1-primary-subtle);
+  color: var(--a1-text-primary);
+  border-color: var(--a1-primary-border);
+}
+
+/* Left accent bar on active items */
+.drawer-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--a1-gradient);
 }
 
 .drawer-item-icon {
@@ -116,13 +148,19 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.drawer-item.active .drawer-item-icon {
+  opacity: 1;
 }
 
 .drawer-item-label {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
 }
 
+/* Group toggle */
 .drawer-group-toggle {
   justify-content: flex-start;
 }
@@ -132,6 +170,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--a1-text-tertiary);
   transition: transform 0.18s ease;
 }
 
@@ -139,71 +178,47 @@
   transform: rotate(180deg);
 }
 
+/* Submenu */
 .drawer-submenu {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
-  padding-left: 1rem;
+  gap: 1px;
+  padding-left: 12px;
 }
 
 .drawer-item.nested {
-  padding-top: 0.58rem;
-  padding-bottom: 0.58rem;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
+/* ── Drawer footer ────────────────────────────────────────────────────────── */
 .drawer-footer {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.85rem 1rem;
-  border-top: 1px solid var(--border);
-  background: var(--secondary);
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--a1-border-subtle);
+  background: rgba(19, 20, 31, 0.60);
 }
 
 .drawer-footer-text {
-  font-size: 0.8rem;
-  color: var(--muted-foreground);
-  font-weight: 600;
+  font-size: 11px;
+  color: var(--a1-text-tertiary);
+  font-weight: 500;
 }
 
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-.status-connected {
-  background-color: var(--chart-3);
-  box-shadow: 0 0 8px var(--chart-3);
-}
-
-.status-disconnected {
-  background-color: var(--destructive);
-  box-shadow: 0 0 8px var(--destructive);
-}
-
-.status-checking {
-  background-color: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+/* Status dots in sidebar (override .status-* from App.css for drawer context) */
+.drawer-footer .status-indicator {
+  width: 7px;
+  height: 7px;
 }
 
 @media (max-width: 768px) {
   .sidebar-drawer {
-    width: min(320px, calc(100vw - 20px));
-    top: 10px;
-    left: 10px;
-    bottom: 10px;
+    width: min(290px, calc(100vw - 16px));
+    top: 8px;
+    left: 8px;
+    bottom: 8px;
   }
 }
+

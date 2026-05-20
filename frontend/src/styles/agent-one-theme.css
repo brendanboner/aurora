@@ -1,0 +1,175 @@
+/* ── Agent ONE Design System — Aurora by Agent One ───────────────────────────
+ * Source of truth: Figma "Agent One Beta — Full Screen" + OCTO-NOVA2 design-system
+ * Translated to plain CSS custom properties (no Tailwind dependency).
+ * Import this FIRST in index.css.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+:root {
+  /* ── Base palette ──────────────────────────────────────────────────────── */
+  --a1-background:          #13141f;   /* page background */
+  --a1-surface-0:           #1c1d2e;   /* card / modal surface */
+  --a1-surface-1:           #22233a;   /* dropdown / popover */
+  --a1-surface-2:           #2b2d3f;   /* secondary surface / table headers */
+  --a1-surface-3:           #333548;   /* muted / dividers */
+  --a1-surface-elevated:    #4d4f63;   /* elevated chips / badges */
+
+  /* ── Primary — blue-violet ─────────────────────────────────────────────── */
+  --a1-primary:             #5562F6;
+  --a1-primary-hover:       #4450e0;
+  --a1-primary-foreground:  #f8f8fb;
+  --a1-primary-subtle:      rgba(85, 98, 246, 0.12);
+  --a1-primary-border:      rgba(85, 98, 246, 0.25);
+
+  /* ── Accent — fuchsia ──────────────────────────────────────────────────── */
+  --a1-accent:              #F427C8;
+  --a1-accent-hover:        #e020b5;
+
+  /* ── Gradient — blue → violet → fuchsia ─────────────────────────────────── */
+  --a1-gradient:            linear-gradient(135deg, #3E34DC 0%, #6C1AC7 48%, #F427C8 100%);
+  --a1-gradient-glow-shadow: 0 3px 16px rgba(244, 39, 200, 0.30);
+
+  /* ── Text / content ────────────────────────────────────────────────────── */
+  --a1-text-primary:        #f8f8fb;
+  --a1-text-secondary:      #babcce;
+  --a1-text-tertiary:       #898ca4;
+  --a1-text-accent:         #8981e5;
+
+  /* ── Border ────────────────────────────────────────────────────────────── */
+  --a1-border:              #333548;
+  --a1-border-subtle:       rgba(77, 79, 99, 0.35);
+  --a1-border-input:        rgba(153, 156, 179, 0.25);
+
+  /* ── Status ────────────────────────────────────────────────────────────── */
+  --a1-success:             #4ade80;
+  --a1-warning:             #facc15;
+  --a1-error:               #f87171;
+  --a1-info:                #79b0f5;
+
+  /* ── Hover overlays ────────────────────────────────────────────────────── */
+  --a1-hover-overlay:       rgba(255, 255, 255, 0.06);
+  --a1-hover-overlay-subtle: rgba(255, 255, 255, 0.04);
+
+  /* ── Glassmorphism / header bar ────────────────────────────────────────── */
+  --a1-glass-bg:            rgba(19, 20, 31, 0.88);
+  --a1-glass-border:        rgba(85, 98, 246, 0.20);
+  --a1-glass-blur:          blur(16px);
+  --a1-glass-shadow:        0 1px 0 rgba(244, 39, 200, 0.08);
+
+  /* ── Chat bubbles ──────────────────────────────────────────────────────── */
+  --a1-user-bubble-bg:      linear-gradient(135deg, rgba(52, 54, 84, 0.97) 0%, rgba(42, 44, 70, 0.97) 100%);
+  --a1-user-bubble-border:  rgba(108, 112, 168, 0.45);
+  --a1-user-bubble-shadow:  0 2px 20px rgba(0, 0, 0, 0.30);
+
+  /* ── Input bar ─────────────────────────────────────────────────────────── */
+  --a1-input-bg:            rgba(30, 31, 42, 0.80);
+  --a1-input-border:        rgba(85, 98, 246, 0.25);
+  --a1-input-border-focus:  rgba(85, 98, 246, 0.60);
+
+  /* ── Radius ────────────────────────────────────────────────────────────── */
+  --a1-radius-sm:           4px;
+  --a1-radius-md:           8px;
+  --a1-radius-lg:           10px;
+  --a1-radius-xl:           15px;
+  --a1-radius-2xl:          20px;
+  --a1-radius-full:         9999px;
+
+  /* ── Elevation ─────────────────────────────────────────────────────────── */
+  --a1-shadow-sm:   0 2px 4px rgba(15, 15, 21, 0.30);
+  --a1-shadow-md:   0 2px 8px rgba(15, 15, 21, 0.40), 0 4px 16px rgba(15, 15, 21, 0.30);
+  --a1-shadow-lg:   0 4px 24px rgba(15, 15, 21, 0.50), 0 8px 32px rgba(15, 15, 21, 0.30);
+
+  /* ── Typography ────────────────────────────────────────────────────────── */
+  --a1-font:        'Source Sans 3', 'Source Sans Pro', system-ui, sans-serif;
+
+  /* ── Z-index ────────────────────────────────────────────────────────────── */
+  --a1-z-header:    100;
+  --a1-z-overlay:   50;
+  --a1-z-sidebar:   1200;
+  --a1-z-modal:     200;
+}
+
+/* ── Gradient utilities ────────────────────────────────────────────────────── */
+
+/* Primary gradient text */
+.gradient-text {
+  background: var(--a1-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Gradient fill (backgrounds, borders) */
+.gradient-fill {
+  background: var(--a1-gradient);
+}
+
+/* ── Gradient CTA button ───────────────────────────────────────────────────── */
+.btn-gradient {
+  position: relative;
+  overflow: hidden;
+  background: var(--a1-gradient);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--a1-radius-lg);
+  box-shadow: var(--a1-gradient-glow-shadow);
+  transition: box-shadow 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+  cursor: pointer;
+}
+.btn-gradient::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.14) 50%,
+    transparent 65%
+  );
+  background-size: 200% 100%;
+  animation: a1-shimmer 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+.btn-gradient:hover:not(:disabled) {
+  box-shadow: 0 6px 28px rgba(244, 39, 200, 0.50), 0 2px 8px rgba(62, 52, 220, 0.40);
+  filter: brightness(1.08);
+}
+.btn-gradient:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@keyframes a1-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Gradient border card ──────────────────────────────────────────────────── */
+.card-gradient-border {
+  background: var(--a1-gradient);
+  padding: 1px;
+  border-radius: var(--a1-radius-xl);
+}
+.card-gradient-border > * {
+  border-radius: calc(var(--a1-radius-xl) - 1px);
+  background: var(--a1-surface-0);
+}
+
+/* ── Tri-colour background glow (used on all pages) ───────────────────────── */
+.bg-nova-glow {
+  background:
+    radial-gradient(ellipse 70% 50% at 12% 110%, rgba(62, 52, 220, 0.50) 0%, rgba(108, 26, 199, 0.18) 45%, transparent 68%),
+    radial-gradient(ellipse 50% 36% at 50% 115%, rgba(108, 26, 199, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 88% 110%, rgba(244, 39, 200, 0.42) 0%, rgba(108, 26, 199, 0.15) 45%, transparent 68%),
+    var(--a1-background);
+}
+
+/* Vignette overlay — applied after glow */
+.bg-nova-vignette {
+  background: radial-gradient(ellipse 130% 130% at 50% 50%, transparent 42%, rgba(10, 11, 18, 0.72) 100%);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}

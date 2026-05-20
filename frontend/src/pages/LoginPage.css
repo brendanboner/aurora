@@ -1,126 +1,137 @@
+/* ── Login Page — Agent One ───────────────────────────────────────────────── */
+
 .login-page {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 20px;
 }
 
 .login-container {
   width: 100%;
-  max-width: 450px;
+  max-width: 420px;
+  position: relative;
+  z-index: 1;
 }
 
 .login-card {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  background: var(--a1-surface-0);
+  border: 1px solid var(--a1-border);
+  border-radius: var(--a1-radius-2xl);
+  box-shadow: var(--a1-shadow-lg), 0 0 60px rgba(85, 98, 246, 0.12);
   overflow: hidden;
 }
 
+/* ── Card header ─────────────────────────────────────────────────────────── */
 .login-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 40px 30px;
+  padding: 40px 32px 28px;
   text-align: center;
+  border-bottom: 1px solid var(--a1-border-subtle);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
-.login-header h1 {
-  margin: 0 0 10px 0;
-  font-size: 32px;
+.login-title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  background: var(--a1-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-by-badge {
+  display: inline-block;
+  padding: 3px 12px;
+  background: rgba(85, 98, 246, 0.12);
+  border: 1px solid var(--a1-primary-border);
+  border-radius: var(--a1-radius-full);
+  font-size: 11px;
   font-weight: 600;
+  color: var(--a1-primary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .login-subtitle {
   margin: 0;
-  font-size: 16px;
-  opacity: 0.9;
+  font-size: 14px;
+  color: var(--a1-text-tertiary);
 }
 
+/* ── Card body ───────────────────────────────────────────────────────────── */
 .login-content {
-  padding: 40px 30px;
+  padding: 32px;
   text-align: center;
 }
 
 .login-description {
-  color: #555;
+  color: var(--a1-text-secondary);
   font-size: 15px;
   line-height: 1.6;
-  margin: 0 0 30px 0;
+  margin: 0 0 24px;
 }
 
-.login-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 14px 32px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  width: 100%;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-}
-
-.login-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-}
-
-.login-button:active {
-  transform: translateY(0);
-}
-
-.login-info {
-  margin: 20px 0 0 0;
-  font-size: 13px;
-  color: #888;
-}
-
+/* Spinner using Agent One colours */
 .login-spinner {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin: 30px 0;
+  margin: 24px 0;
 }
 
 .spinner {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border: 3px solid var(--a1-border);
+  border-top: 3px solid var(--a1-primary);
   border-radius: 50%;
   width: 40px;
   height: 40px;
-  animation: spin 1s linear infinite;
+  animation: spin 0.9s linear infinite;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
+}
+
+.login-info {
+  margin: 0;
+  font-size: 13px;
+  color: var(--a1-text-tertiary);
 }
 
 .link-button {
   background: none;
   border: none;
-  color: #667eea;
+  color: var(--a1-primary);
   text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
   font-size: 13px;
   padding: 0;
   font-family: inherit;
+  transition: color 0.15s ease;
 }
 
 .link-button:hover {
-  color: #764ba2;
+  color: var(--a1-accent);
 }
 
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 480px) {
-  .login-header h1 {
-    font-size: 24px;
+  .login-header {
+    padding: 32px 20px 24px;
   }
-  
+
+  .login-title {
+    font-size: 28px;
+  }
+
   .login-content {
-    padding: 30px 20px;
+    padding: 24px 20px;
   }
 }
