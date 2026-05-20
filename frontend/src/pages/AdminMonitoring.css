@@ -727,14 +727,14 @@
 }
 
 .mon-count-badge.warn {
-  background: #fef3c7;
-  color: #92400e;
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--a1-warning);
 }
 
 /* ── Stalled batches ── */
 .mon-batch-row.stalled {
-  border-color: #fca5a5;
-  background: #fff5f5;
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.06);
 }
 
 .mon-stalled-badge {
@@ -743,8 +743,8 @@
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 4px;
-  background: #fee2e2;
-  color: #b91c1c;
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--a1-error);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }

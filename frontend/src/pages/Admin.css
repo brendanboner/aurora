@@ -1677,12 +1677,12 @@
 }
 
 .feedback-badge.negative {
-  background-color: #ffebee;
+  background-color: rgba(248, 113, 113, 0.12);
 }
 
 .cache-badge {
-  background-color: #fff3e0;
-  color: #e65100;
+  background-color: rgba(251, 191, 36, 0.12);
+  color: var(--a1-warning);
 }
 
 .query-meta {
