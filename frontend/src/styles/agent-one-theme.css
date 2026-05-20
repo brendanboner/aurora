@@ -31,10 +31,11 @@
   --a1-gradient-glow-shadow: 0 3px 16px rgba(244, 39, 200, 0.30);
 
   /* ── Text / content ────────────────────────────────────────────────────── */
-  --a1-text-primary:        #f8f8fb;
-  --a1-text-secondary:      #babcce;
-  --a1-text-tertiary:       #898ca4;
-  --a1-text-accent:         #8981e5;
+  --a1-text-primary:        #ffffff;
+  --a1-text-secondary:      #d0d2e4;
+  --a1-text-tertiary:       #a0a3b8;
+  --a1-text-accent:         #a09fe8;
+  --a1-link:                #6ed8d2;   /* teal — matches Agent One screenshot */
 
   /* ── Border ────────────────────────────────────────────────────────────── */
   --a1-border:              #333548;

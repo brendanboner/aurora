@@ -1,0 +1,4 @@
+  {
+    "botMessagingEndpoint": "http://localhost:3978/api/messages"
+  }
+

@@ -2,13 +2,13 @@
 @import './styles/agent-one-theme.css';
 
 :root {
-  --font-size: 14px;
+  --font-size: 16px;
   /* Typography scale variables */
   --text-sm: 12px;
-  --text-base: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 26px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
 
   /* ── Core palette mapped to Agent ONE tokens ─────────────────────────── */
   --background:               var(--a1-background);       /* #13141f */
@@ -98,12 +98,14 @@ code {
 }
 
 a {
-  color: var(--primary);
+  color: var(--a1-link);
   text-decoration: none;
 }
 
 a:hover {
+  color: var(--a1-text-primary);
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 h1 {

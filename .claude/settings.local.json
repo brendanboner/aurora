@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(graphify export *)",
+      "Bash(graphify benchmark *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(make build-push-frontend *)",
+      "Bash(make connect_aurora_ec2 *)",
+      "Bash(make reset-wba-communities *)",
+      "Bash(gh api *)",
+      "Bash(python3 -c ' *)",
+      "Bash(npm update *)",
+      "Bash(docker compose *)",
+      "Bash(curl -s http://localhost:8001/health)",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s http://localhost:8000/health)"
+    ]
+  }
+}

@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import IconRail from './components/IconRail';
 import Chatbot from './pages/Chatbot';
 import UserProfile from './pages/UserProfile';
 import AdminUsers from './pages/AdminUsers';
@@ -108,7 +109,9 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu }) {
                   onClose={closeMenu}
                   backendStatus={backendStatus}
                 />
-                <div className={`page-container ${noPadding ? 'no-padding' : ''}`}>
+                <div className="app-body">
+                  <IconRail />
+                  <div className={`page-container ${noPadding ? 'no-padding' : ''}`}>
                   <Routes>
                     <Route 
                       path="/" 
@@ -299,8 +302,9 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu }) {
                               {/* Redirect unknown routes to home */}
                               <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
-                          </div>
-                        </div>
+                          </div>{/* end .page-container */}
+                        </div>{/* end .app-body */}
+                      </div>{/* end .app-shell */}
                 </ProtectedRoute>
               }
             />

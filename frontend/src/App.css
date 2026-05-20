@@ -28,7 +28,7 @@
   padding: 0;
   grid-template-areas:
     "header"
-    "content";
+    "body";
   position: relative;
   z-index: 1;
 }
@@ -39,9 +39,19 @@
   height: 52px;
 }
 
+/* Body row: icon-rail + page-container side by side */
+.app-body {
+  grid-area: body;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Content area - scrollable */
 .page-container {
-  grid-area: content;
+  flex: 1;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
   background: transparent;
@@ -68,7 +78,7 @@
     grid-template-rows: 52px 1fr;
     grid-template-areas:
       "header"
-      "content";
+      "body";
   }
 
   .page-container {
