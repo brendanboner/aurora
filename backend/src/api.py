@@ -281,7 +281,36 @@ async def sync_user_internal(req: UserSyncRequest):
         )
 
 
-# ========== Query Endpoint ==========
+
+# ========== Internal: lookup user by email (used by Teams email fallback auth) ==========
+
+@app.get("/internal/lookup-user-by-email/{email}")
+async def lookup_user_by_email_internal(email: str):
+    """
+    Internal endpoint: return basic user info if a Cognito-registered user exists
+    with this email address. Called by the auth service's Teams email-fallback
+    endpoint so it can issue a teams_session without a full Azure AD token exchange.
+
+    No auth required — Docker network isolation is the security boundary.
+    """
+    try:
+        user = postgres.get_user_by_email(email.lower().strip())
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {
+            "id": user["id"],
+            "email": user["email"],
+            "display_name": user.get("display_name") or user["email"],
+            "role": user.get("role", "user"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"lookup_user_by_email_internal error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Lookup failed")
+
+
+
 
 @app.post("/query", response_model=QueryResponse)
 @require_user_context

@@ -1,9 +1,21 @@
-/* Root Application Layout - CSS Grid with 12px gaps */
+/* Root Application Layout — Agent ONE shell */
 .App {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background-color: var(--background);
+  position: relative;
+  /* bg-nova-glow class applied in JSX; background-color fallback */
+  background-color: var(--a1-background);
+}
+
+/* Vignette layer over the glow — absolute, covers entire app */
+.App::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 130% 130% at 50% 50%, transparent 42%, rgba(10, 11, 18, 0.68) 100%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* App shell with grid layout */
@@ -11,29 +23,41 @@
   height: 100vh;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: 50px 1fr;
-  gap: 12px;
-  padding: 12px;
+  grid-template-rows: 52px 1fr;
+  gap: 0;
+  padding: 0;
   grid-template-areas:
     "header"
-    "content";
+    "body";
+  position: relative;
+  z-index: 1;
 }
 
 /* Header spans full width */
 .app-header {
   grid-area: header;
-  height: 50px;
+  height: 52px;
+}
+
+/* Body row: icon-rail + page-container side by side */
+.app-body {
+  grid-area: body;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Content area - scrollable */
 .page-container {
-  grid-area: content;
+  flex: 1;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  background-color: var(--page-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  padding: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 32px 40px;
 }
 
 .page-container.no-padding {
@@ -51,26 +75,26 @@
 @media (max-width: 768px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: 50px 1fr;
+    grid-template-rows: 52px 1fr;
     grid-template-areas:
       "header"
-      "content";
+      "body";
   }
 
   .page-container {
-    padding: 16px;
+    padding: 20px;
   }
 }
 
-/* Common button styles */
+/* ── Common button styles ──────────────────────────────────────────────────── */
 .btn {
-  padding: 10px 20px;
+  padding: 9px 18px;
   border: none;
   border-radius: var(--radius-button);
   font-size: var(--text-base);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   outline: none;
   display: inline-flex;
   align-items: center;
@@ -78,80 +102,92 @@
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
   transform: none !important;
+  filter: none !important;
 }
 
 .btn-primary {
-  background-color: var(--primary);
-  color: var(--primary-foreground);
+  background: var(--a1-gradient);
+  color: #fff;
+  box-shadow: var(--a1-gradient-glow-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.12) 50%, transparent 65%);
+  background-size: 200% 100%;
+  animation: a1-shimmer 2.8s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--elevation-sm);
-  filter: brightness(1.1);
+  box-shadow: 0 4px 20px rgba(244, 39, 200, 0.45), 0 2px 8px rgba(62, 52, 220, 0.35);
+  filter: brightness(1.08);
 }
 
 .btn-secondary {
-  background-color: var(--card);
-  color: var(--secondary-foreground);
-  border: 1px solid var(--border);
+  background-color: var(--a1-surface-2);
+  color: var(--a1-text-primary);
+  border: 1px solid var(--a1-border);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: var(--popover);
-  border-color: var(--primary);
+  background-color: var(--a1-surface-3);
+  border-color: var(--a1-primary);
 }
 
 .btn-danger {
-  background-color: var(--destructive);
-  color: var(--destructive-foreground);
+  background-color: var(--a1-error);
+  color: #fff;
 }
 
 .btn-danger:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--elevation-sm);
   filter: brightness(1.1);
+  box-shadow: var(--a1-shadow-sm);
 }
 
 .btn-success {
-  background-color: var(--chart-3);
-  color: var(--foreground);
+  background-color: var(--a1-success);
+  color: #13141f;
+  font-weight: 600;
 }
 
 .btn-success:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--elevation-sm);
-  filter: brightness(1.1);
+  filter: brightness(1.08);
+  box-shadow: var(--a1-shadow-sm);
 }
 
-/* Common card styles */
+/* ── Common card styles ───────────────────────────────────────────────────── */
 .card {
-  background-color: var(--card);
-  border: 1px solid var(--border);
+  background-color: var(--a1-surface-0);
+  border: 1px solid var(--a1-border);
   border-radius: var(--radius-card);
   padding: 24px;
-  box-shadow: var(--elevation-sm);
+  box-shadow: var(--a1-shadow-sm);
 }
 
-/* Common input styles */
+/* ── Common input styles ─────────────────────────────────────────────────── */
 .input {
-  background-color: var(--input-background);
-  border: 1px solid var(--border);
+  background-color: rgba(30, 31, 42, 0.6);
+  border: 1px solid var(--a1-border-input);
   border-radius: var(--radius);
   padding: 12px 16px;
   color: var(--foreground);
   font-size: var(--text-base);
   width: 100%;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px rgba(137, 129, 229, 0.1);
+  border-color: var(--a1-input-border-focus);
+  box-shadow: 0 0 0 3px rgba(85, 98, 246, 0.12);
 }
 
 .input::placeholder {
@@ -168,10 +204,10 @@ select.input {
   cursor: pointer;
 }
 
-/* Loading spinner */
+/* ── Loading spinner ─────────────────────────────────────────────────────── */
 .spinner {
-  border: 3px solid var(--border);
-  border-top: 3px solid var(--primary);
+  border: 3px solid var(--a1-border);
+  border-top: 3px solid var(--a1-primary);
   border-radius: 50%;
   width: 40px;
   height: 40px;
@@ -180,11 +216,11 @@ select.input {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
+  0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
-/* Status indicator */
+/* ── Status indicator ────────────────────────────────────────────────────── */
 .status-indicator {
   display: inline-block;
   width: 8px;
@@ -193,27 +229,27 @@ select.input {
 }
 
 .status-connected {
-  background-color: var(--chart-3);
-  box-shadow: 0 0 8px var(--chart-3);
+  background-color: var(--a1-success);
+  box-shadow: 0 0 6px var(--a1-success);
 }
 
 .status-disconnected {
-  background-color: var(--destructive);
-  box-shadow: 0 0 8px var(--destructive);
+  background-color: var(--a1-error);
+  box-shadow: 0 0 6px var(--a1-error);
 }
 
 .status-checking {
-  background-color: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
+  background-color: var(--a1-primary);
+  box-shadow: 0 0 6px var(--a1-primary);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50%       { opacity: 0.45; }
 }
 
-/* Form group */
+/* ── Form group ──────────────────────────────────────────────────────────── */
 .form-group {
   margin-bottom: 20px;
 }
@@ -221,41 +257,41 @@ select.input {
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  color: var(--muted-foreground);
+  color: var(--a1-text-secondary);
   font-size: var(--text-base);
   font-weight: 500;
 }
 
-/* Badge */
+/* ── Badge ───────────────────────────────────────────────────────────────── */
 .badge {
   display: inline-block;
   padding: 4px 12px;
   border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   font-weight: 500;
-  background-color: rgba(137, 129, 229, 0.2);
-  color: var(--primary);
-  border: 1px solid rgba(137, 129, 229, 0.3);
+  background-color: var(--a1-primary-subtle);
+  color: var(--a1-primary);
+  border: 1px solid var(--a1-primary-border);
 }
 
-/* Tag */
+/* ── Tag ─────────────────────────────────────────────────────────────────── */
 .tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background-color: rgba(137, 129, 229, 0.15);
-  border: 1px solid rgba(137, 129, 229, 0.3);
+  background-color: var(--a1-primary-subtle);
+  border: 1px solid var(--a1-primary-border);
   border-radius: var(--radius);
   font-size: var(--text-sm);
-  color: var(--primary-foreground);
+  color: var(--a1-text-primary);
   margin: 4px;
 }
 
 .tag .remove-btn {
   background: none;
   border: none;
-  color: var(--primary-foreground);
+  color: var(--a1-text-secondary);
   cursor: pointer;
   padding: 0;
   font-size: 16px;
@@ -263,5 +299,6 @@ select.input {
 }
 
 .tag .remove-btn:hover {
-  color: var(--destructive);
+  color: var(--a1-error);
 }
+

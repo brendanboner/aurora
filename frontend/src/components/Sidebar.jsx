@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
+import A1LogoMark from './A1LogoMark';
 import {
   ChatIcon,
   ProfileIcon,
@@ -20,7 +21,6 @@ import {
   FileTextIcon,
   ChevronDownIcon,
 } from '../components/icons';
-import ExtremeNetworksLogo from './ExtremeNetworksLogo';
 import { useAuth } from '../contexts/AuthContext';
 
 const MAIN_ITEMS = [
@@ -130,9 +130,10 @@ const Sidebar = ({ isOpen, onClose, backendStatus }) => {
       <aside className={`sidebar-drawer ${isOpen ? 'open' : ''}`} aria-hidden={!isOpen}>
         <div className="drawer-header">
           <div className="drawer-brand">
-            <ExtremeNetworksLogo height={34} width={34} />
+            <A1LogoMark size={30} />
             <div className="drawer-brand-text">
               <span className="drawer-brand-name">Aurora</span>
+              <span className="drawer-brand-sub">by the Office of the CTO</span>
             </div>
           </div>
         </div>

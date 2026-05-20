@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../contexts/AuthContext';
 import './SocialFeed.css';
-import { NewsIcon, StarIcon, RefreshIcon, LinkIcon } from '../components/icons';
+import { NewsIcon, RefreshIcon, LinkIcon } from '../components/icons';
 import {
   fetchSocialFeed,
   likePost,
@@ -300,52 +300,46 @@ const SocialFeed = () => {
   return (
     <div className="social-feed-shell">
       <header className="social-feed-header">
-        <div className="feed-title">
-          <NewsIcon size={36} />
-          <div>
-            <h1>Creator Feed</h1>
-            <p>Autonomous CreatorAgents summarise the latest standards intelligence just for you.</p>
-          </div>
+        <div className="feed-title-row">
+          <h1 className="feed-title-text">Creator Feed</h1>
         </div>
-        <div className="feed-actions">
-          <div className="feed-toolbar">
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Instant search posts..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <div className="feed-toolbar">
+          <input
+            type="text"
+            className="feed-search"
+            placeholder="Search posts…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <select
+            className="feed-select"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+          >
+            <option value="relevance">Relevance</option>
+            <option value="date">Most Recent</option>
+          </select>
+          {visibleMyAgents.length > 0 && (
             <select
-              className="sort-select"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value)}
+              className="feed-select"
+              value={selectedAgentId}
+              onChange={handleAgentFilterChange}
             >
-              <option value="relevance">Sort: Relevance</option>
-              <option value="date">Sort: Most Recent</option>
+              <option value="">All agents</option>
+              {visibleMyAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
             </select>
-            {visibleMyAgents.length > 0 && (
-              <select
-                className="sort-select agent-filter-select"
-                value={selectedAgentId}
-                onChange={handleAgentFilterChange}
-              >
-                <option value="">All agents</option>
-                {visibleMyAgents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          <button type="button" className="action-btn" onClick={refreshFeed} disabled={isLoading}>
-            <RefreshIcon size={18} />
+          )}
+          <button type="button" className="feed-btn" onClick={refreshFeed} disabled={isLoading} title="Refresh feed">
+            <RefreshIcon size={14} />
             <span>Refresh</span>
           </button>
           <button
             type="button"
-            className="action-btn subtle"
+            className="feed-btn"
             onClick={() => loadFeed({ reset: false })}
             disabled={isLoading || !hasMore}
           >
@@ -354,40 +348,11 @@ const SocialFeed = () => {
         </div>
       </header>
 
-      <section className="feed-context">
-        <div className={`profile-signal-card ${selectedAgent ? 'personal-agent-focus-card' : ''}`}>
-          <div className="signal-header">
-            <StarIcon size={20} />
-            <span>
-              {selectedAgent
-                ? 'Viewing only your personal agent stream'
-                : 'What the system thinks you care about'}
-            </span>
-          </div>
-          {selectedAgent ? (
-            <p className="signal-placeholder">
-              <strong>{selectedAgent.name}</strong> is selected, so this feed is showing only that
-              personal agent&apos;s posts.
-            </p>
-          ) : (
-            <>
-              {profileError && <p className="signal-error">{profileError}</p>}
-              {highlightTopics.length > 0 ? (
-                <div className="topic-chips">
-                  {highlightTopics.map(([topic, weight]) => (
-                    <span key={topic} className="topic-chip">
-                      {topic}
-                      <span className="chip-weight">{(weight * 100).toFixed(0)}%</span>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="signal-placeholder">Interact with posts to teach the system faster.</p>
-              )}
-            </>
-          )}
+      {selectedAgent && (
+        <div className="feed-agent-banner">
+          Showing only: <strong>{selectedAgent.name}</strong>
         </div>
-      </section>
+      )}
 
       {error && <div className="feed-error">{error}</div>}
 
@@ -419,7 +384,7 @@ const SocialFeed = () => {
       {isLoading && (
         <div className="feed-loading">
           <div className="spinner" />
-          <span>Loading professional insights…</span>
+          <span>Loading…</span>
         </div>
       )}
     </div>
@@ -429,6 +394,7 @@ const SocialFeed = () => {
 // PostCard component for LinkedIn-style posts
 const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle, onAgentFeedback, agentFeedbackPendingId }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showSources, setShowSources] = useState(false);
   const [showAgentFeedback, setShowAgentFeedback] = useState(false);
   const [agentFeedbackType, setAgentFeedbackType] = useState('');
   const [agentFeedbackComment, setAgentFeedbackComment] = useState('');
@@ -522,60 +488,64 @@ const PostCard = ({ post, currentUser, pendingAction, onReaction, onFollowToggle
         </div>
       )}
 
-      {/* Sources/References */}
+      {/* Sources/References — collapsed by default */}
       {post.sources && post.sources.length > 0 && (
         <div className="post-sources">
-          <div className="sources-header">
-            <LinkIcon size={16} />
-            <span>Referenced articles:</span>
-          </div>
-          <div className="source-links">
-            {post.sources.map((source, idx) => {
-              const computeLabel = () => {
-                const id = (source.source_identifier || '').toString().trim();
-                const title = (source.title || '').toString().trim();
-                const url = (source.url || '').toString().trim();
-                // Prefer a non-placeholder title
-                if (title && title.toLowerCase() !== 'url') return title;
-                // If URL is present, show a nice host name
-                if (url) {
-                  try {
-                    const u = new URL(url);
-                    return u.hostname.replace(/^www\./, '');
-                  } catch {
-                    return url.length > 60 ? url.slice(0, 57) + '…' : url;
-                  }
-                }
-                // If identifier looks like a URL, also reduce to host
-                if (id) {
-                  if (id.toLowerCase() === 'url') return `Source ${idx + 1}`;
-                  if (/^https?:\/\//i.test(id)) {
+          <button
+            type="button"
+            className="sources-toggle"
+            onClick={() => setShowSources((s) => !s)}
+          >
+            <LinkIcon size={13} />
+            <span>{showSources ? 'Hide' : 'Show'} {post.sources.length} source{post.sources.length !== 1 ? 's' : ''}</span>
+            <span className="sources-chevron">{showSources ? '▲' : '▼'}</span>
+          </button>
+          {showSources && (
+            <div className="source-links">
+              {post.sources.map((source, idx) => {
+                const computeLabel = () => {
+                  const id = (source.source_identifier || '').toString().trim();
+                  const title = (source.title || '').toString().trim();
+                  const url = (source.url || '').toString().trim();
+                  if (title && title.toLowerCase() !== 'url') return title;
+                  if (url) {
                     try {
-                      const u = new URL(id);
+                      const u = new URL(url);
                       return u.hostname.replace(/^www\./, '');
                     } catch {
-                      return id.length > 60 ? id.slice(0, 57) + '…' : id;
+                      return url.length > 60 ? url.slice(0, 57) + '…' : url;
                     }
                   }
-                  return id;
-                }
-                return `Source ${idx + 1}`;
-              };
-              const label = computeLabel();
-              const href = source.url || (/^https?:\/\//i.test(source.source_identifier || '') ? source.source_identifier : '#');
-              return (
-                <a
-                  key={`${post.id}-src-${idx}`}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="source-link"
-                >
-                  {label}
-                </a>
-              );
-            })}
-          </div>
+                  if (id) {
+                    if (id.toLowerCase() === 'url') return `Source ${idx + 1}`;
+                    if (/^https?:\/\//i.test(id)) {
+                      try {
+                        const u = new URL(id);
+                        return u.hostname.replace(/^www\./, '');
+                      } catch {
+                        return id.length > 60 ? id.slice(0, 57) + '…' : id;
+                      }
+                    }
+                    return id;
+                  }
+                  return `Source ${idx + 1}`;
+                };
+                const label = computeLabel();
+                const href = source.url || (/^https?:\/\//i.test(source.source_identifier || '') ? source.source_identifier : '#');
+                return (
+                  <a
+                    key={`${post.id}-src-${idx}`}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="source-link"
+                  >
+                    {label}
+                  </a>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

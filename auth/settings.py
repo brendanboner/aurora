@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # azure_app_client_id: Azure App Registration client ID used in manifest.json webApplicationInfo.
     #   Should match the "id" field in frontend/public/manifest.json webApplicationInfo section.
     azure_app_client_id: Optional[str] = None
+
+    # Teams email fallback — allows Teams users to authenticate via their registered
+    # Cognito email address without a full Azure AD token exchange. Safe for internal
+    # demos; disable once AZURE_TENANT_ID / AZURE_APP_CLIENT_ID are configured.
+    teams_email_fallback_enabled: bool = True
     
     # Service URLs
     backend_service_url: str

@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import IconRail from './components/IconRail';
 import Chatbot from './pages/Chatbot';
 import UserProfile from './pages/UserProfile';
 import AdminUsers from './pages/AdminUsers';
@@ -37,13 +38,8 @@ const NO_PADDING_ROUTES = ['/documents', '/admin/knowledge-graph'];
 function App() {
   const [backendStatus, setBackendStatus] = useState('checking');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [theme, setTheme] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
-  });
 
   useEffect(() => {
-    // Check backend connection on startup
     const checkBackend = async () => {
       try {
         const isConnected = await testBackendConnection();
@@ -57,21 +53,12 @@ function App() {
     checkBackend();
   }, []);
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
   const toggleMenu = () => {
     setMenuOpen((prev) => !prev);
   };
 
   const closeMenu = () => {
     setMenuOpen(false);
-  };
-
-  const toggleTheme = () => {
-    setTheme((previousTheme) => (previousTheme === 'dark' ? 'light' : 'dark'));
   };
 
   return (
@@ -82,8 +69,6 @@ function App() {
           menuOpen={menuOpen}
           toggleMenu={toggleMenu}
           closeMenu={closeMenu}
-          theme={theme}
-          toggleTheme={toggleTheme}
         />
       </Router>
     </AuthProvider>
@@ -91,12 +76,12 @@ function App() {
 }
 
 // Separate component to use useLocation inside Router
-function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, toggleTheme }) {
+function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu }) {
   const location = useLocation();
   const noPadding = NO_PADDING_ROUTES.includes(location.pathname);
 
   return (
-    <div className="App">
+    <div className="App bg-nova-glow">
       <Routes>
         {/* Teams Tab - Full screen, no header/sidebar */}
         <Route
@@ -117,8 +102,6 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, tog
                 <Header
                   onMenuToggle={toggleMenu}
                   isMenuOpen={menuOpen}
-                  theme={theme}
-                  onThemeToggle={toggleTheme}
                 />
                 <Sidebar
                   isOpen={menuOpen}
@@ -126,7 +109,9 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, tog
                   onClose={closeMenu}
                   backendStatus={backendStatus}
                 />
-                <div className={`page-container ${noPadding ? 'no-padding' : ''}`}>
+                <div className="app-body">
+                  <IconRail />
+                  <div className={`page-container ${noPadding ? 'no-padding' : ''}`}>
                   <Routes>
                     <Route 
                       path="/" 
@@ -317,8 +302,9 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu, theme, tog
                               {/* Redirect unknown routes to home */}
                               <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
-                          </div>
-                        </div>
+                          </div>{/* end .page-container */}
+                        </div>{/* end .app-body */}
+                      </div>{/* end .app-shell */}
                 </ProtectedRoute>
               }
             />

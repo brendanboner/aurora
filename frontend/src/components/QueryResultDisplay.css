@@ -389,15 +389,16 @@
 }
 
 .answer-content a {
-  color: var(--primary);
-  text-decoration: none;
-  border-bottom: 1px solid rgba(137, 129, 229, 0.3);
-  transition: all 0.2s ease;
+  color: var(--a1-link, #6ed8d2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  border-bottom: none;
+  transition: color 0.15s ease;
 }
 
 .answer-content a:hover {
-  border-bottom-color: var(--primary);
-  color: #7c6fd6;
+  color: #ffffff;
+  border-bottom: none;
 }
 
 /* Strong emphasis */

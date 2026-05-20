@@ -1016,88 +1016,86 @@ What would you like to know?`;
 
   return (
     <div className="chatbot-container">
-      <div className="chat-header">
-        <div className="chat-header-content">
-          <div className="chat-header-left">
-            {user && (
-              <select
-                className="pipeline-mode-dropdown"
-                value={pipelineMode}
-                onChange={(e) => setPipelineMode(e.target.value)}
-                disabled={isLoading}
-                title="Engine: Fast uses instant templates, Baseline uses comprehensive LLM synthesis, System auto-selects"
-              >
-                <option value="system">Engine: System (A/B)</option>
-                <option value="fast">Engine: Fast</option>
-                <option value="baseline">Engine: Baseline</option>
-              </select>
-            )}
-          </div>
-          <div className="chat-header-actions">
-            {user && (
-              <select
-                className="query-mode-dropdown"
-                value={queryMode}
-                onChange={(e) => setQueryMode(e.target.value)}
-                disabled={isLoading}
-                title="Chat always requests an answer and keeps documents as references"
-              >
-                <option value="answer">Query: Answer</option>
-              </select>
-            )}
-            {user && (
-              <select
-                className="personalize-mode-dropdown"
-                value={personalizeMode}
-                onChange={(e) => setPersonalizeMode(e.target.value)}
-                disabled={isLoading}
-                title="Personalization: Tailor answers based on your preferences"
-              >
-                <option value="auto">Personalize: Auto</option>
-                <option value="on">Personalize: On</option>
-                <option value="off">Personalize: Off</option>
-              </select>
-            )}
-            {user && messages.length > 1 && (
-              <button 
-                className="btn btn-secondary new-chat-btn" 
-                onClick={handleNewChat}
-                title="Start a new conversation"
-              >
-                <ChatIcon size={16} /> New Chat
-              </button>
-            )}
-          </div>
-          {!user && (
-            <p className="chat-warning">
-              <WarningIcon size={16} /> Please log in to start chatting
-            </p>
-          )}
-        </div>
+      {/* Floating controls bar */}
+      <div className="chat-controls-bar">
+        {user && (
+          <select
+            className="chat-select"
+            value={pipelineMode}
+            onChange={(e) => setPipelineMode(e.target.value)}
+            disabled={isLoading}
+            title="Engine: Fast uses instant templates, Baseline uses comprehensive LLM synthesis, System auto-selects"
+          >
+            <option value="system">System</option>
+            <option value="fast">Fast</option>
+            <option value="baseline">Baseline</option>
+          </select>
+        )}
+        {user && (
+          <select
+            className="chat-select"
+            value={personalizeMode}
+            onChange={(e) => setPersonalizeMode(e.target.value)}
+            disabled={isLoading}
+            title="Personalization: Tailor answers based on your preferences"
+          >
+            <option value="auto">Auto</option>
+            <option value="on">Personalized</option>
+            <option value="off">Generic</option>
+          </select>
+        )}
+        {user && messages.length > 1 && (
+          <button
+            className="chat-new-btn"
+            onClick={handleNewChat}
+            title="Start a new conversation"
+          >
+            <ChatIcon size={14} /> New chat
+          </button>
+        )}
+        {!user && (
+          <span className="chat-warning-inline">
+            <WarningIcon size={14} /> Please log in to start chatting
+          </span>
+        )}
       </div>
 
       <div className="messages-panel">
         <div className="messages-container" ref={messagesContainerRef}>
+          {/* Centered column wrapper */}
+          <div className="messages-column">
           {messages.map((message, index) => (
-            <div 
-              key={index} 
-              className={`message message-${message.role}`}
-              ref={(el) => { messageRefs.current[index] = el; }}
-            >
-              <div className="message-avatar">
-                {message.role === 'user' ? <ProfileIcon size={20} /> : <ChatIcon size={20} />}
+            message.role === 'user' ? (
+              /* ── User message — centered pill ───────────────────────────── */
+              <div
+                key={index}
+                className="message-user-wrap"
+                ref={(el) => { messageRefs.current[index] = el; }}
+              >
+                <div className="message-user-bubble">
+                  {message.datasourceIds?.length > 0 && (
+                    <div className="user-message-datasources">
+                      {message.datasourceIds.map((id, idx) => (
+                        <span key={id} className="datasource-chip">
+                          @{message.datasourceNames?.[idx] || id}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
               </div>
-              <div className="message-content" onCopy={(e) => {
-                const sel = window.getSelection();
-                if (!sel || sel.isCollapsed) return;
-                const text = sel.toString().replace(/\n+$/, '').replace(/^\n+/, '');
-                e.clipboardData.setData('text/plain', text);
-                e.preventDefault();
-              }}>
-                <div className="message-header">
-                  <span className="message-sender">
-                    {message.role === 'user' ? 'You' : 'Aurora'}
-                  </span>
+            ) : (
+              /* ── Assistant message — full-width prose ───────────────────── */
+              <div
+                key={index}
+                className={`message-assistant-wrap${message.isError ? ' message-error' : ''}`}
+                ref={(el) => { messageRefs.current[index] = el; }}
+              >
+                <div className="message-assistant-meta">
+                  <span className="message-sender-name">Aurora</span>
                   <span className="message-time">
                     {(message.timestamp instanceof Date
                       ? message.timestamp
@@ -1105,82 +1103,68 @@ What would you like to know?`;
                     ).toLocaleTimeString()}
                   </span>
                 </div>
+                <div className="message-assistant-body" onCopy={(e) => {
+                  const sel = window.getSelection();
+                  if (!sel || sel.isCollapsed) return;
+                  const text = sel.toString().replace(/\n+$/, '').replace(/^\n+/, '');
+                  e.clipboardData.setData('text/plain', text);
+                  e.preventDefault();
+                }}>
+                  {message.isError && (
+                    <div className="message-text error">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                    </div>
+                  )}
 
-                {/* User messages and error messages - render content directly */}
-                {(message.role === 'user' || message.isError) && (
-                  <div className={`message-text ${message.isError ? 'error' : ''}`}>
-                    {/* Show datasource chips for user messages with filtered datasources */}
-                    {message.role === 'user' && message.datasourceIds?.length > 0 && (
-                      <div className="user-message-datasources">
-                        {message.datasourceIds.map((id, idx) => (
-                          <span key={id} className="datasource-chip">
-                            @{message.datasourceNames?.[idx] || id}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {message.content}
-                    </ReactMarkdown>
-                  </div>
-                )}
+                  {!message.isError && !message.documents?.length && !message.citations?.length && (message.content?.trim() || message.isWelcomeMessage) && (
+                    <div className="message-text">
+                      {message.isWelcomeMessage ? (
+                        getWelcomeMessageJSX(message.userEmail)
+                      ) : (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {message.content}
+                        </ReactMarkdown>
+                      )}
+                    </div>
+                  )}
 
-                {/* Assistant messages with Oracle data - use QueryResultDisplay */}
-                {message.role === 'assistant' && !message.isError && (
-                  <>
-                    {/* For welcome messages or simple responses without documents.
-                        Skip rendering when streaming with no content yet — the
-                        isLoading typing indicator below acts as the placeholder. */}
-                    {!message.documents?.length && !message.citations?.length && (message.content?.trim() || message.isWelcomeMessage) && (
-                      <div className="message-text">
-                        {message.isWelcomeMessage ? (
-                          getWelcomeMessageJSX(message.userEmail)
-                        ) : (
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
-                          </ReactMarkdown>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* For Oracle responses with documents/citations - use new display component */}
-                    {(message.documents?.length > 0 || message.citations?.length > 0) && (
-                      <QueryResultDisplay 
-                        message={message} 
-                        isAdmin={user?.role === 'admin' || user?.role === 'superadmin'}
-                        onEnhance={() => handleEnhanceMessage(index)}
-                        onToggleEnhanced={() => handleToggleEnhanced(index)}
-                        isEnhancing={enhancingMessageIndex === index}
-                        onFeedback={handleFeedback}
-                        onDisplayModeChange={(mode) => {
-                          setMessages((prev) => {
-                            const updated = [...prev];
-                            updated[index] = { ...updated[index], displayMode: mode };
-                            return updated;
-                          });
-                        }}
-                      />
-                    )}
-                  </>
-                )}
+                  {!message.isError && (message.documents?.length > 0 || message.citations?.length > 0) && (
+                    <QueryResultDisplay
+                      message={message}
+                      isAdmin={user?.role === 'admin' || user?.role === 'superadmin'}
+                      onEnhance={() => handleEnhanceMessage(index)}
+                      onToggleEnhanced={() => handleToggleEnhanced(index)}
+                      isEnhancing={enhancingMessageIndex === index}
+                      onFeedback={handleFeedback}
+                      onDisplayModeChange={(mode) => {
+                        setMessages((prev) => {
+                          const updated = [...prev];
+                          updated[index] = { ...updated[index], displayMode: mode };
+                          return updated;
+                        });
+                      }}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
+            )
           ))}
 
           {isLoading && (
-            <div className="message message-assistant">
-              <div className="message-avatar"><ChatIcon size={20} /></div>
-              <div className="message-content">
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
+            <div className="message-assistant-wrap">
+              <div className="message-assistant-meta">
+                <span className="message-sender-name">Aurora</span>
+              </div>
+              <div className="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
             </div>
           )}
 
           <div ref={messagesEndRef} />
+          </div>{/* end .messages-column */}
         </div>
 
         {showScrollToBottom && (
@@ -1337,53 +1321,60 @@ What would you like to know?`;
       )}
 
       <form className="chat-input-form" onSubmit={handleSubmit}>
-        {/* Selected datasources */}
-        {selectedDatasources.length > 0 && (
-          <div className="selected-mentions">
-            {selectedDatasources.map(ds => (
-              <span key={ds.datasource_id} className="selected-mention">
-                @{ds.datasource_id}
-                <button 
-                  type="button"
-                  className="remove-mention"
-                  onClick={() => handleRemoveDatasource(ds.datasource_id)}
-                  aria-label={`Remove ${ds.datasource_id}`}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        
-        {/* Mention dropdown */}
-        <DatasourceMention
-          datasources={datasources}
-          searchText={mentionSearchText}
-          onSelect={handleMentionSelect}
-          onClose={() => setShowMentionDropdown(false)}
-          isVisible={showMentionDropdown}
-          inputRef={inputRef}
-        />
-        
-        <div className="chat-input-row">
-          <textarea
-            ref={inputRef}
-            className="chat-input"
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyPress={handleKeyPress}
-            placeholder={user ? "Ask me anything... (use @datasource to filter)" : "Please log in first..."}
-            rows="2"
-            disabled={!user || isLoading || querySuggestion || backendStatus !== 'connected'}
+        <div className="chat-input-inner">
+          {/* Selected datasources */}
+          {selectedDatasources.length > 0 && (
+            <div className="selected-mentions">
+              {selectedDatasources.map(ds => (
+                <span key={ds.datasource_id} className="selected-mention">
+                  @{ds.datasource_id}
+                  <button
+                    type="button"
+                    className="remove-mention"
+                    onClick={() => handleRemoveDatasource(ds.datasource_id)}
+                    aria-label={`Remove ${ds.datasource_id}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Mention dropdown */}
+          <DatasourceMention
+            datasources={datasources}
+            searchText={mentionSearchText}
+            onSelect={handleMentionSelect}
+            onClose={() => setShowMentionDropdown(false)}
+            isVisible={showMentionDropdown}
+            inputRef={inputRef}
           />
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={!user || !inputValue.trim() || isLoading || querySuggestion || backendStatus !== 'connected'}
-          >
-            {isLoading ? (<><HourglassIcon size={16} /> Thinking...</>) : (<><SendIcon size={16} /> Send</>)}
-          </button>
+
+          <div className="chat-input-row">
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyPress={handleKeyPress}
+              placeholder={user ? "Ask anything about Wi-Fi Alliance… (use @datasource to filter)" : "Please log in first…"}
+              rows="2"
+              disabled={!user || isLoading || querySuggestion || backendStatus !== 'connected'}
+            />
+            <button
+              type="submit"
+              className="chat-send-btn"
+              disabled={!user || !inputValue.trim() || isLoading || querySuggestion || backendStatus !== 'connected'}
+              title="Send"
+              aria-label="Send message"
+            >
+              {isLoading
+                ? <HourglassIcon size={18} />
+                : <SendIcon size={18} />
+              }
+            </button>
+          </div>
         </div>
       </form>
     </div>

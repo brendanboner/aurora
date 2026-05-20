@@ -65,8 +65,8 @@
 }
 
 .config-section {
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1.5rem;
 }
@@ -194,21 +194,21 @@
 }
 
 .recommendation-box {
-  background: #e8f5e9;
+  background: rgba(74, 222, 128, 0.08);
   border-left: 4px solid #4caf50;
-  color: #2e7d32;
+  color: #86efac;
 }
 
 .example-box {
-  background: #fff3e0;
+  background: rgba(251, 146, 60, 0.08);
   border-left: 4px solid #ff9800;
-  color: #e65100;
+  color: #fdba74;
 }
 
 .info-box {
-  background: #e3f2fd;
-  border-left: 4px solid #2196f3;
-  color: #1565c0;
+  background: rgba(85, 98, 246, 0.08);
+  border-left: 4px solid var(--primary);
+  color: var(--muted-foreground);
 }
 
 .recommendation-box strong,
@@ -275,15 +275,15 @@
 
 /* Warning Box */
 .warning-box {
-  background: #fff8e1;
-  border: 2px solid #ffc107;
+  background: rgba(251, 191, 36, 0.07);
+  border: 2px solid rgba(251, 191, 36, 0.35);
   border-radius: 8px;
   padding: 1.5rem;
   margin-top: 2rem;
 }
 
 .warning-box h4 {
-  color: #f57c00;
+  color: var(--a1-warning);
   margin-top: 0;
   margin-bottom: 1rem;
 }

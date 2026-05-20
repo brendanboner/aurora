@@ -1,158 +1,80 @@
-@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap');
+/* ── Agent ONE Design System ── import first ─────────────────────────────── */
+@import './styles/agent-one-theme.css';
 
 :root {
-  --font-size: 14px;
+  --font-size: 16px;
   /* Typography scale variables */
   --text-sm: 12px;
-  --text-base: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 26px;
-  /* The default background color for the application. */
-  --background: rgba(30, 31, 42, 1.00);
-  /* The default color for elements or text that appears on top of the background. */
-  --foreground: rgba(248, 248, 251, 1.00);
-  /* The background color for cards, modals, and other containers. */
-  --card: rgba(45, 47, 62, 1.00);
-  /* The default color for text or elements that appear on top of cards, modals and other background containers. */
-  --card-foreground: rgba(248, 248, 251, 1.00);
-  /* The background color for dropdowns and tooltips. */
-  --popover: rgba(45, 47, 62, 1.00);
-  /* The default color for text or elements that appear on top of dropdowns and tooltips. */
-  --popover-foreground: rgba(248, 248, 251, 1.00);
-  /* The primary color used for buttons, links, and other interactive elements. */
-  --primary: rgba(137, 129, 229, 1.00);
-  /* The default color for text or elements that appear on top of primary colored elements. */
-  --primary-foreground: rgba(30, 26, 70, 1.00);
-  /* The secondary color used for secondary(but NOT-DESTRUCTIVE) buttons and interactive elements. */
-  --secondary: rgba(0, 0, 0, 0.00);
-  /* The default color for text or elements that appear on top of secondary colored elements. */
-  --secondary-foreground: rgba(171, 163, 251, 1.00);
-  /* The muted color used for less prominent elements, such as disabled buttons or disabled text. */
-  --muted: rgba(0, 0, 0, 0.00);
-  /* The default color for text or elements that appear on top of muted colored elements. */
-  --muted-foreground: rgba(186, 188, 206, 1.00);
-  /* The accent color used for highlights, links, and other interactive elements. */
-  --accent: rgba(137, 129, 229, 1.00);
-  /* The default color for text or elements that appear on top of accent colored elements. */
-  --accent-foreground: rgba(30, 26, 70, 1.00);
-  /* The color used for background in destructive actions, such as delete buttons or error messages. */
-  --destructive: rgba(237, 95, 86, 1.00);
-  /* The default color for text or elements that appear on top of destructive colored elements. */
-  --destructive-foreground: rgba(248, 248, 251, 1.00);
-  /* The default border color for elements such as inputs, buttons, and other containers. */
-  --border: rgba(77, 79, 99, 1.00);
-  /* The default background color for input fields once the text has been filled. Should be either transparent or match the input-background. */
-  --input: rgba(0, 0, 0, 0.00);
-  /* The default background color for input fields, text areas, and other input elements. */
-  --input-background: rgba(0, 0, 0, 0.00);
-  /* The default font weight for medium text. */
-  --font-weight-medium: 600;
-  /* The default font weight for normal text. */
-  --font-weight-normal: 400;
-  /* The color for focus rings, outlines, and other focus indicators. */
-  --ring: rgba(137, 129, 229, 1.00);
-  /* Shadow for small elevations, such as cards or modals. */
-  --elevation-sm: 0 2px 4px rgba(15, 15, 21, 0.24);
-  /* The color for chart elements, such as a bar or line in a chart. */
-  --chart-1: rgba(137, 129, 229, 1.00);
-  /* The color for another chart element, such as a bar or line in a chart. */
-  --chart-2: rgba(171, 163, 251, 1.00);
-  /* The color for another chart element, such as a bar or line in a chart. */
-  --chart-3: rgba(117, 191, 99, 1.00);
-  /* The color for another chart element, such as a bar or line in a chart. */
-  --chart-4: rgba(237, 95, 86, 1.00);
-  /* The color for another chart element, such as a bar or line in a chart. */
-  --chart-5: rgba(186, 188, 206, 1.00);
-  /* The default border radius for elements such as buttons, tooltip, and other containers. */
-  --radius: 4px;
-  /* Border radius for buttons. */
-  --radius-button: 4px;
-  /* Border radius for cards and containers. */
-  --radius-card: 4px;
-  /* Border radius for chip elements. */
-  --radius-chip: 40px;
-  /* The background color for sidebars, navigation menus, and other persistent elements. */
-  --sidebar: rgba(45, 47, 62, 1.00);
-  /* The default color for text or elements that appear on top of sidebars, navigation menus, and other persistent elements. */
-  --sidebar-foreground: rgba(248, 248, 251, 1.00);
-  /* The primary color used for buttons, links, and other interactive elements in sidebars and navigation menus. */
-  --sidebar-primary: rgba(137, 129, 229, 1.00);
-  /* The default color for text or elements that appear on top of primary colored elements in sidebars and navigation menus. */
-  --sidebar-primary-foreground: rgba(30, 26, 70, 1.00);
-  /* The accent color used for highlights, links, and other interactive elements in sidebars and navigation menus. */
-  --sidebar-accent: rgba(137, 129, 229, 1.00);
-  /* The default color for text or elements that appear on top of accent colored elements in sidebars and navigation menus. */
-  --sidebar-accent-foreground: rgba(30, 26, 70, 1.00);
-  /* The default border color for elements in sidebars and navigation menus. */
-  --sidebar-border: rgba(77, 79, 99, 1.00);
-  /* The default color for focus rings, outlines, and other focus indicators in sidebars and navigation menus. */
-  --sidebar-ring: rgba(137, 129, 229, 1.00);
-  /* Main app surface for routed page content. */
-  --page-surface: var(--card);
-  /* Chat and input surface color. */
-  --chat-surface: var(--card);
-  /* Assistant response surface color. */
-  --response-surface: var(--card);
-  /* Header, dropdown and drawer menu surface color. */
-  --menu-surface: var(--card);
-  /* Legacy token aliases used by some pages/components. */
-  --bg-primary: var(--chat-surface);
-  --bg-secondary: var(--response-surface);
-  --text-primary: var(--foreground);
-  --text-secondary: var(--muted-foreground);
-  --border-color: var(--border);
-  --primary-color: var(--primary);
-  --secondary-color: var(--chart-2);
-  --accent-color: var(--accent);
-  --error-bg: rgba(237, 95, 86, 0.12);
-  --error-text: var(--destructive);
-}
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
 
-html[data-theme='light'] {
-  --background: #efefef;
-  --foreground: #1f1f1f;
-  --card: #ffffff;
-  --card-foreground: #1f1f1f;
-  --popover: #f9f9f9;
-  --popover-foreground: #222222;
-  --primary: #6f64d9;
-  --primary-foreground: #ffffff;
-  --secondary: #f4f4f4;
-  --secondary-foreground: #2f2f2f;
-  --muted: #f4f4f4;
-  --muted-foreground: #666666;
-  --accent: #6f64d9;
-  --accent-foreground: #ffffff;
-  --destructive: #dc5f59;
-  --destructive-foreground: #ffffff;
-  --border: #dddddd;
-  --input: #ffffff;
-  --input-background: #ffffff;
-  --ring: rgba(111, 100, 217, 0.35);
-  --elevation-sm: 0 2px 10px rgba(0, 0, 0, 0.08);
-  --sidebar: #f9f9f9;
-  --sidebar-foreground: #262626;
-  --sidebar-primary: #6f64d9;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ecebff;
-  --sidebar-accent-foreground: #322c72;
-  --sidebar-border: #e2e2e2;
-  --sidebar-ring: rgba(111, 100, 217, 0.35);
-  --page-surface: #f3f3f3;
-  --chat-surface: #ffffff;
-  --response-surface: #f4f4f4;
-  --menu-surface: #f9f9f9;
-  --bg-primary: #ffffff;
-  --bg-secondary: #f4f4f4;
-  --text-primary: #1f1f1f;
-  --text-secondary: #666666;
-  --border-color: #dddddd;
-  --primary-color: #6f64d9;
-  --secondary-color: #8f87ea;
-  --accent-color: #6f64d9;
-  --error-bg: rgba(220, 95, 89, 0.14);
-  --error-text: #b3362e;
+  /* ── Core palette mapped to Agent ONE tokens ─────────────────────────── */
+  --background:               var(--a1-background);       /* #13141f */
+  --foreground:               var(--a1-text-primary);     /* #f8f8fb */
+  --card:                     var(--a1-surface-0);        /* #1c1d2e */
+  --card-foreground:          var(--a1-text-primary);
+  --popover:                  var(--a1-surface-1);        /* #22233a */
+  --popover-foreground:       var(--a1-text-primary);
+  --primary:                  var(--a1-primary);          /* #5562F6 */
+  --primary-foreground:       var(--a1-primary-foreground);
+  --secondary:                var(--a1-surface-2);        /* #2b2d3f */
+  --secondary-foreground:     var(--a1-text-primary);
+  --muted:                    var(--a1-surface-3);        /* #333548 */
+  --muted-foreground:         var(--a1-text-secondary);   /* #babcce */
+  --accent:                   var(--a1-primary);          /* #5562F6 */
+  --accent-foreground:        var(--a1-primary-foreground);
+  --destructive:              var(--a1-error);            /* #f87171 */
+  --destructive-foreground:   var(--a1-text-primary);
+  --border:                   var(--a1-border);           /* #333548 */
+  --input:                    transparent;
+  --input-background:         transparent;
+  --font-weight-medium:       600;
+  --font-weight-normal:       400;
+  --ring:                     var(--a1-primary);
+  --elevation-sm:             var(--a1-shadow-sm);
+
+  /* Chart colors */
+  --chart-1: var(--a1-primary);
+  --chart-2: #8981e5;
+  --chart-3: #4ade80;
+  --chart-4: var(--a1-error);
+  --chart-5: var(--a1-text-secondary);
+
+  /* Border radii — Agent ONE uses larger radii */
+  --radius:        var(--a1-radius-lg);    /* 10px */
+  --radius-button: var(--a1-radius-lg);   /* 10px */
+  --radius-card:   var(--a1-radius-lg);   /* 10px */
+  --radius-chip:   var(--a1-radius-full); /* 9999px */
+
+  /* Sidebar */
+  --sidebar:                    var(--a1-surface-0);
+  --sidebar-foreground:         var(--a1-text-primary);
+  --sidebar-primary:            var(--a1-primary);
+  --sidebar-primary-foreground: var(--a1-primary-foreground);
+  --sidebar-accent:             var(--a1-primary);
+  --sidebar-accent-foreground:  var(--a1-primary-foreground);
+  --sidebar-border:             var(--a1-border);
+  --sidebar-ring:               var(--a1-primary);
+
+  /* Semantic surface aliases */
+  --page-surface:    transparent;
+  --chat-surface:    transparent;
+  --response-surface: transparent;
+  --menu-surface:    var(--a1-surface-0);
+
+  /* Legacy token aliases */
+  --bg-primary:     var(--chat-surface);
+  --bg-secondary:   var(--response-surface);
+  --text-primary:   var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --border-color:   var(--border);
+  --primary-color:  var(--primary);
+  --secondary-color: #8981e5;
+  --accent-color:   var(--accent);
+  --error-bg:       rgba(248, 113, 113, 0.12);
+  --error-text:     var(--destructive);
 }
 
 * {
@@ -163,7 +85,7 @@ html[data-theme='light'] {
 
 body {
   margin: 0;
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--background);
@@ -176,51 +98,53 @@ code {
 }
 
 a {
-  color: var(--primary);
+  color: var(--a1-link);
   text-decoration: none;
 }
 
 a:hover {
+  color: var(--a1-text-primary);
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 h1 {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
 }
 
 h2 {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-xl);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
 }
 
 h3 {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-lg);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
 }
 
 h4 {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-base);
   font-weight: var(--font-weight-medium);
   line-height: 1.5;
 }
 
 p {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-base);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
 }
 
 span {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-base);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
@@ -239,21 +163,21 @@ span {
 }
 
 label {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
 }
 
 button {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-base);
   font-weight: var(--font-weight-medium);
   line-height: 1.5;
 }
 
 input, textarea, select {
-  font-family: 'Source Sans Pro', sans-serif;
+  font-family: var(--a1-font);
   font-size: var(--text-base);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
