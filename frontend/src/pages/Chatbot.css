@@ -165,13 +165,6 @@
   font-size: 15px;
   line-height: 1.72;
   color: var(--a1-text-primary);
-  background: rgba(30, 31, 48, 0.72);
-  border: 1px solid var(--a1-border-subtle);
-  border-radius: 16px;
-  padding: 18px 22px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.22);
 }
 
 .message-assistant-body p {

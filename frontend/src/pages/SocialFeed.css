@@ -134,25 +134,30 @@
 .social-feed-grid {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 /* ── Post card ───────────────────────────────────────────────────────────── */
 .professional-post-card {
-  background: var(--a1-surface-0);
-  border: 1px solid var(--a1-border);
-  border-radius: var(--a1-radius-xl);
-  padding: 20px 24px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--a1-border-subtle);
+  border-radius: 0;
+  padding: 22px 0;
+  transition: background-color 0.15s ease;
+}
+
+.professional-post-card:last-child {
+  border-bottom: none;
 }
 
 .professional-post-card:hover {
-  border-color: var(--a1-border-input);
-  box-shadow: var(--a1-shadow-md);
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
 }
 
 .my-agent-post-card {
-  border-color: var(--a1-primary-border);
+  border-color: var(--a1-border-subtle);
 }
 
 .personal-agent-banner {
@@ -292,7 +297,6 @@
 /* ── Sources (collapsed by default) ─────────────────────────────────────── */
 .post-sources {
   margin-top: 12px;
-  border-top: 1px solid var(--a1-border-subtle);
   padding-top: 10px;
 }
 
@@ -352,8 +356,7 @@
   align-items: center;
   justify-content: space-between;
   margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--a1-border-subtle);
+  padding-top: 10px;
 }
 
 .engagement-stats {
@@ -420,7 +423,7 @@
   margin-top: 12px;
   padding: 14px;
   background: var(--a1-surface-1);
-  border: 1px solid var(--a1-border);
+  border: none;
   border-radius: var(--a1-radius-lg);
   display: flex;
   flex-direction: column;
