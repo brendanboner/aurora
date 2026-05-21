@@ -178,15 +178,16 @@ update-fast: ecr-login
 	@echo "$(GREEN)✓ Services updated and old images cleaned$(NC)"
 
 # Poll core service health endpoints until ready (max 300s)
+# Uses docker inspect (not localhost HTTP) because services expose ports
+# only within the Docker network, not to the host.
 wait-healthy:
 	@echo "$(CYAN)Checking service health...$(NC)"
 	@TIMEOUT=300; INTERVAL=5; ELAPSED=0; \
-	DOMAIN=$$(grep '^DEPLOYMENT_DOMAIN=' .env 2>/dev/null | cut -d'=' -f2 || echo "localhost"); \
 	while [ $$ELAPSED -lt $$TIMEOUT ]; do \
-		AUTH_OK=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000"); \
-		BACKEND_OK=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health 2>/dev/null || echo "000"); \
-		ORACLE_OK=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8006/health 2>/dev/null || echo "000"); \
-		if [ "$$AUTH_OK" = "200" ] && [ "$$BACKEND_OK" = "200" ] && [ "$$ORACLE_OK" = "200" ]; then \
+		AUTH_OK=$$(docker inspect --format='{{.State.Health.Status}}' aurora-auth 2>/dev/null || echo "missing"); \
+		BACKEND_OK=$$(docker inspect --format='{{.State.Health.Status}}' aurora-backend 2>/dev/null || echo "missing"); \
+		ORACLE_OK=$$(docker inspect --format='{{.State.Health.Status}}' aurora-oracle 2>/dev/null || echo "missing"); \
+		if [ "$$AUTH_OK" = "healthy" ] && [ "$$BACKEND_OK" = "healthy" ] && [ "$$ORACLE_OK" = "healthy" ]; then \
 			echo "$(GREEN)✓ auth ($$AUTH_OK)  backend ($$BACKEND_OK)  oracle ($$ORACLE_OK) — all healthy$(NC)"; \
 			exit 0; \
 		fi; \
