@@ -38,11 +38,14 @@ server.listen(port, () => {
   console.log('\n' + '='.repeat(80) + '\n');
 });
 
-// Create adapter
-// For local development with emulator, empty credentials work fine
+// Create adapter.
+// BOT_TENANT_ID is required for single-tenant Azure AD app registrations so
+// the adapter acquires outgoing OAuth tokens from the correct tenant.
+// For multi-tenant apps (botframework.com registration) leave BOT_TENANT_ID unset.
 const adapter = new BotFrameworkAdapter({
   appId: process.env.BOT_ID || '',
-  appPassword: process.env.BOT_PASSWORD || ''
+  appPassword: process.env.BOT_PASSWORD || '',
+  ...(process.env.BOT_TENANT_ID ? { channelAuthTenant: process.env.BOT_TENANT_ID } : {}),
 });
 
 // Normalise serviceUrl so the bot can always reply to the playground.

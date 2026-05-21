@@ -940,6 +940,7 @@ services:
     environment:
       BOT_ID: ${BOT_ID}
       BOT_PASSWORD: ${BOT_PASSWORD}
+      BOT_TENANT_ID: ${BOT_TENANT_ID:-}
       BOT_PORT: 3978
       NODE_ENV: production
       AURORA_API_URL: http://backend:8000

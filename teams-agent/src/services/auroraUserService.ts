@@ -25,11 +25,12 @@ export class AuroraUserService {
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
-        // Development: Bot authenticates as TEST_USER_EMAIL (bypasses Cognito)
-        // Backend trusts X-User-* headers from internal Docker network
+        // Teams bot is a trusted internal service on the Docker network.
+        // Admin role allows it to look up and create any user's profile.
+        // X-User-* headers are trusted by internal services without Cognito validation.
         'X-User-Id': userId,
         'X-User-Email': this.devUserEmail,
-        'X-User-Role': 'user',
+        'X-User-Role': 'admin',
         ...(process.env.AURORA_SERVICE_TOKEN ? { 'X-Service-Token': process.env.AURORA_SERVICE_TOKEN } : {}),
       }
     });
