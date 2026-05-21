@@ -68,31 +68,40 @@ export interface Suggestion {
 }
 
 export class AuroraOracleService {
-  private apiClient: AxiosInstance;
   private baseUrl: string;
-  private devUserEmail: string;
+  private serviceUserId: string;
+  private serviceUserEmail: string;
 
   constructor() {
     // Oracle Service runs separately from backend
     this.baseUrl = process.env.AURORA_ORACLE_URL || 'http://aurora-oracle:8000';
-    this.devUserEmail = process.env.TEST_USER_EMAIL || 'test@example.com';
-    
-    // Use actual Cognito UUID from environment, or generate dev ID as fallback
-    const userId = process.env.TEST_USER_ID || `dev-${Buffer.from(this.devUserEmail).toString('base64').substring(0, 20)}`;
-    
-    this.apiClient = axios.create({
+    this.serviceUserEmail = process.env.TEST_USER_EMAIL || 'test@example.com';
+    this.serviceUserId = process.env.TEST_USER_ID ||
+      `dev-${Buffer.from(this.serviceUserEmail).toString('base64').substring(0, 20)}`;
+  }
+
+  /** Create an axios client scoped to a specific user identity. */
+  private makeClient(userId: string, userEmail: string): AxiosInstance {
+    return axios.create({
       baseURL: this.baseUrl,
-      timeout: 30000, // 30 seconds for Oracle queries
+      timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-        // Development: Bot authenticates as TEST_USER_EMAIL (bypasses Cognito)
-        // Backend trusts X-User-* headers from internal Docker network
+        // Internal network: backend trusts X-User-* headers directly
         'X-User-Id': userId,
-        'X-User-Email': this.devUserEmail,
+        'X-User-Email': userEmail,
         'X-User-Role': 'user',
         ...(process.env.AURORA_SERVICE_TOKEN ? { 'X-Service-Token': process.env.AURORA_SERVICE_TOKEN } : {}),
-      }
+      },
     });
+  }
+
+  /** Get a client for a resolved Aurora user, falling back to service account. */
+  private clientFor(userId?: string, userEmail?: string): AxiosInstance {
+    return this.makeClient(
+      userId || this.serviceUserId,
+      userEmail || this.serviceUserEmail,
+    );
   }
 
   /**
@@ -103,7 +112,9 @@ export class AuroraOracleService {
     question: string,
     agentPersona?: AgentPersona,
     datasourceIds?: string[],
+    userEmail?: string,
   ): Promise<OracleResponse> {
+    const client = this.clientFor(userId, userEmail);
     try {
       console.log(`Oracle query from user ${userId}: "${question}"${agentPersona ? ` [as ${agentPersona.name}]` : ''}${datasourceIds?.length ? ` [@sources: ${datasourceIds.join(',')}]` : ''}`);
 
@@ -119,7 +130,7 @@ export class AuroraOracleService {
         }
       };
 
-      const response = await this.apiClient.post('/query', payload);
+      const response = await client.post('/query', payload);
       
       console.log(`Oracle responded with ${response.data.documents?.length || 0} documents`);
       return response.data;
@@ -171,8 +182,9 @@ export class AuroraOracleService {
    */
   async resolveMentionsToDatasourceIds(mentions: string[]): Promise<string[]> {
     if (!mentions.length) return [];
+    const client = this.clientFor();
     try {
-      const response = await this.apiClient.get('/datasources');
+      const response = await client.get('/datasources');
       const allSources: Array<{ datasource_id: string; name: string; parent_datasource_id?: string }> =
         response.data?.datasources || [];
 
@@ -203,13 +215,13 @@ export class AuroraOracleService {
    * Check if Oracle service is healthy
    */
   /** Call the oracle enhance endpoint with documents from a previous query. */
-  async enhance(userId: string, question: string, documents: Array<{ title: string; url: string; datasource_id?: string }>): Promise<string> {
-    // Ensure each document has datasource_id (required by /enhance)
+  async enhance(userId: string, question: string, documents: Array<{ title: string; url: string; datasource_id?: string }>, userEmail?: string): Promise<string> {
+    const client = this.clientFor(userId, userEmail);
     const docsWithDs = documents.map(d => ({
       ...d,
       datasource_id: d.datasource_id || d.url?.match(/wi-fi\.org|wballiance|ieee|ietf/i)?.[0] || 'web',
     }));
-    const response = await this.apiClient.post('/enhance', {
+    const response = await client.post('/enhance', {
       user_id: userId,
       question,
       documents: docsWithDs,
@@ -219,7 +231,7 @@ export class AuroraOracleService {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await this.apiClient.get('/api/oracle/health');
+      const response = await this.clientFor().get('/api/oracle/health');
       return response.status === 200;
     } catch (error) {
       return false;

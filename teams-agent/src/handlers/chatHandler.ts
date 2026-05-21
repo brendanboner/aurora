@@ -159,7 +159,7 @@ export class ChatHandler {
       let response;
       try {
         response = await withTimeout(
-          this.oracleService.query(auroraUser.id, cleanQuestion, undefined, datasourceIds),
+          this.oracleService.query(auroraUser.id, cleanQuestion, undefined, datasourceIds, auroraUser.email),
           30000,
           'oracle query'
         );
@@ -236,7 +236,7 @@ export class ChatHandler {
       let response;
       try {
         response = await withTimeout(
-          this.oracleService.query(auroraUser.id, resolvedQuestion, undefined, undefined),
+          this.oracleService.query(auroraUser.id, resolvedQuestion, undefined, undefined, auroraUser.email),
           25000,
           'oracle group query'
         );
@@ -285,7 +285,7 @@ export class ChatHandler {
         const email = this.userService.extractUserEmail(context.activity);
         const auroraUser = await this.userService.getOrCreateUser(email, context.activity.from.name || 'User');
         const response = await withTimeout(
-          this.oracleService.query(auroraUser.id, mem.question),
+          this.oracleService.query(auroraUser.id, mem.question, undefined, undefined, auroraUser.email),
           30000, 'pre-enhance query'
         );
         if (response?.documents?.length) {
@@ -310,7 +310,7 @@ export class ChatHandler {
       const currentMem = recall(convId)!;
 
       const enhanced = await withTimeout(
-        this.oracleService.enhance(auroraUser.id, currentMem.question, currentMem.documents!),
+        this.oracleService.enhance(auroraUser.id, currentMem.question, currentMem.documents!, auroraUser.email),
         45000,
         'enhance query'
       );

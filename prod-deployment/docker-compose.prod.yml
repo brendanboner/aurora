@@ -932,8 +932,6 @@ services:
     image: ${ECR_REGISTRY}/aurora-teams-agent:${VERSION:-latest}
     container_name: aurora-teams-agent
     restart: unless-stopped
-    profiles:
-      - teams
     networks:
       - aurora-network
     ports:

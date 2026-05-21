@@ -272,7 +272,7 @@ export class AgentHandler {
 
     try {
       const response = await withTimeout(
-        this.oracleService.query(auroraUser.id, question, agentPersona),
+        this.oracleService.query(auroraUser.id, question, agentPersona, undefined, auroraUser.email),
         ORACLE_TIMEOUT_MS
       );
       await this.sendOracleResponse(context, matchedAgent.name, response, question);
@@ -311,7 +311,7 @@ export class AgentHandler {
       await context.sendActivity(`Asking **${agent.name}**...`);
       try {
         const response = await withTimeout(
-          this.oracleService.query(auroraUser.id, question, agentPersona),
+          this.oracleService.query(auroraUser.id, question, agentPersona, undefined, auroraUser.email),
           ORACLE_TIMEOUT_MS
         );
         await this.sendOracleResponse(context, agent.name, response, question);
@@ -342,7 +342,7 @@ export class AgentHandler {
       try {
         // Pass datasource_ids so results are scoped to this WG's sources, not all sources
         const response = await withTimeout(
-          this.oracleService.query(auroraUser.id, question, wgPersona, wg.datasource_ids),
+          this.oracleService.query(auroraUser.id, question, wgPersona, wg.datasource_ids, auroraUser.email),
           ORACLE_TIMEOUT_MS
         );
         await this.sendOracleResponse(context, wg.name, response, question);
@@ -374,7 +374,7 @@ export class AgentHandler {
         await context.sendActivity(`Asking **${personalAgent.name}**...`);
         try {
           const response = await withTimeout(
-            this.oracleService.query(auroraUser.id, question, persona),
+            this.oracleService.query(auroraUser.id, question, persona, undefined, auroraUser.email),
             ORACLE_TIMEOUT_MS
           );
           await this.sendOracleResponse(context, personalAgent.name, response, question);
@@ -396,14 +396,12 @@ export class AgentHandler {
       const resolved = await this.oracleService.resolveMentionsToDatasourceIds([datasourceSlug]);
       if (resolved.length > 0) {
         console.log(`[AgentHandler] Routing @${datasourceSlug} as datasource filter: ${resolved}`);
+        const dsUser = await this.userService.getOrCreateUser(
+          this.userService.extractUserEmail(context.activity),
+          context.activity.from.name || 'User'
+        );
         const response = await withTimeout(
-          this.oracleService.query(
-            (await this.userService.getOrCreateUser(
-              this.userService.extractUserEmail(context.activity),
-              context.activity.from.name || 'User'
-            )).id,
-            question, undefined, resolved
-          ),
+          this.oracleService.query(dsUser.id, question, undefined, resolved, dsUser.email),
           ORACLE_TIMEOUT_MS
         );
         await this.sendOracleResponse(context, datasourceSlug, response, question);
