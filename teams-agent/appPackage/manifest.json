@@ -25,7 +25,7 @@
   "accentColor": "#4A90E2",
   "bots": [
     {
-      "botId": "42cc3ee2-ac9d-464f-841a-82d4f809c23d",
+      "botId": "553343dc-1031-4f78-8d8d-f1241a69e473",
       "scopes": ["personal", "team", "groupchat"],
       "supportsFiles": false,
       "isNotificationOnly": false,
