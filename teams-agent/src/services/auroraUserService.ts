@@ -93,8 +93,15 @@ export class AuroraUserService {
         }
       );
 
-      console.log(`User synced successfully: ${response.data.user.id}`);
-      return response.data.user;
+      // /internal/sync-user returns {success, user_id, email, display_name} (flat)
+      console.log(`User synced successfully: ${response.data.user_id}`);
+      return {
+        id: response.data.user_id,
+        email: response.data.email,
+        display_name: response.data.display_name ?? displayName,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
     } catch (error) {
       if (axios.isAxiosError(error)) {
         // If auth error and mock mode enabled, return mock user

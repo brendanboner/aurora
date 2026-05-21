@@ -942,6 +942,10 @@ services:
       BOT_PASSWORD: ${BOT_PASSWORD}
       BOT_TENANT_ID: ${BOT_TENANT_ID:-}
       BOT_PORT: 3978
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-aurora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-aurora}
       NODE_ENV: production
       AURORA_API_URL: http://backend:8000
       AURORA_ORACLE_URL: http://oracle:8000
