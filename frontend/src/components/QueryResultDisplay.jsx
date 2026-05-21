@@ -612,6 +612,38 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
           </div>
         )}
 
+        {/* Always-visible answer mode toggle — shown whenever both original and enhanced are available.
+             This is independent of the stats row so it can't be hidden by missing confidence/stats. */}
+        {message.isEnhanced && message.originalAnswer && message.enhancedAnswer && onToggleEnhanced && (
+          <div className="answer-mode-banner">
+            {isShowingEnhanced ? (
+              <>
+                <span className="answer-mode-label enhanced-label">✦ Enhanced</span>
+                <button
+                  type="button"
+                  className="answer-mode-toggle-btn"
+                  onClick={onToggleEnhanced}
+                  title="Switch to graph summary answer"
+                >
+                  ← Back to summary
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="answer-mode-label summary-label">Graph summary</span>
+                <button
+                  type="button"
+                  className="answer-mode-toggle-btn enhanced"
+                  onClick={onToggleEnhanced}
+                  title="Switch to enhanced answer"
+                >
+                  View enhanced →
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* The Answer */}
         {hasAnswer && (
           <div className={`answer-content ${isShowingEnhanced ? 'enhanced' : ''}`}>

@@ -1103,6 +1103,59 @@
   font-weight: 500;
 }
 
+/* Always-visible answer mode banner — appears above the answer text whenever
+   both original and enhanced versions are available. */
+.answer-mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  background: rgba(85, 98, 246, 0.07);
+  border: 1px solid rgba(85, 98, 246, 0.2);
+  font-size: 12px;
+}
+
+.answer-mode-label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.answer-mode-label.enhanced-label {
+  color: var(--a1-primary, var(--primary));
+}
+
+.answer-mode-label.summary-label {
+  color: var(--a1-text-secondary, var(--muted-foreground));
+}
+
+.answer-mode-toggle-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--a1-text-tertiary, var(--muted-foreground));
+  opacity: 0.8;
+  transition: opacity 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.answer-mode-toggle-btn:hover {
+  opacity: 1;
+  color: var(--a1-text-primary, var(--foreground));
+}
+
+.answer-mode-toggle-btn.enhanced {
+  color: var(--a1-primary, var(--primary));
+  opacity: 0.9;
+}
+
+.answer-mode-toggle-btn.enhanced:hover {
+  opacity: 1;
+}
+
 .answer-version-indicator.enhanced {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%);
   color: #8b5cf6;
