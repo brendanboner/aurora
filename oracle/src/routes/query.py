@@ -1067,17 +1067,26 @@ async def query_stream(
 
 
 def _split_into_chunks(text: str, size: int = 50) -> list[str]:
-    """Split text into word-boundary chunks for non-streaming fallback."""
-    words = text.split()
-    chunks = []
+    """Split text into word-boundary chunks for non-streaming fallback.
+
+    Preserves newlines so markdown list/paragraph structure survives chunking.
+    """
+    import re
+    # Split by whitespace runs but keep the separators so we can reconstruct
+    tokens = re.split(r'(\s+)', text)
+    chunks: list[str] = []
     current: list[str] = []
-    for word in words:
-        current.append(word)
-        if len(current) >= size:
-            chunks.append(" ".join(current))
+    word_count = 0
+    for token in tokens:
+        current.append(token)
+        if token and not token.isspace():
+            word_count += 1
+        if word_count >= size:
+            chunks.append("".join(current))
             current = []
+            word_count = 0
     if current:
-        chunks.append(" ".join(current))
+        chunks.append("".join(current))
     return chunks or [text]
 
 

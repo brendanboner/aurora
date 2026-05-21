@@ -529,14 +529,18 @@ What would you like to know?`;
       for await (const event of sendOracleQueryStream(user.id, queryText, streamOptions)) {
         if (event.type === 'token') {
           accumulated += event.token;
-          // Update the last message's content — functional update to get latest index
-          setMessages((prev) => {
-            const idx = prev.length - 1;
-            if (idx < 0 || prev[idx].role !== 'assistant') return prev;
-            const updated = [...prev];
-            updated[idx] = { ...updated[idx], content: accumulated };
-            return updated;
-          });
+          // Once meta is received the authoritative answer is already set — don't
+          // overwrite it with the newline-stripped token stream (fast pipeline sends
+          // meta first, then word-chunk tokens that lose markdown structure).
+          if (!metaReceived) {
+            setMessages((prev) => {
+              const idx = prev.length - 1;
+              if (idx < 0 || prev[idx].role !== 'assistant') return prev;
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], content: accumulated };
+              return updated;
+            });
+          }
         } else if (event.type === 'meta') {
           metaReceived = true;
           const mappedDocuments = (event.documents || []).map(doc => ({

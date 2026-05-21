@@ -136,6 +136,7 @@
 /* ── Assistant message — full-width prose ────────────────────────────────── */
 .message-assistant-wrap {
   padding: 18px 0 10px;
+  background: transparent;
 }
 
 .message-assistant-meta {
