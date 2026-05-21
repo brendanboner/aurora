@@ -260,7 +260,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
       if (!match) return part;
 
       const url = citationUrlMap.get(match[1]);
-      if (!url) return <span key={idx} className="citation-ref">{part}</span>;
+      if (!url) return <span key={idx} className="citation-ref">[{match[1]}]</span>;
 
       return (
         <a
@@ -271,7 +271,7 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
           rel="noopener noreferrer"
           title="Open referenced document"
         >
-          {part}
+          [{match[1]}]
         </a>
       );
     });

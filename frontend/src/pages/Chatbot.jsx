@@ -1093,6 +1093,15 @@ What would you like to know?`;
                     e.clipboardData.setData('text/plain', text);
                     e.preventDefault();
                   }}>
+                    {/* Show typing dots inside the streaming placeholder while waiting for first token */}
+                    {message.isStreaming && !message.content?.trim() && !message.documents?.length && !message.citations?.length && (
+                      <div className="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                    )}
+
                     {message.isError && (
                       <div className="message-text error">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
@@ -1133,7 +1142,9 @@ What would you like to know?`;
               )
             ))}
 
-            {isLoading && (
+            {/* Only show the global loading indicator when there is NO streaming placeholder in the messages array
+                (e.g. YouTube/ingest loading). The streaming Oracle flow shows dots inside the placeholder above. */}
+            {isLoading && !messages.some(m => m.isStreaming) && (
               <div className="message-assistant-wrap">
                 <div className="message-assistant-meta">
                   <span className="message-sender-name">Aurora</span>
@@ -1341,7 +1352,7 @@ What would you like to know?`;
               value={inputValue}
               onChange={handleInputChange}
               onKeyPress={handleKeyPress}
-              placeholder={user ? "Ask anything about Wi-Fi Alliance… (use @datasource to filter)" : "Please log in first…"}
+              placeholder={user ? "Ask anything about Standards or Alliances … (use @datasource to filter)" : "Please log in first…"}
               rows="2"
               disabled={!user || isLoading || querySuggestion || backendStatus !== 'connected'}
             />

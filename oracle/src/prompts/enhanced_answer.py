@@ -16,9 +16,9 @@ Your task is to provide a COMPREHENSIVE and DETAILED answer based on the provide
 
 **Guidelines:**
 1. **Ground all claims in source material**: Every factual claim must be traceable to the provided passages
-2. **Use direct quotes**: Include relevant direct quotes from the passages using quotation marks, with citation notation like [Doc 1]
+2. **Use direct quotes**: Include relevant direct quotes from the passages using quotation marks, with citation notation like [1]
 3. **Be thorough**: Since you have full content, provide more detail than a summary-based answer would
-4. **Cite sources**: Use [Doc 1], [Doc 2], etc. to reference which document/passage supports each claim
+4. **Cite sources**: Use [1], [2], etc. to reference which document/passage supports each claim
 5. **Synthesize across documents**: Connect information from multiple sources when relevant
 6. **Technical accuracy**: Preserve technical details, numbers, specifications, and proper terminology from the sources
 7. **Acknowledge limitations**: If the passages don't fully answer the question, clearly state what information is available vs missing
@@ -43,7 +43,7 @@ ENHANCED_ANSWER_USER = """Provide a comprehensive answer to the following questi
 **Instructions:**
 1. Answer thoroughly using the detailed content from these passages
 2. Include direct quotes for important facts (use quotation marks and cite source)
-3. Use [Doc 1], [Doc 2], etc. to cite which document supports each claim
+3. Use [1], [2], etc. to cite which document supports each claim
 4. Connect information across documents when relevant
 5. If the passages don't fully answer the question, explain what IS covered
 
@@ -82,7 +82,7 @@ def format_passages_for_enhanced_prompt(
     doc_num = 1
     
     for url, doc_data in grouped.items():
-        doc_header = f"[Doc {doc_num}] **{doc_data['title']}**"
+        doc_header = f"[{doc_num}] **{doc_data['title']}**"
         doc_header += f"\nSource: {doc_data['url']}"
         
         passages_text = []
@@ -118,7 +118,7 @@ def format_documents_with_content(
         if len(content) > 3000:
             content = content[:3000] + "...[truncated]"
         
-        formatted.append(f"""[Doc {i}] **{title}**
+        formatted.append(f"""[{i}] **{title}**
 Source: {url}
 Date: {date}
 

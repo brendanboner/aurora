@@ -19,11 +19,11 @@ const MEMORY_TTL_MS = 30 * 60 * 1000;
 
 /** Replace [N] and [Doc N] citation markers in answer text with clickable markdown links. */
 function linkifyReferences(answer: string, docs: Array<{ url?: string; title?: string }>): string {
-  // Handle [Doc N] format (from enhance endpoint)
+  // Handle [Doc N] format — normalise to [N] and linkify
   let result = answer.replace(/\[Doc\s+(\d+)\]/gi, (match, num) => {
     const idx = parseInt(num, 10) - 1;
     const doc = docs[idx];
-    return doc?.url ? `[[Doc ${num}]](${doc.url})` : match;
+    return doc?.url ? `[[${num}]](${doc.url})` : `[${num}]`;
   });
   // Handle plain [N] format (from fast/baseline)
   result = result.replace(/\[(\d+)\]/g, (match, num) => {
