@@ -365,74 +365,123 @@ export class AuroraBot extends TeamsActivityHandler {
   }
 
   private async sendWelcomeMessage(context: TurnContext): Promise<void> {
-    const welcomeCard = CardFactory.heroCard(
-      'Aurora',
-      'Wi-Fi and standards intelligence, directly in Teams.',
-      [],
-      [],
-      {
-        text: `**Getting started**
-
-• Type \`feed\` to see your personalised content feed
-• Ask any question — Aurora searches Wi-Fi Alliance, WBA, IETF, and IEEE sources
-• Type \`agents\` to see available expert agents
-• Type \`help\` for all commands`
-      }
-    );
-
-    await context.sendActivity({ attachments: [welcomeCard] });
+    const card = {
+      type: 'AdaptiveCard',
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      version: '1.3',
+      body: [
+        { type: 'TextBlock', text: '👋 Welcome to Aurora', weight: 'Bolder', size: 'Large' },
+        { type: 'TextBlock', text: 'Wi-Fi and standards intelligence, directly in Teams.', wrap: true, spacing: 'Small' },
+        { type: 'TextBlock', text: 'Getting started', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        {
+          type: 'FactSet',
+          facts: [
+            { title: 'feed', value: 'Your personalised content feed' },
+            { title: 'agents', value: 'List available expert agents' },
+            { title: '@slug question', value: 'Ask a specific agent (e.g. @ietf What is new?)' },
+            { title: 'help', value: 'Full command reference' },
+          ],
+        },
+        { type: 'TextBlock', text: 'Or just type any question — Aurora will search its knowledge base.', wrap: true, isSubtle: true, spacing: 'Medium' },
+      ],
+    };
+    await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
   private async sendHelpMessage(context: TurnContext): Promise<void> {
-    const help = `**Aurora — Commands**
-
-**Feed**
-• \`feed\` — Your personalised content feed
-• \`my agents\` — List your personal My-Agents with share instructions
-• \`show\` — Read the full text of the last agent notification inline
-• \`enhance\` — Re-run the last answer with full source document analysis for deeper citations
-
-**Agents**
-• \`agents\` — List available AI agents
-• \`@slug question\` — Ask a specific agent (e.g. \`@ietf What is new?\`, \`@wifi8mtg What was discussed?\`)
-• \`setChannelAgent @slug\` — Lock this channel to one agent
-• \`clearChannelAgent\` — Remove the channel lock
-
-**Group Channel Mode**
-• \`groupmode on\` — Aurora monitors for Wi-Fi and standards questions and adds context
-• \`groupmode off\` — Back to direct-query mode
-
-**Proactive Updates**
-• \`subscribe @slug\` — Receive posts from a system agent in this chat
-• \`unsubscribe @slug\` — Stop notifications
-• \`subscriptions\` — List active subscriptions
-• \`share Agent Name\` — Share a personal My-Agent's output to this group *(group chats only)*
-• \`unshare Agent Name\` — Stop sharing
-• \`shared\` — List personal agents shared to this group
-
-**Other**
-• \`about\` — About Aurora
-• \`help\` — This message
-
-Or just type any question and Aurora will search its knowledge base.`;
-
-    await context.sendActivity(help);
+    const card = {
+      type: 'AdaptiveCard',
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      version: '1.3',
+      body: [
+        { type: 'TextBlock', text: 'Aurora — Commands', weight: 'Bolder', size: 'Large' },
+        // Feed
+        { type: 'TextBlock', text: 'Feed & History', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        {
+          type: 'FactSet',
+          facts: [
+            { title: 'feed', value: 'Your personalised content feed' },
+            { title: 'show', value: 'Read the full text of the last agent notification' },
+            { title: 'enhance', value: 'Re-run the last answer with deeper source analysis' },
+          ],
+        },
+        // Agents
+        { type: 'TextBlock', text: 'Agents', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        {
+          type: 'FactSet',
+          facts: [
+            { title: 'agents', value: 'List all available AI agents' },
+            { title: 'my agents', value: 'List your personal agents' },
+            { title: '@slug question', value: 'Ask a specific agent — e.g. @ietf What is new?' },
+            { title: 'setChannelAgent @slug', value: 'Lock this channel to one agent' },
+            { title: 'clearChannelAgent', value: 'Remove the channel lock' },
+          ],
+        },
+        // Group mode
+        { type: 'TextBlock', text: 'Group Channel Mode', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        {
+          type: 'FactSet',
+          facts: [
+            { title: 'groupmode on', value: 'Aurora monitors for Wi-Fi and standards questions and adds context' },
+            { title: 'groupmode off', value: 'Back to direct-query mode' },
+          ],
+        },
+        // Proactive
+        { type: 'TextBlock', text: 'Proactive Updates', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        {
+          type: 'FactSet',
+          facts: [
+            { title: 'subscribe @slug', value: 'Receive posts from a system agent in this chat' },
+            { title: 'unsubscribe @slug', value: 'Stop notifications' },
+            { title: 'subscriptions', value: 'List active subscriptions' },
+            { title: 'share Agent Name', value: 'Share a personal agent\'s output to this group' },
+            { title: 'unshare Agent Name', value: 'Stop sharing' },
+            { title: 'shared', value: 'List personal agents shared to this group' },
+          ],
+        },
+        // Other
+        { type: 'TextBlock', text: 'Other', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        {
+          type: 'FactSet',
+          facts: [
+            { title: 'about', value: 'About Aurora' },
+            { title: 'clear', value: 'Reset conversation context' },
+            { title: 'help', value: 'This message' },
+          ],
+        },
+        { type: 'TextBlock', text: 'Or just type any question and Aurora will search its knowledge base.', wrap: true, isSubtle: true, spacing: 'Medium' },
+      ],
+    };
+    await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
   private async sendAboutMessage(context: TurnContext): Promise<void> {
-    const aboutText = `**About Aurora**
-
-Aurora is an intelligent knowledge system built on Wi-Fi Alliance, WBA, IETF, and IEEE standards content. It combines:
-
-• AI-powered expert agents that generate and curate content
-• A knowledge graph connecting topics, organisations, and people
-• Natural language search across member-only and public sources
-
-In Teams, Aurora provides personalised content feeds, instant answers with source citations, and proactive updates when new content matches your interests.
-
-Type \`help\` for a list of commands.`;
-
-    await context.sendActivity(MessageFactory.text(aboutText));
+    const card = {
+      type: 'AdaptiveCard',
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      version: '1.3',
+      body: [
+        { type: 'TextBlock', text: 'About Aurora', weight: 'Bolder', size: 'Large' },
+        {
+          type: 'TextBlock',
+          text: 'Aurora is an intelligent knowledge system built on Wi-Fi Alliance, WBA, IETF, and IEEE standards content.',
+          wrap: true,
+          spacing: 'Small',
+        },
+        { type: 'TextBlock', text: 'What Aurora provides', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        {
+          type: 'FactSet',
+          facts: [
+            { title: 'Knowledge graph', value: 'Topics, organisations, and people connected across thousands of documents' },
+            { title: 'Expert agents', value: 'AI personas scoped to working groups, standards bodies, and your own projects' },
+            { title: 'Content feeds', value: 'Personalised summaries generated by agents you follow' },
+            { title: 'Citations', value: 'Every answer links back to the source documents' },
+          ],
+        },
+        { type: 'TextBlock', text: 'Type `help` for a full command reference.', wrap: true, isSubtle: true, spacing: 'Medium' },
+      ],
+    };
+    await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
   // Required for state persistence
