@@ -255,13 +255,13 @@
 }
 
 .answer-content {
-  background-color: var(--card);
-  padding: 10px;
-  border-radius: var(--radius-card);
-  border: 1px solid var(--border);
-  line-height: 1.8;
+  background: transparent;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  line-height: 1.72;
   font-size: 15px;
-  color: var(--foreground);
+  color: var(--a1-text-primary, var(--foreground));
 }
 
 /* Override global p rule so paragraphs match list items inside answer content */
@@ -275,11 +275,13 @@
   margin-bottom: 0;
 }
 
-/* Enhanced Answer Content Styling - purple accent on the answer box only */
+/* Enhanced Answer Content Styling - subtle left accent only, no card */
 .answer-content.enhanced {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  box-shadow: 0 0 16px rgba(139, 92, 246, 0.1);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-left: 2px solid rgba(139, 92, 246, 0.4);
+  padding-left: 14px;
 }
 
 /* Improved list styling */
@@ -328,7 +330,7 @@
   margin: 28px 0 16px 0;
   line-height: 1.4;
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--a1-text-primary, var(--foreground));
 }
 
 .answer-content h1:first-child,
@@ -393,11 +395,10 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   border-bottom: none;
-  transition: color 0.15s ease;
 }
 
 .answer-content a:hover {
-  color: #ffffff;
+  color: var(--a1-link, #6ed8d2);
   border-bottom: none;
 }
 
