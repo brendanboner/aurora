@@ -420,69 +420,67 @@ export class AgentHandler {
 
 /**
  * Build an Adaptive Card that lists agents/working groups as clickable buttons.
- * Clicking a button sends "@slug " (imBack) to start a dialog with that persona.
- * A "Clear" button at the bottom returns to general mode.
+ * Each agent has an Action.Submit (imBack) so clicking sends "@slug " to start
+ * a dialog. A "Clear" button at the bottom returns to general mode.
+ *
+ * Uses only card-level actions (no ActionSet inside body) for Teams compatibility.
  */
 function buildAgentListCard(
   title: string,
   items: Array<{ name: string; desc?: string; value: string }>,
   subtitle?: string
 ): Record<string, unknown> {
-  const rows = items.map((item) => ({
-    type: 'ColumnSet',
-    spacing: 'Small',
-    columns: [
-      {
-        type: 'Column',
-        width: 'stretch',
-        verticalContentAlignment: 'Center',
-        items: [
-          { type: 'TextBlock', text: item.name, weight: 'Bolder', wrap: true },
-          ...(item.desc ? [{ type: 'TextBlock', text: item.desc, isSubtle: true, size: 'Small', wrap: true, spacing: 'None' }] : []),
-        ],
-      },
-      {
-        type: 'Column',
-        width: 'auto',
-        verticalContentAlignment: 'Center',
-        items: [
-          {
-            type: 'ActionSet',
-            actions: [{
-              type: 'Action.Submit',
-              title: 'Ask',
-              data: { msteams: { type: 'imBack', value: item.value } },
-            }],
-          },
-        ],
-      },
-    ],
-  }));
+  // Body: name + description rows only (no nested action sets)
+  const bodyRows: Record<string, unknown>[] = [];
+  items.forEach((item, i) => {
+    if (i > 0) {
+      // Use separator: true on the TextBlock instead of a Separator element
+      bodyRows.push({
+        type: 'TextBlock',
+        text: item.name,
+        weight: 'Bolder',
+        wrap: true,
+        separator: true,
+        spacing: 'Small',
+      });
+    } else {
+      bodyRows.push({ type: 'TextBlock', text: item.name, weight: 'Bolder', wrap: true });
+    }
+    if (item.desc) {
+      bodyRows.push({
+        type: 'TextBlock',
+        text: item.desc,
+        isSubtle: true,
+        size: 'Small',
+        wrap: true,
+        spacing: 'None',
+      });
+    }
+  });
+
+  // Card-level actions: one per agent + clear
+  const actions: Record<string, unknown>[] = [
+    ...items.map((item) => ({
+      type: 'Action.Submit',
+      title: `Ask ${item.name}`,
+      data: { msteams: { type: 'imBack', value: item.value } },
+    })),
+    {
+      type: 'Action.Submit',
+      title: '✕ Clear',
+      data: { msteams: { type: 'imBack', value: 'clear' } },
+    },
+  ];
 
   return {
     type: 'AdaptiveCard',
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-    version: '1.5',
+    version: '1.3',
     body: [
       { type: 'TextBlock', text: title, weight: 'Bolder', size: 'Large' },
       ...(subtitle ? [{ type: 'TextBlock', text: subtitle, isSubtle: true, spacing: 'Small', wrap: true }] : []),
-      { type: 'Separator' },
-      ...rows,
-      { type: 'Separator', spacing: 'Medium' },
-      {
-        type: 'TextBlock',
-        text: 'Type `clear` to return to general questions.',
-        isSubtle: true,
-        size: 'Small',
-        wrap: true,
-      },
+      ...bodyRows,
     ],
-    actions: [
-      {
-        type: 'Action.Submit',
-        title: '✕ Clear',
-        data: { msteams: { type: 'imBack', value: 'clear' } },
-      },
-    ],
+    actions,
   };
 }
