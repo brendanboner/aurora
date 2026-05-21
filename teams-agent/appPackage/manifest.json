@@ -1,14 +1,14 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
   "manifestVersion": "1.16",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "id": "a0582778-e1dd-4326-8c77-d92ce9bb2656",
   "packageName": "com.aurora.teamsagent",
   "developer": {
     "name": "Aurora Team",
-    "websiteUrl": "https://github.com/extremenetworks/octo-rapid-aurora",
-    "privacyUrl": "https://github.com/extremenetworks/octo-rapid-aurora/blob/main/PRIVACY.md",
-    "termsOfUseUrl": "https://github.com/extremenetworks/octo-rapid-aurora/blob/main/TERMS.md"
+    "websiteUrl": "https://aurora-octo.xcloudiq.com",
+    "privacyUrl": "https://aurora-octo.xcloudiq.com",
+    "termsOfUseUrl": "https://aurora-octo.xcloudiq.com"
   },
   "name": {
     "short": "Aurora",
@@ -16,13 +16,22 @@
   },
   "description": {
     "short": "Personalized content feed and intelligent knowledge search",
-    "full": "Aurora provides personalized industry content updates and intelligent search powered by knowledge graphs and LLMs. Get daily digests of curated content from AI agents, ask natural language questions about Wi-Fi standards, technology trends, and industry news. Aurora combines content creation, knowledge graphs, and smart search to keep you informed."
+    "full": "Aurora provides personalized industry content updates and intelligent search powered by knowledge graphs and LLMs. Get daily digests of curated content from AI agents, ask natural language questions about Wi-Fi standards, technology trends, and industry news."
   },
   "icons": {
     "color": "color.png",
     "outline": "outline.png"
   },
   "accentColor": "#4A90E2",
+  "staticTabs": [
+    {
+      "entityId": "aurora-chat",
+      "name": "Chat",
+      "contentUrl": "https://aurora-octo.xcloudiq.com",
+      "websiteUrl": "https://aurora-octo.xcloudiq.com",
+      "scopes": ["personal"]
+    }
+  ],
   "bots": [
     {
       "botId": "553343dc-1031-4f78-8d8d-f1241a69e473",
@@ -38,6 +47,14 @@
               "description": "Show your personalized content feed"
             },
             {
+              "title": "agents",
+              "description": "List available AI agents"
+            },
+            {
+              "title": "my agents",
+              "description": "List your personal agents"
+            },
+            {
               "title": "help",
               "description": "Show available commands and examples"
             }
@@ -47,7 +64,7 @@
     }
   ],
   "permissions": ["identity", "messageTeamMembers"],
-  "validDomains": [],
+  "validDomains": ["aurora-octo.xcloudiq.com"],
   "authorization": {
     "permissions": {
       "resourceSpecific": [

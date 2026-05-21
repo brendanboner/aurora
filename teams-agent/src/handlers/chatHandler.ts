@@ -17,13 +17,21 @@ interface ConvMemory {
 const convMemory = new Map<string, ConvMemory>();
 const MEMORY_TTL_MS = 30 * 60 * 1000;
 
-/** Replace [N] citation markers in answer text with clickable markdown links. */
+/** Replace [N] and [Doc N] citation markers in answer text with clickable markdown links. */
 function linkifyReferences(answer: string, docs: Array<{ url?: string; title?: string }>): string {
-  return answer.replace(/\[(\d+)\]/g, (match, num) => {
+  // Handle [Doc N] format (from enhance endpoint)
+  let result = answer.replace(/\[Doc\s+(\d+)\]/gi, (match, num) => {
+    const idx = parseInt(num, 10) - 1;
+    const doc = docs[idx];
+    return doc?.url ? `[[Doc ${num}]](${doc.url})` : match;
+  });
+  // Handle plain [N] format (from fast/baseline)
+  result = result.replace(/\[(\d+)\]/g, (match, num) => {
     const idx = parseInt(num, 10) - 1;
     const doc = docs[idx];
     return doc?.url ? `[[${num}]](${doc.url})` : match;
   });
+  return result;
 }
 
 /** Build a plain-markdown oracle response with linked references and full source list. */
@@ -346,11 +354,12 @@ export class ChatHandler {
         return;
       }
 
-      const sourceLinks = currentMem.documents!.slice(0, 5)
+      const sourceLinks = currentMem.documents!
         .map((d, i) => `${i + 1}. [${d.title}](${d.url})`)
         .join('\n');
 
-      await context.sendActivity(`**Enhanced answer:**\n\n${enhanced}\n\n**Sources:**\n${sourceLinks}`);
+      const linkedEnhanced = linkifyReferences(enhanced, currentMem.documents!);
+      await context.sendActivity(`**Enhanced answer:**\n\n${linkedEnhanced}\n\n**Sources:**\n${sourceLinks}`);
     } catch (err: any) {
       const isTimeout = err?.message?.includes('timeout');
       await context.sendActivity(isTimeout
