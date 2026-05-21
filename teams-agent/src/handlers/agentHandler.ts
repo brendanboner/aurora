@@ -387,9 +387,39 @@ export class AgentHandler {
       }
     } catch { /* fall through */ }
 
-    await context.sendActivity(
-      `No agent or working group found for \`@${teamsSlug}\`. Type \`agents\` to see available slugs.`
-    );
+    // Nothing matched — show a card with close working-group matches and a fallback
+    const wgs = listWorkingGroups();
+    const slug = teamsSlug.toLowerCase();
+    const closeMatches = wgs
+      .filter((wg) =>
+        wg.slug.replace(/^aurora-/, '').includes(slug) ||
+        wg.name.toLowerCase().includes(slug) ||
+        (wg.description || '').toLowerCase().includes(slug)
+      )
+      .slice(0, 5);
+
+    if (closeMatches.length > 0) {
+      const items = closeMatches.map((wg) => ({
+        name: wg.name,
+        desc: wg.description || '',
+        value: `@${wg.slug.replace(/^aurora-/, '')} `,
+      }));
+      const card = buildAgentListCard(
+        `No agent found for "@${teamsSlug}"`,
+        items,
+        question
+          ? `Did you mean one of these? They can answer: "${question}"`
+          : 'Did you mean one of these?',
+      );
+      await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+    } else {
+      const card = buildAgentListCard(
+        `No agent found for "@${teamsSlug}"`,
+        [{ name: 'Ask Aurora directly', desc: 'Search across all knowledge sources', value: question || `${teamsSlug} ` }],
+        'Type `agents` to browse all available agents, or ask Aurora directly:',
+      );
+      await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+    }
   }
 
   private async sendOracleResponse(

@@ -246,13 +246,23 @@ export class AuroraBot extends TeamsActivityHandler {
         else if (lower === 'about' || lower === 'info') {
           await this.sendAboutMessage(context);
         }
-        // ── @<agent name> <question> ───────────────────────────────────────
+        // ── @slug [question] ────────────────────────────────────────────────
+        // @alone or @partial → show agent picker card
+        // @slug question     → ask that specific agent (by slug, not name)
         else if (text.startsWith('@')) {
           const afterAt = text.substring(1).trim();
           if (!afterAt) {
             await this.agentHandler.handleAgentSuggestions(context);
           } else {
-            await this.agentHandler.handleAskAgent(context, afterAt);
+            const spaceIdx = afterAt.indexOf(' ');
+            const slug = spaceIdx > 0 ? afterAt.substring(0, spaceIdx) : afterAt;
+            const question = spaceIdx > 0 ? afterAt.substring(spaceIdx + 1).trim() : '';
+            if (!question) {
+              // @slug alone — show picker card filtered by that partial slug
+              await this.agentHandler.handleAgentSuggestions(context, slug);
+            } else {
+              await this.agentHandler.handleAskAgentBySlug(context, slug, question);
+            }
           }
         }
         // ── Default: check for channel-scoped default agent first ──────────
