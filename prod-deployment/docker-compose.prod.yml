@@ -943,6 +943,10 @@ services:
       BOT_PASSWORD: ${BOT_PASSWORD}
       BOT_TENANT_ID: ${BOT_TENANT_ID:-}
       BOT_PORT: 3978
+      # Graph API — resolves Teams AAD OID → real email → links to correct Aurora user
+      GRAPH_TENANT_ID: ${BOT_TENANT_ID:-}
+      GRAPH_CLIENT_ID: ${BOT_ID}
+      GRAPH_CLIENT_SECRET: ${BOT_PASSWORD}
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-aurora}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
