@@ -1,10 +1,9 @@
-import { TurnContext } from 'botbuilder';
+import { CardFactory, TurnContext } from 'botbuilder';
 import { AuroraUserService } from '../services/auroraUserService';
 import { AuroraAgentService } from '../services/auroraAgentService';
 import { AuroraOracleService } from '../services/auroraOracleService';
-import { buildOracleResponseCard } from '../helpers/cardBuilder';
-import { getWorkingGroupBySlug, listWorkingGroupSlugs } from '../services/workingGroupResolver';
-import { rememberAnswer } from './chatHandler';
+import { getWorkingGroupBySlug, listWorkingGroups } from '../services/workingGroupResolver';
+import { rememberAnswer, buildMarkdownResponse } from './chatHandler';
 
 const ORACLE_TIMEOUT_MS = 30_000;
 
@@ -34,9 +33,8 @@ export class AgentHandler {
   }
 
   /**
-   * Show a quick-select list of agents when the user types @ alone
-   * or an unrecognised @ prefix. Uses suggestedActions so agent names
-   * appear as tap-to-fill chips above the compose box.
+   * Show a quick-select card of agents when the user types @ alone
+   * or an unrecognised @ prefix.
    */
   async handleAgentSuggestions(context: TurnContext, partial: string = ''): Promise<void> {
     const email = this.userService.extractUserEmail(context.activity);
@@ -45,37 +43,25 @@ export class AgentHandler {
     const agentService = new AuroraAgentService(auroraUser.id, email);
     const agents = await agentService.listAgents();
 
-    // Filter by partial match if the user typed @something
     const filtered = partial
       ? agents.filter((a) => a.name.toLowerCase().startsWith(partial.toLowerCase()))
       : agents;
 
     if (filtered.length === 0) {
-      await context.sendActivity(
-        `No agents match "@${partial}". Type \`agents\` to see the full list.`
-      );
+      await context.sendActivity(`No agents match "@${partial}". Type \`agents\` to see the full list.`);
       return;
     }
 
-    // suggestedActions render as chip buttons in Teams; value pre-fills "ask <name> "
-    const actions = filtered.slice(0, 8).map((a) => ({
-      type: 'imBack',
-      title: `@${a.name}`,
-      value: `ask ${a.name} `,
-    }));
-
-    const descriptions = filtered
-      .slice(0, 8)
-      .map((a) => `• **${a.name}** — ${a.description || a.persona || 'Content agent'}`)
-      .join('\n');
-
-    await context.sendActivity({
-      text: `**Ask a creator agent** — select one below, then type your question:\n\n${descriptions}`,
-      suggestedActions: {
-        to: [context.activity.from.id],
-        actions,
-      },
-    });
+    const card = buildAgentListCard(
+      'Aurora Agents',
+      filtered.slice(0, 10).map((a: any) => ({
+        name: a.name,
+        desc: (a.description || a.persona || '').slice(0, 80),
+        value: `@${(a.teams_slug || a.name).replace(/^aurora-/, '')} `,
+      })),
+      'Select an agent to start a conversation:',
+    );
+    await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
   /** List all content creator agents. */
@@ -92,31 +78,29 @@ export class AgentHandler {
       // Content creator service unavailable — show working groups only
     }
 
-    const agentLines = agents.length > 0
-      ? agents.map((a) => {
-          const desc = (a.description || a.persona || '').slice(0, 80);
-          // Display slug without aurora- prefix — users type @ietf not @aurora-ietf
-          const displaySlug = a.teams_slug
-            ? `\`@${a.teams_slug.replace(/^aurora-/, '')}\``
-            : '_no slug_';
-          return `• **${a.name}** — ${displaySlug}\n  ${desc}`;
-        }).join('\n\n')
-      : '_(none configured)_';
+    const wgs = listWorkingGroups();
 
-    const msg = [
-      `**Aurora Agents**`,
-      ``,
-      `**Creator Agents**`,
-      agentLines,
-      ``,
-      `**Working Groups & Organisations**`,
-      listWorkingGroupSlugs(),
-      ``,
-      `Use: \`@aurora-slug your question\``,
-      `Subscribe: \`subscribe @slug\` (the aurora- prefix is optional)`,
-    ].join('\n\n');
+    // Build a combined card: creator agents + working groups + clear
+    const allItems = [
+      ...agents.map((a) => ({
+        name: a.name,
+        desc: (a.description || a.persona || '').slice(0, 80),
+        value: `@${(a.teams_slug || a.name).replace(/^aurora-/, '')} `,
+      })),
+      ...wgs.map((wg) => ({
+        name: wg.name,
+        desc: wg.description || '',
+        value: `@${wg.slug.replace(/^aurora-/, '')} `,
+      })),
+    ];
 
-    await context.sendActivity(msg);
+    if (allItems.length === 0) {
+      await context.sendActivity('No agents are configured yet.');
+      return;
+    }
+
+    const card = buildAgentListCard('Aurora Agents', allItems, 'Click an agent to start a conversation:');
+    await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
   /** List the user's personal My-Agents with share-command hints. */
@@ -126,7 +110,7 @@ export class AgentHandler {
     const auroraUser = await this.userService.getOrCreateUser(email, displayName);
     const agentService = new AuroraAgentService(auroraUser.id, email);
 
-    let myAgents: Array<{ id: number; name: string; enabled: boolean; posting_cadence?: string }> = [];
+    let myAgents: any[] = [];
     try {
       myAgents = await agentService.listUserAgents();
     } catch {
@@ -139,20 +123,14 @@ export class AgentHandler {
       return;
     }
 
-    const lines = myAgents.map(a => {
-      const status = a.enabled ? 'active' : 'paused';
-      const cadence = (a as any).posting_cadence ? ` · ${(a as any).posting_cadence}` : '';
-      const slug = (a as any).teams_slug;
-      const slugLine = slug ? `\`@${slug}\`` : '_(no slug)_';
-      const shareLine = slug
-        ? `Share to group: \`share @${slug}\``
-        : `Share to group: \`share ${a.name}\``;
-      return `• **${a.name}** — ${slugLine} (${status}${cadence})\n  ${shareLine}`;
-    }).join('\n\n');
+    const items = myAgents.map((a) => ({
+      name: a.name,
+      desc: `${a.enabled ? '● active' : '○ paused'}${a.posting_cadence ? ` · ${a.posting_cadence}` : ''}`,
+      value: `@${(a.teams_slug || a.name).replace(/^aurora-/, '')} `,
+    }));
 
-    await context.sendActivity(
-      `**Your personal agents** (from My Agents in Aurora)\n\n${lines}\n\nAsk questions: \`@slug your question\`\nPost notifications go to your direct chat. Use \`share @slug\` in a group to forward posts there.`
-    );
+    const card = buildAgentListCard('My Personal Agents', items, 'Click an agent to start a conversation:');
+    await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
   /** Follow an agent by name. */
@@ -431,13 +409,80 @@ export class AgentHandler {
       rememberAnswer(convId, question, response.answer, response.documents);
     }
 
-    const sourceLinks = response.documents?.length
-      ? '\n\n**Sources:**\n' + response.documents.slice(0, 5).map((doc: any, idx: number) =>
-        `${idx + 1}. [${doc.title}](${doc.url})`
-      ).join('\n')
-      : '';
-
-    const answer = response.answer || 'Here are the relevant results:';
-    await context.sendActivity(`**${speakerName}:** ${answer}${sourceLinks}`);
+    const text = buildMarkdownResponse(
+      response.answer || 'Here are the relevant results:',
+      response.documents ?? [],
+      speakerName,
+    );
+    await context.sendActivity(text);
   }
+}
+
+/**
+ * Build an Adaptive Card that lists agents/working groups as clickable buttons.
+ * Clicking a button sends "@slug " (imBack) to start a dialog with that persona.
+ * A "Clear" button at the bottom returns to general mode.
+ */
+function buildAgentListCard(
+  title: string,
+  items: Array<{ name: string; desc?: string; value: string }>,
+  subtitle?: string
+): Record<string, unknown> {
+  const rows = items.map((item) => ({
+    type: 'ColumnSet',
+    spacing: 'Small',
+    columns: [
+      {
+        type: 'Column',
+        width: 'stretch',
+        verticalContentAlignment: 'Center',
+        items: [
+          { type: 'TextBlock', text: item.name, weight: 'Bolder', wrap: true },
+          ...(item.desc ? [{ type: 'TextBlock', text: item.desc, isSubtle: true, size: 'Small', wrap: true, spacing: 'None' }] : []),
+        ],
+      },
+      {
+        type: 'Column',
+        width: 'auto',
+        verticalContentAlignment: 'Center',
+        items: [
+          {
+            type: 'ActionSet',
+            actions: [{
+              type: 'Action.Submit',
+              title: 'Ask',
+              data: { msteams: { type: 'imBack', value: item.value } },
+            }],
+          },
+        ],
+      },
+    ],
+  }));
+
+  return {
+    type: 'AdaptiveCard',
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    version: '1.5',
+    body: [
+      { type: 'TextBlock', text: title, weight: 'Bolder', size: 'Large' },
+      ...(subtitle ? [{ type: 'TextBlock', text: subtitle, isSubtle: true, spacing: 'Small', wrap: true }] : []),
+      { type: 'Separator' },
+      ...rows,
+      { type: 'Separator', spacing: 'Medium' },
+      {
+        type: 'TextBlock',
+        text: 'Type `clear` to return to general questions.',
+        isSubtle: true,
+        size: 'Small',
+        wrap: true,
+      },
+    ],
+    actions: [
+      {
+        type: 'Action.Submit',
+        title: '✕ Clear',
+        data: { msteams: { type: 'imBack', value: 'clear' } },
+      },
+    ],
+  };
 }

@@ -144,3 +144,12 @@ export function listWorkingGroupSlugs(): string {
     `• **${wg.name}** — \`@${wg.slug.replace(/^aurora-/, '')}\``
   ).join('\n\n');
 }
+
+/** Return all working groups as plain objects for card rendering. */
+export function listWorkingGroups(): Array<{ name: string; slug: string; description?: string }> {
+  return WORKING_GROUP_REGISTRY.map((wg) => ({
+    name: wg.name,
+    slug: wg.slug,
+    description: wg.expertise_topics?.slice(0, 3).join(', ') || '',
+  }));
+}

@@ -1,7 +1,6 @@
 import { TurnContext } from 'botbuilder';
 import { AuroraUserService } from '../services/auroraUserService';
 import { AuroraOracleService } from '../services/auroraOracleService';
-import { buildOracleResponseCard } from '../helpers/cardBuilder';
 import { conversationReferenceStore } from '../services/conversationReferenceStore';
 import axios from 'axios';
 
@@ -18,7 +17,38 @@ interface ConvMemory {
 const convMemory = new Map<string, ConvMemory>();
 const MEMORY_TTL_MS = 30 * 60 * 1000;
 
-/** Extract capitalised words / proper nouns from a text block. */
+/** Replace [N] citation markers in answer text with clickable markdown links. */
+function linkifyReferences(answer: string, docs: Array<{ url?: string; title?: string }>): string {
+  return answer.replace(/\[(\d+)\]/g, (match, num) => {
+    const idx = parseInt(num, 10) - 1;
+    const doc = docs[idx];
+    return doc?.url ? `[[${num}]](${doc.url})` : match;
+  });
+}
+
+/** Build a plain-markdown oracle response with linked references and full source list. */
+export function buildMarkdownResponse(
+  answer: string,
+  docs: Array<{ title?: string; url?: string }>,
+  speakerPrefix?: string,
+): string {
+  const linkedAnswer = docs?.length ? linkifyReferences(answer, docs) : answer;
+  const prefix = speakerPrefix ? `**${speakerPrefix}:** ` : '';
+
+  let sources = '';
+  if (docs?.length) {
+    sources = '\n\n**Sources:**\n' + docs
+      .map((doc, i) => {
+        const label = doc.title || `Source ${i + 1}`;
+        return doc.url ? `${i + 1}. [${label}](${doc.url})` : `${i + 1}. ${label}`;
+      })
+      .join('\n');
+  }
+
+  return `${prefix}${linkedAnswer}${sources}`;
+}
+
+
 function extractEntities(text: string): string[] {
   const words = text.match(/\b[A-Z][a-zA-Z]{2,}\b/g) ?? [];
   const stopWords = new Set(['The','This','That','These','Those','When','Where',
@@ -176,16 +206,12 @@ export class ChatHandler {
         remember(convId, question, response.answer, response.documents);
       }
 
-      const card = buildOracleResponseCard(response, question);
-      let sourceLinks = '';
-      if (response.documents?.length) {
-        sourceLinks = '\n\n**Sources:**\n' + response.documents
-          .map((doc: any, idx: number) => `${idx + 1}. [${doc.title}](${doc.url})`)
-          .join('\n');
-      }
-      const plainText = `${response.answer || 'Here are the results:'}${sourceLinks}`;
-
-      await context.sendActivity({ attachments: [card], speak: plainText });
+      // Send as plain markdown with inline linked citations — no Adaptive Card for Q&A
+      const text = buildMarkdownResponse(
+        response.answer || 'Here are the relevant results:',
+        response.documents ?? [],
+      );
+      await context.sendActivity(text);
 
       if (response.suggestions?.length) {
         const hint = `\n\n**Related:**\n${response.suggestions.slice(0, 2)

@@ -72,11 +72,6 @@
       }
     },
     {
-      "type": "Action.OpenUrl",
-      "title": "Open in Aurora",
-      "url": "${source_url}"
-    },
-    {
       "type": "Action.Submit",
       "title": "Ask ${agent_name}",
       "data": {
