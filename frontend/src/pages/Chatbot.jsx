@@ -76,24 +76,24 @@ const Chatbot = ({ backendStatus }) => {
     showingEnhanced: Boolean(message.showingEnhanced),
     documents: Array.isArray(message.documents)
       ? message.documents.slice(0, MAX_STORED_DOCUMENTS).map((doc) => ({
-          title: truncateText(String(doc?.title || 'Untitled'), 240),
-          url: typeof doc?.url === 'string' ? doc.url : '',
-          publish_date: typeof doc?.publish_date === 'string' ? doc.publish_date : null,
-          summary: truncateText(typeof doc?.summary === 'string' ? doc.summary : '', 280),
-          topics: Array.isArray(doc?.topics) ? doc.topics.slice(0, 5).map((topic) => String(topic)) : [],
-          organisations: Array.isArray(doc?.organisations) ? doc.organisations.slice(0, 3).map((org) => String(org)) : [],
-          relevance_score: typeof doc?.relevance_score === 'number' ? doc.relevance_score : null,
-          source: typeof doc?.source === 'string' ? doc.source : null,
-          datasource_id: typeof doc?.datasource_id === 'string' ? doc.datasource_id : null,
-        }))
+        title: truncateText(String(doc?.title || 'Untitled'), 240),
+        url: typeof doc?.url === 'string' ? doc.url : '',
+        publish_date: typeof doc?.publish_date === 'string' ? doc.publish_date : null,
+        summary: truncateText(typeof doc?.summary === 'string' ? doc.summary : '', 280),
+        topics: Array.isArray(doc?.topics) ? doc.topics.slice(0, 5).map((topic) => String(topic)) : [],
+        organisations: Array.isArray(doc?.organisations) ? doc.organisations.slice(0, 3).map((org) => String(org)) : [],
+        relevance_score: typeof doc?.relevance_score === 'number' ? doc.relevance_score : null,
+        source: typeof doc?.source === 'string' ? doc.source : null,
+        datasource_id: typeof doc?.datasource_id === 'string' ? doc.datasource_id : null,
+      }))
       : [],
     citations: Array.isArray(message.citations)
       ? message.citations.slice(0, MAX_STORED_CITATIONS).map((citation) => ({
-          index: citation?.index ?? null,
-          document_url: typeof citation?.document_url === 'string' ? citation.document_url : '',
-          title: truncateText(typeof citation?.title === 'string' ? citation.title : '', 240),
-          excerpt: truncateText(typeof citation?.excerpt === 'string' ? citation.excerpt : '', 240),
-        }))
+        index: citation?.index ?? null,
+        document_url: typeof citation?.document_url === 'string' ? citation.document_url : '',
+        title: truncateText(typeof citation?.title === 'string' ? citation.title : '', 240),
+        excerpt: truncateText(typeof citation?.excerpt === 'string' ? citation.excerpt : '', 240),
+      }))
       : [],
     metadata: message.metadata ? {
       processing_time_ms: message.metadata.processing_time_ms ?? null,
@@ -164,7 +164,7 @@ const Chatbot = ({ backendStatus }) => {
         console.warn('Failed to load datasources:', err);
       }
     };
-    
+
     const loadOracleSettings = async () => {
       try {
         const settings = await getOracleSettings();
@@ -175,7 +175,7 @@ const Chatbot = ({ backendStatus }) => {
         setFastPipelineEnabled(false);
       }
     };
-    
+
     loadDatasources();
     loadOracleSettings();
   }, []);
@@ -219,17 +219,11 @@ const Chatbot = ({ backendStatus }) => {
   }, [updateScrollState]);
 
   // Welcome message with tips for crafting good queries
-  const getWelcomeMessage = (email) => `Hello ${email}! I'm Aurora, your knowledge assistant for wireless standards and industry news.
+  const getWelcomeMessage = (email) => `Hello ${email}! I'm Aurora, your personal assistant for standards and industry knowledge.
 
 **Tips for effective queries:**
 
-**Include specific topics** — Wi-Fi 6/6E/7/8, 802.11ax/be/bn, 6 GHz, MLO, Matter, Thread, Bluetooth, 5G/6G
-
-**Mention organizations** — Wi-Fi Alliance, IEEE, 3GPP, Qualcomm, Broadcom, Intel, MediaTek
-
-**Add time context** — "last week", "last month", "in 2025", or specific dates
-
-**Specify document types** — press release, whitepaper, blog, meeting minutes
+— Type "help" for assistance, "agents" to list available agents
 
 **Example queries:**
 - "What's new with Wi-Fi 8 in the last month?"
@@ -243,35 +237,20 @@ What would you like to know?`;
   const getWelcomeMessageJSX = (email) => (
     <div className="welcome-message">
       <p>{`Hello ${email}! I'm Aurora, your knowledge assistant for wireless standards and industry news.`}</p>
-      
+
       <p><strong>Tips for effective queries:</strong></p>
-      
+
       <div className="welcome-tip">
-        <SearchIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
-        <strong>Include specific topics</strong> — Wi-Fi 6/6E/7/8, 802.11ax/be/bn, 6 GHz, MLO, Matter, Thread, Bluetooth, 5G/6G
+        <SearchIcon size={16} style={{ marginRight: '8px', color: '#6b7280' }} />
+        Type <strong>"help"</strong> for assistance, "<strong>agents</strong>" to list available agents
       </div>
-      
-      <div className="welcome-tip">
-        <BuildingIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
-        <strong>Mention organizations</strong> — Wi-Fi Alliance, IEEE, 3GPP, Qualcomm, Broadcom, Intel, MediaTek
-      </div>
-      
-      <div className="welcome-tip">
-        <CalendarIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
-        <strong>Add time context</strong> — "last week", "last month", "in 2025", or specific dates
-      </div>
-      
-      <div className="welcome-tip">
-        <DocumentIcon size={16} style={{marginRight: '8px', color: '#6b7280'}} />
-        <strong>Specify document types</strong> — press release, whitepaper, blog, meeting minutes
-      </div>
-      
+
       <div className="welcome-enhance-info">
         <p>
           If you need more detailed information or find the answer quality lacking, click the <strong>Enhance</strong> button to get a comprehensive response using document content.
         </p>
       </div>
-      
+
       <div className="welcome-examples">
         <p><strong>Example queries:</strong></p>
         <ul>
@@ -281,7 +260,7 @@ What would you like to know?`;
           <li>"Compare Wi-Fi 6E and Wi-Fi 7 features"</li>
         </ul>
       </div>
-      
+
       <p>What would you like to know?</p>
     </div>
   );
@@ -305,7 +284,7 @@ What would you like to know?`;
     // Load user-specific chat history
     const chatHistoryKey = `chatHistory_${user.id}`;
     const savedMessages = localStorage.getItem(chatHistoryKey);
-    
+
     if (savedMessages) {
       try {
         const parsed = JSON.parse(savedMessages);
@@ -343,7 +322,7 @@ What would you like to know?`;
         },
       ]);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // Depend on user ID only — object identity changes on every auth check
 
   // Save messages to localStorage whenever they change (user-specific)
@@ -359,7 +338,7 @@ What would you like to know?`;
         console.warn('Failed to persist chat history:', err);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compactMessageForStorage, messages, user?.id]); // user?.id avoids resets on auth-check object churn
 
   // Handle input change with @ detection for datasource mentions
@@ -404,7 +383,7 @@ What would you like to know?`;
 
     setShowMentionDropdown(false);
     setMentionSearchText('');
-    
+
     // Focus back on input
     inputRef.current?.focus();
   }, [inputValue, selectedDatasources]);
@@ -493,7 +472,7 @@ What would you like to know?`;
       const ds = datasources.find(d => d.datasource_id === id);
       return ds ? ds.name : id;
     });
-    
+
     const userMessage = {
       role: 'user',
       content: queryText,
@@ -672,7 +651,7 @@ What would you like to know?`;
 
     try {
       const response = await sendEnhanceQuery(message.originalQuery, message.documents);
-      
+
       // Update the message with enhanced content, preserving original answer for toggle
       setMessages((prev) => {
         const updated = [...prev];
@@ -709,7 +688,7 @@ What would you like to know?`;
       const errorCode = err.response?.data?.detail?.error;
       const errorMessage = err.response?.data?.detail?.message;
       const statusCode = err.response?.status;
-      
+
       if (errorCode === 'LLM_TIMEOUT' || statusCode === 504) {
         setError('The enhanced answer is taking too long to generate. Please try again in a moment.');
       } else if (statusCode === 503) {
@@ -729,11 +708,11 @@ What would you like to know?`;
     setMessages((prev) => {
       const updated = [...prev];
       const message = updated[messageIndex];
-      
+
       if (!message.originalAnswer || !message.enhancedAnswer) return prev;
-      
+
       const showEnhanced = !message.showingEnhanced;
-      
+
       if (showEnhanced) {
         // Show enhanced version
         updated[messageIndex] = {
@@ -757,10 +736,10 @@ What would you like to know?`;
           showingEnhanced: false,
         };
       }
-      
+
       return updated;
     });
-    
+
     // Scroll to the message after state update
     setTimeout(() => {
       const messageEl = messageRefs.current[messageIndex];
@@ -777,9 +756,9 @@ What would you like to know?`;
         mode: queryMode,
       });
       // Update message to mark feedback as given
-      setMessages((prev) => 
-        prev.map((msg) => 
-          msg.queryId === queryId 
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.queryId === queryId
             ? { ...msg, feedbackGiven: feedbackType }
             : msg
         )
@@ -819,7 +798,7 @@ What would you like to know?`;
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, userMessage]);
-      
+
       // Add error message
       setMessages((prev) => [
         ...prev,
@@ -832,7 +811,7 @@ What would you like to know?`;
       ]);
       return;
     }
-    
+
     // Add user message
     const userMessage = {
       role: 'user',
@@ -840,7 +819,7 @@ What would you like to know?`;
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMessage]);
-    
+
     // Add loading message
     const loadingMessage = {
       role: 'assistant',
@@ -850,7 +829,7 @@ What would you like to know?`;
     };
     setMessages((prev) => [...prev, loadingMessage]);
     setIsLoading(true);
-    
+
     try {
       const response = await fetch('/api/oracle/ingest/youtube', {
         method: 'POST',
@@ -863,15 +842,15 @@ What would you like to know?`;
           force_redigest: forceRedigest,
         }),
       });
-      
+
       if (response.status === 409) {
         // Video already exists
         const errorData = await response.json();
-        
+
         // Remove loading message
         setMessages((prev) => prev.filter(msg => !msg.isLoading));
         setIsLoading(false);
-        
+
         // Show confirmation dialog
         setYoutubeConfirmation({
           url: url,
@@ -880,14 +859,14 @@ What would you like to know?`;
         });
         return;
       }
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail?.message || errorData.detail || 'Failed to process YouTube video');
       }
-      
+
       const result = await response.json();
-      
+
       // Remove loading message and add success message
       setMessages((prev) => {
         const withoutLoading = prev.filter(msg => !msg.isLoading);
@@ -938,21 +917,21 @@ What would you like to know?`;
 
     const queryText = inputValue.trim();
     const datasourceIds = selectedDatasources.map(ds => ds.datasource_id);
-    
+
     // Check if input is a YouTube URL (video or playlist)
     const youtubePattern = /(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|playlist\?list=)|youtu\.be\/)([a-zA-Z0-9_-]+)/;
     const youtubeMatch = queryText.match(youtubePattern);
-    
+
     if (youtubeMatch) {
       // Handle YouTube URL submission (video or playlist)
       setInputValue('');
       setError(null);
       setShowMentionDropdown(false);
-      
+
       await ingestYouTubeVideo(queryText, false);
       return;
     }
-    
+
     setInputValue('');
     setError(null);
     setShowMentionDropdown(false);
@@ -966,7 +945,7 @@ What would you like to know?`;
     try {
       // First, analyze the query for quality
       const analysis = await analyzeQuery(queryText);
-      
+
       // If query has issues, show dialog (even without a suggested revision)
       if (!analysis.is_good_query && (analysis.suggested_query || analysis.issues?.length > 0)) {
         setPendingQuery(queryText);
@@ -974,7 +953,7 @@ What would you like to know?`;
         setQuerySuggestion(analysis);
         return;
       }
-      
+
       // Query is good, execute it directly
       executeQuery(queryText, datasourceIds);
     } catch (err) {
@@ -987,7 +966,7 @@ What would you like to know?`;
   const handleKeyPress = (e) => {
     // Don't submit if mention dropdown is open (let it handle Enter/Tab)
     if (showMentionDropdown) return;
-    
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -996,7 +975,7 @@ What would you like to know?`;
 
   const handleNewChat = () => {
     if (!user) return;
-    
+
     // Clear current messages and start fresh with welcome message
     const welcomeMessage = {
       role: 'assistant',
@@ -1005,10 +984,10 @@ What would you like to know?`;
       userEmail: user.email,
       timestamp: new Date(),
     };
-    
+
     setMessages([welcomeMessage]);
     setError(null);
-    
+
     // Clear the saved chat history for this user
     const chatHistoryKey = `chatHistory_${user.id}`;
     localStorage.removeItem(chatHistoryKey);
@@ -1064,106 +1043,106 @@ What would you like to know?`;
         <div className="messages-container" ref={messagesContainerRef}>
           {/* Centered column wrapper */}
           <div className="messages-column">
-          {messages.map((message, index) => (
-            message.role === 'user' ? (
-              /* ── User message — centered pill ───────────────────────────── */
-              <div
-                key={index}
-                className="message-user-wrap"
-                ref={(el) => { messageRefs.current[index] = el; }}
-              >
-                <div className="message-user-bubble">
-                  {message.datasourceIds?.length > 0 && (
-                    <div className="user-message-datasources">
-                      {message.datasourceIds.map((id, idx) => (
-                        <span key={id} className="datasource-chip">
-                          @{message.datasourceNames?.[idx] || id}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {message.content}
-                  </ReactMarkdown>
+            {messages.map((message, index) => (
+              message.role === 'user' ? (
+                /* ── User message — centered pill ───────────────────────────── */
+                <div
+                  key={index}
+                  className="message-user-wrap"
+                  ref={(el) => { messageRefs.current[index] = el; }}
+                >
+                  <div className="message-user-bubble">
+                    {message.datasourceIds?.length > 0 && (
+                      <div className="user-message-datasources">
+                        {message.datasourceIds.map((id, idx) => (
+                          <span key={id} className="datasource-chip">
+                            @{message.datasourceNames?.[idx] || id}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              /* ── Assistant message — full-width prose ───────────────────── */
-              <div
-                key={index}
-                className={`message-assistant-wrap${message.isError ? ' message-error' : ''}`}
-                ref={(el) => { messageRefs.current[index] = el; }}
-              >
+              ) : (
+                /* ── Assistant message — full-width prose ───────────────────── */
+                <div
+                  key={index}
+                  className={`message-assistant-wrap${message.isError ? ' message-error' : ''}`}
+                  ref={(el) => { messageRefs.current[index] = el; }}
+                >
+                  <div className="message-assistant-meta">
+                    <span className="message-sender-name">Aurora</span>
+                    <span className="message-time">
+                      {(message.timestamp instanceof Date
+                        ? message.timestamp
+                        : new Date(message.timestamp)
+                      ).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="message-assistant-body" onCopy={(e) => {
+                    const sel = window.getSelection();
+                    if (!sel || sel.isCollapsed) return;
+                    const text = sel.toString().replace(/\n+$/, '').replace(/^\n+/, '');
+                    e.clipboardData.setData('text/plain', text);
+                    e.preventDefault();
+                  }}>
+                    {message.isError && (
+                      <div className="message-text error">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                      </div>
+                    )}
+
+                    {!message.isError && !message.documents?.length && !message.citations?.length && (message.content?.trim() || message.isWelcomeMessage) && (
+                      <div className="message-text">
+                        {message.isWelcomeMessage ? (
+                          getWelcomeMessageJSX(message.userEmail)
+                        ) : (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </ReactMarkdown>
+                        )}
+                      </div>
+                    )}
+
+                    {!message.isError && (message.documents?.length > 0 || message.citations?.length > 0) && (
+                      <QueryResultDisplay
+                        message={message}
+                        isAdmin={user?.role === 'admin' || user?.role === 'superadmin'}
+                        onEnhance={() => handleEnhanceMessage(index)}
+                        onToggleEnhanced={() => handleToggleEnhanced(index)}
+                        isEnhancing={enhancingMessageIndex === index}
+                        onFeedback={handleFeedback}
+                        onDisplayModeChange={(mode) => {
+                          setMessages((prev) => {
+                            const updated = [...prev];
+                            updated[index] = { ...updated[index], displayMode: mode };
+                            return updated;
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              )
+            ))}
+
+            {isLoading && (
+              <div className="message-assistant-wrap">
                 <div className="message-assistant-meta">
                   <span className="message-sender-name">Aurora</span>
-                  <span className="message-time">
-                    {(message.timestamp instanceof Date
-                      ? message.timestamp
-                      : new Date(message.timestamp)
-                    ).toLocaleTimeString()}
-                  </span>
                 </div>
-                <div className="message-assistant-body" onCopy={(e) => {
-                  const sel = window.getSelection();
-                  if (!sel || sel.isCollapsed) return;
-                  const text = sel.toString().replace(/\n+$/, '').replace(/^\n+/, '');
-                  e.clipboardData.setData('text/plain', text);
-                  e.preventDefault();
-                }}>
-                  {message.isError && (
-                    <div className="message-text error">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-                    </div>
-                  )}
-
-                  {!message.isError && !message.documents?.length && !message.citations?.length && (message.content?.trim() || message.isWelcomeMessage) && (
-                    <div className="message-text">
-                      {message.isWelcomeMessage ? (
-                        getWelcomeMessageJSX(message.userEmail)
-                      ) : (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
-                        </ReactMarkdown>
-                      )}
-                    </div>
-                  )}
-
-                  {!message.isError && (message.documents?.length > 0 || message.citations?.length > 0) && (
-                    <QueryResultDisplay
-                      message={message}
-                      isAdmin={user?.role === 'admin' || user?.role === 'superadmin'}
-                      onEnhance={() => handleEnhanceMessage(index)}
-                      onToggleEnhanced={() => handleToggleEnhanced(index)}
-                      isEnhancing={enhancingMessageIndex === index}
-                      onFeedback={handleFeedback}
-                      onDisplayModeChange={(mode) => {
-                        setMessages((prev) => {
-                          const updated = [...prev];
-                          updated[index] = { ...updated[index], displayMode: mode };
-                          return updated;
-                        });
-                      }}
-                    />
-                  )}
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
                 </div>
               </div>
-            )
-          ))}
+            )}
 
-          {isLoading && (
-            <div className="message-assistant-wrap">
-              <div className="message-assistant-meta">
-                <span className="message-sender-name">Aurora</span>
-              </div>
-              <div className="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} />
           </div>{/* end .messages-column */}
         </div>
 
@@ -1189,7 +1168,7 @@ What would you like to know?`;
                 <Icon Component={LightbulbIcon} size={16} />
               </span>
               <h3>{querySuggestion.suggested_query ? 'Improve Your Query?' : 'Query Could Be Better'}</h3>
-              <button 
+              <button
                 className="suggestion-close-btn"
                 onClick={handleDismissSuggestion}
                 aria-label="Close"
@@ -1225,19 +1204,19 @@ What would you like to know?`;
                   <span className="suggestion-reason">{querySuggestion.suggestion_reason}</span>
                 ) : (
                   <span className="suggestion-reason">
-                    <Icon Component={LightbulbIcon} size={16} style={{marginRight: '4px'}} /> Tip: Include topics (Wi-Fi 7, HaLow, Matter), organizations (Wi-Fi Alliance), or time context (last month)
+                    <Icon Component={LightbulbIcon} size={16} style={{ marginRight: '4px' }} /> Tip: Include topics (Wi-Fi 7, HaLow, Matter), organizations (Wi-Fi Alliance), or time context (last month)
                   </span>
                 )}
               </div>
             </div>
             <div className="suggestion-actions">
-              <button 
+              <button
                 className="btn btn-secondary"
                 onClick={handleRejectSuggestion}
               >
                 Use Original
               </button>
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={() => {
                   const revisedInput = document.getElementById('revised-query-input');
@@ -1263,7 +1242,7 @@ What would you like to know?`;
             <div className="suggestion-header">
               <span className="suggestion-icon">🎥</span>
               <h3>Video Already Processed</h3>
-              <button 
+              <button
                 className="suggestion-close-btn"
                 onClick={() => setYoutubeConfirmation(null)}
                 aria-label="Close"
@@ -1284,13 +1263,13 @@ What would you like to know?`;
               </div>
             </div>
             <div className="suggestion-actions">
-              <button 
+              <button
                 className="btn btn-secondary"
                 onClick={() => setYoutubeConfirmation(null)}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={async () => {
                   const url = youtubeConfirmation.url;
@@ -1310,8 +1289,8 @@ What would you like to know?`;
           <span className="chat-error-message">
             <WarningIcon size={16} /> {error}
           </span>
-          <button 
-            className="chat-error-dismiss" 
+          <button
+            className="chat-error-dismiss"
             onClick={() => setError(null)}
             aria-label="Dismiss error"
           >

@@ -17,8 +17,8 @@
 .filters-panel {
   width: 320px;
   min-width: 280px;
-  background: var(--card);
-  border-right: 1px solid var(--border);
+  background: transparent;
+  border-right: none;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -31,7 +31,7 @@
   align-items: center;
   margin-bottom: 1.25rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
 }
 
 .filters-title {
@@ -104,7 +104,7 @@
 .filter-select {
   width: 100%;
   padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   background: var(--background);
   color: var(--foreground);
@@ -132,7 +132,7 @@
 .keyword-input {
   flex: 1;
   padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   background: var(--background);
   color: var(--foreground);
@@ -257,7 +257,7 @@
 .date-input {
   flex: 1;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   background: var(--background);
   color: var(--foreground);
@@ -279,7 +279,7 @@
 .sort-select {
   width: 100%;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   background: var(--background);
   color: var(--foreground);
@@ -331,7 +331,7 @@
   align-items: center;
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .results-count {
@@ -390,16 +390,16 @@
 }
 
 .document-card {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: rgba(19, 20, 31, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 10px;
   padding: 1.25rem;
   transition: all 0.2s;
 }
 
 .document-card:hover {
-  border-color: var(--primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border-color: rgba(85, 98, 246, 0.35);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
 }
 
 .document-header {
@@ -513,14 +513,14 @@
   gap: 0.5rem;
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--border);
+  border-top: none;
 }
 
 .pagination-btn {
   padding: 0.5rem 1rem;
   background: var(--card);
   color: var(--foreground);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -585,7 +585,7 @@
     width: 100%;
     max-height: 50vh;
     border-right: none;
-    border-bottom: 1px solid var(--border);
+    border-bottom: none;
   }
 
   .results-panel {

@@ -28,8 +28,8 @@
 
 .kg-stat-card {
   flex: 1;
-  background-color: var(--card);
-  border: 1px solid var(--border);
+  background-color: rgba(19, 20, 31, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 20px;
   display: flex;
@@ -37,7 +37,7 @@
   gap: 6px;
   transition: background-color .2s ease, border-color .2s ease;
 }
-.kg-stat-card:hover { border-color: var(--primary); background-color: rgba(137,129,229,0.06); }
+.kg-stat-card:hover { border-color: rgba(85,98,246,0.35); background-color: rgba(85,98,246,0.06); }
 .kg-stat-value { font-size: 28px; font-weight: 700; color: var(--primary); line-height:1; }
 .kg-stat-label { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: .5px; color: var(--muted-foreground); display:flex; align-items:center; gap:6px; }
 .kg-stat-empty { margin-left:13px; font-size: var(--text-base); color: var(--muted-foreground); }
@@ -46,7 +46,7 @@
   display: flex;
   gap: 8px;
   margin: 0 13px 16px 13px;
-  border-bottom: 2px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding-bottom: 4px;
 }
 .kg-tab-bar .tab { bottom: 0; }
@@ -58,8 +58,8 @@
 .kg-entity-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: var(--card);
-  border: 1px solid var(--border);
+  background-color: rgba(19, 20, 31, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   overflow: hidden;
 }
@@ -67,7 +67,7 @@
   padding: 10px 14px;
   text-align: left;
   font-size: var(--text-sm);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 .kg-entity-table th {
   background-color: rgba(137,129,229,0.08);
@@ -105,7 +105,7 @@
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
-  border-bottom: 2px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding-bottom: 0;
 }
 
@@ -157,8 +157,8 @@
 }
 
 .admin-section {
-  background-color: var(--card);
-  border: 1px solid var(--border);
+  background-color: rgba(19, 20, 31, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 24px;
 }
@@ -203,7 +203,7 @@
   align-items: center;
   padding: 16px;
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   transition: all 0.3s ease;
 }
@@ -293,7 +293,7 @@
 
 .stat-card {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 24px;
   text-align: center;
@@ -333,7 +333,7 @@
 
 .knowledge-section {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 24px;
   display: flex;
@@ -362,7 +362,7 @@
 .item-card {
   padding: 12px;
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   transition: all 0.3s ease;
 }
@@ -401,7 +401,7 @@
 
 .monitoring-section {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 24px;
 }
@@ -426,7 +426,7 @@
 
 .service-card {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   padding: 20px;
   transition: all 0.3s ease;
@@ -566,7 +566,7 @@
   gap: 4px;
   padding: 12px;
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
 }
 
@@ -586,7 +586,7 @@
   padding: 16px;
   background-color: rgba(137, 129, 229, 0.05);
   border-radius: var(--radius-card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .current-processing-section h3 {
@@ -654,7 +654,7 @@
 .resources-table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .resources-table th {
@@ -975,7 +975,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 24px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .modal-header h2 {
@@ -1249,7 +1249,7 @@
 
 .conversations-panel {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   display: flex;
   flex-direction: column;
@@ -1258,7 +1258,7 @@
 
 .panel-header {
   padding: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   background-color: rgba(137, 129, 229, 0.05);
 }
 
@@ -1274,7 +1274,7 @@
 .search-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius);
   background-color: var(--background);
   color: var(--foreground);
@@ -1296,7 +1296,7 @@
 .conversation-item {
   padding: 12px;
   margin-bottom: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1362,7 +1362,7 @@
 
 .conversation-detail-panel {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   display: flex;
   flex-direction: column;
@@ -1377,7 +1377,7 @@
 
 .detail-header {
   padding: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   background-color: rgba(137, 129, 229, 0.05);
 }
 
@@ -1411,7 +1411,7 @@
 .conversation-detail .message {
   margin-bottom: 16px;
   padding: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius);
   background-color: var(--card);
 }
@@ -1430,7 +1430,7 @@
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .message-role {
@@ -1460,7 +1460,7 @@
 .message-metadata {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .metadata-label {
@@ -1498,7 +1498,7 @@
 
 .stat-card {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 16px;
   transition: all 0.2s ease;
@@ -1545,7 +1545,7 @@
   display: flex;
   gap: 8px;
   margin-bottom: 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   padding-bottom: 12px;
 }
 
@@ -1554,7 +1554,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius);
   background-color: var(--card);
   color: var(--muted-foreground);
@@ -1594,7 +1594,7 @@
 
 .oracle-filters {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 16px;
 }
@@ -1613,7 +1613,7 @@
 
 .filter-group select {
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius);
   background-color: var(--background);
   color: var(--foreground);
@@ -1704,7 +1704,7 @@
 .detail-section {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .detail-section:last-child {
@@ -1762,7 +1762,7 @@
   background-color: var(--background);
   padding: 16px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   font-size: var(--text-sm);
   line-height: 1.6;
   max-height: 400px;
@@ -1785,7 +1785,7 @@
 
 .document-item {
   background-color: var(--background);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius);
   padding: 12px;
 }
@@ -1812,7 +1812,7 @@
   padding: 16px;
   border-radius: var(--radius);
   background-color: var(--background);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .feedback-display.positive {
@@ -1895,7 +1895,7 @@
 .config-setting {
   padding: 20px;
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   transition: all 0.3s ease;
 }
@@ -1997,7 +1997,7 @@
 .number-control button {
   padding: 8px 16px;
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   color: var(--foreground);
   font-weight: 600;
@@ -2019,7 +2019,7 @@
 .number-input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   background-color: var(--card);
   color: var(--foreground);
@@ -2112,7 +2112,7 @@
 
 .curation-tree-panel {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   display: flex;
   flex-direction: column;
@@ -2125,7 +2125,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   gap: 12px;
   flex-shrink: 0;
 }
@@ -2159,7 +2159,7 @@
 
 .curation-search {
   padding: 6px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   background: var(--background);
   color: var(--foreground);
@@ -2197,7 +2197,7 @@
 
 .curation-mode-card {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 24px;
   margin-bottom: 16px;
@@ -2254,7 +2254,7 @@
 
 .curation-job-card {
   background-color: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-card);
   padding: 24px;
 }

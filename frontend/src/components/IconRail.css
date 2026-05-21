@@ -7,7 +7,6 @@
   flex-direction: column;
   justify-content: space-between;
   background: rgba(15, 16, 26, 0.72);
-  border-right: 1px solid var(--a1-border-subtle);
   padding: 12px 0;
   flex-shrink: 0;
   z-index: 10;
