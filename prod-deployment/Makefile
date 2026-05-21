@@ -177,10 +177,10 @@ update-fast: ecr-login
 	@docker image prune -a -f
 	@echo "$(GREEN)✓ Services updated and old images cleaned$(NC)"
 
-# Poll core service health endpoints until ready (max 120s)
+# Poll core service health endpoints until ready (max 300s)
 wait-healthy:
 	@echo "$(CYAN)Checking service health...$(NC)"
-	@TIMEOUT=120; INTERVAL=5; ELAPSED=0; \
+	@TIMEOUT=300; INTERVAL=5; ELAPSED=0; \
 	DOMAIN=$$(grep '^DEPLOYMENT_DOMAIN=' .env 2>/dev/null | cut -d'=' -f2 || echo "localhost"); \
 	while [ $$ELAPSED -lt $$TIMEOUT ]; do \
 		AUTH_OK=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000"); \
