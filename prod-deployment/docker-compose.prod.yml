@@ -568,8 +568,9 @@ services:
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
 
-      # Teams integration — optional; enables proactive push when agents generate posts
-      TEAMS_AGENT_URL: ${TEAMS_AGENT_URL:-}
+      # Teams integration — proactive push when agents generate posts
+      # Default to internal Docker network address; override via .env if needed
+      TEAMS_AGENT_URL: ${TEAMS_AGENT_URL:-http://aurora-teams-agent:3978}
 
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       
