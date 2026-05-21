@@ -210,3 +210,50 @@ async def trigger_cache_prewarm(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prewarm failed: {e}",
         )
+
+
+@cache_router.post("/flush")
+@require_role(["admin", "superadmin"])
+async def flush_fast_cache(
+    tier: str = "all",
+    user: Optional[dict] = Depends(get_user_context),
+) -> Dict[str, Any]:
+    """
+    Flush fast-pipeline Redis cache entries.
+
+    tier: "all" (default) | "plan" | "result" | "answer"
+
+    Use after deploying a new template version or when stale cached
+    answers are observed (e.g. a time-specific 'no updates' response
+    that got cached and is being served to subsequent queries).
+    Admin/superadmin role required.
+    """
+    try:
+        from src.routes.query import fast_engine  # late import to avoid circular deps
+
+        pattern_map = {
+            "all":    "fast:*",
+            "plan":   "fast:plan:*",
+            "result": "fast:result:*",
+            "answer": "fast:answer:*",
+        }
+        if tier not in pattern_map:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown tier '{tier}'. Valid values: {list(pattern_map.keys())}",
+            )
+        pattern = pattern_map[tier]
+        await fast_engine.fast_cache.invalidate_pattern(pattern)
+        logger.info("Fast cache flushed: pattern=%s (user=%s)", pattern, user and user.get("email"))
+        return {
+            "message": f"Fast cache flushed (pattern={pattern})",
+            "tier": tier,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Cache flush failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Cache flush failed: {e}",
+        )

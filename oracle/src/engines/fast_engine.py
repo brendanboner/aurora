@@ -1350,14 +1350,32 @@ class FastEngine:
             
             answer_time_ms = int((time.time() - answer_start) * 1000)
             
-            # Cache answer (skip if personalized)
-            if not skip_cache:
+            # Cache answer (skip if personalized).
+            # Also skip caching for temporal "no recent updates" disclaimers — these are
+            # date-specific and will be stale on the next request, causing all queries that
+            # share the same plan hash to return a stale dated response indefinitely.
+            _NO_CACHE_PHRASES = (
+                "i don't have new updates for",
+                "i don't have updates for",
+                "i have no new updates for",
+                "no new updates for",
+                "no updates for",
+                "most recent update i have is from",
+                "most recent information i have is from",
+                "the latest i have is from",
+            )
+            answer_lower = (answer or "").lower()
+            is_temporal_disclaimer = any(phrase in answer_lower for phrase in _NO_CACHE_PHRASES)
+            
+            if not skip_cache and not is_temporal_disclaimer:
                 answer_data = {
                     "answer": answer,
                     "documents": [d.model_dump() for d in documents],
                     "citations": [c.model_dump() for c in citations],
                 }
                 await self.fast_cache.set_answer(plan, result_digest, answer_data, scope=cache_scope)
+            elif is_temporal_disclaimer:
+                logger.info("Skipping answer cache: response is a temporal disclaimer (date-specific no-update response)")
             
             return answer, documents, citations, answer_time_ms, False, skip_cache_reason
 

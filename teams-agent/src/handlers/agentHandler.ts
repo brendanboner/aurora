@@ -54,11 +54,15 @@ export class AgentHandler {
 
     const card = buildAgentListCard(
       'Aurora Agents',
-      filtered.slice(0, 10).map((a: any) => ({
-        name: a.name,
-        desc: (a.description || a.persona || '').slice(0, 80),
-        value: `@${(a.teams_slug || a.name).replace(/^aurora-/, '')} `,
-      })),
+      filtered.slice(0, 10).map((a: any) => {
+        const slug = (a.teams_slug || a.name).replace(/^aurora-/, '');
+        return {
+          name: a.name,
+          desc: (a.description || a.persona || '').slice(0, 80),
+          value: `@${slug} `,
+          action: `setChannelAgent ${slug}`,
+        };
+      }),
       'Select an agent to start a conversation:',
     );
     await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
@@ -82,16 +86,24 @@ export class AgentHandler {
 
     // Build a combined card: creator agents + working groups + clear
     const allItems = [
-      ...agents.map((a) => ({
-        name: a.name,
-        desc: (a.description || a.persona || '').slice(0, 80),
-        value: `@${(a.teams_slug || a.name).replace(/^aurora-/, '')} `,
-      })),
-      ...wgs.map((wg) => ({
-        name: wg.name,
-        desc: wg.description || '',
-        value: `@${wg.slug.replace(/^aurora-/, '')} `,
-      })),
+      ...agents.map((a) => {
+        const slug = (a.teams_slug || a.name).replace(/^aurora-/, '');
+        return {
+          name: a.name,
+          desc: (a.description || a.persona || '').slice(0, 80),
+          value: `@${slug} `,
+          action: `setChannelAgent ${slug}`,
+        };
+      }),
+      ...wgs.map((wg) => {
+        const slug = wg.slug.replace(/^aurora-/, '');
+        return {
+          name: wg.name,
+          desc: wg.description || '',
+          value: `@${slug} `,
+          action: `setChannelAgent ${slug}`,
+        };
+      }),
     ];
 
     if (allItems.length === 0) {
@@ -123,11 +135,15 @@ export class AgentHandler {
       return;
     }
 
-    const items = myAgents.map((a) => ({
-      name: a.name,
-      desc: `${a.enabled ? '● active' : '○ paused'}${a.posting_cadence ? ` · ${a.posting_cadence}` : ''}`,
-      value: `@${(a.teams_slug || a.name).replace(/^aurora-/, '')} `,
-    }));
+    const items = myAgents.map((a) => {
+      const slug = (a.teams_slug || a.name).replace(/^aurora-/, '');
+      return {
+        name: a.name,
+        desc: `${a.enabled ? '● active' : '○ paused'}${a.posting_cadence ? ` · ${a.posting_cadence}` : ''}`,
+        value: `@${slug} `,
+        action: `setChannelAgent ${slug}`,
+      };
+    });
 
     const card = buildAgentListCard('My Personal Agents', items, 'Click an agent to start a conversation:');
     await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
@@ -399,11 +415,15 @@ export class AgentHandler {
       .slice(0, 5);
 
     if (closeMatches.length > 0) {
-      const items = closeMatches.map((wg) => ({
-        name: wg.name,
-        desc: wg.description || '',
-        value: `@${wg.slug.replace(/^aurora-/, '')} `,
-      }));
+      const items = closeMatches.map((wg) => {
+        const wgSlug = wg.slug.replace(/^aurora-/, '');
+        return {
+          name: wg.name,
+          desc: wg.description || '',
+          value: `@${wgSlug} `,
+          action: `setChannelAgent ${wgSlug}`,
+        };
+      });
       const card = buildAgentListCard(
         `No agent found for "@${teamsSlug}"`,
         items,
@@ -450,14 +470,14 @@ export class AgentHandler {
 
 /**
  * Build an Adaptive Card that lists agents/working groups as clickable buttons.
- * Each agent has an Action.Submit (imBack) so clicking sends "@slug " to start
- * a dialog. A "Clear" button at the bottom returns to general mode.
+ * Each agent has an Action.Submit (imBack) so clicking sends "setChannelAgent <slug>"
+ * to scope the conversation. A "Clear" button at the bottom returns to general mode.
  *
  * Uses only card-level actions (no ActionSet inside body) for Teams compatibility.
  */
 function buildAgentListCard(
   title: string,
-  items: Array<{ name: string; desc?: string; value: string }>,
+  items: Array<{ name: string; desc?: string; value: string; action?: string }>,
   subtitle?: string
 ): Record<string, unknown> {
   // Body: name + description rows only (no nested action sets)
@@ -493,7 +513,7 @@ function buildAgentListCard(
     ...items.map((item) => ({
       type: 'Action.Submit',
       title: `Ask ${item.name}`,
-      data: { msteams: { type: 'imBack', value: item.value } },
+      data: { msteams: { type: 'imBack', value: item.action ?? item.value } },
     })),
     {
       type: 'Action.Submit',

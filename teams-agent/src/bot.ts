@@ -119,9 +119,10 @@ export class AuroraBot extends TeamsActivityHandler {
         else if (SET_CHANNEL_AGENT_RE.test(text)) {
           const m = text.match(SET_CHANNEL_AGENT_RE)!;
           const slug = canonicalSlug(m[1]);
+          const displayName = m[1].replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
           await conversationReferenceStore.setDefaultAgent(convId, slug);
           await context.sendActivity(
-            `Scoped to **${slug}**. All messages answered through that agent.\n\n_Type \`clear\` to return to general questions._`
+            `Now chatting with **${displayName}**. Just ask your question and I'll route it to this agent.\n\n_Type \`clear\` to return to general Aurora._`
           );
         }
         // ── setAgentWebhook @aurora-<slug> https://... ─────────────────────
