@@ -19,7 +19,6 @@
     "restify": "^11.1.0"
   },
   "devDependencies": {
-    "@microsoft/teams-app-test-tool": "^0.2.26",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
     "@types/pg": "^8.11.0",
