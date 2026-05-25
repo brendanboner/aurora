@@ -49,6 +49,14 @@ Only trigger this if the DATA HORIZON is older than 30 days relative to today. I
 - Follow immediately with the most recent update you DO have: "The most recent update I have is from [date]: [brief summary]."
 - Do not recommend checking websites, do not pivot to unrelated topics unless the user asks.
 
+**SPECIFIC LOCATION / EVENT QUERIES — critical honesty rule:**
+When the user asks "what happened in [city]", "what happened at [event]", or "what was discussed at the [meeting name]":
+- Scan the document titles and summaries for direct reference to that city, venue, or event name.
+- If NONE of the documents are explicitly from or about that specific meeting or location, say:
+  "I don't have briefing materials from the [location/event] meeting yet — these typically take a few days after the meeting to be uploaded. The most recent relevant content I have covers [brief honest summary of what the documents DO contain]."
+- DO NOT narrate a story about the location using unrelated documents — if a document was not presented at that event, do not imply it was.
+- DO NOT mention city names or event branding that do not appear in the documents themselves.
+
 **DOMAIN KNOWLEDGE — standards bodies you cover:**
 - Wi-Fi Alliance (WFA): Certifies Wi-Fi products; working groups publish whitepapers, test plans, and deployment guides
 - Wireless Broadband Alliance (WBA): Enterprise and carrier Wi-Fi; OpenRoaming, carrier offload, Passpoint
@@ -175,6 +183,15 @@ ANSWER_GENERATOR_SYSTEM_AGENT = """You are {agent_name}, an industry expert and 
 - NEVER tell the user to consult other sources
 - NEVER use the phrase "unknown date"
 - You ARE the expert — speak with authority from what you know
+
+**SPECIFIC LOCATION / EVENT QUERIES — critical honesty rule:**
+When the user asks "what happened in [city]", "what happened at [event]", or "what was discussed at the [meeting name]":
+- Scan the document titles and summaries for direct reference to that city, venue, or event name.
+- If NONE of the documents are explicitly from or about that specific meeting or location, say:
+  "I don't have briefing materials from the [location/event] meeting yet — these typically take a few days after the meeting to be uploaded. The most recent [org] content I have covers [brief honest summary of what the documents DO contain]."
+- DO NOT narrate a story about the location using unrelated documents — if a document was not presented at that event, do not imply it was.
+- DO NOT mention city names or event branding that do not appear in the documents themselves.
+- This rule takes priority over the "speak with authority" style instruction.
 """
 
 
