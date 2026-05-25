@@ -388,6 +388,35 @@ async def trigger_date_repair(background_tasks: BackgroundTasks, user: Optional[
     return TriggerResponse(success=True, message="Date repair job triggered", job_id="date_repair")
 
 
+@app.post("/trigger/alias_sync", response_model=TriggerResponse)
+@require_role(["admin", "superadmin"])
+async def trigger_alias_sync(background_tasks: BackgroundTasks, user: Optional[dict] = Depends(get_user_context)):
+    """Generate/refresh @mention aliases for all DataSource nodes. Requires admin role."""
+    logger.info(f"Manual alias_sync triggered by {user['email']} (role: {user['role']})")
+
+    if _job_state.get("alias_sync", {}).get("is_running"):
+        raise HTTPException(status_code=409, detail="Alias sync is already running")
+
+    async def run_job():
+        update_job_state("alias_sync", is_running=True)
+        svc = None
+        try:
+            from services.alias_generator import AliasSyncService
+            svc = AliasSyncService()
+            summary = await asyncio.to_thread(svc.run)
+            update_job_state("alias_sync", is_running=False, last_run=datetime.now(), last_error=None)
+            logger.info(f"Manual alias_sync complete: {summary}")
+        except Exception as e:
+            update_job_state("alias_sync", is_running=False, last_error=str(e))
+            logger.error(f"Manual alias_sync failed: {e}")
+        finally:
+            if svc:
+                svc.close()
+
+    background_tasks.add_task(run_job)
+    return TriggerResponse(success=True, message="Alias sync job triggered", job_id="alias_sync")
+
+
 # ---------------------------------------------------------------------------
 # Archive stale content (T14)
 # ---------------------------------------------------------------------------
