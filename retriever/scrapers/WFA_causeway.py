@@ -267,6 +267,26 @@ class WFACausewayScraper(BaseScraper):
                     
         except Exception as e:
             logger.error(f"WFA Causeway authentication failed: {e}")
+            try:
+                from alert_service import AlertService
+                AlertService.notify(
+                    severity="critical",
+                    component="WFA Causeway Scraper",
+                    title="Authentication failed — WFA Causeway credentials may be expired",
+                    detail=(
+                        f"The WFA Causeway scraper could not authenticate. "
+                        f"Error: {str(e)[:300]}. "
+                        "No new WFA workgroup documents will be scraped until credentials are renewed."
+                    ),
+                    action=(
+                        "1. Check WFA_CAUSEWAY_USERNAME / WFA_CAUSEWAY_PASSWORD in .env.prod\n"
+                        "2. Verify the account is still active at https://members.wi-fi.org\n"
+                        "3. Update credentials and restart the retriever"
+                    ),
+                    datasource_id="wfa_causeway",
+                )
+            except Exception:
+                pass
             raise
 
     

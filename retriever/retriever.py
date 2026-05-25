@@ -461,6 +461,25 @@ class RetrieverService:
             
         except Exception as e:
             logger.error(f"Error in {scraper_type} scraper session: {e}", exc_info=True)
+            # Notify admins for scraper-type level failures (auth errors, network failures)
+            _scraper_is_private_portal = scraper_type in ("wba_extranet", "wfa_causeway")
+            if _scraper_is_private_portal:
+                try:
+                    from alert_service import AlertService
+                    AlertService.notify(
+                        severity="critical",
+                        component=f"{scraper_type} Scraper",
+                        title=f"Scraper session failed: {type(e).__name__}",
+                        detail=f"The {scraper_type} scraper raised an unhandled exception and aborted. "
+                               f"Error: {str(e)[:400]}",
+                        action=(
+                            "Check the retriever logs: docker logs aurora-retriever --tail=100\n"
+                            "If the error is authentication-related, renew the session token and restart the retriever."
+                        ),
+                        datasource_id=scraper_type,
+                    )
+                except Exception:
+                    pass
             raise
         finally:
             self.active_scrapes.pop(task_id, None)

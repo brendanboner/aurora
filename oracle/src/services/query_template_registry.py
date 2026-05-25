@@ -566,10 +566,11 @@ class QueryTemplateRegistry:
                              AND r.scraped_at IS NOT NULL
                              AND datetime(r.scraped_at) >= datetime('2020-01-01')
                         THEN datetime(r.scraped_at)
-                        // General fallback: use Neo4j node creation time (set on first ingest)
-                        WHEN r.created_at IS NOT NULL
-                             AND datetime(r.created_at) >= datetime('2020-01-01')
-                        THEN datetime(r.created_at)
+                        // NOTE: We deliberately do NOT use created_at as a general fallback here.
+                        // For bulk/non-incremental scrapers (wfa_resource_page, ieee802_*, nist_*,
+                        // mef_*, etc.) created_at = when Aurora first indexed the document, which
+                        // may be 2026 even if the content is from 2019. Using it as publish_date
+                        // would make decade-old articles appear as "new 2026" content.
                         ELSE datetime('1970-01-01')
                    END as effective_date
               WHERE effective_date >= max_threshold

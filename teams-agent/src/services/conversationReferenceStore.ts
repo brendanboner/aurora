@@ -171,6 +171,25 @@ export class ConversationReferenceStore {
     }, []);
   }
 
+  /**
+   * Returns personal-chat conversations for all aurora users with admin or superadmin role.
+   * Used by pushSystemAlert() to send operational alerts directly to admins' personal chats.
+   */
+  async getAdminConversations(): Promise<StoredConversationReference[]> {
+    return withDb(async () => {
+      // Join aurora_user (role) with teams_conversation_references (personal chats only)
+      const res = await getPool().query<StoredConversationReference>(`
+        SELECT tcr.*
+        FROM teams_conversation_references tcr
+        INNER JOIN aurora_user au ON au.id::text = tcr.aurora_user_id
+        WHERE au.role IN ('admin', 'superadmin')
+          AND (tcr.conversation_type = 'personal' OR tcr.conversation_type IS NULL)
+        ORDER BY tcr.updated_at DESC
+      `);
+      return res.rows;
+    }, []);
+  }
+
   async linkAuroraUser(conversationId: string, auroraUserId: string): Promise<void> {
     await withDb(async () => {
       // Retire stale personal-chat entries for this user before linking the new one

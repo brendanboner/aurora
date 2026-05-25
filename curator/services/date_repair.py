@@ -143,18 +143,22 @@ class DateRepairService:
                 continue
 
             if _is_incremental_scraper(ds_id):
+                # Incremental private-portal scraper — scraped_at IS the upload date
                 self._patch(url_hash, scraped_at_str, "inferred_from_scrape")
                 patched_scrape += 1
+                by_datasource[ds_id] = by_datasource.get(ds_id, 0) + 1
             else:
+                # Non-incremental (bulk re-scraper): ONLY patch if we can extract a real
+                # date from the title. Do NOT fall back to scraped_at — for bulk scrapers
+                # scraped_at is when Aurora indexed the document, not when it was published.
+                # Using scraped_at here makes 2019-era articles appear as "new 2026" content.
                 inferred = _extract_date_from_title(title)
                 if inferred:
                     self._patch(url_hash, inferred, "inferred_from_title")
                     patched_title += 1
+                    by_datasource[ds_id] = by_datasource.get(ds_id, 0) + 1
                 else:
-                    self._patch(url_hash, scraped_at_str, "inferred_from_scrape")
-                    patched_scrape += 1
-
-            by_datasource[ds_id] = by_datasource.get(ds_id, 0) + 1
+                    skipped += 1  # leave publish_date=NULL — oracle created_at fallback handles it
 
         total = patched_scrape + patched_title
         logger.info(

@@ -1,8 +1,18 @@
-import { BotFrameworkAdapter, CardFactory, ConversationReference, MessageFactory } from 'botbuilder';
+import { BotFrameworkAdapter, CardFactory, ConversationReference, MessageFactory, TurnContext } from 'botbuilder';
 import * as ACData from 'adaptivecards-templating';
 import { conversationReferenceStore } from './conversationReferenceStore';
 import { postToWebhook } from './webhookFormatter';
 import proactiveFeedCardTemplate from '../adaptiveCards/proactiveFeedCard.json';
+
+export interface SystemAlertPayload {
+  severity: 'critical' | 'warning' | 'info';
+  component: string;          // e.g. "WBA Extranet Scraper", "WFA Causeway Scraper"
+  title: string;              // short headline, e.g. "Authentication token expired"
+  detail: string;             // what went wrong
+  action?: string;            // what the operator should do
+  datasource_id?: string;     // affected datasource
+  docs_count?: number;        // 0 = consecutive zero-doc run
+}
 
 export interface FeedUpdatePayload {
   agent_slug: string;
@@ -278,6 +288,56 @@ export class ProactiveMessenger {
 
     console.log(`[ProactiveMessenger] Announcement "${payload.title}" → ${sent}/${refs.length} delivered`);
     return { sent, errors, total: refs.length };
+  }
+
+  /**
+   * Send an operational alert to all admin users' personal chats.
+   *
+   * Used for: scraper auth failures, consecutive zero-doc runs, curator errors.
+   * Only goes to personal chats of admin/superadmin users — never to public groups.
+   */
+  async pushSystemAlert(payload: SystemAlertPayload): Promise<{ sent: number; errors: number }> {
+    const refs = await conversationReferenceStore.getAdminConversations();
+
+    if (!refs.length) {
+      console.warn('[ProactiveMessenger] pushSystemAlert: no admin conversations found — check aurora_user table has admin roles linked to Teams conversations');
+      return { sent: 0, errors: 0 };
+    }
+
+    const severityEmoji = payload.severity === 'critical' ? '🔴' : payload.severity === 'warning' ? '🟡' : '🔵';
+    const severityLabel = payload.severity.toUpperCase();
+
+    // Build a clear, actionable alert message
+    const lines: string[] = [
+      `${severityEmoji} **Aurora System Alert [${severityLabel}]**`,
+      '',
+      `**Component:** ${payload.component}`,
+      `**Issue:** ${payload.title}`,
+      '',
+      payload.detail,
+    ];
+    if (payload.datasource_id) {
+      lines.push(`\n**Datasource:** \`${payload.datasource_id}\``);
+    }
+    if (payload.docs_count !== undefined) {
+      lines.push(`**Documents returned:** ${payload.docs_count}`);
+    }
+    if (payload.action) {
+      lines.push(`\n**Action required:** ${payload.action}`);
+    }
+    lines.push(`\n_Sent at ${new Date().toUTCString()}_`);
+
+    const text = lines.join('\n');
+    const activity = MessageFactory.text(text);
+
+    let sent = 0, errors = 0;
+    for (const ref of refs) {
+      const ok = await this.botPush(ref, activity as any, ref.conversation_id);
+      ok ? sent++ : errors++;
+    }
+
+    console.log(`[ProactiveMessenger] System alert "${payload.title}" → ${sent}/${refs.length} admin conversations`);
+    return { sent, errors };
   }
 }
 

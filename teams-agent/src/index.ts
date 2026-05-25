@@ -8,6 +8,7 @@ import * as path from 'path';
 import { BotFrameworkAdapter, ConversationState, MemoryStorage, UserState } from 'botbuilder';
 import { AuroraBot } from './bot';
 import { loadDynamicWorkingGroups } from './services/workingGroupResolver';
+import type { SystemAlertPayload } from './services/proactiveMessenger';
 import { ProactiveMessenger, FeedUpdatePayload, UserAgentUpdatePayload } from './services/proactiveMessenger';
 import * as dotenv from 'dotenv';
 
@@ -256,6 +257,31 @@ server.post('/internal/push-announcement', async (req, res) => {
     scope:      body.scope,
   }).catch((err) => {
     console.error('[internal/push-announcement] Delivery error:', err);
+  });
+});
+
+/**
+ * POST /internal/system-alert
+ * Body: SystemAlertPayload { severity, component, title, detail, action?, datasource_id?, docs_count? }
+ *
+ * Sends an operational alert to all admin/superadmin users' personal Teams chats.
+ * Called by: retriever (auth failures, zero-doc streaks), curator (job failures), oracle (errors).
+ * No authentication required — internal network only (not exposed through nginx).
+ */
+server.post('/internal/system-alert', async (req, res) => {
+  const body: SystemAlertPayload = req.body ?? {};
+  if (!body?.severity || !body?.title || !body?.detail) {
+    res.send(400, { error: 'severity, title, and detail are required' });
+    return;
+  }
+
+  console.log(`[${new Date().toISOString()}] System alert: [${body.severity}] ${body.component ?? 'unknown'} — ${body.title}`);
+
+  // Respond immediately so the caller doesn't block
+  res.json({ status: 'queued', severity: body.severity, title: body.title });
+
+  proactiveMessenger.pushSystemAlert(body).catch((err) => {
+    console.error('[internal/system-alert] Delivery error:', err);
   });
 });
 

@@ -1488,6 +1488,29 @@ class WBAExtranetScraper(BaseScraper):
                         self.is_authenticated = True
                     else:
                         logger.warning("WBA Extranet: datasource auth_token rejected — may be expired")
+                        # Notify admins via Teams
+                        try:
+                            from alert_service import AlertService
+                            AlertService.notify(
+                                severity="critical",
+                                component="WBA Extranet Scraper",
+                                title="Session token expired — HLLogin cookie needs renewal",
+                                detail=(
+                                    "The WBA Extranet datasource auth_token was rejected. "
+                                    "No new WBA workgroup documents will be scraped until the token is renewed. "
+                                    "WBA HLLogin tokens expire approximately every 7 days."
+                                ),
+                                action=(
+                                    "1. Log in to https://extranet.wballiance.com in a browser\n"
+                                    "2. Open DevTools → Application → Cookies → extranet.wballiance.com\n"
+                                    "3. Copy the HLLogin cookie value (975-char hex string)\n"
+                                    "4. SSH to EC2: update WBA_EXTRANET_HLLOGIN in ~/octo-rapid-aurora/prod-deployment/.env.prod\n"
+                                    "5. Restart retriever: docker compose -f docker-compose.prod.yml restart retriever"
+                                ),
+                                datasource_id="wba_extranet",
+                            )
+                        except Exception:
+                            pass
             except Exception as _e:
                 logger.warning(f"WBA Extranet: datasource auth_token warm-up failed: {_e}")
                 self.is_authenticated = True  # proceed optimistically
