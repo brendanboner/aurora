@@ -996,10 +996,7 @@ What would you like to know?`;
 
     // ── CLEAR CHAT ────────────────────────────────────────────────────────────
     if (/^(clear|new chat|reset|reset chat|start over)$/.test(cmd)) {
-      // Use the existing handleNewChat after returning a confirmation
-      // We trigger it on next tick so the message renders first
-      setTimeout(() => handleNewChat(), 50);
-      return null; // handleNewChat sets its own welcome message
+      return '**Starting a new chat…**\n\nClick the **New Chat** button in the toolbar above to clear this conversation.';
     }
 
     // ── ABOUT ─────────────────────────────────────────────────────────────────
@@ -1019,7 +1016,7 @@ What would you like to know?`;
 
     // Not a command — return null to proceed with Oracle search
     return null;
-  }, [setPipelineModeState, setPersonalizeModeState, handleNewChat]);
+  }, [setPipelineModeState, setPersonalizeModeState]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1456,12 +1453,12 @@ What would you like to know?`;
             <div className="selected-mentions">
               {selectedDatasources.map(ds => (
                 <span key={ds.datasource_id} className="selected-mention">
-                  @{ds.datasource_id}
+                  @{ds.primary_alias || ds.datasource_id}
                   <button
                     type="button"
                     className="remove-mention"
                     onClick={() => handleRemoveDatasource(ds.datasource_id)}
-                    aria-label={`Remove ${ds.datasource_id}`}
+                    aria-label={`Remove ${ds.name || ds.datasource_id}`}
                   >
                     ×
                   </button>

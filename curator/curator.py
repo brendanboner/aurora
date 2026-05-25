@@ -29,6 +29,7 @@ from services.threshold_monitor import TopicThresholdMonitor
 from services.importance_decay import ImportanceDecayService
 from services.orphan_monitor import OrphanMonitorService
 from services.date_repair import DateRepairService
+from services.alias_generator import AliasSyncService
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -50,6 +51,7 @@ class CuratorScheduler:
         self._importance_decay: Optional[ImportanceDecayService] = None
         self._orphan_monitor: Optional[OrphanMonitorService] = None
         self._date_repair: Optional[DateRepairService] = None
+        self._alias_sync: Optional[AliasSyncService] = None
         
     def _run_topic_organization(self, triggered_by: str = "scheduled"):
         """Execute topic organization job.
@@ -239,6 +241,22 @@ class CuratorScheduler:
             logger.info(f"Importance decay complete: {summary}")
         except Exception as e:
             logger.error(f"Importance decay failed: {e}", exc_info=True)
+            update_job_state(job_name, is_running=False, last_error=str(e))
+
+    def _run_alias_sync(self):
+        """Generate or refresh @mention aliases for all DataSource nodes."""
+        job_name = "alias_sync"
+        try:
+            update_job_state(job_name, is_running=True)
+            logger.info("-" * 40)
+            logger.info("Starting datasource alias sync")
+            if self._alias_sync is None:
+                self._alias_sync = AliasSyncService()
+            summary = self._alias_sync.run()
+            update_job_state(job_name, is_running=False, last_run=datetime.now(), last_error=None)
+            logger.info(f"Alias sync complete: {summary.get('generated', 0)} new aliases generated")
+        except Exception as e:
+            logger.error(f"Alias sync failed: {e}", exc_info=True)
             update_job_state(job_name, is_running=False, last_error=str(e))
 
     def _run_date_repair(self):
@@ -462,6 +480,16 @@ class CuratorScheduler:
         )
         logger.info("Date repair: scheduled daily at 04:00")
 
+        # Alias sync: generate @mention aliases for new datasources (daily 04:30)
+        self.scheduler.add_job(
+            self._run_alias_sync,
+            trigger=CronTrigger(hour=4, minute=30),
+            id="alias_sync",
+            name="Datasource Alias Sync",
+            replace_existing=True,
+        )
+        logger.info("Alias sync: scheduled daily at 04:30")
+
         # Schedule orphan resource monitoring (every 6 hours)
         self.scheduler.add_job(
             self._run_orphan_monitor,
@@ -543,6 +571,10 @@ class CuratorScheduler:
         if self._date_repair:
             logger.info("Closing date repair service...")
             self._date_repair.close()
+
+        if self._alias_sync:
+            logger.info("Closing alias sync service...")
+            self._alias_sync.close()
 
         self._shutdown_event.set()
         logger.info("Shutdown complete")

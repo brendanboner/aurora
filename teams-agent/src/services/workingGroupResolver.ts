@@ -132,10 +132,86 @@ export const WORKING_GROUP_REGISTRY: WorkingGroupPersona[] = [
   },
 ];
 
-/** Look up a WG persona by slug. Case-insensitive. */
+/** Look up a WG persona by slug — checks registry AND dynamic aliases. Case-insensitive. */
 export function getWorkingGroupBySlug(teamsSlug: string): WorkingGroupPersona | null {
   const lower = teamsSlug.toLowerCase();
-  return WORKING_GROUP_REGISTRY.find((wg) => wg.slug.toLowerCase() === lower) ?? null;
+  // 1. Exact match against static registry slugs
+  const staticMatch = WORKING_GROUP_REGISTRY.find((wg) => wg.slug.toLowerCase() === lower);
+  if (staticMatch) return staticMatch;
+
+  // 2. Dynamic WBA Extranet / WFA Causeway groups via _dynamicRegistry (populated at runtime)
+  return _dynamicRegistry.find((wg) => wg.slug.toLowerCase() === lower) ?? null;
+}
+
+/**
+ * Dynamic registry: populated by loadDynamicWorkingGroups() from the oracle /datasources API.
+ * Covers individual WBA Extranet communities and WFA Causeway workgroups with their aliases.
+ */
+const _dynamicRegistry: WorkingGroupPersona[] = [];
+
+/**
+ * Load dynamic working groups from the oracle API and register them.
+ * Should be called once at bot startup with the oracle base URL.
+ *
+ * Each WBA Extranet community gets a persona that scopes queries to its datasource_id.
+ * Users can use @wba-qos, @wba-l4s etc. directly in Teams.
+ */
+export async function loadDynamicWorkingGroups(oracleBaseUrl: string, internalToken?: string): Promise<void> {
+  try {
+    const axios = (await import('axios')).default;
+    const headers: Record<string, string> = {
+      'X-User-Role': 'user',
+      'X-User-Id': 'system',
+      'X-User-Email': 'system@aurora',
+    };
+
+    const resp = await axios.get(`${oracleBaseUrl}/datasources`, { headers, timeout: 10000 });
+    const datasources: Array<{
+      datasource_id: string;
+      name: string;
+      description?: string;
+      parent_datasource_id?: string;
+      scraper_type?: string;
+      primary_alias?: string;
+      aliases?: string[];
+    }> = resp.data?.datasources || [];
+
+    // Build dynamic personas for WBA Extranet communities and WFA Causeway workgroups
+    // that have a primary_alias (i.e. have been through the alias generator)
+    let loaded = 0;
+    for (const ds of datasources) {
+      if (!ds.primary_alias) continue;
+      if (!ds.datasource_id.startsWith('wba_extranet_') && !ds.datasource_id.startsWith('wfa_causeway_')) continue;
+      if (WORKING_GROUP_REGISTRY.some(wg => wg.datasource_ids?.includes(ds.datasource_id))) continue; // already in static registry
+
+      const isWBA = ds.datasource_id.startsWith('wba_extranet_');
+      const org = isWBA ? 'Wireless Broadband Alliance (WBA)' : 'Wi-Fi Alliance (WFA)';
+
+      const persona: WorkingGroupPersona = {
+        name: ds.name,
+        slug: `aurora-${ds.primary_alias}`,
+        org_match: org,
+        persona: `You are a representative of the ${ds.name} ${isWBA ? 'working group within the WBA' : 'workgroup'}. ` +
+                 `You have deep expertise in the topics and work products of this group. ` +
+                 (ds.description ? ds.description : ''),
+        tone_style: 'professional',
+        expertise_topics: ds.name.split(/[\s,&/]+/).filter(t => t.length > 2),
+        expertise_organisations: [org],
+        datasource_ids: [ds.datasource_id],
+      };
+
+      // Register under primary alias AND all keyword aliases
+      _dynamicRegistry.push(persona);
+      for (const alias of (ds.aliases || []).slice(1)) {  // skip primary (already added)
+        _dynamicRegistry.push({ ...persona, slug: `aurora-${alias}` });
+      }
+      loaded++;
+    }
+
+    console.log(`[WorkingGroupResolver] Loaded ${loaded} dynamic working groups from oracle`);
+  } catch (err) {
+    console.warn('[WorkingGroupResolver] Failed to load dynamic working groups:', err instanceof Error ? err.message : err);
+  }
 }
 
 /** Build the list of WG slugs for display in `agents` command. */
@@ -147,6 +223,7 @@ export function listWorkingGroupSlugs(): string {
 
 /** Return all working groups as plain objects for card rendering. */
 export function listWorkingGroups(): Array<{ name: string; slug: string; description?: string }> {
+  // Static registry only (for the agents list card — dynamic ones are queryable but not listed)
   return WORKING_GROUP_REGISTRY.map((wg) => ({
     name: wg.name,
     slug: wg.slug,

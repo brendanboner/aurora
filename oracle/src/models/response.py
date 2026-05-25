@@ -202,6 +202,15 @@ class DataSourceInfo(BaseModel):
     document_count: int = Field(default=0, description="Number of documents from this source")
     parent_datasource_id: Optional[str] = Field(default=None, description="Parent datasource ID for hierarchy")
     scraper_type: Optional[str] = Field(default=None, description="Scraper type for grouping")
+    primary_alias: Optional[str] = Field(
+        default=None,
+        description="Primary human-readable @mention alias (e.g. 'wba-e2e-wifi-qos-l4s-edca'). "
+                    "Use this instead of the raw datasource_id in @mentions."
+    )
+    aliases: list[str] = Field(
+        default_factory=list,
+        description="All valid @mention aliases for this datasource (primary first, then keywords)."
+    )
 
 
 class DataSourcesResponse(BaseModel):

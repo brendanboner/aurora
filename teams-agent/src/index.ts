@@ -7,6 +7,7 @@ import * as restify from 'restify';
 import * as path from 'path';
 import { BotFrameworkAdapter, ConversationState, MemoryStorage, UserState } from 'botbuilder';
 import { AuroraBot } from './bot';
+import { loadDynamicWorkingGroups } from './services/workingGroupResolver';
 import { ProactiveMessenger, FeedUpdatePayload, UserAgentUpdatePayload } from './services/proactiveMessenger';
 import * as dotenv from 'dotenv';
 
@@ -106,6 +107,13 @@ const proactiveMessenger = new ProactiveMessenger(adapter);
 
 // Create the main dialog
 const bot = new AuroraBot(conversationState, userState);
+
+// Load dynamic working groups from oracle (WBA Extranet communities, WFA Causeway workgroups)
+// so users can @mention them by human-readable alias (e.g. @wba-qos, @wba-l4s)
+const oracleUrl = process.env.AURORA_ORACLE_URL || 'http://oracle:8000';
+loadDynamicWorkingGroups(oracleUrl).catch(err =>
+  console.warn('[startup] Dynamic working group load failed (non-fatal):', err?.message)
+);
 
 // Listen for incoming requests
 server.post('/api/messages', async (req, res) => {

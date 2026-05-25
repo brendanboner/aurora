@@ -151,7 +151,7 @@ async def list_datasources(
     try:
         repo = get_repo()
         
-        # Query all DataSource nodes with document counts + grouping fields
+        # Query all DataSource nodes with document counts, hierarchy, and aliases
         query = """
             MATCH (ds:DataSource)
             OPTIONAL MATCH (r:Resource)-[:INGESTED_FROM]->(ds)
@@ -161,6 +161,8 @@ async def list_datasources(
                    ds.description AS description,
                    ds.parent_datasource_id AS parent_datasource_id,
                    ds.scraper_type AS scraper_type,
+                   ds.primary_alias AS primary_alias,
+                   coalesce(ds.aliases, []) AS aliases,
                    doc_count
             ORDER BY doc_count DESC
         """
@@ -176,6 +178,8 @@ async def list_datasources(
                 document_count=record.get("doc_count", 0),
                 parent_datasource_id=record.get("parent_datasource_id"),
                 scraper_type=record.get("scraper_type"),
+                primary_alias=record.get("primary_alias"),
+                aliases=record.get("aliases") or [],
             ))
         
         logger.info(f"Retrieved {len(datasources)} datasources")
@@ -254,15 +258,23 @@ async def query(
                     datasource_ids = []
                     for mention in mentions:
                         logger.debug(f"[{query_id}] Looking up datasource for mention: {mention}")
-                        # Match by exact ID, display_name contains, or name contains.
-                        # coalesce prefers display_name for human-readable names like "Next Gen".
+                        # Match by: exact datasource_id, alias array match (primary_alias or any alias),
+                        # display_name/name substring, or datasource_id substring.
+                        # Alias match is ranked highest (match_exact=0) alongside exact ID match.
                         result = neo4j_client.execute_query("""
                             MATCH (ds:DataSource)
                             WHERE toLower(ds.datasource_id) = toLower($mention)
+                               OR toLower(coalesce(ds.primary_alias, '')) = toLower($mention)
+                               OR any(a IN coalesce(ds.aliases, []) WHERE toLower(a) = toLower($mention))
                                OR toLower(coalesce(ds.display_name, ds.name, '')) CONTAINS toLower($mention)
                                OR toLower(ds.datasource_id) CONTAINS toLower($mention)
                             RETURN ds.datasource_id AS datasource_id,
-                              CASE WHEN toLower(ds.datasource_id) = toLower($mention) THEN 0 ELSE 1 END AS match_exact,
+                              CASE
+                                WHEN toLower(ds.datasource_id) = toLower($mention) THEN 0
+                                WHEN toLower(coalesce(ds.primary_alias, '')) = toLower($mention) THEN 0
+                                WHEN any(a IN coalesce(ds.aliases, []) WHERE toLower(a) = toLower($mention)) THEN 0
+                                ELSE 1
+                              END AS match_exact,
                               CASE WHEN ds.parent_datasource_id IS NULL THEN 0 ELSE 1 END AS is_child,
                               size(ds.datasource_id) AS id_len
                             ORDER BY match_exact, is_child, id_len, ds.datasource_id

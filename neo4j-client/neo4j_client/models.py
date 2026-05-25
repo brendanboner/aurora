@@ -324,6 +324,19 @@ class DataSource(Node):
         description="Human-readable display name shown in the UI (falls back to name if not set)"
     )
 
+    primary_alias: Optional[str] = Field(
+        None,
+        description="Primary human-readable @mention alias (e.g. 'wba-e2e-wifi-qos-l4s-edca'). "
+                    "Auto-generated from the datasource name by the alias generator service."
+    )
+
+    aliases: Optional[List[str]] = Field(
+        None,
+        description="All @mention aliases for this datasource — primary alias first, then keyword aliases "
+                    "(e.g. ['wba-e2e-wifi-qos-l4s-edca', 'wba-qos', 'wba-l4s', 'wba-edca']). "
+                    "Users can type any of these in @mention fields."
+    )
+
     area_acronym: Optional[str] = Field(
         None,
         description="IETF area acronym (e.g., 'wit', 'int', 'sec') — used to group IETF WG datasources in the UI"

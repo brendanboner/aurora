@@ -44,15 +44,19 @@ const DatasourceMention = ({
   const listRef = useRef(null);
   const itemRefs = useRef({});
 
-  // Flat filtered list for keyboard navigation
+  // Flat filtered list for keyboard navigation — also searches aliases
   const filteredDatasources = useMemo(() => {
     const search = searchText.toLowerCase();
-    return datasources.filter(ds =>
-      !search ||
-      ds.datasource_id.toLowerCase().includes(search) ||
-      ds.name.toLowerCase().includes(search) ||
-      (ds.description && ds.description.toLowerCase().includes(search))
-    );
+    return datasources.filter(ds => {
+      if (!search) return true;
+      if (ds.datasource_id.toLowerCase().includes(search)) return true;
+      if (ds.name.toLowerCase().includes(search)) return true;
+      if (ds.description && ds.description.toLowerCase().includes(search)) return true;
+      // Also match on any alias (e.g. @wba-qos, @wba-l4s)
+      if (ds.primary_alias && ds.primary_alias.toLowerCase().includes(search)) return true;
+      if (ds.aliases && ds.aliases.some(a => a.toLowerCase().includes(search))) return true;
+      return false;
+    });
   }, [datasources, searchText]);
 
   // Grouped structure for display
@@ -176,7 +180,7 @@ const DatasourceMention = ({
                   >
                     <div className="mention-item-content">
                       <span className="mention-name">{ds.name}</span>
-                      <span className="mention-id">@{ds.datasource_id}</span>
+                      <span className="mention-id">@{ds.primary_alias || ds.datasource_id}</span>
                     </div>
                     {ds.document_count > 0 && (
                       <span className="mention-doc-count">{ds.document_count}</span>

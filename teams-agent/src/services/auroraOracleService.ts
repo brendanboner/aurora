@@ -185,20 +185,28 @@ export class AuroraOracleService {
     const client = this.clientFor();
     try {
       const response = await client.get('/datasources');
-      const allSources: Array<{ datasource_id: string; name: string; parent_datasource_id?: string }> =
-        response.data?.datasources || [];
+      const allSources: Array<{
+        datasource_id: string;
+        name: string;
+        parent_datasource_id?: string;
+        primary_alias?: string;
+        aliases?: string[];
+      }> = response.data?.datasources || [];
 
       const resolved = new Set<string>();
       for (const mention of mentions) {
         const lower = mention.toLowerCase();
+        // Priority: exact datasource_id, then alias (primary or any), then name/ID contains
         const match = allSources.find(ds =>
           ds.datasource_id.toLowerCase() === lower ||
+          (ds.primary_alias || '').toLowerCase() === lower ||
+          (ds.aliases || []).some(a => a.toLowerCase() === lower) ||
           ds.datasource_id.toLowerCase().includes(lower) ||
           (ds.name || '').toLowerCase().includes(lower)
         );
         if (match) {
           resolved.add(match.datasource_id);
-          // Include children (one level)
+          // Include children (one level) — e.g. @wba includes all WBA Extranet communities
           for (const child of allSources.filter(ds => ds.parent_datasource_id === match.datasource_id)) {
             resolved.add(child.datasource_id);
           }
