@@ -28,6 +28,7 @@ from services.event_reconciler import EventReconciler
 from services.threshold_monitor import TopicThresholdMonitor
 from services.importance_decay import ImportanceDecayService
 from services.orphan_monitor import OrphanMonitorService
+from services.date_repair import DateRepairService
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -48,6 +49,7 @@ class CuratorScheduler:
         self._event_reconciler: Optional[EventReconciler] = None
         self._importance_decay: Optional[ImportanceDecayService] = None
         self._orphan_monitor: Optional[OrphanMonitorService] = None
+        self._date_repair: Optional[DateRepairService] = None
         
     def _run_topic_organization(self, triggered_by: str = "scheduled"):
         """Execute topic organization job.
@@ -239,6 +241,29 @@ class CuratorScheduler:
             logger.error(f"Importance decay failed: {e}", exc_info=True)
             update_job_state(job_name, is_running=False, last_error=str(e))
 
+    def _run_date_repair(self):
+        """Execute daily publish_date back-fill job (runs at 04:00 UTC)."""
+        job_name = "date_repair"
+        try:
+            update_job_state(job_name, is_running=True)
+            logger.info("-" * 40)
+            logger.info("Starting publish_date repair job")
+            if self._date_repair is None:
+                self._date_repair = DateRepairService()
+            summary = self._date_repair.run()
+            update_job_state(
+                job_name,
+                is_running=False,
+                last_run=datetime.now(),
+                last_error=None,
+            )
+            logger.info(
+                f"Date repair complete: {summary.get('total_repaired', 0)} resources patched"
+            )
+        except Exception as e:
+            logger.error(f"Date repair failed: {e}", exc_info=True)
+            update_job_state(job_name, is_running=False, last_error=str(e))
+
     def _run_orphan_monitor(self):
         """Execute periodic orphan-resource monitoring job."""
         job_name = "orphan_monitor"
@@ -427,6 +452,16 @@ class CuratorScheduler:
         )
         logger.info("Importance decay: scheduled daily at 03:00")
 
+        # Schedule publish_date repair (daily at 04:00 — after importance decay)
+        self.scheduler.add_job(
+            self._run_date_repair,
+            trigger=CronTrigger(hour=4, minute=0),
+            id="date_repair",
+            name="Publish Date Repair",
+            replace_existing=True,
+        )
+        logger.info("Date repair: scheduled daily at 04:00")
+
         # Schedule orphan resource monitoring (every 6 hours)
         self.scheduler.add_job(
             self._run_orphan_monitor,
@@ -504,7 +539,11 @@ class CuratorScheduler:
         if self._orphan_monitor:
             logger.info("Closing orphan monitor...")
             self._orphan_monitor.close()
-        
+
+        if self._date_repair:
+            logger.info("Closing date repair service...")
+            self._date_repair.close()
+
         self._shutdown_event.set()
         logger.info("Shutdown complete")
         sys.exit(0)

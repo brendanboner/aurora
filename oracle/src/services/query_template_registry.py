@@ -559,6 +559,13 @@ class QueryTemplateRegistry:
                              AND r.scraped_at IS NOT NULL
                              AND datetime(r.scraped_at) >= datetime('2020-01-01')
                         THEN datetime(r.scraped_at)
+                        // WFA Causeway: same argument — member-only portal, incremental
+                        // scraper, so scraped_at reliably reflects when a document was
+                        // first seen (= uploaded to the workgroup folder).
+                        WHEN r.datasource_id STARTS WITH 'wfa_causeway_'
+                             AND r.scraped_at IS NOT NULL
+                             AND datetime(r.scraped_at) >= datetime('2020-01-01')
+                        THEN datetime(r.scraped_at)
                         // General fallback: use Neo4j node creation time (set on first ingest)
                         WHEN r.created_at IS NOT NULL
                              AND datetime(r.created_at) >= datetime('2020-01-01')

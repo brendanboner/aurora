@@ -6,22 +6,50 @@ global:
     cluster: aurora
     environment: development
 
+# Alert rules covering scraper health, oracle errors, and infrastructure
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
 scrape_configs:
-  # Scrape OpenTelemetry Collector metrics
+  # OpenTelemetry Collector metrics (traces → Tempo, metrics → Prometheus)
   - job_name: 'otel-collector'
     static_configs:
       - targets: ['otel-collector:8889']
         labels:
           service: 'otel-collector'
-  
-  # Oracle Service metrics (Phase 6)
+
+  # Oracle Service — query metrics, cache hit rates, confidence scores
   - job_name: 'oracle'
     static_configs:
       - targets: ['oracle:8000']
         labels:
           service: 'oracle'
     metrics_path: '/metrics'
-  
+
+  # Retriever — scraper health, datasource last-scraped timestamps, auth status
+  - job_name: 'retriever'
+    static_configs:
+      - targets: ['retriever:8000']
+        labels:
+          service: 'retriever'
+    metrics_path: '/metrics'
+
+  # Digester — message throughput and DLQ counters
+  - job_name: 'digester'
+    static_configs:
+      - targets: ['digester:8080']
+        labels:
+          service: 'digester'
+    metrics_path: '/metrics'
+
+  # Curator — job run status, orphan counts, date-repair stats
+  - job_name: 'curator'
+    static_configs:
+      - targets: ['curator:8000']
+        labels:
+          service: 'curator'
+    metrics_path: '/metrics'
+
   # Self-monitoring
   - job_name: 'prometheus'
     static_configs:

@@ -1184,7 +1184,11 @@ class DocumentDigester:
             f"✅ SUCCESS: Event '{event_name}' processed successfully "
             f"(total processed: {self.total_messages_processed})"
         )
-        
+
+        asyncio.create_task(
+            self._flush_oracle_cache(datasource_id=message.get("datasource_id"))
+        )
+
         return True
 
     async def process_wba_metadata_message(self, message: Dict[str, Any]) -> bool:
@@ -1339,13 +1343,52 @@ class DocumentDigester:
         self.total_messages_processed += 1
         return True
 
+    async def _flush_oracle_cache(self, datasource_id: str = None) -> None:
+        """Fire-and-forget: flush oracle result and answer caches after new content lands.
+
+        Keeps the 1-hour TTL from making freshly ingested documents invisible.
+        Flushes only 'result' and 'answer' tiers — the 24-hour plan cache is left
+        intact because query routing plans are datasource-agnostic.
+
+        Never raises — any failure is logged as a warning only.
+        """
+        import urllib.request
+        import json as _json
+
+        oracle_url = "http://oracle:8000/admin/cache/flush"
+        headers = {
+            "Content-Type": "application/json",
+            "X-User-Id": "system",
+            "X-User-Role": "superadmin",
+        }
+
+        async def _post_tier(tier: str) -> None:
+            def _sync():
+                body = _json.dumps({"tier": tier}).encode()
+                req = urllib.request.Request(oracle_url, data=body, headers=headers, method="POST")
+                try:
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        logger.debug(f"Oracle cache flush tier={tier}: HTTP {resp.status}")
+                except Exception as exc:
+                    logger.warning(f"Oracle cache flush tier={tier} failed (non-critical): {exc}")
+
+            await asyncio.to_thread(_sync)
+
+        try:
+            ds_note = f" (datasource={datasource_id})" if datasource_id else ""
+            logger.debug(f"Flushing oracle result+answer caches{ds_note}")
+            await _post_tier("result")
+            await _post_tier("answer")
+        except Exception as exc:
+            logger.warning(f"Oracle cache flush raised unexpectedly (non-critical): {exc}")
+
     async def process_resource_message(self, message: Dict[str, Any]) -> bool:
         """
         Process a resource message - extract metadata via LLM and insert into Neo4j (ASYNC VERSION).
-        
+
         Args:
             message: Resource message from RabbitMQ with resource_data
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -1622,6 +1665,12 @@ class DocumentDigester:
         logger.info(
             f"✅ SUCCESS: Resource '{title}' processed successfully "
             f"(total processed: {self.total_messages_processed})"
+        )
+
+        # Fire-and-forget: flush oracle result + answer caches so new content is
+        # immediately queryable without waiting for the 1-hour TTL to expire.
+        asyncio.create_task(
+            self._flush_oracle_cache(datasource_id=message.get("datasource_id"))
         )
 
         return True

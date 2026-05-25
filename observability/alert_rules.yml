@@ -1,0 +1,157 @@
+# Aurora — Prometheus alerting rules
+# Loaded by prometheus.yml via rule_files.
+# All durations use [Xm] Prometheus notation.
+
+groups:
+
+  # ── Scraper health ──────────────────────────────────────────────────────────
+  - name: aurora_scraper_health
+    rules:
+
+      # WBA Extranet auth failure — HLLogin cookie expired (~7-day lifetime).
+      # Fired when the retriever logs a WARNING containing the canonical string
+      # that WBA_extranet.py emits when the datasource auth_token is rejected.
+      # Note: Loki-based alerting (requires Loki datasource + Grafana alert).
+      # For Prometheus-only: use the retriever /metrics endpoint once instrumented.
+
+      # Retriever heartbeat stale — service has not updated its Redis heartbeat
+      # for more than 10 minutes (normal interval is every ~30 s during scraping).
+      # This rule fires when the retriever container is down or stuck.
+      - alert: RetrieverHeartbeatStale
+        expr: |
+          (time() - aurora_retriever_heartbeat_timestamp_seconds) > 600
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Aurora retriever heartbeat is stale"
+          description: >
+            The retriever service has not updated its heartbeat for more than
+            10 minutes. Either the container is down or a scraper session is
+            stuck. Check: docker logs aurora-retriever --tail=50
+
+      # Datasource not scraped on schedule.
+      # Fires when a datasource's last_scraped_at is more than 2× its expected
+      # interval behind the current time. Requires the retriever to expose the
+      # aurora_datasource_last_scraped_seconds gauge (added in retriever /metrics).
+      - alert: DatasourceScrapeMissed
+        expr: |
+          (time() - aurora_datasource_last_scraped_seconds) > (aurora_datasource_schedule_interval_seconds * 2)
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Datasource {{ $labels.datasource_id }} has not been scraped on schedule"
+          description: >
+            Datasource {{ $labels.datasource_id }} ({{ $labels.scraper_type }}) was last
+            successfully scraped {{ $value | humanizeDuration }} ago but its schedule
+            interval is {{ $labels.schedule_interval }}. This may indicate an auth
+            failure, network timeout, or the retriever crashing mid-session.
+            Check: docker logs aurora-retriever --tail=100 | grep {{ $labels.datasource_id }}
+
+      # Datasource returning zero documents for consecutive runs.
+      # Fired when a datasource that historically produces content returns 0 docs.
+      - alert: DatasourceConsecutiveZeroRuns
+        expr: |
+          aurora_datasource_consecutive_zero_runs > 2
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Datasource {{ $labels.datasource_id }} returned 0 documents for 3+ consecutive runs"
+          description: >
+            {{ $labels.datasource_id }} ({{ $labels.scraper_type }}) has returned 0
+            documents for {{ $value }} consecutive scrape runs. This may indicate
+            expired auth credentials, a structural change on the source site, or
+            network connectivity problems.
+
+      # WBA / WFA Causeway auth failure — specific alert for private portals.
+      - alert: PrivatePortalAuthFailed
+        expr: |
+          aurora_datasource_auth_status{scraper_type=~"wba_extranet|wfa_causeway"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Authentication failure for {{ $labels.datasource_id }}"
+          description: >
+            The {{ $labels.scraper_type }} scraper failed to authenticate for
+            {{ $labels.datasource_id }}. The session token (HLLogin / Causeway cookie)
+            has likely expired. ACTION REQUIRED:
+            1. Log in to {{ $labels.portal_url }} in a browser
+            2. Copy the HLLogin cookie value from DevTools → Application → Cookies
+            3. Update WBA_EXTRANET_HLLOGIN in the .env.prod file on the EC2 instance
+            4. Restart the retriever: docker compose -f docker-compose.prod.yml restart retriever
+            WBA HLLogin tokens expire approximately every 7 days.
+
+  # ── Oracle / pipeline health ────────────────────────────────────────────────
+  - name: aurora_oracle_health
+    rules:
+
+      # Oracle cache miss rate very high — may indicate the plan cache was flushed
+      # or the oracle is returning cache misses for every query (cold start).
+      - alert: OracleCacheMissRateHigh
+        expr: |
+          rate(oracle_cache_hits_total[5m]) /
+          (rate(oracle_cache_hits_total[5m]) + rate(oracle_query_total[5m]) + 0.001) < 0.1
+        for: 15m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Oracle fast-pipeline cache hit rate below 10%"
+          description: >
+            The oracle cache hit rate has been below 10% for 15 minutes.
+            This is expected after a cache flush or deployment; if persistent,
+            check whether the plan cache TTL (24h) is being honoured.
+
+      # Oracle query error rate elevated.
+      - alert: OracleQueryErrorRateHigh
+        expr: |
+          rate(oracle_query_total{status="error"}[5m]) /
+          (rate(oracle_query_total[5m]) + 0.001) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Oracle query error rate above 10%"
+          description: >
+            More than 10% of oracle queries are returning errors.
+            Check oracle logs: docker logs aurora-oracle --tail=100 | grep ERROR
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+  - name: aurora_infrastructure
+    rules:
+
+      # Neo4j unreachable — all graph-dependent services will degrade.
+      - alert: Neo4jUnreachable
+        expr: up{job="neo4j"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Neo4j is not reachable"
+          description: >
+            Prometheus cannot reach the Neo4j metrics endpoint.
+            The knowledge graph is unavailable; oracle, curator, and digester
+            will all be degraded.
+
+      # RabbitMQ queue depth growing — digester may be stalled.
+      - alert: RabbitMQQueueDepthHigh
+        expr: rabbitmq_queue_messages{queue="scraped_content"} > 500
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "RabbitMQ scraped_content queue depth {{ $value }}"
+          description: >
+            The scraped_content queue has {{ $value }} pending messages and has
+            been growing for 10 minutes. The digester may be stalled or behind.
+            Check: docker logs aurora-digester --tail=50
