@@ -356,6 +356,39 @@ async def trigger_event_reconciliation(background_tasks: BackgroundTasks, user: 
 
 
 # ---------------------------------------------------------------------------
+# Date repair — manual trigger
+# ---------------------------------------------------------------------------
+
+@app.post("/trigger/date_repair", response_model=TriggerResponse)
+@require_role(["admin", "superadmin"])
+async def trigger_date_repair(background_tasks: BackgroundTasks, user: Optional[dict] = Depends(get_user_context)):
+    """Manually trigger the publish_date back-fill job. Requires admin or superadmin role."""
+    logger.info(f"Manual date_repair triggered by {user['email']} (role: {user['role']})")
+
+    if _job_state.get("date_repair", {}).get("is_running"):
+        raise HTTPException(status_code=409, detail="Date repair job is already running")
+
+    async def run_job():
+        update_job_state("date_repair", is_running=True)
+        svc = None
+        try:
+            from services.date_repair import DateRepairService
+            svc = DateRepairService()
+            summary = await asyncio.to_thread(svc.run)
+            update_job_state("date_repair", is_running=False, last_run=datetime.now(), last_error=None)
+            logger.info(f"Manual date_repair complete: {summary}")
+        except Exception as e:
+            update_job_state("date_repair", is_running=False, last_error=str(e))
+            logger.error(f"Manual date_repair failed: {e}")
+        finally:
+            if svc:
+                svc.close()
+
+    background_tasks.add_task(run_job)
+    return TriggerResponse(success=True, message="Date repair job triggered", job_id="date_repair")
+
+
+# ---------------------------------------------------------------------------
 # Archive stale content (T14)
 # ---------------------------------------------------------------------------
 
