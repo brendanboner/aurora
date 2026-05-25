@@ -7,8 +7,12 @@
   box-shadow: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* hamburger | brand (flex:1, overflow:hidden) | actions */
+  gap: 8px;
   padding: 0 20px;
+  /* env() accounts for iPhone notch/dynamic island safe areas */
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
   position: relative;
   z-index: var(--a1-z-header);
 }
@@ -18,7 +22,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 0; /* allow shrinking so actions never get pushed off-screen */
+  flex: 1 1 0;       /* grows to fill available space */
+  min-width: 0;      /* allows shrinking so the brand text can ellipsis */
   overflow: hidden;
 }
 

@@ -45,19 +45,24 @@ const Header = ({ onMenuToggle, isMenuOpen }) => {
 
   return (
     <header className="app-header">
-      <div className="header-brand">
-        <button
-          className={`mobile-menu-btn ${isMenuOpen ? 'open' : ''}`}
-          onClick={onMenuToggle}
-          title="Menu"
-          aria-label="Toggle navigation menu"
-          aria-expanded={isMenuOpen}
-        >
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
+      {/*
+        The hamburger is positioned OUTSIDE .header-brand (which has overflow:hidden)
+        so it can never be clipped on narrow viewports. It is flex-shrink:0 and always
+        the first visible element, giving users access to navigation on any screen size.
+      */}
+      <button
+        className={`mobile-menu-btn ${isMenuOpen ? 'open' : ''}`}
+        onClick={onMenuToggle}
+        title="Menu"
+        aria-label="Toggle navigation menu"
+        aria-expanded={isMenuOpen}
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
 
+      <div className="header-brand">
         <A1LogoMark size={34} />
 
         <div className="header-divider" />

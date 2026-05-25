@@ -1,6 +1,9 @@
 /* Root Application Layout — Agent ONE shell */
 .App {
+  /* iOS Safari: 100vh includes the URL bar chrome; -webkit-fill-available excludes it */
   height: 100vh;
+  height: -webkit-fill-available;  /* iOS Safari fix */
+  height: 100dvh;                  /* Modern: dynamic viewport height (Safari 16+) */
   width: 100vw;
   overflow: hidden;
   position: relative;
