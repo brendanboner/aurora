@@ -211,10 +211,34 @@ def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) ->
                 "UPDATE user_agent SET user_id = %s WHERE user_id = %s",
                 (new_id, old_id)
             )
-            
+            cur.execute(
+                "UPDATE post SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE post_comment SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+
+            # Additional backend tables missing from original migration
+            cur.execute(
+                "UPDATE user_source_preferences SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            cur.execute(
+                "UPDATE oracle_query_history SET user_id = %s WHERE user_id = %s",
+                (new_id, old_id)
+            )
+            # Teams conversation references use aurora_user_id, not user_id
+            cur.execute(
+                "UPDATE teams_conversation_references SET aurora_user_id = %s WHERE aurora_user_id = %s",
+                (new_id, old_id)
+            )
+
             # Commit the transaction
             conn.commit()
-            logger.info(f"Successfully migrated user from {old_id} to {new_id}")
+            logger.info(f"Successfully migrated user from {old_id} to {new_id}: "
+                        f"preferences, memberships, agents, posts, query history, Teams refs all re-keyed")
             return user
             
     except Exception as e:
