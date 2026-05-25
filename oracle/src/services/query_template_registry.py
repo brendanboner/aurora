@@ -532,9 +532,17 @@ class QueryTemplateRegistry:
                   datetime() - duration({days: 56}) as fallback_threshold,
                   datetime() - duration({days: 180}) as max_threshold
 
-              // effective_date uses publish_date ONLY — never scraped_at/created_at.
-              // A document with no valid publish_date gets 1970-01-01 so it is
-              // excluded by the max_threshold filter and cannot masquerade as "new".
+              // effective_date uses publish_date primarily.
+              // A document with no valid publish_date normally gets 1970-01-01 so it
+              // is excluded by the max_threshold filter and cannot masquerade as "new".
+              //
+              // EXCEPTIONS that use scraped_at/created_at as a recency proxy:
+              //   1. Videos — scraped_at ≈ upload date for continuously-run scrapers
+              //   2. WBA Extranet (datasource_id STARTS WITH 'wba_extranet_') — the
+              //      extranet scraper runs incrementally so scraped_at reliably reflects
+              //      when the document was uploaded to the private portal. Meeting
+              //      materials uploaded after a plenary (e.g. Dallas 2026) often have
+              //      no formal publish_date in the portal metadata.
               MATCH (r:Resource)
               WHERE coalesce(r.archived, false) = false
               WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days,
@@ -542,10 +550,19 @@ class QueryTemplateRegistry:
                         AND datetime(r.publish_date) >= datetime('2000-01-01')
                         AND datetime(r.publish_date) <= datetime()
                         THEN datetime(r.publish_date)
-                        // Video resources: scraped_at is a reliable recency proxy (upload ≈ scrape for continuous runs)
+                        // Video resources: scraped_at is a reliable recency proxy
                         WHEN r.category = 'video' AND r.scraped_at IS NOT NULL
                              AND datetime(r.scraped_at) >= datetime('2020-01-01')
                         THEN datetime(r.scraped_at)
+                        // WBA Extranet: incremental scraper means scraped_at = upload date
+                        WHEN r.datasource_id STARTS WITH 'wba_extranet_'
+                             AND r.scraped_at IS NOT NULL
+                             AND datetime(r.scraped_at) >= datetime('2020-01-01')
+                        THEN datetime(r.scraped_at)
+                        // General fallback: use Neo4j node creation time (set on first ingest)
+                        WHEN r.created_at IS NOT NULL
+                             AND datetime(r.created_at) >= datetime('2020-01-01')
+                        THEN datetime(r.created_at)
                         ELSE datetime('1970-01-01')
                    END as effective_date
               WHERE effective_date >= max_threshold
