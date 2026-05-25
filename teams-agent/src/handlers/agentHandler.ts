@@ -43,28 +43,27 @@ export class AgentHandler {
     const agentService = new AuroraAgentService(auroraUser.id, email);
     const agents = await agentService.listAgents();
 
-    const filtered = partial
-      ? agents.filter((a) => a.name.toLowerCase().startsWith(partial.toLowerCase()))
-      : agents;
+    const filtered = (
+      partial
+        ? agents.filter((a) => {
+            const slug = toTeamsSlug(a.teams_slug, a.name);
+            return slug.includes(partial.toLowerCase()) || a.name.toLowerCase().includes(partial.toLowerCase());
+          })
+        : agents
+    ).slice(0, 10);
 
     if (filtered.length === 0) {
       await context.sendActivity(`No agents match "@${partial}". Type \`agents\` to see the full list.`);
       return;
     }
 
-    const card = buildAgentListCard(
-      'Aurora Agents',
-      filtered.slice(0, 10).map((a: any) => {
-        const slug = (a.teams_slug || a.name).replace(/^aurora-/, '');
-        return {
-          name: a.name,
-          desc: (a.description || a.persona || '').slice(0, 80),
-          value: `@${slug} `,
-          action: `setChannelAgent ${slug}`,
-        };
-      }),
-      'Select an agent to start a conversation:',
-    );
+    const items: AgentListItem[] = filtered.map((a: any) => ({
+      slug: toTeamsSlug(a.teams_slug, a.name),
+      desc: (a.description || '').slice(0, 120),
+      isCreatorAgent: true,
+    }));
+
+    const card = buildAgentListCard('Aurora Agents', items);
     await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
@@ -84,34 +83,26 @@ export class AgentHandler {
 
     const wgs = listWorkingGroups();
 
-    // Build a combined card: creator agents + working groups + clear
-    const allItems = [
-      ...agents.map((a) => {
-        const slug = (a.teams_slug || a.name).replace(/^aurora-/, '');
-        return {
-          name: a.name,
-          desc: (a.description || a.persona || '').slice(0, 80),
-          value: `@${slug} `,
-          action: `setChannelAgent ${slug}`,
-        };
-      }),
-      ...wgs.map((wg) => {
-        const slug = wg.slug.replace(/^aurora-/, '');
-        return {
-          name: wg.name,
-          desc: wg.description || '',
-          value: `@${slug} `,
-          action: `setChannelAgent ${slug}`,
-        };
-      }),
-    ];
+    const agentItems: AgentListItem[] = agents.map((a) => ({
+      slug: toTeamsSlug(a.teams_slug, a.name),
+      desc: (a.description || '').slice(0, 120),
+      isCreatorAgent: true,
+    }));
+
+    const wgItems: AgentListItem[] = wgs.map((wg) => ({
+      slug: wg.slug.replace(/^aurora-/, ''),
+      desc: (wg.description || '').slice(0, 120),
+      isCreatorAgent: false,
+    }));
+
+    const allItems = [...agentItems, ...wgItems];
 
     if (allItems.length === 0) {
       await context.sendActivity('No agents are configured yet.');
       return;
     }
 
-    const card = buildAgentListCard('Aurora Agents', allItems, 'Click an agent to start a conversation:');
+    const card = buildAgentListCard('Aurora Agents', allItems);
     await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
@@ -131,21 +122,19 @@ export class AgentHandler {
     }
 
     if (myAgents.length === 0) {
-      await context.sendActivity('You have no personal agents yet. Create them at aurora-octo.xcloudiq.com/profile/my-agents');
+      await context.sendActivity(
+        'You have no personal agents yet. Create them at aurora-octo.xcloudiq.com/profile/my-agents'
+      );
       return;
     }
 
-    const items = myAgents.map((a) => {
-      const slug = (a.teams_slug || a.name).replace(/^aurora-/, '');
-      return {
-        name: a.name,
-        desc: `${a.enabled ? '● active' : '○ paused'}${a.posting_cadence ? ` · ${a.posting_cadence}` : ''}`,
-        value: `@${slug} `,
-        action: `setChannelAgent ${slug}`,
-      };
-    });
+    const items: AgentListItem[] = myAgents.map((a) => ({
+      slug: toTeamsSlug(a.teams_slug, a.name),
+      desc: `${a.enabled ? '● active' : '○ paused'}${a.posting_cadence ? ` · ${a.posting_cadence}` : ''}${a.project_description ? ' — ' + (a.project_description as string).slice(0, 80) : ''}`,
+      isCreatorAgent: false, // personal agents: talk only (no public subscribe)
+    }));
 
-    const card = buildAgentListCard('My Personal Agents', items, 'Click an agent to start a conversation:');
+    const card = buildAgentListCard('My Personal Agents', items);
     await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
@@ -415,30 +404,19 @@ export class AgentHandler {
       .slice(0, 5);
 
     if (closeMatches.length > 0) {
-      const items = closeMatches.map((wg) => {
-        const wgSlug = wg.slug.replace(/^aurora-/, '');
-        return {
-          name: wg.name,
-          desc: wg.description || '',
-          value: `@${wgSlug} `,
-          action: `setChannelAgent ${wgSlug}`,
-        };
-      });
-      const card = buildAgentListCard(
-        `No agent found for "@${teamsSlug}"`,
-        items,
-        question
-          ? `Did you mean one of these? They can answer: "${question}"`
-          : 'Did you mean one of these?',
-      );
+      const items: AgentListItem[] = closeMatches.map((wg) => ({
+        slug: wg.slug.replace(/^aurora-/, ''),
+        desc: wg.description || '',
+        isCreatorAgent: false,
+      }));
+      const hint = question ? `Did you mean one of these? They can answer: "${question}"` : 'Did you mean one of these?';
+      const card = buildAgentListCard(`No agent found for "@${teamsSlug}" — close matches:`, items);
+      await context.sendActivity(hint);
       await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     } else {
-      const card = buildAgentListCard(
-        `No agent found for "@${teamsSlug}"`,
-        [{ name: 'Ask Aurora directly', desc: 'Search across all knowledge sources', value: question || `${teamsSlug} ` }],
-        'Type `agents` to browse all available agents, or ask Aurora directly:',
+      await context.sendActivity(
+        `No agent found for "@${teamsSlug}". Type \`agents\` to browse all available agents, or just ask Aurora directly.`
       );
-      await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     }
   }
 
@@ -468,69 +446,138 @@ export class AgentHandler {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AgentListItem {
+  slug: string;          // clean, space-free slug  e.g. "mister-multipath"
+  desc: string;          // one-line description shown beneath the slug
+  isCreatorAgent: boolean; // true → show [subscribe] button; false → [talk] only
+}
+
 /**
- * Build an Adaptive Card that lists agents/working groups as clickable buttons.
- * Each agent has an Action.Submit (imBack) so clicking sends "setChannelAgent <slug>"
- * to scope the conversation. A "Clear" button at the bottom returns to general mode.
+ * Convert a raw teams_slug or display name into a clean, hyphenated slug
+ * with no spaces and no "aurora-" prefix.
  *
- * Uses only card-level actions (no ActionSet inside body) for Teams compatibility.
+ * Examples:
+ *   "aurora-mister-multipath" → "mister-multipath"
+ *   "Mister Multipath"        → "mister-multipath"
+ *   "IETF"                    → "ietf"
+ */
+function toTeamsSlug(teamsSlug: string | null | undefined, displayName: string): string {
+  const raw = (teamsSlug || displayName || '').trim();
+  return raw
+    .toLowerCase()
+    .replace(/^aurora-/, '')
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Build a compact Adaptive Card listing agents/datasources.
+ *
+ * Each row:
+ *   @slug  [subscribe]  [talk]     ← creator agents
+ *   @slug  [talk]                  ← datasources / personal agents
+ *   description text (subtle, small)
+ *
+ * Buttons use Action.Submit with msteams imBack so Teams sends the value
+ * back to the bot as a new message:
+ *   [talk]      → "setChannelAgent <slug>"   (sets conversation scope)
+ *   [subscribe] → "subscribe @<slug>"        (subscribe to posts)
  */
 function buildAgentListCard(
   title: string,
-  items: Array<{ name: string; desc?: string; value: string; action?: string }>,
-  subtitle?: string
+  items: AgentListItem[],
 ): Record<string, unknown> {
-  // Body: name + description rows only (no nested action sets)
-  const bodyRows: Record<string, unknown>[] = [];
-  items.forEach((item, i) => {
-    if (i > 0) {
-      // Use separator: true on the TextBlock instead of a Separator element
-      bodyRows.push({
-        type: 'TextBlock',
-        text: item.name,
-        weight: 'Bolder',
-        wrap: true,
-        separator: true,
-        spacing: 'Small',
-      });
-    } else {
-      bodyRows.push({ type: 'TextBlock', text: item.name, weight: 'Bolder', wrap: true });
-    }
-    if (item.desc) {
-      bodyRows.push({
-        type: 'TextBlock',
-        text: item.desc,
-        isSubtle: true,
-        size: 'Small',
-        wrap: true,
-        spacing: 'None',
-      });
-    }
-  });
+  const rows: Record<string, unknown>[] = [];
 
-  // Card-level actions: one per agent + clear
-  const actions: Record<string, unknown>[] = [
-    ...items.map((item) => ({
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+
+    const talkAction = {
       type: 'Action.Submit',
-      title: `Ask ${item.name}`,
-      data: { msteams: { type: 'imBack', value: item.action ?? item.value } },
-    })),
-    {
+      title: 'talk',
+      style: 'positive',
+      data: { msteams: { type: 'imBack', value: `setChannelAgent ${item.slug}` } },
+    };
+
+    const subscribeAction = {
       type: 'Action.Submit',
-      title: '✕ Clear',
-      data: { msteams: { type: 'imBack', value: 'clear' } },
-    },
-  ];
+      title: 'subscribe',
+      data: { msteams: { type: 'imBack', value: `subscribe @${item.slug}` } },
+    };
+
+    // Info column: @slug + description
+    const infoColumn: Record<string, unknown> = {
+      type: 'Column',
+      width: 'stretch',
+      items: [
+        {
+          type: 'TextBlock',
+          text: `**@${item.slug}**`,
+          wrap: false,
+          spacing: 'None',
+        },
+        ...(item.desc
+          ? [{
+              type: 'TextBlock',
+              text: item.desc,
+              isSubtle: true,
+              size: 'Small',
+              wrap: true,
+              spacing: 'None',
+            }]
+          : []),
+      ],
+    };
+
+    // Button column: [subscribe] [talk] or just [talk]
+    const buttonActions: Record<string, unknown>[] = [
+      ...(item.isCreatorAgent ? [subscribeAction] : []),
+      talkAction,
+    ];
+
+    const buttonColumn: Record<string, unknown> = {
+      type: 'Column',
+      width: 'auto',
+      verticalContentAlignment: 'Center',
+      items: [{
+        type: 'ActionSet',
+        actions: buttonActions,
+      }],
+    };
+
+    rows.push({
+      type: 'ColumnSet',
+      separator: i > 0,
+      spacing: i > 0 ? 'Small' : 'None',
+      columns: [infoColumn, buttonColumn],
+    });
+  }
 
   return {
     type: 'AdaptiveCard',
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
     version: '1.3',
     body: [
-      { type: 'TextBlock', text: title, weight: 'Bolder', size: 'Large' },
-      ...(subtitle ? [{ type: 'TextBlock', text: subtitle, isSubtle: true, spacing: 'Small', wrap: true }] : []),
-      ...bodyRows,
+      {
+        type: 'TextBlock',
+        text: title,
+        weight: 'Bolder',
+        size: 'Medium',
+        spacing: 'None',
+      },
+      {
+        type: 'TextBlock',
+        text: 'Type `@slug your question` at any time, or click **talk** to scope this conversation to an agent. Type `clear` to return to general Aurora.',
+        isSubtle: true,
+        size: 'Small',
+        wrap: true,
+        spacing: 'Small',
+      },
+      ...rows,
     ],
-    actions,
   };
 }
