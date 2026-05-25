@@ -31,6 +31,25 @@ class Settings(BaseSettings):
     # Cognito email address without a full Azure AD token exchange. Safe for internal
     # demos; disable once AZURE_TENANT_ID / AZURE_APP_CLIENT_ID are configured.
     teams_email_fallback_enabled: bool = True
+
+    # Role overrides — comma-separated list of emails that should always receive
+    # 'superadmin' or 'admin' role regardless of what the auth provider returns.
+    # This ensures admins retain their role when migrating from Cognito to SSO/Azure AD,
+    # since Azure AD tokens don't carry a custom:role claim.
+    # Format: SUPERADMIN_EMAILS=alice@example.com,bob@example.com
+    superadmin_emails: str = ""
+    admin_emails: str = ""
+
+    def get_role_for_email(self, email: str) -> str:
+        """Return the highest role for an email, checking override lists first."""
+        email_lower = (email or "").lower()
+        superadmins = [e.strip().lower() for e in self.superadmin_emails.split(",") if e.strip()]
+        admins = [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
+        if email_lower in superadmins:
+            return "superadmin"
+        if email_lower in admins:
+            return "admin"
+        return "user"  # Default — provider-specific claims override this in Cognito flow
     
     # Service URLs
     backend_service_url: str

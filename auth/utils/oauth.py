@@ -285,10 +285,15 @@ def extract_azure_user_info(claims: Dict[str, Any]) -> Dict[str, Any]:
     given_name = claims.get("given_name", "")
     family_name = claims.get("family_name", "")
 
+    # Check role override list — ensures admins migrating from Cognito to SSO
+    # keep their role even though Azure AD tokens don't carry custom:role.
+    from auth.settings import get_settings as _get_settings
+    _role = _get_settings().get_role_for_email(email)
+
     return {
         "id": claims.get("oid") or claims.get("sub"),  # Azure OID is the stable user GUID
         "email": email,
-        "role": "user",  # Teams SSO users default to standard role
+        "role": _role,
         "groups": [],    # Group membership checked separately via Cognito group
         "display_name": name or f"{given_name} {family_name}".strip() or email,
         "given_name": given_name,

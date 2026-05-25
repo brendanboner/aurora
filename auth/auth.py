@@ -192,7 +192,8 @@ async def auth_callback(code: str, state: str, request: Request):
         if not display_name and (given_name or family_name):
             display_name = f"{given_name or ''} {family_name or ''}".strip()
         
-        user_role = id_token_claims.get("custom:role", "user")
+        # Role: prefer Cognito's custom:role; fall back to override list (for SSO migration)
+        user_role = id_token_claims.get("custom:role") or settings.get_role_for_email(user_email)
         
         logger.info(
             f"Successful authentication: user={user_email}, role={user_role}, "
