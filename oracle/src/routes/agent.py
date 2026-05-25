@@ -17,10 +17,32 @@ from src.services.agent_adapter import (
 from src.services.keyword_retriever import get_repo
 from src.services.query_template_registry import QueryTemplateRegistry
 from src.engines.fast_engine import FastEngine
+from src.models.route_plan import RouteId
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["creator-agents"])
+
+
+def _get_scraper_types_for_orgs(org_names: List[str]) -> List[str]:
+    """Map agent organisation names to their Neo4j DataSource scraper_type values.
+
+    This allows AGENT_CONTENT_DISCOVERY to find content ingested from WBA Extranet
+    and WFA Causeway even when the Resource→MENTIONS→Organization relationship is
+    absent or uses a variant org name.
+    """
+    scraper_types: List[str] = []
+    for org in org_names:
+        org_lower = org.lower()
+        if "wba" in org_lower or "broadband alliance" in org_lower or "wireless broadband" in org_lower:
+            scraper_types.append("wba_extranet")
+        if "wi-fi alliance" in org_lower or "wifi alliance" in org_lower or "wfa" in org_lower:
+            scraper_types.append("wfa_causeway")
+        if "ietf" in org_lower:
+            scraper_types.append("ietf")
+        if "ieee" in org_lower:
+            scraper_types.append("ieee")
+    return list(set(scraper_types))
 
 
 class AgentContentRequest(BaseModel):
@@ -85,16 +107,19 @@ async def discover_content(
             last_content_ids=request.last_content_ids
         )
         
-        # Route to appropriate template
-        route_id, route_plan, confidence = _agent_router.route_for_agent(
+        # Use AgentRouter to calculate the correct date range based on cadence/perspective,
+        # but always execute AGENT_CONTENT_DISCOVERY — the cadence-based templates
+        # (WORKGROUP_WEEKLY_RECAP etc.) only cover WFA Causeway (scraper_type='wfa_causeway')
+        # and completely miss WBA Extranet content (scraper_type='wba_extranet').
+        _, route_plan, confidence = _agent_router.route_for_agent(
             agent_prefs,
             perspective=request.perspective
         )
-        
-        # Add exclusion IDs to raw query for template parameter building
-        if request.last_content_ids:
-            route_plan.raw_query += f" exclude_ids:[{','.join(request.last_content_ids)}]"
-        
+
+        # Override: always use AGENT_CONTENT_DISCOVERY so all content sources
+        # (WFA Causeway, WBA Extranet, IETF, IEEE, etc.) are searched.
+        route_id = RouteId.AGENT_CONTENT_DISCOVERY
+
         # Get template
         template = _template_registry.get_template(route_id)
         if not template:
@@ -102,35 +127,45 @@ async def discover_content(
                 status_code=500,
                 detail=f"No template found for route {route_id.value}"
             )
-        
-        # Build parameters
+
+        # Build base parameters from route plan
         params = template.build_params(route_plan)
         params["limit"] = request.limit
-        
+
+        # CRITICAL FIX: actually pass exclude_ids to Cypher (previously only appended
+        # to raw_query string with no effect on the Neo4j query execution).
+        params["exclude_ids"] = request.last_content_ids or []
+
+        # Map org names to DataSource scraper types so WBA Extranet and WFA Causeway
+        # content is found even when the MENTIONS→Organization relationship is absent.
+        params["scraper_types"] = _get_scraper_types_for_orgs(request.expertise_organisations)
+
+        # Priority topics: first 3 topics in the agent's list get a relevance boost
+        # (agents should order their expertise_topics by priority, e.g. Wi-Fi 8 before MDU)
+        params["priority_topics"] = request.expertise_topics[:3] if request.expertise_topics else []
+
         # Reuse Oracle's existing Neo4j repository helper instead of relying on
         # a package-level export that is not present in production images.
         repo = get_repo()
-        
-        logger.info(f"Executing {route_id.value} with params: topics={len(request.expertise_topics)}, orgs={len(request.expertise_organisations)}")
+
+        logger.info(
+            f"Executing {route_id.value} for agent {request.agent_id}: "
+            f"topics={len(request.expertise_topics)}, orgs={len(request.expertise_organisations)}, "
+            f"scraper_types={params['scraper_types']}, excluding={len(params['exclude_ids'])} IDs, "
+            f"priority_topics={params['priority_topics']}"
+        )
         results = repo.client.execute_query(template.cypher, params)
-        
+
         # Post-process results
         processed = template.execute_post_process(results)
-        
-        # Check if rollup was used (indicated by source_type or rollup_id in results)
-        rollup_used = any(
-            r.get("source_type") == "rollup" or r.get("rollup_id") 
-            for r in processed
-        )
-        
+
         logger.info(
             f"Agent {request.agent_id} discovery complete: "
             f"route={route_id.value}, "
             f"items={len(processed)}, "
-            f"rollup_used={rollup_used}, "
             f"excluded={len(request.last_content_ids)}"
         )
-        
+
         return AgentContentResponse(
             agent_id=request.agent_id,
             route_used=route_id.value,
@@ -141,7 +176,7 @@ async def discover_content(
                 "relative_days": str(route_plan.relative_days) if route_plan.relative_days is not None else None
             },
             content_items=processed,
-            rollup_used=rollup_used,
+            rollup_used=False,  # AGENT_CONTENT_DISCOVERY is a live query, not a rollup
             excluded_count=len(request.last_content_ids)
         )
         

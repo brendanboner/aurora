@@ -219,45 +219,44 @@ const Chatbot = ({ backendStatus }) => {
   }, [updateScrollState]);
 
   // Welcome message with tips for crafting good queries
-  const getWelcomeMessage = (email) => `Hello ${email}! I'm Aurora, your personal assistant for standards and industry knowledge.
+  const getWelcomeMessage = (email) => `Hello ${email}! I'm Aurora, your assistant for wireless standards and industry knowledge.
 
-**Tips for effective queries:**
+**Commands** *(type exactly to trigger)*
+— \`help\` · \`agents\` · \`my agents\` · \`feed\` · \`pipeline fast\` · \`personalize on/off\` · \`about\`
 
-— Type "help" for assistance, "agents" to list available agents
-
-**Example queries:**
-- "What's new with Wi-Fi 8 in the last month?"
-- "Show me Wi-Fi Alliance press releases about Matter"
-- "Which companies are working on 802.11bn?"
-- "Compare Wi-Fi 6E and Wi-Fi 7 features"
+**Example queries**
+- *"What's new with Wi-Fi 8 UHR in the last week?"*
+- *"@wba show me the latest from all workgroups"*
+- *"Compare Wi-Fi 7 and Wi-Fi 8 for dense deployments"*
+- *"Which companies are contributing to 802.11bn?"*
 
 What would you like to know?`;
 
   // Welcome message JSX with icons
   const getWelcomeMessageJSX = (email) => (
     <div className="welcome-message">
-      <p>{`Hello ${email}! I'm Aurora, your knowledge assistant for wireless standards and industry news.`}</p>
+      <p>{`Hello ${email}! I'm Aurora, your assistant for wireless standards and industry knowledge.`}</p>
 
-      <p><strong>Tips for effective queries:</strong></p>
-
+      <p><strong>Commands</strong> <em>(type exactly to trigger)</em></p>
       <div className="welcome-tip">
         <SearchIcon size={16} style={{ marginRight: '8px', color: '#6b7280' }} />
-        Type <strong>"help"</strong> for assistance, "<strong>agents</strong>" to list available agents
+        <code>help</code>&nbsp;·&nbsp;<code>agents</code>&nbsp;·&nbsp;<code>my agents</code>&nbsp;·&nbsp;
+        <code>feed</code>&nbsp;·&nbsp;<code>pipeline fast</code>&nbsp;·&nbsp;<code>personalize on</code>&nbsp;·&nbsp;<code>about</code>
       </div>
 
       <div className="welcome-enhance-info">
         <p>
-          If you need more detailed information or find the answer quality lacking, click the <strong>Enhance</strong> button to get a comprehensive response using document content.
+          After an answer appears, click <strong>Enhance</strong> for a deeper document-search response. Use <strong>@datasource</strong> to scope a query to a specific workgroup or source.
         </p>
       </div>
 
       <div className="welcome-examples">
         <p><strong>Example queries:</strong></p>
         <ul>
-          <li>"What's new with Wi-Fi 8 in the last month?"</li>
-          <li>"Show me Wi-Fi Alliance press releases about Matter"</li>
-          <li>"Which companies are working on 802.11bn?"</li>
-          <li>"Compare Wi-Fi 6E and Wi-Fi 7 features"</li>
+          <li>"What's new with Wi-Fi 8 UHR in the last week?"</li>
+          <li>"@wba show me the latest from all workgroups"</li>
+          <li>"Compare Wi-Fi 7 and Wi-Fi 8 for dense deployments"</li>
+          <li>"Which companies are contributing to 802.11bn?"</li>
         </ul>
       </div>
 
@@ -903,6 +902,125 @@ What would you like to know?`;
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Command router — intercepts short commands before they reach Oracle search.
+  // Returns a response string if the input is a known command, or null to fall
+  // through to the normal query path.
+  // ---------------------------------------------------------------------------
+  const handleChatCommand = useCallback((rawInput) => {
+    const cmd = rawInput.trim().toLowerCase();
+
+    // ── HELP ──────────────────────────────────────────────────────────────────
+    if (/^(\?|help|show help|how does this work|what can (i|you) do)$/.test(cmd)) {
+      return `## Aurora Commands & Tips
+
+**Navigation shortcuts** *(type to jump)*
+| Command | Action |
+|---|---|
+| \`agents\` | Browse all Aurora content agents |
+| \`my agents\` | Your personal AI agents |
+| \`feed\` | Your personalised content feed |
+
+**Pipeline control**
+| Command | Action |
+|---|---|
+| \`pipeline fast\` | Switch to fast (graph-based) answers |
+| \`pipeline baseline\` | Switch to deep document-search answers |
+| \`pipeline auto\` | Let Aurora choose the best pipeline |
+
+**Personalisation**
+| Command | Action |
+|---|---|
+| \`personalize on\` | Tailor answers to your profile & interests |
+| \`personalize off\` | Use generic (non-personalised) answers |
+
+**Other**
+| Command | Action |
+|---|---|
+| \`clear\` | Start a new chat |
+| \`about\` | About Aurora |
+
+**Example queries**
+- *"What's new with Wi-Fi 8 UHR in the last week?"*
+- *"@wba show me the latest from all workgroups"*
+- *"Compare Wi-Fi 7 and Wi-Fi 8 for dense deployments"*
+- *"What did WBA publish about Smart MDUs?"*
+`;
+    }
+
+    // ── AGENTS ────────────────────────────────────────────────────────────────
+    if (/^(agents|list agents|show agents|all agents|available agents)$/.test(cmd)) {
+      window.location.href = '/agents';
+      return `**Navigating to Agents…**\n\nYou can also go directly: [View all Aurora agents](/agents)`;
+    }
+
+    // ── MY AGENTS ─────────────────────────────────────────────────────────────
+    if (/^(my agents?|myagents?|personal agents?|my personal agents?)$/.test(cmd)) {
+      window.location.href = '/my-agents';
+      return `**Navigating to My Agents…**\n\nYou can also go directly: [My Agents](/my-agents)`;
+    }
+
+    // ── FEED ──────────────────────────────────────────────────────────────────
+    if (/^(feed|my feed|show feed|content feed)$/.test(cmd)) {
+      window.location.href = '/feed';
+      return `**Navigating to Feed…**\n\nYou can also go directly: [Content Feed](/feed)`;
+    }
+
+    // ── PIPELINE MODE ─────────────────────────────────────────────────────────
+    const pipelineMatch = cmd.match(/^(?:set |use )?pipeline\s+(fast|baseline|auto|system|default)$/);
+    if (pipelineMatch) {
+      const mode = pipelineMatch[1] === 'system' || pipelineMatch[1] === 'default' ? 'system' : pipelineMatch[1];
+      setPipelineModeState(mode);
+      localStorage.setItem('pipelineMode', mode);
+      const descriptions = {
+        fast: '⚡ **Fast pipeline** active — answers drawn from the knowledge graph. Best for factual lookups, workgroup activity, and entity queries.',
+        baseline: '🔍 **Baseline pipeline** active — answers drawn from full document search. Best for nuanced analysis and complex comparisons.',
+        system: '🔄 **Auto pipeline** active — Aurora will choose fast or baseline based on your query.',
+      };
+      return descriptions[mode] || `Pipeline set to **${mode}**.`;
+    }
+
+    // ── PERSONALIZATION ────────────────────────────────────────────────────────
+    const personMatch = cmd.match(/^personalis?e?\s+(on|off|auto)$/);
+    if (personMatch) {
+      const mode = personMatch[1];
+      setPersonalizeModeState(mode);
+      localStorage.setItem('personalizeMode', mode);
+      const descriptions = {
+        on: '✅ **Personalisation on** — Aurora will tailor answers to your topics, organisations, and history.',
+        off: '⭕ **Personalisation off** — Aurora will give generic answers without profile weighting.',
+        auto: '🔄 **Personalisation auto** — Aurora will personalise when your profile is relevant.',
+      };
+      return descriptions[mode] || `Personalisation set to **${mode}**.`;
+    }
+
+    // ── CLEAR CHAT ────────────────────────────────────────────────────────────
+    if (/^(clear|new chat|reset|reset chat|start over)$/.test(cmd)) {
+      // Use the existing handleNewChat after returning a confirmation
+      // We trigger it on next tick so the message renders first
+      setTimeout(() => handleNewChat(), 50);
+      return null; // handleNewChat sets its own welcome message
+    }
+
+    // ── ABOUT ─────────────────────────────────────────────────────────────────
+    if (/^(about|info|about aurora|what is aurora)$/.test(cmd)) {
+      return `## About Aurora
+
+**Aurora** is a RAG (Retrieval-Augmented Generation) knowledge assistant built for wireless standards professionals.
+
+- **Knowledge graph**: Neo4j storing Wi-Fi Alliance, WBA Extranet, IETF, IEEE, and partner content
+- **Dual pipeline**: Fast graph-based answers + baseline vector-search answers
+- **Personalisation**: Answers weighted by your organisation, workgroup memberships, and topic interests
+- **Creator agents**: AI personas that monitor workgroup activity and publish curated updates
+- **Teams integration**: Query Aurora directly from Microsoft Teams
+
+*Built by Extreme Networks · Aurora uses Azure OpenAI*`;
+    }
+
+    // Not a command — return null to proceed with Oracle search
+    return null;
+  }, [setPipelineModeState, setPersonalizeModeState, handleNewChat]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
@@ -921,6 +1039,23 @@ What would you like to know?`;
 
     const queryText = inputValue.trim();
     const datasourceIds = selectedDatasources.map(ds => ds.datasource_id);
+
+    // ── COMMAND ROUTING ──────────────────────────────────────────────────────
+    // Intercept short commands before they reach Oracle search.
+    // Commands are exact/near-exact matches — long questions always pass through.
+    if (queryText.split(' ').length <= 6) {
+      const commandResponse = handleChatCommand(queryText);
+      if (commandResponse !== null) {
+        setInputValue('');
+        setShowMentionDropdown(false);
+        setSelectedDatasources([]);
+        // Add the user's command as a message so conversation history is preserved
+        const userMsg = { role: 'user', content: queryText, timestamp: new Date() };
+        const assistantMsg = { role: 'assistant', content: commandResponse, timestamp: new Date(), isWelcomeMessage: false };
+        setMessages(prev => [...prev, userMsg, assistantMsg]);
+        return;
+      }
+    }
 
     // Check if input is a YouTube URL (video or playlist)
     const youtubePattern = /(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|playlist\?list=)|youtu\.be\/)([a-zA-Z0-9_-]+)/;

@@ -251,15 +251,27 @@ class PromptBuilder:
         return prompt
 
     def _format_recent_posts_section(self, recent_posts: List[Dict[str, Any]]) -> str:
-        """Add recent posts to guide against duplication."""
+        """Add recent posts: frame as ongoing narrative the agent is advancing, not just a blocklist."""
         if not recent_posts:
             return ""
 
-        prompt = "## YOUR RECENT POSTS (Don't repeat these topics/angles):\n"
+        prompt = (
+            "## YOUR RECENT POSTS — ONGOING NARRATIVE CONTEXT\n"
+            "You have already covered the following angles. You CAN reference these topics as "
+            "background context ('building on my earlier observation about X…') but your new post "
+            "MUST advance the story with at least one of:\n"
+            "  • A new development or announcement not yet covered\n"
+            "  • A new implication, risk, or opportunity revealed by recent events\n"
+            "  • A comparison or synthesis of developments across multiple workgroups\n"
+            "  • A specific technical detail or decision that deserves focus\n\n"
+            "**What you have already said (do not repeat the same headline angle or lead example):**\n"
+        )
         for post in recent_posts[:5]:
-            prompt += f"- **{post.get('title', 'Untitled')}**: {post.get('body', '')[:150]}...\n"
+            created = post.get('created_at', '')
+            date_str = f" [{created.strftime('%b %d') if hasattr(created, 'strftime') else str(created)[:10]}]" if created else ""
+            prompt += f"- **{post.get('title', 'Untitled')}**{date_str}: {post.get('body', '')[:180]}…\n"
 
-        prompt += "\nMake sure your new post covers different aspects or provides a fresh perspective.\n\n"
+        prompt += "\n"
         return prompt
     
     def _format_cross_agent_posts_section(self, all_agents_posts: List[Dict[str, Any]]) -> str:

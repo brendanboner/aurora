@@ -1994,37 +1994,45 @@ class QueryTemplateRegistry:
         )
         
         # AGENT_CONTENT_DISCOVERY - specialized route for creator agents
-        # Combines recent updates with deduplication and relevance scoring
+        # Searches ALL content sources (WFA Causeway + WBA Extranet + any org/topic match)
+        # with proper deduplication and relevance scoring including topic priority boost.
         self.templates[RouteId.AGENT_CONTENT_DISCOVERY] = QueryTemplate(
             route_id=RouteId.AGENT_CONTENT_DISCOVERY,
-            description="Discover content for creator agents with deduplication",
+            description="Discover content for creator agents with deduplication across all sources",
             param_schema={
                 "topics": "list[str]",
                 "organizations": "list[str]",
+                "scraper_types": "list[str] — DataSource scraper types to include (e.g. wba_extranet, wfa_causeway)",
                 "start_date": "str (ISO date)",
                 "end_date": "str (ISO date)",
-                "exclude_ids": "list[str]",
+                "relative_days": "int — lookback window (cadence * 2)",
+                "exclude_ids": "list[str] — url_hash values of previously used content",
+                "priority_topics": "list[str] — top-priority topics that receive a relevance boost",
                 "limit": "int"
             },
             cypher="""
-            // Calculate date threshold
-            WITH datetime() - duration({days: coalesce($relative_days, 7)}) as doc_threshold
-            
-            // Match resources by topics or organizations
+            // Calculate date threshold from cadence window (default 14 days)
+            WITH datetime() - duration({days: coalesce($relative_days, 14)}) as doc_threshold
+
+            // Match all non-archived resources
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
             WITH r, doc_threshold,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
                       AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year
-                      THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
+                      THEN datetime(r.publish_date)
+                      WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                      ELSE datetime('1970-01-01') END as effective_date
             WHERE effective_date >= doc_threshold
               AND effective_date <= datetime()
               AND ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
-              // Exclude previously used content
-              AND NOT r.url_hash IN $exclude_ids
-            
-            // Filter by topics or organizations
+              // Deduplication: exclude previously used content (url_hash is the stable ID)
+              AND ($exclude_ids IS NULL OR size($exclude_ids) = 0 OR NOT r.url_hash IN $exclude_ids)
+
+            // Filter by agent scope: topics, org MENTIONS, OR DataSource scraper type
+            // The scraper_types path catches WBA Extranet / WFA Causeway content even when
+            // the MENTIONS→Organization relationship uses a variant org name.
             WITH r, doc_threshold
             WHERE (
                 ($topics IS NOT NULL AND size($topics) > 0 AND EXISTS {
@@ -2033,48 +2041,79 @@ class QueryTemplateRegistry:
                 }) OR
                 ($organizations IS NOT NULL AND size($organizations) > 0 AND EXISTS {
                     MATCH (r)-[:MENTIONS]->(o:Organization)
-                    WHERE o.name IN $organizations OR o.org_id IN $organizations
+                    WHERE any(org IN $organizations WHERE
+                        toLower(o.name) CONTAINS toLower(org) OR toLower(org) CONTAINS toLower(o.name))
+                }) OR
+                ($scraper_types IS NOT NULL AND size($scraper_types) > 0 AND EXISTS {
+                    MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
+                    WHERE ds.scraper_type IN $scraper_types
                 })
             )
-            
-            // Get related entities for context
+
+            // Stage 1: Collect related entities for context enrichment.
+            // Use count(DISTINCT t) to get topic count without a second collect() in the same WITH.
             OPTIONAL MATCH (r)-[rt:RELATES_TO]->(t:Topic)
-            WHERE rt.relevance >= 0.5
-            
+            WHERE rt.relevance >= 0.4
+
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
             OPTIONAL MATCH (r)-[:MENTIONS]->(e:Event)
             OPTIONAL MATCH (r)-[:MENTIONS]->(p:Person)
-            
-            // Calculate relevance score for agent content
+
             WITH r,
-                 collect(DISTINCT t.name)[..5] as topics,
-                 collect(DISTINCT o.name)[..3] as organizations,
-                 collect(DISTINCT e.name)[..2] as events,
+                 collect(DISTINCT t.name)[..6] as topics,
+                 collect(DISTINCT o.name)[..4] as organizations,
+                 collect(DISTINCT e.name)[..3] as events,
                  collect(DISTINCT p.name)[..3] as people,
-                 // Topic specificity: fewer topics = more focused
-                 CASE WHEN size(collect(DISTINCT t)) = 0 THEN 0.5 WHEN size(collect(DISTINCT t)) <= 3 THEN 1.0 WHEN size(collect(DISTINCT t)) <= 6 THEN 0.8 ELSE 0.6 END as specificity_score,
-                 // Recency: exponential decay with 7-day half-life
-                 CASE WHEN r.publish_date IS NULL THEN 0.5
-                    ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 7.0)
-                 END as recency_score,
-                 // Importance boost
-                 CASE toLower(r.importance) WHEN 'high' THEN 1.2 WHEN 'critical' THEN 1.5 ELSE 1.0 END as importance_multiplier
-            
-            // Combined relevance score
+                 count(DISTINCT t) as topic_count
+
+            // Stage 2: Compute relevance scores from the aggregated data.
+            // Use toString() around any property that may be stored as a non-string type
+            // (e.g. r.importance stored as float 0.6 on legacy nodes would crash toLower()).
             WITH r, topics, organizations, events, people,
-                 (specificity_score * 0.6 + recency_score * 0.4) * importance_multiplier as relevance_score
-            
+
+                 // Topic specificity: fewer topics = more specialist / focused content
+                 CASE WHEN topic_count = 0 THEN 0.5
+                      WHEN topic_count <= 3 THEN 1.0
+                      WHEN topic_count <= 6 THEN 0.8
+                      ELSE 0.6 END as specificity_score,
+
+                 // Recency: 7-day half-life — content >3 weeks old scores near zero
+                 CASE WHEN r.publish_date IS NULL OR r.publish_date IN ['', 'unknown'] THEN 0.3
+                      ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 7.0)
+                 END as recency_score,
+
+                 // Importance multiplier — toString() prevents TypeError when importance is a float
+                 CASE toLower(toString(coalesce(r.importance, '')))
+                      WHEN 'critical' THEN 1.5
+                      WHEN 'high' THEN 1.2
+                      ELSE 1.0 END as importance_multiplier,
+
+                 // Priority topic boost: agent's first 3 topics get 1.25× (e.g. Wi-Fi 8 UHR > MDU)
+                 CASE WHEN $priority_topics IS NOT NULL AND size($priority_topics) > 0
+                           AND EXISTS {
+                               MATCH (r)-[:RELATES_TO]->(pt:Topic)
+                               WHERE any(pt_name IN $priority_topics
+                                     WHERE toLower(toString(pt.name)) = toLower(pt_name))
+                           }
+                      THEN 1.25 ELSE 1.0 END as priority_boost
+
+            // Combined relevance: recency-weighted (0.55) so last-week's WBA workgroup docs
+            // beat older evergreen case studies that score high on specificity alone
+            WITH r, topics, organizations, events, people,
+                 (specificity_score * 0.45 + recency_score * 0.55) * importance_multiplier * priority_boost as relevance_score
+
             ORDER BY relevance_score DESC, r.publish_date DESC
-            
-            RETURN 
+
+            RETURN
                 r.url_hash as id,
                 r.title as title,
                 r.summary as summary,
-                r.publish_date as publish_date,
-                r.last_updated as last_updated,
+                // toString() converts neo4j DateTime to ISO string so Pydantic can serialize it
+                toString(r.publish_date) as publish_date,
+                toString(r.last_updated) as last_updated,
                 r.url as url,
                 r.category as category,
-                r.importance as importance,
+                toString(coalesce(r.importance, '')) as importance,
                 topics,
                 organizations,
                 events,

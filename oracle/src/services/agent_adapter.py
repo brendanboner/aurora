@@ -182,9 +182,10 @@ class AgentRouter:
         if perspective and "upcoming" in perspective.lower():
             return today, today + timedelta(days=90), 90
         
-        # For recent content, look back based on cadence
-        # Use cadence * 1.5 to ensure enough content pool
-        lookback_days = int(cadence_days * 1.5)
+        # For recent content, look back 2× the cadence with a minimum of 14 days.
+        # 1.5× was too tight: a 7-day-cadence agent only looked back 10 days, which
+        # could miss WBA workgroup documents published at the start of the prior week.
+        lookback_days = max(int(cadence_days * 2), 14)
         start_date = today - timedelta(days=lookback_days)
         
         return start_date, today, lookback_days

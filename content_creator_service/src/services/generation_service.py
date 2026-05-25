@@ -61,9 +61,12 @@ class GenerationService:
 
         # Determine time window from agent's cadence or use system default
         cadence_days = agent.cadence_window_days if agent.cadence_window_days else self._settings.temporal_window_days_default
-        
-        # Fetch previously used content IDs for deduplication
-        used_content_ids = self._fetch_used_content_ids(agent.id, lookback_days=cadence_days * 2)
+
+        # Deduplication lookback: 4× cadence, minimum 28 days.
+        # cadence * 2 was too short — a 1-day agent only excluded content from
+        # the past 2 days, causing the same document to re-appear on day 3.
+        dedup_lookback = max(cadence_days * 4, 28)
+        used_content_ids = self._fetch_used_content_ids(agent.id, lookback_days=dedup_lookback)
         
         # Try Oracle-based discovery first
         if self._use_oracle:
@@ -116,7 +119,13 @@ class GenerationService:
                         organisation_scope,
                         cadence_days,
                     )
-                
+                    # Apply URL-based exclusion to the Neo4j fallback results so
+                    # previously used content is not recycled even in the fallback path.
+                    if used_content_ids:
+                        used_set = set(used_content_ids)
+                        events = [e for e in events if e.get("id") not in used_set and e.get("url") not in used_set]
+                        documents = [d for d in documents if d.get("id") not in used_set and d.get("url") not in used_set]
+
             except Exception as e:
                 logger.warning("Oracle discovery failed for agent %s: %s - falling back to Neo4j", agent.name, e)
                 # Fall through to Neo4j fallback
@@ -126,6 +135,11 @@ class GenerationService:
                     organisation_scope,
                     cadence_days,
                 )
+                # Apply URL exclusion in exception fallback path too
+                if used_content_ids:
+                    used_set = set(used_content_ids)
+                    events = [e for e in events if e.get("id") not in used_set and e.get("url") not in used_set]
+                    documents = [d for d in documents if d.get("id") not in used_set and d.get("url") not in used_set]
         else:
             # Direct Neo4j access (legacy path)
             events, documents = self._fetch_from_neo4j(
@@ -198,8 +212,20 @@ class GenerationService:
         if not llm_response:
             logger.warning("LLM generation failed for agent %s - check LLM service connectivity", agent.name)
             return None
-            
+
         logger.info("LLM response for agent %s: keys=%s", agent.name, list(llm_response.keys()) if llm_response else "None")
+
+        # Post-generation similarity guard — if the LLM produced something too close
+        # to a recent post (same headline angle, same core finding), discard it.
+        # This catches the case where Oracle returns 0 new URLs and the LLM recycles
+        # the same narrative from the context hints that were passed as "avoid these".
+        if self._is_duplicate_user_agent_update(llm_response, recent_posts):
+            logger.info(
+                "Skipping near-duplicate post for creator agent %s — overlaps with a recent post; "
+                "content discovery may need a wider window or the cadence is too aggressive.",
+                agent.name,
+            )
+            return None
 
         # Coerce sources from LLM response or fallback to context
         sources = self._coerce_sources(llm_response.get("sources"), events, documents)

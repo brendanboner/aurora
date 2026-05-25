@@ -128,12 +128,14 @@ class Neo4jContextGateway:
                 ELSE 1.0
              END AS match_rate_score,
              
-             // Recency score: exponential decay (30 days half-life)
+             // Recency score: exponential decay (14 days half-life — was 30 days).
+             // Shorter half-life ensures last-week's WBA workgroup docs outrank older
+             // evergreen case studies (e.g. Hamina Wireless) that have high specificity.
              CASE
-                WHEN r.publish_date IS NULL THEN 0.5
-                ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 30.0)
+                WHEN r.publish_date IS NULL OR r.publish_date IN ['', 'unknown'] THEN 0.2
+                ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 14.0)
              END AS recency_score,
-             
+
              // Title match bonus: query topics in title indicate primary focus
              CASE
                 WHEN $has_topics THEN
@@ -141,12 +143,13 @@ class Neo4jContextGateway:
                     toFloat(size($topics))
                 ELSE 0.0
              END AS title_match_score
-        
-        // Weighted relevance score
+
+        // Weighted relevance score — recency raised from 0.2 → 0.35 so fresh content
+        // beats old high-specificity documents in the fallback Neo4j path.
         WITH r, all_topics, all_organisations,
-             (specificity_score * 0.4 + 
-              match_rate_score * 0.3 + 
-              recency_score * 0.2 + 
+             (specificity_score * 0.3 +
+              match_rate_score * 0.25 +
+              recency_score * 0.35 +
               title_match_score * 0.1) AS relevance_score
         
         // Filter by minimum relevance threshold
@@ -301,9 +304,10 @@ class Neo4jContextGateway:
                 ELSE 0.2
              END AS specificity_score,
              
-             // Recency score using effective_date
-             exp(-duration.between(effective_date, datetime()).days / 30.0) AS recency_score,
-             
+             // Recency score: 14-day half-life (was 30 days) so last-week's workgroup
+             // updates rank above month-old case studies in the document fallback path.
+             exp(-duration.between(effective_date, datetime()).days / 14.0) AS recency_score,
+
              // Title match bonus
              CASE
                WHEN $has_orgs AND size($orgs) > 0
@@ -314,10 +318,12 @@ class Neo4jContextGateway:
                       toFloat(size($topics))
                ELSE 0.0
              END AS title_match_score
-        
+
+        // Recency raised from 0.3 → 0.45; specificity cut from 0.5 → 0.35 so fresh
+        // workgroup docs beat older evergreen content in document queries.
         WITH r, effective_date, all_organisations,
-             (specificity_score * 0.5 + 
-              recency_score * 0.3 + 
+             (specificity_score * 0.35 +
+              recency_score * 0.45 +
               title_match_score * 0.2) AS relevance_score
         
         WHERE relevance_score >= $min_relevance_score
