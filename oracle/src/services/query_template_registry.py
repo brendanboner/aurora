@@ -660,30 +660,62 @@ class QueryTemplateRegistry:
              WITH r, effective_date, relevance_bonus, actual_window_days, items_per_group, group_limit, ds, e, t
              ORDER BY relevance_bonus DESC, effective_date DESC
              
-             // Group by datasource
-              WITH coalesce(ds.datasource_id, 'unknown') as workgroup_id,
-                  coalesce(ds.name, 'Unknown Source') as workgroup_name,
+             // Group by datasource — collapse hierarchical sources so a single org
+             // (e.g. WBA Extranet with 30+ communities) competes as ONE group slot
+             // rather than consuming 30 of the 6 available slots.
+             // Rule: if ds.parent_datasource_id is set AND is a known aggregator prefix,
+             // use the parent as the group key; otherwise use the leaf datasource_id.
+              WITH CASE
+                      WHEN ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id <> ''
+                           AND (ds.parent_datasource_id STARTS WITH 'wba_extranet'
+                                OR ds.parent_datasource_id = 'wba_extranet')
+                      THEN ds.parent_datasource_id
+                      ELSE coalesce(ds.datasource_id, 'unknown')
+                   END as workgroup_id,
+                  CASE
+                      WHEN ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id <> ''
+                           AND (ds.parent_datasource_id STARTS WITH 'wba_extranet'
+                                OR ds.parent_datasource_id = 'wba_extranet')
+                      THEN 'WBA Extranet Workgroups'
+                      ELSE coalesce(ds.name, 'Unknown Source')
+                  END as workgroup_name,
+                  // Track original community name for WBA docs so answer can mention specific groups
+                  CASE
+                      WHEN ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id <> ''
+                           AND ds.parent_datasource_id STARTS WITH 'wba_extranet'
+                      THEN coalesce(ds.name, ds.datasource_id)
+                      ELSE null
+                  END as community_name,
                   actual_window_days,
-                  items_per_group,
+                  // Increase items_per_group for aggregated parent groups (more communities → more docs)
+                  CASE
+                      WHEN ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id STARTS WITH 'wba_extranet'
+                      THEN items_per_group * 2
+                      ELSE items_per_group
+                  END as items_per_group,
                   group_limit,
                   collect(DISTINCT e) as all_events,
-                  collect(DISTINCT {resource: r, effective_date: effective_date, relevance_bonus: relevance_bonus}) as all_docs_with_dates,
+                  collect(DISTINCT {resource: r, effective_date: effective_date, relevance_bonus: relevance_bonus, community: coalesce(ds.name, ds.datasource_id)}) as all_docs_with_dates,
                   collect(DISTINCT t.name)[..5] as top_topics
             
             // Skip empty groups
             WHERE size(all_docs_with_dates) > 0 OR size(all_events) > 0
-            
+
             // Calculate last update date using effective dates
              WITH workgroup_id, workgroup_name, actual_window_days, items_per_group, group_limit,
                   all_events, all_docs_with_dates, top_topics,
-                  CASE WHEN size(all_docs_with_dates) > 0 THEN reduce(latest = datetime('1970-01-01'), doc IN all_docs_with_dates | CASE WHEN doc.effective_date > latest THEN doc.effective_date ELSE latest END) ELSE null END as last_update_date
-             
+                  CASE WHEN size(all_docs_with_dates) > 0 THEN reduce(latest = datetime('1970-01-01'), doc IN all_docs_with_dates | CASE WHEN doc.effective_date > latest THEN doc.effective_date ELSE latest END) ELSE null END as last_update_date,
+                  // Collect distinct community names within aggregated parent groups (e.g. WBA workgroup names)
+                  [d IN all_docs_with_dates WHERE d.community IS NOT NULL | d.community][..8] as community_names
+
              WITH
                 workgroup_id,
                 workgroup_name,
                 actual_window_days,
                 top_topics,
                 last_update_date,
+                size(all_docs_with_dates) as total_doc_count,
+                community_names,
                 [event IN all_events[..items_per_group] | {
                     type: 'event',
                     id: event.url_hash,
@@ -698,21 +730,29 @@ class QueryTemplateRegistry:
                     summary: doc.resource.summary,
                     publishDate: toString(doc.effective_date),
                     url: doc.resource.url,
-                    category: doc.resource.category
+                    category: doc.resource.category,
+                    community: doc.community
                 }] as recent_documents,
                 group_limit
             ORDER BY last_update_date DESC
+            // Count total groups before limit — used by the answer generator to tell users
+            // when there is more activity than is shown in this sample.
             WITH collect({
                 workgroup_id: workgroup_id,
                 workgroup_name: workgroup_name,
                 time_window_used: actual_window_days,
                 last_content_date: toString(last_update_date),
                 top_topics: top_topics,
+                total_doc_count: total_doc_count,
+                community_names: community_names,
                 recent_events: recent_events,
                 recent_documents: recent_documents
             }) as grouped_results,
             group_limit
-            WITH grouped_results[..group_limit] as limited_results
+            // total_groups_before_limit lets the answer generator tell users when
+            // there are more active groups than are shown in the sample.
+            WITH grouped_results, group_limit, size(grouped_results) as total_groups_before_limit
+            WITH grouped_results[..group_limit] as limited_results, total_groups_before_limit
             UNWIND limited_results as result
             RETURN
                 result.workgroup_id as workgroup_id,
@@ -720,8 +760,11 @@ class QueryTemplateRegistry:
                 result.time_window_used as time_window_used,
                 result.last_content_date as last_content_date,
                 result.top_topics as top_topics,
+                result.total_doc_count as total_doc_count,
+                result.community_names as community_names,
                 result.recent_events as recent_events,
-                result.recent_documents as recent_documents
+                result.recent_documents as recent_documents,
+                total_groups_before_limit
             """
         )
         

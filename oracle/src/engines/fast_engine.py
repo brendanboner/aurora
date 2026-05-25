@@ -1593,13 +1593,67 @@ class FastEngine:
                 for doc in documents:
                     ds = doc.datasource_id or "Unknown source"
                     datasource_counts[ds] += 1
-                
+
                 # Create summary
                 sorted_datasources = sorted(datasource_counts.items(), key=lambda x: x[1], reverse=True)
                 summary_parts = [f"**Document Distribution:** Total {len(documents)} documents from {len(datasource_counts)} datasources:"]
                 for ds, count in sorted_datasources:
                     summary_parts.append(f"  - {ds}: {count} documents")
                 datasource_summary = "\n".join(summary_parts) + "\n\n"
+
+            # ── Coverage summary for broad recency queries ───────────────────────
+            # For "what is new" / "what happened" queries, the RECENT_CONTENT template
+            # returns a *sample* from the top N groups. The LLM only sees those docs —
+            # it has no idea that dozens of other groups also had activity this week.
+            # We inject a preamble so it can give the user an accurate picture and
+            # tell them where to find more detail.
+            coverage_summary = ""
+            is_broad_recency = bool(re.search(
+                r"(?:"
+                r"what\s+(?:is|are|was|were)\s+new"
+                r"|what.{0,4}(?:happening|latest|recent)"
+                r"|what\s+(?:happened|came\s+out|was\s+released|was\s+published|was\s+updated)"
+                r"|(?:latest|recent|newest)\s+(?:news|updates?|developments?|activity|content|documents?)"
+                r"|this\s+(?:week|month|year)"
+                r"|past\s+(?:week|month|few\s+(?:days|weeks))"
+                r")",
+                request.question.lower()
+            ))
+            if is_broad_recency and route_result.nodes:
+                # Gather group info from the RECENT_CONTENT grouped nodes
+                shown_groups: list[dict] = []
+                total_before_limit: int = 0
+                for node in route_result.nodes:
+                    if "workgroup_name" not in node:
+                        continue
+                    wg_name = node.get("workgroup_name") or node.get("workgroup_id", "?")
+                    doc_count = node.get("total_doc_count", 0) or len(node.get("recent_documents", []))
+                    communities = node.get("community_names") or []
+                    shown_groups.append({
+                        "name": wg_name,
+                        "doc_count": doc_count,
+                        "communities": communities,
+                    })
+                    # total_groups_before_limit is the same for all rows (repeated by UNWIND)
+                    total_before_limit = max(total_before_limit, node.get("total_groups_before_limit") or len(route_result.nodes))
+
+                if shown_groups:
+                    hidden_count = max(0, total_before_limit - len(shown_groups))
+                    parts = ["**COVERAGE NOTE — sources with recent activity (this sample shows the top groups):**"]
+                    for g in shown_groups:
+                        comm = (", ".join(g["communities"][:4]) + ("…" if len(g["communities"]) > 4 else "")) if g["communities"] else ""
+                        comm_note = f" — including: {comm}" if comm else ""
+                        parts.append(f"  • **{g['name']}**: {g['doc_count']} documents{comm_note}")
+                    if hidden_count > 0:
+                        parts.append(
+                            f"  • …and {hidden_count} more group(s) with recent activity not shown in this sample."
+                        )
+                    parts.append(
+                        "\n**INSTRUCTIONS**: In your answer, mention ALL of these groups by name, even if briefly. "
+                        "Give 1–2 sentence highlights per group. End your answer with a hint like: "
+                        "\"For full details from a specific group, ask about @wba, @wfa-causeway, or @ietf.\""
+                    )
+                    coverage_summary = "\n".join(parts)
             
             docs_for_prompt = [
                 {
@@ -1615,12 +1669,24 @@ class FastEngine:
                 for doc in documents[:10]
             ]
             
-            # Add datasource summary to the first doc's summary if it exists
-            if datasource_summary and docs_for_prompt:
+            # Inject coverage summary so the LLM knows about all active groups
+            if coverage_summary:
+                docs_for_prompt.insert(0, {
+                    "title": "📡 Activity Coverage Across Sources",
+                    "summary": coverage_summary,
+                    "publish_date": "",
+                    "temporal_confidence": "high",
+                    "url": "",
+                    "topics": [],
+                    "organizations": [],
+                    "datasource_id": "coverage_metadata",
+                })
+            elif datasource_summary and docs_for_prompt:
                 docs_for_prompt.insert(0, {
                     "title": "📊 Distribution Summary",
                     "summary": datasource_summary.strip(),
                     "publish_date": "",
+                    "temporal_confidence": "high",
                     "url": "",
                     "topics": [],
                     "organizations": [],
