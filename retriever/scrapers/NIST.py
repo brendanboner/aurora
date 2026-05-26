@@ -32,13 +32,20 @@ logger = logging.getLogger(__name__)
 
 _DATASOURCE_CFG: Dict[str, Dict[str, str]] = {
     "nist_sp800": {
+        # Both old (/publications/sp800) and new (/pubs/sp) listing URLs — NIST CSRC
+        # migrated to /pubs/ format in 2024. We use the canonical listing which still
+        # returns all publications, but also recognise /pubs/ in link scanning.
         "listing_url": "https://csrc.nist.gov/publications/sp800",
+        "listing_url_alt": "https://csrc.nist.gov/pubs/sp",
         "detail_base": "https://csrc.nist.gov/publications/detail/sp/",
+        "detail_base_new": "https://csrc.nist.gov/pubs/sp/",  # new URL format
         "label": "SP 800",
     },
     "nist_fips": {
         "listing_url": "https://csrc.nist.gov/publications/fips",
+        "listing_url_alt": "https://csrc.nist.gov/pubs/fips",
         "detail_base": "https://csrc.nist.gov/publications/detail/fips/",
+        "detail_base_new": "https://csrc.nist.gov/pubs/fips/",
         "label": "FIPS",
     },
 }
@@ -197,8 +204,9 @@ class NISTScraper(BaseScraper):
         if not candidates:
             for a in soup.find_all("a", href=True):
                 href = a["href"]
-                # CSRC detail URLs look like /publications/detail/sp/800/207/final
-                if not re.search(r"/publications/detail/", href):
+                # CSRC detail URLs: old format /publications/detail/sp/800/207/final
+                # New format (2024+): /pubs/sp/800/238/final
+                if not re.search(r"/publications/detail/|/pubs/(sp|fips)/", href):
                     continue
                 if not href.startswith("http"):
                     href = urljoin(_BASE_URL, href)
@@ -242,9 +250,22 @@ class NISTScraper(BaseScraper):
         return None
 
     async def _fetch_abstract(self, url: str) -> Optional[str]:
-        """Fetch the publication detail page and return the abstract text."""
+        """Fetch the publication detail page and return the abstract text.
+
+        Handles both old CSRC URL format (/publications/detail/sp/800/N/final)
+        and new format (/pubs/sp/800/N/final) introduced by NIST CSRC in 2024.
+        """
         soup = await self._fetch_page(url)
-        if not soup:
+        # If old-format URL fails, try the equivalent /pubs/ URL
+        if soup is None and "/publications/detail/" in url:
+            alt_url = url.replace(
+                "/publications/detail/sp/", "/pubs/sp/"
+            ).replace(
+                "/publications/detail/fips/", "/pubs/fips/"
+            )
+            logger.debug(f"NIST: retrying abstract with alt URL {alt_url}")
+            soup = await self._fetch_page(alt_url)
+        if soup is None:
             return None
         try:
             # CSRC abstract is usually in a div with id/class containing "abstract"
@@ -252,6 +273,11 @@ class NISTScraper(BaseScraper):
                 soup.find(class_=re.compile(r"abstract", re.I))
             if abstract_el:
                 return abstract_el.get_text(" ", strip=True)[:1000]
+            # New /pubs/ pages use a "pub-abstract" class or similar
+            for cls in ("pub-abstract", "publication-abstract", "summary"):
+                el = soup.find(class_=re.compile(cls, re.I))
+                if el:
+                    return el.get_text(" ", strip=True)[:1000]
             # Fallback: first substantial <p>
             for p in soup.find_all("p"):
                 text = p.get_text(strip=True)
@@ -279,8 +305,11 @@ class NISTScraper(BaseScraper):
         datasource_id = datasource_config.get("datasource_id", "nist_sp800")
         scraper_delay = float(datasource_config.get("scraper_delay", 1.0))
         max_resources = int(datasource_config.get("max_resources", 200))
+        # Increased default from 5 → 20: NIST listings are sorted by SP number
+        # so new publications can appear after several already-known ones. With limit=5
+        # the scraper stopped before reaching newly published documents like SP 800-238.
         consecutive_duplicates_limit = int(
-            datasource_config.get("consecutive_duplicates_limit", 5)
+            datasource_config.get("consecutive_duplicates_limit", 20)
         )
         is_full_refresh = datasource_config.get("is_full_refresh", False)
 
@@ -290,6 +319,7 @@ class NISTScraper(BaseScraper):
 
         cfg = _DATASOURCE_CFG.get(datasource_id, _DATASOURCE_CFG["nist_sp800"])
         listing_url = cfg["listing_url"]
+        listing_url_alt = cfg.get("listing_url_alt")
         label = cfg["label"]
 
         logger.info(f"Starting NISTScraper for {datasource_id} ({listing_url})")
@@ -300,6 +330,14 @@ class NISTScraper(BaseScraper):
         try:
             self.update_heartbeat()
             soup = await self._fetch_page(listing_url)
+
+            # If primary listing fails or returns no candidates, try the alternative
+            # /pubs/ URL that NIST CSRC introduced in 2024
+            candidates_primary = self._parse_listing(soup, datasource_id, label) if soup else []
+            if not candidates_primary and listing_url_alt:
+                logger.info(f"NIST: primary listing empty, trying alt URL {listing_url_alt}")
+                soup = await self._fetch_page(listing_url_alt)
+
             if soup is None:
                 logger.warning(f"NIST: could not fetch listing page {listing_url}")
                 self.end_batch(total_published)
