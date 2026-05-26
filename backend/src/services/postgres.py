@@ -140,29 +140,35 @@ def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) ->
         conn.autocommit = False
         
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # CRITICAL: Update app_users FIRST so the new_id exists before dependent tables reference it
-            # When we UPDATE app_users SET id=new_id WHERE id=old_id:
-            #   - The row's PK changes from old_id to new_id
-            #   - Dependent tables still have old_id in their FK columns (temporarily invalid)
-            # Then we UPDATE dependent tables SET user_id=new_id WHERE user_id=old_id:
-            #   - Finds rows by their current value (old_id)
-            #   - Changes them to new_id
-            #   - FK constraint check verifies new_id exists in app_users (it does)
-            # At COMMIT, all FK constraints are satisfied.
+            # FK constraints in PostgreSQL are IMMEDIATE by default: changing app_users.id
+            # while child rows still reference the old ID raises ForeignKeyViolation instantly.
+            #
+            # Fix: INSERT new row first (both IDs exist) → update children → delete old row.
+            # This keeps FK constraints satisfied at every step.
+
+            # 1. Verify old user exists
+            cur.execute(
+                "SELECT id, email, display_name, created_at FROM app_users WHERE id = %s AND email = %s",
+                (old_id, email)
+            )
+            old_user = cur.fetchone()
+            if not old_user:
+                raise ValueError(f"Failed to migrate user {old_id} — not found or email mismatch")
+
+            # 2. Insert new row with the SSO/new ID (both old and new now exist in app_users)
             cur.execute(
                 """
-                UPDATE app_users 
-                SET id = %s, display_name = COALESCE(%s, display_name), updated_at = NOW()
-                WHERE id = %s AND email = %s
+                INSERT INTO app_users (id, email, display_name, created_at, updated_at)
+                VALUES (%s, %s, COALESCE(%s, %s), %s, NOW())
+                ON CONFLICT (id) DO UPDATE
+                  SET email = EXCLUDED.email,
+                      display_name = COALESCE(EXCLUDED.display_name, app_users.display_name),
+                      updated_at = NOW()
                 RETURNING id, email, display_name, created_at, updated_at
                 """,
-                (new_id, display_name, old_id, email)
+                (new_id, email, display_name, old_user['display_name'], old_user['created_at'])
             )
-            
             user = cur.fetchone()
-            
-            if not user:
-                raise ValueError(f"Failed to migrate user {old_id} - user not found or email mismatch")
             
             # Now update all dependent tables - they still have old_id values
             # The WHERE clause finds them by old_id, SET changes to new_id
@@ -235,6 +241,9 @@ def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) ->
                 (new_id, old_id)
             )
 
+            # 3. Delete the old app_users row — all children now reference new_id so no FK violation
+            cur.execute("DELETE FROM app_users WHERE id = %s", (old_id,))
+
             # Commit the transaction
             conn.commit()
             logger.info(f"Successfully migrated user from {old_id} to {new_id}: "
@@ -290,10 +299,26 @@ def get_or_create_user(
         existing_user = get_user_by_email(email)
         
         if existing_user:
-            # User exists with old ID - update to new Cognito sub claim
+            # User exists with a different internal ID (email-collision / SSO migration).
+            # Instead of re-keying every FK (which breaks with IMMEDIATE constraints),
+            # store the new SSO/Azure OID in the sso_id column so lookups resolve to
+            # the existing stable ID. The user keeps their data — no FK changes needed.
             old_id = existing_user['id']
-            logger.info(f"Migrating user {email} from old ID {old_id} to new Cognito ID {user_id}")
-            user = _migrate_user_id(old_id, user_id, email, display_name)
+            if old_id != user_id:
+                logger.info(
+                    f"SSO link: storing sso_id={user_id} on existing account {old_id} "
+                    f"({email}) — no ID migration required"
+                )
+                try:
+                    execute(
+                        "UPDATE app_users SET sso_id = %s, "
+                        "display_name = COALESCE(%s, display_name), updated_at = NOW() "
+                        "WHERE id = %s",
+                        (user_id, display_name, old_id)
+                    )
+                except Exception as sso_err:
+                    logger.warning(f"Could not set sso_id ({sso_err}), continuing with existing account")
+            user = get_user_by_id(old_id)  # Re-fetch with full row
         else:
             # Create new user in Postgres if doesn't exist
             # Note: create_user has ON CONFLICT handling for race conditions
@@ -431,10 +456,16 @@ def _ensure_user_in_neo4j(user_uuid: str, email: str, full_name: str, given_name
                 logger.warning(f"Failed to close Neo4j connection: {e}")
 
 
-def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:  # Changed from int to str
-    """Get user by Cognito UUID."""
-    query = "SELECT * FROM app_users WHERE id = %s"
-    return fetchone(query, (user_id,))
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Look up user by internal id OR by sso_id (Azure OID set on first SSO login).
+
+    This means: after a user migrates from Cognito to SSO, their internal id stays
+    the same (e.g. e4b864d8-...) but their sso_id is set to the Azure OID
+    (e.g. 74e8a418-...). When the SSO token carries the Azure OID, this lookup
+    finds the right account without changing any FKs.
+    """
+    query = "SELECT * FROM app_users WHERE id = %s OR sso_id = %s"
+    return fetchone(query, (user_id, user_id))
 
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     """Get user by email."""

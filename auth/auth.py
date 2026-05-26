@@ -86,7 +86,7 @@ async def _sync_user_on_login(user_id: str, email: str, display_name: str = None
         family_name: Optional last name
     """
     logger.info(f"Syncing user {user_id} ({email}) to backend")
-    
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
@@ -99,9 +99,17 @@ async def _sync_user_on_login(user_id: str, email: str, display_name: str = None
                     "family_name": family_name
                 }
             )
-            
+
             if response.status_code == 200:
-                logger.info(f"User {user_id} synced successfully to backend")
+                data = response.json()
+                # The backend may return the EXISTING internal user_id if the SSO OID
+                # was linked to a pre-existing account (sso_id mapping). Use that stable
+                # internal ID so all downstream X-User-Id lookups hit the right account.
+                resolved_id = data.get("user_id") or user_id
+                if resolved_id != user_id:
+                    logger.info(f"SSO mapping: Azure OID {user_id} resolved to internal ID {resolved_id}")
+                logger.info(f"User {user_id} synced successfully to backend (internal id={resolved_id})")
+                return resolved_id
             else:
                 logger.warning(
                     f"Failed to sync user {user_id}: "
@@ -110,6 +118,7 @@ async def _sync_user_on_login(user_id: str, email: str, display_name: str = None
     except Exception as e:
         # Don't fail login if backend sync fails - just log it
         logger.error(f"Error syncing user {user_id} to backend: {e}")
+    return user_id  # Fall back to the SSO ID if sync fails
 
 
 @app.get("/")
@@ -329,8 +338,11 @@ async def teams_sso_exchange(request: Request):
 
     logger.info(f"Teams SSO: validated user email={user_info.get('email')}, id={user_info.get('id')}")
 
-    # Sync user to Aurora backend (Postgres + Neo4j)
-    await _sync_user_on_login(
+    # Sync user to Aurora backend (Postgres + Neo4j).
+    # resolved_id is the INTERNAL stable user ID — it may differ from user_info["id"]
+    # (Azure OID) if the user was originally registered via Cognito and their SSO OID
+    # was stored in the sso_id column rather than migrating the primary key.
+    resolved_id = await _sync_user_on_login(
         user_id=user_info["id"],
         email=user_info["email"],
         display_name=user_info.get("display_name"),
@@ -338,9 +350,13 @@ async def teams_sso_exchange(request: Request):
         family_name=user_info.get("family_name"),
     )
 
+    # Store the INTERNAL id (not the Azure OID) in the session so X-User-Id
+    # headers carry the ID that all downstream database tables reference.
+    session_user_info = {**user_info, "id": resolved_id or user_info["id"]}
+
     # Create a session in Redis and return a session cookie
     session_id = secrets.token_urlsafe(32)
-    store_teams_session(session_id, user_info)
+    store_teams_session(session_id, session_user_info)
 
     response = JSONResponse(content={"status": "ok", "email": user_info["email"]})
     response.set_cookie(
