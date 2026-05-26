@@ -330,18 +330,39 @@ def get_or_create_user(
                 logger.error(f"Failed to create user {user_id} ({email}): {e}")
                 raise
     else:
-        # User already exists - update email/display_name if they've changed in Cognito
-        # This handles the case where user changed email in Cognito
+        # User already exists (found by id or sso_id).
+        internal_id = user['id']  # may differ from user_id if found via sso_id lookup
+
         if user['email'] != email or (display_name and user['display_name'] != display_name):
-            logger.info(
-                f"Updating user {user_id}: email {user['email']}->{email}, "
-                f"display_name {user['display_name']}->{display_name}"
-            )
-            # Use create_user which has ON CONFLICT logic to update
-            user = create_user(user_id, email, display_name)
-    
+            if internal_id != user_id:
+                # Found via sso_id — update the existing row using its INTERNAL id.
+                # Do NOT call create_user(user_id, ...) because user_id is the Azure OID
+                # which would try to INSERT a new row and hit the email unique constraint.
+                logger.info(
+                    f"Updating SSO-linked user (internal_id={internal_id}, sso_id={user_id}): "
+                    f"display_name={display_name}"
+                )
+                execute(
+                    "UPDATE app_users SET display_name = COALESCE(%s, display_name), "
+                    "updated_at = NOW() WHERE id = %s",
+                    (display_name, internal_id)
+                )
+                user = get_user_by_id(internal_id)
+            else:
+                logger.info(
+                    f"Updating user {user_id}: email {user['email']}->{email}, "
+                    f"display_name {user['display_name']}->{display_name}"
+                )
+                user = create_user(user_id, email, display_name)
+
     # Always ensure user is synced to Neo4j (function checks if already synced)
-    _ensure_user_in_neo4j(user_id, email, user.get('display_name', display_name), given_name, family_name)
+    _ensure_user_in_neo4j(
+        internal_id if user else user_id,
+        email,
+        user.get('display_name', display_name) if user else display_name,
+        given_name,
+        family_name
+    )
     
     return user
 
