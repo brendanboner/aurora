@@ -693,6 +693,150 @@ class DocumentDigester:
         await self._clear_delivery_attempts(message)
         return True
 
+    async def _try_process_wfa_attendance_xlsx(self, message: Dict[str, Any]) -> bool:
+        """
+        Detect WFA Causeway attendance/vote Excel files and process them without LLM.
+
+        Returns True if this message was handled (caller should return True immediately).
+        Returns False if normal LLM processing should continue.
+
+        Why: These ~300KB cumulative Excel files cause LLM truncation errors. They
+        contain structured data (attendance per person + vote outcomes) that is more
+        accurately and cheaply parsed with openpyxl than with an LLM.
+        """
+        if message.get("message_type") != "resource":
+            return False
+
+        resource_data = message.get("resource_data", {})
+        url = (resource_data.get("url") or "").lower()
+        title = (resource_data.get("title") or "").lower()
+        content_b64 = resource_data.get("content_binary") or resource_data.get("file_content")
+
+        # Only handle xlsx files from WFA Causeway
+        if not url.endswith(".xlsx") and not title.endswith(".xlsx"):
+            return False
+
+        # Only handle attendance/vote files (don't intercept all xlsx)
+        ATTENDANCE_KEYWORDS = {"attendance", "attendee", "participant", "roster",
+                                "vote", "ballot", "motion"}
+        is_attendance = any(kw in title or kw in url for kw in ATTENDANCE_KEYWORDS)
+        if not is_attendance:
+            return False
+
+        # Get raw bytes from Redis — the retriever stores them at binary_content:{url}
+        raw_bytes: Optional[bytes] = None
+        redis_url = resource_data.get("url", "")
+
+        if self.redis_client:
+            try:
+                import base64 as _b64
+                cache_key = f"binary_content:{redis_url}"
+                cached = await asyncio.to_thread(self.redis_client.get, cache_key)
+                if cached:
+                    if isinstance(cached, bytes):
+                        cached = cached.decode("ascii")
+                    raw_bytes = _b64.b64decode(cached)
+                    logger.info(f"WFA XLSX: retrieved {len(raw_bytes):,} bytes for {title}")
+            except Exception as redis_err:
+                logger.warning(f"WFA XLSX: Redis fetch failed for {title}: {redis_err}")
+
+        # Fallback: base64-encoded content stored directly in the message
+        if raw_bytes is None and content_b64:
+            try:
+                import base64 as _b64
+                raw_bytes = _b64.b64decode(content_b64)
+            except Exception:
+                pass
+
+        if raw_bytes is None:
+            logger.info(f"WFA XLSX: no binary content for {title}, falling back to LLM path")
+            return False  # Can't parse without the file bytes
+
+        # Parse the Excel file
+        try:
+            from utils.wfa_attendance_parser import parse_wfa_attendance_xlsx
+            parsed = await asyncio.to_thread(
+                parse_wfa_attendance_xlsx,
+                raw_bytes,
+                resource_data.get("title", "attendance.xlsx"),
+                resource_data.get("url"),
+            )
+        except Exception as parse_err:
+            logger.warning(
+                f"WFA XLSX: parse failed for {title}: {parse_err} — falling back to LLM path"
+            )
+            return False  # Let LLM try as fallback
+
+        summary = parsed.get("summary", "")
+        text = parsed.get("text", "")
+        meeting_date = parsed.get("meeting_date")
+        working_group = parsed.get("working_group")
+        this_count = parsed.get("this_meeting_count", 0)
+        votes = parsed.get("votes", [])
+
+        logger.info(
+            f"WFA XLSX parsed: {title} — {this_count} attendees this meeting, "
+            f"{len(votes)} votes, date={meeting_date}, wg={working_group}"
+        )
+
+        if not summary and this_count == 0:
+            logger.warning(f"WFA XLSX: nothing useful extracted from {title}, falling back to LLM")
+            return False
+
+        # Build a minimal metadata dict to inject into the normal Neo4j write path.
+        # We set the summary directly and skip LLM extraction entirely.
+        resource_data["summary"] = summary
+        resource_data["content"] = text or summary  # for content_hash
+        resource_data["category"] = "attendance_sheet"
+        resource_data["importance"] = "normal"
+        if meeting_date and not resource_data.get("publish_date"):
+            resource_data["publish_date"] = meeting_date
+
+        # Tags: list of companies attending
+        companies = sorted(parsed.get("this_meeting_companies", set()))[:8]
+        tags = list(companies)
+        if working_group:
+            tags.insert(0, working_group)
+        resource_data["topics"] = tags
+
+        # Inject modified resource_data back and continue with Neo4j write
+        message["resource_data"] = resource_data
+        # Signal to skip LLM: inject pre-built metadata
+        message["_attendance_parsed"] = True
+
+        await self.update_current_processing(message, "writing attendance data")
+
+        # Use the normal metadata extraction path — resource_data now has summary/content
+        # pre-filled so the LLM either uses the summary directly or the short content
+        try:
+            metadata = await self.metadata_extractor.extract_metadata(message)
+        except Exception as meta_err:
+            logger.warning(
+                f"WFA XLSX: metadata extraction error after parse ({meta_err}), skipping"
+            )
+            await self.record_skipped(
+                message,
+                f"wfa_xlsx_metadata_build_failed: {meta_err}",
+                stage="wfa_xlsx_fast_path",
+            )
+            await self.clear_current_processing()
+            await self._clear_delivery_attempts(message)
+            return True  # handled (logged as skipped)
+
+        logger.info(f"WFA XLSX: writing to Neo4j: {title}")
+        models = build_models(metadata)
+
+        if models.get("nodes", {}).get("resource") and self.graph_repository:
+            await asyncio.to_thread(self.graph_repository.insert_entities, models)
+
+        await self.record_completed(message, metadata)
+        await self.clear_current_processing()
+        await self._clear_delivery_attempts(message)
+        self.total_messages_processed += 1
+        logger.info(f"✅ WFA XLSX processed without LLM: {title} ({this_count} attendees, {len(votes)} votes)")
+        asyncio.create_task(self._flush_oracle_cache(datasource_id=resource_data.get("datasource_id")))
+        return True  # handled
+
     async def _skip_if_stale(self, message: Dict[str, Any]) -> bool:
         """Skip stale automated scraper items before parsing/insertion.
 
@@ -1415,14 +1559,14 @@ class DocumentDigester:
             file_type = message.get("metadata", {}).get("file_type", "")
             if not file_type:
                 file_type = url.rsplit(".", 1)[-1] if "." in url else ""
-            
+
             logger.info(f"Attempting to retrieve cached content for {url}")
             # Wrap sync doc_parser in thread since it's not async yet
             parsed_content = await asyncio.to_thread(
                 self.doc_parser.retrieve_and_parse,
                 self.redis_client, url, file_type
             )
-            
+
             if parsed_content:
                 logger.info(f"Successfully parsed cached content ({len(parsed_content)} chars)")
                 resource_data["content"] = parsed_content
@@ -1438,8 +1582,22 @@ class DocumentDigester:
         if await self._skip_if_duplicate_content(message):
             return True
 
+        # ── WFA attendance/vote sheet fast path ────────────────────────────────
+        # NOTE: runs AFTER the binary content is retrieved from Redis (above)
+        # so the raw bytes are available at binary_content:{url}
+        # Large WFA Causeway Excel attendance files (~300KB) cause LLM truncation
+        # errors when processed generically. We detect them here and parse the
+        # structured data directly — no LLM needed. This extracts:
+        #   • Who attended THIS meeting (last date column, ~Y/P/R values)
+        #   • Which companies sent representatives
+        #   • Vote records (motion text, result, Yes/No/Abstain %)
+        # The result is stored as a compact Resource summary in Neo4j so oracle
+        # can answer "who attended Wi-Fi 8 meetings?" with real data.
+        if await self._try_process_wfa_attendance_xlsx(message):
+            return True
+
         await self.update_current_processing(message, "extracting metadata")
-        
+
         # CHANGED: await the async metadata extraction
         metadata = await self.metadata_extractor.extract_metadata(message)            
 
