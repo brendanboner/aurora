@@ -68,7 +68,14 @@ export class AuroraUserService {
   }
 
   /**
-   * Sync Teams user to Aurora backend
+   * Sync Teams user to Aurora backend.
+   *
+   * Uses the AAD OID as the user_id when the email is a synthetic @teams.aad address,
+   * so that after SSO migration (where app_users.id = Azure OID) the Teams bot
+   * and web app share the same Aurora identity.
+   *
+   * For real email addresses (resolved via Graph API), the backend's get_or_create_user
+   * logic handles email-collision migration automatically.
    */
   async syncUser(
     email: string,
@@ -77,10 +84,18 @@ export class AuroraUserService {
     familyName?: string
   ): Promise<AuroraUser> {
     try {
-      // Generate a synthetic user_id for Teams users
-      const userId = `teams-${Buffer.from(email).toString('base64').substring(0, 20)}`;
-      
-      console.log(`Syncing user: ${email} (${userId})`);
+      // If this is a synthetic @teams.aad address, the local part IS the Azure OID.
+      // Use it directly so the resulting Aurora user_id matches the SSO-migrated account.
+      let userId: string;
+      if (email.endsWith('@teams.aad')) {
+        userId = email.replace('@teams.aad', '');  // Azure OID — same as post-SSO-migration ID
+        console.log(`[UserService] Syncing via AAD OID as user_id: ${email} (${userId})`);
+      } else {
+        // Real email — let the backend's get_or_create_user handle ID allocation
+        // (it will reuse the existing account found by email, or create a new one)
+        userId = `teams-${Buffer.from(email).toString('base64').substring(0, 20)}`;
+        console.log(`Syncing user: ${email} (${userId})`);
+      }
 
       const response = await this.apiClient.post(
         '/internal/sync-user',
@@ -117,11 +132,31 @@ export class AuroraUserService {
   }
 
   /**
+   * Get Aurora user by their internal ID.
+   */
+  async getUserById(userId: string): Promise<AuroraUser | null> {
+    try {
+      const response = await this.apiClient.get(`/users/${encodeURIComponent(userId)}`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+      return null;
+    }
+  }
+
+  /**
    * Get or create Aurora user from Teams context.
-   * If extractUserEmail() returned an AAD OID placeholder, resolves it via Graph API first.
+   *
+   * Resolution priority for AAD OID placeholders (aad:{oid}):
+   *   1. Look up the OID directly as an Aurora user ID — works after SSO migration
+   *      because the user's Aurora ID becomes their Azure OID on first SSO login.
+   *   2. Try Microsoft Graph API to resolve OID → real email (requires GRAPH_* env vars).
+   *   3. Fall back to a synthetic @teams.aad email (last resort — avoids null user).
+   *
+   * This ensures Teams bot users and web-app SSO users share the same Aurora account
+   * and therefore see the same agents, preferences, memberships, and feed.
    */
   async getOrCreateUser(emailOrAadPlaceholder: string, displayName: string): Promise<AuroraUser> {
-    // Short-circuit with mock user when USE_MOCK_DATA is enabled — avoids any backend call
     if (process.env.USE_MOCK_DATA === 'true') {
       return this.getMockUser(emailOrAadPlaceholder.startsWith('aad:')
         ? `${emailOrAadPlaceholder.substring(4)}@teams.aad`
@@ -130,24 +165,32 @@ export class AuroraUserService {
 
     let email = emailOrAadPlaceholder;
 
-    // Resolve AAD OID placeholder via Graph API
     if (email.startsWith('aad:')) {
       const aadObjectId = email.substring(4);
+
+      // Priority 1: Direct ID lookup — user's Aurora ID IS the Azure OID after SSO migration
+      const userByOid = await this.getUserById(aadObjectId);
+      if (userByOid) {
+        console.log(`[UserService] Resolved AAD OID ${aadObjectId} → Aurora user ${userByOid.email} (direct ID match)`);
+        return userByOid;
+      }
+
+      // Priority 2: Graph API email resolution
       const resolvedEmail = await this.lookupEmailByAadObjectId(aadObjectId);
       if (resolvedEmail) {
         email = resolvedEmail;
-        console.log(`[UserService] Resolved AAD OID ${aadObjectId} → ${email}`);
+        console.log(`[UserService] Resolved AAD OID ${aadObjectId} → ${email} (Graph API)`);
       } else {
-        // Fall back to a stable synthetic identifier so the user still works
+        // Priority 3: Synthetic fallback (last resort — creates a temporary account)
         email = `${aadObjectId}@teams.aad`;
-        console.warn(`[UserService] Using synthetic email for AAD OID ${aadObjectId}: ${email}`);
+        console.warn(`[UserService] Could not resolve AAD OID ${aadObjectId} — using synthetic email. Configure GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET to fix this.`);
       }
     }
 
     let user = await this.getUserByEmail(email);
 
     if (!user) {
-      console.log(`User ${email} not found in Aurora, creating...`);
+      console.log(`[UserService] User ${email} not found in Aurora, creating...`);
       user = await this.syncUser(email, displayName);
     }
 
