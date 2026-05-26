@@ -249,6 +249,81 @@ class NISTScraper(BaseScraper):
                     pass
         return None
 
+    async def _fetch_detail(self, url: str) -> dict:
+        """Fetch the publication detail page and return abstract + publication date.
+
+        Handles both old CSRC URL format (/publications/detail/sp/800/N/final)
+        and new format (/pubs/sp/800/N/final) introduced by NIST CSRC in 2024.
+
+        Returns:
+            dict with 'abstract' (str|None) and 'publish_date' (str|None)
+        """
+        soup = await self._fetch_page(url)
+        # If old-format URL fails, try the equivalent /pubs/ URL
+        if soup is None and "/publications/detail/" in url:
+            alt_url = url.replace(
+                "/publications/detail/sp/", "/pubs/sp/"
+            ).replace(
+                "/publications/detail/fips/", "/pubs/fips/"
+            )
+            logger.debug(f"NIST: retrying detail with alt URL {alt_url}")
+            soup = await self._fetch_page(alt_url)
+        if soup is None:
+            return {"abstract": None, "publish_date": None}
+
+        abstract = None
+        publish_date = None
+
+        try:
+            # --- Abstract -------------------------------------------------------
+            abstract_el = soup.find(id=re.compile(r"abstract", re.I)) or \
+                soup.find(class_=re.compile(r"abstract", re.I))
+            if abstract_el:
+                abstract = abstract_el.get_text(" ", strip=True)[:1000]
+            if not abstract:
+                for cls in ("pub-abstract", "publication-abstract", "summary"):
+                    el = soup.find(class_=re.compile(cls, re.I))
+                    if el:
+                        abstract = el.get_text(" ", strip=True)[:1000]
+                        break
+            if not abstract:
+                for p in soup.find_all("p"):
+                    text = p.get_text(strip=True)
+                    if len(text) > 100:
+                        abstract = text[:1000]
+                        break
+
+            # --- Publication date -----------------------------------------------
+            # CSRC detail pages show "Published: Month DD, YYYY" or "Date Published: ..."
+            page_text = soup.get_text(" ", strip=True)
+            for pat in [
+                r"(?:date\s+published|published)[:\s]+([A-Za-z]+\.?\s+\d{1,2},?\s+\d{4})",
+                r"(?:date\s+published|published)[:\s]+(\d{4}-\d{2}-\d{2})",
+                r"(?:date\s+published|published)[:\s]+(\d{1,2}/\d{4})",
+            ]:
+                m = re.search(pat, page_text, re.I)
+                if m:
+                    try:
+                        publish_date = date_parse(m.group(1)).date().isoformat()
+                        break
+                    except Exception:
+                        pass
+
+            # Look inside <time> tags (newer CSRC pages)
+            if not publish_date:
+                for time_el in soup.find_all("time"):
+                    raw = time_el.get("datetime") or time_el.get_text(strip=True)
+                    try:
+                        publish_date = date_parse(raw).date().isoformat()
+                        break
+                    except Exception:
+                        pass
+
+        except Exception as exc:
+            logger.debug(f"NIST: detail parse error for {url}: {exc}")
+
+        return {"abstract": abstract, "publish_date": publish_date}
+
     async def _fetch_abstract(self, url: str) -> Optional[str]:
         """Fetch the publication detail page and return the abstract text.
 
@@ -393,11 +468,18 @@ class NISTScraper(BaseScraper):
 
                 consecutive_duplicates = 0
 
-                # Fetch abstract for Final publications (most valuable)
+                # Fetch detail page for Final publications (abstract + exact date)
                 content: Optional[str] = None
                 if status == "final":
                     await asyncio.sleep(scraper_delay)
-                    content = await self._fetch_abstract(url)
+                    detail = await self._fetch_detail(url)
+                    content = detail.get("abstract")
+                    # Use the date from the detail page if the listing didn't have one
+                    if not publish_date and detail.get("publish_date"):
+                        publish_date = detail["publish_date"]
+                        logger.debug(
+                            f"NIST: extracted publish_date {publish_date} from detail page for {c['title'][:50]}"
+                        )
 
                 res = Resource(
                     title=c["title"],
