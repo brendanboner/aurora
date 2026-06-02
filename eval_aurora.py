@@ -141,6 +141,9 @@ def pull_neo4j_snapshot() -> dict | None:
         log.warning("NEO4J_PASSWORD not set — skipping KG snapshot")
         return None
     log.info("Connecting to Neo4j at %s", uri)
+    # Label names match the actual production schema: Resource is the content
+    # node (was wrongly queried as :Document before); Agent nodes are populated
+    # by oracle/scripts/sync_agents_to_neo4j.py.
     queries = {
         "total_nodes": "MATCH (n) RETURN COUNT(n) AS v",
         "total_relationships": "MATCH ()-[r]->() RETURN COUNT(r) AS v",
@@ -153,12 +156,14 @@ def pull_neo4j_snapshot() -> dict | None:
             "ORDER BY count DESC"
         ),
         "orphan_nodes": "MATCH (n) WHERE NOT (n)--() RETURN COUNT(n) AS v",
-        "documents": "MATCH (n:Document) RETURN COUNT(n) AS v",
+        "resources": "MATCH (n:Resource) RETURN COUNT(n) AS v",
         "datasources": "MATCH (n:DataSource) RETURN COUNT(n) AS v",
+        "ingestion_batches": "MATCH (n:IngestionBatch) RETURN COUNT(n) AS v",
         "topics": "MATCH (n:Topic) RETURN COUNT(n) AS v",
         "people": "MATCH (n:Person) RETURN COUNT(n) AS v",
         "organizations": "MATCH (n:Organization) RETURN COUNT(n) AS v",
         "events": "MATCH (n:Event) RETURN COUNT(n) AS v",
+        "agents": "MATCH (n:Agent) RETURN COUNT(n) AS v",
     }
     out: dict = {"captured_at": datetime.now(timezone.utc).isoformat()}
     driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -561,7 +566,7 @@ def write_report(
     md.append(f"- **Estimated LLM cost over window:** ${_fmt(est_cost)} (per-query avg ${_fmt(per_query_cost, '.4f')}, see methodology)")
 
     if neo4j:
-        md.append(f"- **KG corpus:** {neo4j.get('total_nodes', '?'):,} nodes / {neo4j.get('total_relationships', '?'):,} relationships; documents={neo4j.get('documents', '?'):,}")
+        md.append(f"- **KG corpus:** {neo4j.get('total_nodes', '?'):,} nodes / {neo4j.get('total_relationships', '?'):,} relationships; resources={neo4j.get('resources', '?'):,}; agents={neo4j.get('agents', '?'):,}")
 
     if judge_summary:
         for p, s in judge_summary.items():
@@ -689,8 +694,8 @@ def write_report(
         md.append("| metric | value |")
         md.append("|---|---|")
         for k in ("total_nodes", "total_relationships", "orphan_nodes",
-                  "documents", "datasources", "topics", "people",
-                  "organizations", "events"):
+                  "resources", "ingestion_batches", "datasources",
+                  "topics", "people", "organizations", "events", "agents"):
             v = neo4j.get(k)
             md.append(f"| {k} | {v:,} |" if isinstance(v, int) else f"| {k} | {v} |")
         md.append("")
