@@ -109,6 +109,7 @@ class RouteId(str, Enum):
     
     # Creator Agents
     AGENT_CONTENT_DISCOVERY = "agent_content_discovery"
+    AGENT_RECENT_CONTENT = "agent_recent_content"  # "what is Kevin's latest news" → posts by the Kevin agent
     
     # IETF-specific routes
     IETF_WG_UPDATES = "ietf_wg_updates"
@@ -204,7 +205,12 @@ class RoutePlan(BaseModel):
         default_factory=list,
         description="Person names or IDs"
     )
-    
+
+    agents: List[str] = Field(
+        default_factory=list,
+        description="Content-creator agent names (mirrored from creator_agent table as :Agent nodes)"
+    )
+
     category: Optional[str] = Field(
         default=None,
         description="Document category filter (press release, whitepaper, article, blog, newsletter, technical specification)"
@@ -264,7 +270,27 @@ class RoutePlan(BaseModel):
         default="",
         description="Original user query for context"
     )
-    
+
+    # Entity-existence guard (set by fast_engine after running ENTITY_EXISTS_PRECHECK).
+    # When the user asks about a specific entity (Person/Organization/Topic) that the
+    # graph doesn't contain, the fast pipeline short-circuits with a "did you mean"
+    # response rather than running a Cypher template that would surface tangentially-
+    # related content with high confidence.
+    entity_missing: bool = Field(
+        default=False,
+        description="True when the named entity was not found in the graph"
+    )
+
+    entity_suggestions: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="Fuzzy-matched candidate entities to suggest, each {name, label}"
+    )
+
+    match_quality: Optional[str] = Field(
+        default=None,
+        description="How the entity matched: 'exact', 'fuzzy', or 'missing'"
+    )
+
     class Config:
         """Pydantic config."""
         use_enum_values = True
