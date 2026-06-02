@@ -563,19 +563,37 @@ class FastEngine:
                 cache_bypass_reason=cache_bypass_reason,
             )
             
-            # Composite confidence: routing quality + result coverage + temporal quality
-            doc_count = len(documents)
-            result_count_factor = min(doc_count / 5.0, 1.0) if doc_count > 0 else 0.0
-            temporal_factor = (
-                sum(1 for d in documents if d.publish_date) / doc_count
-                if doc_count > 0 else 0.0
-            )
-            fast_confidence = round(
-                plan.confidence * 0.4
-                + result_count_factor * 0.4
-                + temporal_factor * 0.2,
-                3,
-            )
+            # Composite confidence:
+            #   - routing quality (plan.confidence) — how specific the route pattern was
+            #   - result coverage — did we get enough docs back
+            #   - temporal quality — do those docs have valid dates
+            #   - match quality — did the named entity actually exist in the graph
+            #     (exact / fuzzy / missing). This last term is what stops the fast
+            #     pipeline from reporting high confidence on tangentially-related
+            #     fuzzy-text matches when the user named an entity not in the KG.
+            if getattr(plan, "entity_missing", False):
+                # "Did you mean" response. Calibrate confidence low so the UI signals
+                # uncertainty even though the answer was produced quickly.
+                fast_confidence = 0.2
+            else:
+                doc_count = len(documents)
+                result_count_factor = min(doc_count / 5.0, 1.0) if doc_count > 0 else 0.0
+                temporal_factor = (
+                    sum(1 for d in documents if d.publish_date) / doc_count
+                    if doc_count > 0 else 0.0
+                )
+                match_quality_factor = {
+                    "exact": 1.0,
+                    "fuzzy": 0.5,
+                    "missing": 0.0,
+                }.get(getattr(plan, "match_quality", None) or "exact", 1.0)
+                fast_confidence = round(
+                    plan.confidence * 0.3
+                    + result_count_factor * 0.3
+                    + temporal_factor * 0.1
+                    + match_quality_factor * 0.3,
+                    3,
+                )
 
             response = QueryResponse(
                 query_id=str(query_id),
@@ -636,6 +654,110 @@ class FastEngine:
     def _get_route_id_str(self, plan: RoutePlan) -> str:
         """Safely get route_id as string (handles both enum and string from cache)."""
         return plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
+
+    # Route IDs whose Cypher templates look up a specific named entity.
+    # When one of these fires, _retrieve_neo4j_data runs the entity-existence
+    # precheck and short-circuits with a "did you mean" response if the named
+    # entity isn't in the graph. DOCUMENTS_BY_TOPIC is intentionally NOT in
+    # this list — its fuzzy text fallback is already gated by the 0.4 penalty
+    # in the Cypher template.
+    _ENTITY_PRECHECK_ROUTES = frozenset({
+        RouteId.PERSON_PROFILE,
+        RouteId.PERSON_ACTIVITY,
+        RouteId.PERSON_AT_EVENT,
+        RouteId.PERSON_CONTRIBUTIONS,
+        RouteId.ORGANIZATION_ACTIVITY,
+        RouteId.ORGANIZATION_REPRESENTATIVES,
+        RouteId.WORKGROUP_RECENT_UPDATES,
+        RouteId.WORKGROUP_MONTHLY_SUMMARY,
+        RouteId.MEETING_BY_TITLE,
+        RouteId.TOPIC_TIMELINE,
+        RouteId.TOPIC_RELATIONSHIPS,
+    })
+
+    def _should_run_entity_precheck(self, plan: RoutePlan) -> bool:
+        """Decide whether to precheck entity existence before running the template.
+
+        Skip if the plan came from an explicit @mention (the datasource id is
+        already authoritative and shouldn't be second-guessed).
+        """
+        if getattr(plan, "explicit_datasource_filter", False):
+            return False
+        route_id = plan.route_id if isinstance(plan.route_id, RouteId) else None
+        if route_id is None:
+            try:
+                route_id = RouteId(self._get_route_id_str(plan))
+            except ValueError:
+                return False
+        if route_id not in self._ENTITY_PRECHECK_ROUTES:
+            return False
+        return bool(plan.people or plan.organizations or plan.workgroups or plan.topics)
+
+    def _pick_entity_for_precheck(self, plan: RoutePlan) -> Optional[str]:
+        """Pick the single most-specific named entity from a plan to precheck.
+
+        Order: people > organizations > workgroups > topics. Returns the first
+        non-empty string entry from the highest-priority list.
+        """
+        for bucket in (plan.people, plan.organizations, plan.workgroups, plan.topics):
+            for entry in bucket or []:
+                if entry and isinstance(entry, str) and entry.strip():
+                    return entry.strip()
+        return None
+
+    @staticmethod
+    def _compose_entity_missing_answer(
+        entity: str,
+        suggestions: List[Dict[str, str]],
+    ) -> str:
+        """Build a templated 'did you mean' response.
+
+        No LLM call — pure string formatting. Streams instantly through the
+        existing /query/stream endpoint because the chunker just splits this
+        text into tokens.
+        """
+        # Deduplicate suggestions by name, preserving order, cap at 5.
+        seen, deduped = set(), []
+        for s in suggestions or []:
+            name = (s or {}).get("name") if isinstance(s, dict) else None
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            deduped.append(s)
+            if len(deduped) >= 5:
+                break
+
+        lines = [
+            f"I don't have specific information about \"{entity}\" in the knowledge graph yet.",
+        ]
+        if deduped:
+            label_map = {
+                "Person": "person",
+                "Organization": "organization",
+                "Topic": "topic",
+                "DataSource": "workgroup",
+            }
+            suggestion_strs = []
+            for s in deduped:
+                name = s.get("name", "")
+                label = label_map.get(s.get("label", ""), "entity")
+                suggestion_strs.append(f"**{name}** ({label})")
+            lines.append("")
+            if len(suggestion_strs) == 1:
+                lines.append(f"Did you mean {suggestion_strs[0]}?")
+            else:
+                lines.append("Did you mean one of these?")
+                lines.append("")
+                for s in suggestion_strs:
+                    lines.append(f"- {s}")
+        else:
+            lines.append("")
+            lines.append(
+                "I couldn't find any similar names either. You might try rephrasing "
+                "or asking about a broader topic the system tracks (Wi-Fi standards, "
+                "WBA programmes, IEEE 802.11 task groups, recent meetings)."
+            )
+        return "\n".join(lines)
     
     async def _route_query(
         self,
@@ -880,10 +1002,43 @@ class FastEngine:
         """Retrieve data from Neo4j using Cypher templates."""
         # Get template for route
         template = self.template_registry.get_template(plan.route_id)
-        
+
         if not template:
             raise Exception(f"No template found for route: {self._get_route_id_str(plan)}")
-        
+
+        # Entity-existence guard: when the route plan targets a specific named
+        # person/organization/workgroup (Person, Organization, DataSource node),
+        # check that the entity actually exists in the graph before running the
+        # main template. This addresses the failure mode where a query like
+        # "Kevin's latest news" routed to PERSON_PROFILE returns confidently
+        # incorrect content about a Person that's NOT in the graph because the
+        # template's fuzzy/CONTAINS fallback matches any document mentioning
+        # "Kevin" anywhere in its text.
+        if self._should_run_entity_precheck(plan):
+            entity = self._pick_entity_for_precheck(plan)
+            if entity:
+                from src.services.query_template_registry import run_entity_precheck
+                repo = get_repo()
+                pre = run_entity_precheck(repo.client, entity)
+                if not pre.get("exists"):
+                    plan.entity_missing = True
+                    plan.entity_suggestions = pre.get("suggestions", [])
+                    plan.match_quality = "missing"
+                    logger.info(
+                        f"entity '{entity}' not found in graph; short-circuiting with "
+                        f"{len(plan.entity_suggestions)} suggestions"
+                    )
+                    retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
+                    return RouteResult(
+                        route_id=plan.route_id,
+                        nodes=[],
+                        rollup=None,
+                        execution_time_ms=retrieval_time_ms,
+                        node_count=0,
+                        cache_hit=False,
+                    ), retrieval_time_ms
+                plan.match_quality = "exact"
+
         # Build Cypher parameters
         params = template.build_params(plan)
         
@@ -1312,7 +1467,7 @@ class FastEngine:
             if cached_answer_data:
                 answer_time_ms = int((time.time() - answer_start) * 1000)
                 logger.info("Answer cache hit")
-                
+
                 return (
                     cached_answer_data["answer"],
                     [Document(**d) for d in cached_answer_data["documents"]],
@@ -1321,7 +1476,23 @@ class FastEngine:
                     True,
                     None,
                 )
-            
+
+            # Entity-missing short-circuit: when the precheck found that the
+            # named entity (Person/Organization/DataSource/Topic) isn't in the
+            # graph, return a templated "did you mean" response instead of
+            # synthesising a confident wrong answer. No LLM call; streams
+            # essentially instantly. Skips the answer cache deliberately so a
+            # later ingest of the missing entity doesn't keep serving stale
+            # "we don't have info" replies.
+            if getattr(plan, "entity_missing", False):
+                entity = self._pick_entity_for_precheck(plan) or "that"
+                answer = self._compose_entity_missing_answer(
+                    entity=entity,
+                    suggestions=plan.entity_suggestions or [],
+                )
+                answer_time_ms = int((time.time() - answer_start) * 1000)
+                return answer, [], [], answer_time_ms, False, "entity_missing"
+
             # Compose answer based on detail level and availability
             if plan.detail_level == DetailLevel.BRIEF and route_result.rollup:
                 answer, documents, citations = self._compose_from_rollup(

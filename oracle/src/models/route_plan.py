@@ -264,7 +264,27 @@ class RoutePlan(BaseModel):
         default="",
         description="Original user query for context"
     )
-    
+
+    # Entity-existence guard (set by fast_engine after running ENTITY_EXISTS_PRECHECK).
+    # When the user asks about a specific entity (Person/Organization/Topic) that the
+    # graph doesn't contain, the fast pipeline short-circuits with a "did you mean"
+    # response rather than running a Cypher template that would surface tangentially-
+    # related content with high confidence.
+    entity_missing: bool = Field(
+        default=False,
+        description="True when the named entity was not found in the graph"
+    )
+
+    entity_suggestions: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="Fuzzy-matched candidate entities to suggest, each {name, label}"
+    )
+
+    match_quality: Optional[str] = Field(
+        default=None,
+        description="How the entity matched: 'exact', 'fuzzy', or 'missing'"
+    )
+
     class Config:
         """Pydantic config."""
         use_enum_values = True

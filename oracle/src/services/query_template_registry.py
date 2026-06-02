@@ -29,6 +29,64 @@ from src.settings import settings
 logger = logging.getLogger(__name__)
 
 
+# ENTITY_EXISTS_PRECHECK_CYPHER — single batched query the fast pipeline runs before
+# executing an entity-focused template. Returns exact-match status AND up to 5 fuzzy
+# suggestions in one Neo4j round-trip so the system can short-circuit confidently-wrong
+# answers with a "did you mean" response. Indexed by Topic.name / Person.name /
+# Organization.name; bounded by LIMIT 5 on the suggestion scan.
+ENTITY_EXISTS_PRECHECK_CYPHER = """
+WITH toLower($entity) AS query, $entity AS raw_entity
+OPTIONAL MATCH (exact)
+  WHERE (exact:Person OR exact:Organization OR exact:Topic OR exact:DataSource)
+    AND toLower(coalesce(exact.name, '')) = query
+WITH query, raw_entity,
+     collect(DISTINCT {name: exact.name, label: head(labels(exact))}) AS exact_matches
+CALL {
+  WITH query
+  MATCH (n)
+  WHERE (n:Person OR n:Organization OR n:Topic OR n:DataSource)
+    AND n.name IS NOT NULL
+    AND toLower(n.name) <> query
+    AND (toLower(n.name) CONTAINS query OR query CONTAINS toLower(n.name))
+  WITH n.name AS name, head(labels(n)) AS label
+  RETURN collect(DISTINCT {name: name, label: label})[..5] AS suggestions
+}
+RETURN
+  raw_entity AS entity,
+  [m IN exact_matches WHERE m.name IS NOT NULL] AS exact,
+  suggestions
+"""
+
+
+def run_entity_precheck(neo4j_client, entity: str) -> Dict[str, Any]:
+    """Run ENTITY_EXISTS_PRECHECK_CYPHER for a single entity name.
+
+    Returns: {"entity": <input>, "exists": <bool>, "exact": [...], "suggestions": [...]}.
+
+    The returned dict is safe to attach to a RoutePlan as `entity_missing` /
+    `entity_suggestions`. On any failure the function returns ``{"exists": True}``
+    so the caller falls through to the normal template path rather than blocking.
+    """
+    if not entity or not entity.strip():
+        return {"entity": entity, "exists": True, "exact": [], "suggestions": []}
+    try:
+        rows = neo4j_client.execute_query(ENTITY_EXISTS_PRECHECK_CYPHER, {"entity": entity})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("entity precheck failed for %r, falling through: %s", entity, exc)
+        return {"entity": entity, "exists": True, "exact": [], "suggestions": []}
+    if not rows:
+        return {"entity": entity, "exists": False, "exact": [], "suggestions": []}
+    row = rows[0]
+    exact = row.get("exact") or []
+    suggestions = row.get("suggestions") or []
+    return {
+        "entity": entity,
+        "exists": bool(exact),
+        "exact": exact,
+        "suggestions": suggestions,
+    }
+
+
 class QueryTemplate:
     """
     A Cypher query template with parameters and post-processing.
@@ -1614,12 +1672,16 @@ class QueryTemplateRegistry:
             WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost, title_match_boost,
                  CASE WHEN effective_date >= datetime() - duration({days: 180}) THEN 1.2 WHEN effective_date >= datetime() - duration({days: 365}) THEN 1.1 WHEN effective_date >= datetime() - duration({days: 730}) THEN 1.0 ELSE 0.9 END as recency_score
             
-            // Apply match type penalty (fuzzy matches rank slightly lower)
+            // Apply match type penalty. Fuzzy matches scan the title/summary text for any
+            // mention of the term — they're prone to false positives (e.g. searching for the
+            // entity "Kevin" surfacing any document mentioning "Kevin" in passing). The
+            // stronger 0.4 penalty pushes fuzzy hits below the high-confidence threshold the
+            // UI uses, so the system signals uncertainty when it's actually uncertain.
             WITH r, effective_date, base_relevance, stance, topic_name, match_type, topic_count, specificity_score, stance_boost, content_type_boost, recency_score, title_match_boost,
                  CASE match_type
                    WHEN 'exact' THEN 1.0
-                   WHEN 'fuzzy' THEN 0.8
-                   ELSE 0.7
+                   WHEN 'fuzzy' THEN 0.4
+                   ELSE 0.3
                  END as match_type_penalty
             
             // Calculate final KG relevance score (increased weight for title match and content_type)
@@ -1669,13 +1731,17 @@ class QueryTemplateRegistry:
                 all_topic_names as topics,
                 org_names as organizations,
                 topic_name as matched_topic,
-                round(normalized_kg_score * 100) / 100.0 as relevance_score,
+                // Clamp relevance_score to [0, 1] to satisfy the QueryResponse pydantic
+                // validator (kg_score components can sum above 2.0 with all boosts active).
+                CASE WHEN normalized_kg_score > 1.0 THEN 1.0
+                     WHEN normalized_kg_score < 0.0 THEN 0.0
+                     ELSE round(normalized_kg_score * 100) / 100.0 END as relevance_score,
                 topic_count as topic_breadth,
                 match_type
             LIMIT $limit
             """
         )
-        
+
         # RECENT_PUBLICATIONS - recent documents/publications
         self.templates[RouteId.RECENT_PUBLICATIONS] = QueryTemplate(
             route_id=RouteId.RECENT_PUBLICATIONS,
