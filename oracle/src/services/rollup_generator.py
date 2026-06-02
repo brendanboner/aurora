@@ -718,7 +718,10 @@ class RollupGenerator:
             event_names = [e["name"] for e in events[:3]]
             lines.append(f"Key events: {', '.join(event_names)}.")
 
-        # Document titles and available summaries
+        # Document titles and available summaries. Wrap each title in a markdown
+        # link when a URL is available so users can click through directly from
+        # the chat — previously titles rendered as plain bold text and users
+        # had to scroll the citations panel to navigate.
         doc_lines = []
         for d in docs[:8]:
             title = (d.get("title") or "").strip()
@@ -727,8 +730,12 @@ class RollupGenerator:
             doc_type = d.get("doc_type") or d.get("category") or ""
             date_str = d.get("publish_date") or ""
             summary = (d.get("summary") or "").strip()
+            url = (d.get("url") or "").strip()
 
-            entry = f"- **{title}**"
+            # Escape any ']' in the title so it doesn't break the markdown link.
+            safe_title = title.replace("]", r"\]")
+            title_md = f"[{safe_title}]({url})" if url else safe_title
+            entry = f"- **{title_md}**"
             if date_str:
                 entry += f" ({date_str})"
             if doc_type:
