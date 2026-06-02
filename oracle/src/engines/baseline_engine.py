@@ -483,13 +483,21 @@ class BaselineEngine:
             
             # Build metadata object
             from src.models.response import RetrievalMetadata
+            # Token accounting: surface the LLM tokens used by the answer
+            # synthesis step so they flow through to oracle_query_history.
+            # Earlier this was hardcoded to None — the eval (2026-06-02) showed
+            # baseline rows reporting null token counts despite real LLM cost.
+            llm_tokens_used: Optional[int] = None
+            if "answer_result" in locals() and answer_result is not None:
+                llm_tokens_used = getattr(answer_result, "tokens_used", None)
+
             metadata = RetrievalMetadata(
                 intent=intent,
                 intent_confidence=intent_confidence,
                 strategies_used=strategies_used,
                 total_candidates=len(documents),
                 processing_time_ms=processing_time_ms,
-                llm_tokens_used=None
+                llm_tokens_used=llm_tokens_used,
             )
             
             response = QueryResponse(
