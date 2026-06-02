@@ -496,6 +496,26 @@ async def get_user(user_id: str, user: Optional[dict] = Depends(get_user_context
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/users/by-aad/{aad_object_id}", response_model=UserResponse)
+@require_user_context
+async def get_user_by_aad_object_id_route(
+    aad_object_id: str, user: Optional[dict] = Depends(get_user_context)
+):
+    """Look up an Aurora user by their Microsoft Graph Object ID.
+
+    Returns 404 if no user has claimed this OID yet. The Teams bot calls this
+    first when resolving activity.from.aadObjectId so it can find the real
+    SSO-migrated account without depending on Graph API (which currently 403s
+    due to missing User.Read.All permission on the app registration).
+    """
+    user_data = postgres.get_user_by_aad_object_id(aad_object_id)
+    if not user_data:
+        raise HTTPException(status_code=404, detail="No user with that aad_object_id")
+    if user_data["id"] != user["user_id"] and user["role"] not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return UserResponse(**user_data)
+
+
 @app.get("/users/email/{email}", response_model=UserResponse)
 @require_user_context
 async def get_user_by_email(email: str, user: Optional[dict] = Depends(get_user_context)):

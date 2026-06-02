@@ -24,15 +24,6 @@ function canonicalSlug(raw: string): string {
   return `aurora-${s}`;
 }
 
-// Keywords that indicate a message is about Wi-Fi / standards topics Aurora can help with
-const AURORA_TOPIC_RE = /\b(wi-?fi|802\.1[01356]|ieee|ietf|wba|wfa|5g|6g|spectrum|standard|amendment|certification|handover|roaming|tgbn|802\.11bn|wi-fi\s*8|wi-?fi\s*7|mlr?o|ofdma|qos|latency|throughput|passpoint|openroaming|tsn|pqc|post.quantum|ambient.power|ultra.high.reliability)\b/i;
-
-// Question patterns (the message is asking something, not just stating)
-const QUESTION_RE = /(\?$|^(do|does|did|can|will|would|should|is|are|was|were|has|have|had|what|when|where|who|why|how)\b)/i;
-
-// Demo: conversations that have opted into group-simulation mode (for Agents Playground)
-const groupModeConversations = new Set<string>();
-
 // Commands that set a conversation-scoped default agent
 const SET_CHANNEL_AGENT_RE = /^setChannelAgent\s+@?(?:aurora-)?([\w-]+)$/i;
 const CLEAR_CHANNEL_AGENT_RE = /^(clearChannelAgent|clear|reset|general|exit)$/i;
@@ -67,7 +58,7 @@ export class AuroraBot extends TeamsActivityHandler {
       // Also strip plain-text bot name prefixes that Agents Playground may inject
       const rawText = context.activity.text?.trim() || '';
       let text = rawText.replace(/<at>[^<]*<\/at>/gi, '').trim();
-      // Strip plain-text bot mention prefix (e.g. "Test Bot groupmode on" → "groupmode on")
+      // Strip plain-text bot mention prefix (e.g. "Test Bot my agents" → "my agents")
       const botName = (context.activity.recipient?.name || '').trim();
       if (botName && text.toLowerCase().startsWith(botName.toLowerCase())) {
         text = text.slice(botName.length).trim();
@@ -86,22 +77,12 @@ export class AuroraBot extends TeamsActivityHandler {
         const convId = context.activity.conversation.id;
 
         // ── EXPLICIT COMMANDS — checked first, always override any agent scope ──
-        // clear / reset / exit — escape from any scoped workgroup context
+        // clear / reset / exit — escape from any scoped workgroup context.
+        // (The "groupmode" command was removed — it was a test-only artifact for
+        // the Agents Playground tunnel and never worked in production Teams.)
         if (CLEAR_CHANNEL_AGENT_RE.test(lower)) {
           await conversationReferenceStore.setDefaultAgent(convId, null);
-          groupModeConversations.delete(convId);
           await context.sendActivity('Cleared. Back to general questions.');
-        }
-        // groupmode on / off — accept "groupmode on", "group mode on", "groupmode", etc.
-        else if (/^group\s*mode\s*(on|true|enable|1)?$/i.test(lower)) {
-          groupModeConversations.add(convId);
-          await context.sendActivity(
-            'Group mode on.\n\nAurora will now watch for Wi-Fi and standards questions in this conversation and add context automatically — no @mention needed.\n\nType a question about Wi-Fi 8, handover, 802.11bn etc.\nType `groupmode off` or `clear` to turn off.'
-          );
-        }
-        else if (/^group\s*mode\s*(off|false|disable|0)$/i.test(lower)) {
-          groupModeConversations.delete(convId);
-          await context.sendActivity('Group mode off.');
         }
         // ── Agent slug routing: @<slug> or @aurora-<slug> + question ──────
         else if (text.match(AGENT_SLUG_RE)) {
@@ -274,26 +255,10 @@ export class AuroraBot extends TeamsActivityHandler {
             // Remind user how to exit the scoped context (shown once per message)
             // Note: hint is subtle — appended only if answer was short/empty to avoid noise
           } else {
-            // ── Routing for group vs personal ──────────────────────────────
-            // Direct @mention (group or personal) → full answer, always.
-            // groupmode passive listening (no @mention) → brief context snippet.
-            const convType = context.activity.conversation?.conversationType ?? 'personal';
-            // Direct mention: <at> tags (real Teams) OR plain @Aurora (Agents Playground)
-            const wasDirectlyMentioned = rawText.includes('<at>') ||
-              /^@aurora\b/i.test(rawText.trim()) ||
-              (botName && rawText.trim().toLowerCase().startsWith(botName.toLowerCase()));
-            const isPassiveGroupMode = groupModeConversations.has(convId) && !wasDirectlyMentioned;
-
-            if (isPassiveGroupMode) {
-              // Passive group mode: only respond if it's a standards/Wi-Fi question
-              if (QUESTION_RE.test(text) && AURORA_TOPIC_RE.test(text)) {
-                await this.chatHandler.handleGroupContextQuestion(context, text);
-              }
-              // Otherwise: completely silent — don't respond to off-topic messages
-            } else {
-              // Directly addressed (personal chat or @mention in group) — full answer
-              await this.chatHandler.handleQuestion(context, text);
-            }
+            // Personal chat or direct @mention in a group: produce a full answer.
+            // (Passive "groupmode" listening was removed — it was test-only and
+            // surfaced too many off-topic answers in shared channels.)
+            await this.chatHandler.handleQuestion(context, text);
           }
         }
       } catch (error: any) {
@@ -426,15 +391,6 @@ export class AuroraBot extends TeamsActivityHandler {
             { title: '@slug question', value: 'Ask a specific agent — e.g. @ietf What is new?' },
             { title: 'setChannelAgent @slug', value: 'Lock this channel to one agent' },
             { title: 'clearChannelAgent', value: 'Remove the channel lock' },
-          ],
-        },
-        // Group mode
-        { type: 'TextBlock', text: 'Group Channel Mode', weight: 'Bolder', separator: true, spacing: 'Medium' },
-        {
-          type: 'FactSet',
-          facts: [
-            { title: 'groupmode on', value: 'Aurora monitors for Wi-Fi and standards questions and adds context' },
-            { title: 'groupmode off', value: 'Back to direct-query mode' },
           ],
         },
         // Proactive

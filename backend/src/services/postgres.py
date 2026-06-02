@@ -478,15 +478,44 @@ def _ensure_user_in_neo4j(user_uuid: str, email: str, full_name: str, given_name
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
-    """Look up user by internal id OR by sso_id (Azure OID set on first SSO login).
+    """Look up user by internal id OR by sso_id OR by aad_object_id.
 
-    This means: after a user migrates from Cognito to SSO, their internal id stays
-    the same (e.g. e4b864d8-...) but their sso_id is set to the Azure OID
-    (e.g. 74e8a418-...). When the SSO token carries the Azure OID, this lookup
-    finds the right account without changing any FKs.
+    Aurora users carry up to three identifiers post-SSO migration:
+      - `id`            original Cognito UUID (FK target — stable)
+      - `sso_id`        Cognito-issued sub claim on the SSO-federated login
+      - `aad_object_id` Microsoft Graph Object ID (what Teams sends as activity.from.aadObjectId)
+
+    All three resolve to the same row so any token format the front-of-stack
+    happens to carry (web SSO / Teams bot) finds the same account.
     """
-    query = "SELECT * FROM app_users WHERE id = %s OR sso_id = %s"
-    return fetchone(query, (user_id, user_id))
+    query = (
+        "SELECT * FROM app_users "
+        "WHERE id = %s OR sso_id = %s OR aad_object_id = %s"
+    )
+    return fetchone(query, (user_id, user_id, user_id))
+
+
+def get_user_by_aad_object_id(aad_object_id: str) -> Optional[Dict[str, Any]]:
+    """Look up the Aurora account associated with a Microsoft Graph Object ID.
+
+    Used by the Teams bot when activity.from.aadObjectId is the only identity
+    signal available. Falls back to None if no user has claimed this OID; the
+    bot is then responsible for the synthetic-account flow.
+    """
+    query = "SELECT * FROM app_users WHERE aad_object_id = %s"
+    return fetchone(query, (aad_object_id,))
+
+
+def set_user_aad_object_id(user_id: str, aad_object_id: str) -> None:
+    """Auto-claim: record the AAD OID on a user's row so future Teams logins
+    skip Graph API and the synthetic-account fallback. No-op if already set.
+    """
+    execute(
+        "UPDATE app_users SET aad_object_id = %s, updated_at = NOW() "
+        "WHERE id = %s AND aad_object_id IS NULL",
+        (aad_object_id, user_id),
+    )
+
 
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     """Get user by email."""
