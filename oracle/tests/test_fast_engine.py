@@ -204,11 +204,12 @@ async def test_compose_with_llm_falls_back_when_llm_returns_empty():
 
     mock_response = MagicMock()
     mock_response.content = ""
+    mock_response.tokens_used = 17  # tokens still get spent on an empty LLM call
 
     with patch("src.engines.fast_engine.get_llm_client", return_value=MagicMock()), patch(
         "src.engines.fast_engine.call_llm", new_callable=AsyncMock, return_value=mock_response
     ):
-        answer, documents, citations = await engine._compose_with_llm(
+        answer, documents, citations, tokens_used = await engine._compose_with_llm(
             RoutePlan(route_id=RouteId.RECENT_CONTENT, raw_query=request.question),
             route_result,
             None,
@@ -219,6 +220,57 @@ async def test_compose_with_llm_falls_back_when_llm_returns_empty():
     assert answer.startswith("Found 1 relevant items:")
     assert len(documents) == 1
     assert len(citations) == 1
+    # Empty-LLM-response branch still surfaces tokens spent on the (empty) call.
+    assert tokens_used == 17
+
+
+@pytest.mark.asyncio
+async def test_compose_with_llm_returns_tokens_from_successful_call():
+    """Token count from the LLM response must bubble out of _compose_with_llm."""
+    engine = _build_engine()
+
+    route_result = RouteResult(
+        route_id=RouteId.RECENT_CONTENT,
+        nodes=[
+            {
+                "workgroup_name": "Wi-Fi",
+                "recent_documents": [
+                    {
+                        "title": "Doc",
+                        "summary": "Doc summary",
+                        "url": "https://example.com/doc",
+                        "url_hash": "h1",
+                        "publish_date": "2026-05-31",
+                    }
+                ],
+                "total_doc_count": 1,
+            }
+        ],
+        node_count=1,
+    )
+    request = QueryRequest(
+        user_id="user-1",
+        question="What is new?",
+        mode=QueryMode.ANSWER,
+        options=QueryOptions(max_documents=5),
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = "Here is the answer with substance."
+    mock_response.tokens_used = 1234
+
+    with patch("src.engines.fast_engine.get_llm_client", return_value=MagicMock()), patch(
+        "src.engines.fast_engine.call_llm", new_callable=AsyncMock, return_value=mock_response
+    ):
+        answer, documents, citations, tokens_used = await engine._compose_with_llm(
+            RoutePlan(route_id=RouteId.RECENT_CONTENT, raw_query=request.question),
+            route_result,
+            None,
+            request,
+            MagicMock(),
+        )
+
+    assert tokens_used == 1234
 
 
 def test_compose_recent_content_brief_skips_llm_and_returns_citations():

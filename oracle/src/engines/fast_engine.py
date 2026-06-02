@@ -518,7 +518,7 @@ class FastEngine:
                 if skip_answer_cache:
                     cache_bypass_reason = personalization_reason or "personalization_enabled"
 
-                answer, documents, citations, answer_time_ms, answer_cache_hit, compose_cache_bypass_reason = await self._compose_answer(
+                answer, documents, citations, answer_time_ms, answer_cache_hit, compose_cache_bypass_reason, llm_tokens_used = await self._compose_answer(
                     plan=plan,
                     route_result=route_result,
                     deep_dive_result=deep_dive_result,
@@ -543,10 +543,13 @@ class FastEngine:
                     route_result.nodes,
                     max_documents=self._get_max_documents(request),
                 )
-            
+                # Retrieval-only mode doesn't call the LLM, but llm_tokens_used
+                # may not have been initialised by _compose_answer in this branch.
+                llm_tokens_used = 0
+
             # Build response
             processing_time_ms = int((time.time() - start_time) * 1000)
-            
+
             # Build metadata object
             from src.models.response import RetrievalMetadata
             metadata = RetrievalMetadata(
@@ -555,7 +558,7 @@ class FastEngine:
                 strategies_used=[self._get_route_id_str(plan)],
                 total_candidates=len(documents),
                 processing_time_ms=processing_time_ms,
-                llm_tokens_used=None,
+                llm_tokens_used=llm_tokens_used if llm_tokens_used else None,
                 cache_hit=route_cache_hit or result_cache_hit or answer_cache_hit,
                 route_cache_hit=route_cache_hit,
                 result_cache_hit=result_cache_hit,
@@ -1484,15 +1487,16 @@ class FastEngine:
         skip_cache_reason: Optional[str] = None,
         cache_scope: Optional[str] = None,
         conversation_history: Optional[List[dict]] = None,
-    ) -> tuple[str, List[Document], List[Citation], int, bool, Optional[str]]:
+    ) -> tuple[str, List[Document], List[Citation], int, bool, Optional[str], int]:
         """
         Compose final answer (Phase 4).
-        
+
         Uses template-based response for BRIEF with rollup,
         otherwise uses light LLM synthesis.
-        
+
         Returns:
-            Tuple of (answer_text, documents, citations, answer_time_ms)
+            (answer_text, documents, citations, answer_time_ms,
+             answer_cache_hit, cache_bypass_reason, llm_tokens_used)
         """
         answer_start = time.time()
         
@@ -1511,6 +1515,10 @@ class FastEngine:
                 answer_time_ms = int((time.time() - answer_start) * 1000)
                 logger.info("Answer cache hit")
 
+                # Answer-cache hit: zero new tokens this request. Cached answers
+                # report 0 LLM tokens (not None) so downstream cost aggregation
+                # sees the saving — and so per-request averages aren't pulled
+                # down by null rows.
                 return (
                     cached_answer_data["answer"],
                     [Document(**d) for d in cached_answer_data["documents"]],
@@ -1518,6 +1526,7 @@ class FastEngine:
                     answer_time_ms,
                     True,
                     None,
+                    0,
                 )
 
             # Entity-missing short-circuit: when the precheck found that the
@@ -1534,7 +1543,13 @@ class FastEngine:
                     suggestions=plan.entity_suggestions or [],
                 )
                 answer_time_ms = int((time.time() - answer_start) * 1000)
-                return answer, [], [], answer_time_ms, False, "entity_missing"
+                # Did-you-mean is templated — zero LLM tokens.
+                return answer, [], [], answer_time_ms, False, "entity_missing", 0
+
+            # Track LLM tokens for whichever compose path runs. Most BRIEF/rollup
+            # paths are deterministic (no LLM), so default to 0 and only the
+            # LLM-synthesis branches populate it.
+            tokens_used = 0
 
             # Compose answer based on detail level and availability
             if plan.detail_level == DetailLevel.BRIEF and route_result.rollup:
@@ -1551,13 +1566,13 @@ class FastEngine:
                 if comparison_answer is not None:
                     answer, documents, citations = comparison_answer
                 else:
-                    answer, documents, citations = await self._compose_with_llm(
+                    answer, documents, citations, tokens_used = await self._compose_with_llm(
                         plan, route_result, deep_dive_result, request, span,
                         user_context=user_context, conversation_history=conversation_history
                     )
             else:
                 # LLM-based synthesis
-                answer, documents, citations = await self._compose_with_llm(
+                answer, documents, citations, tokens_used = await self._compose_with_llm(
                     plan, route_result, deep_dive_result, request, span,
                     user_context=user_context, conversation_history=conversation_history
                 )
@@ -1590,8 +1605,8 @@ class FastEngine:
                 await self.fast_cache.set_answer(plan, result_digest, answer_data, scope=cache_scope)
             elif is_temporal_disclaimer:
                 logger.info("Skipping answer cache: response is a temporal disclaimer (date-specific no-update response)")
-            
-            return answer, documents, citations, answer_time_ms, False, skip_cache_reason
+
+            return answer, documents, citations, answer_time_ms, False, skip_cache_reason, tokens_used
 
     def _can_cache_personalized_answer(self, plan: RoutePlan) -> bool:
         """Fast-engine answers are cacheable when keyed by the effective personalization scope."""
@@ -1746,7 +1761,7 @@ class FastEngine:
         span,
         user_context: Optional[str] = None,
         conversation_history: Optional[List[dict]] = None,
-    ) -> tuple[str, List[Document], List[Citation]]:
+    ) -> tuple[str, List[Document], List[Citation], int]:
         """
         Compose answer using LLM synthesis.
         
@@ -1775,7 +1790,8 @@ class FastEngine:
             rollup = getattr(route_result, 'rollup', None)
             if rollup and rollup.get("summary") and len((rollup.get("summary") or "").strip()) > 20:
                 logger.info("Documents empty but rollup has content — using rollup path")
-                return self._compose_from_rollup(plan, route_result, request)
+                a, d, c = self._compose_from_rollup(plan, route_result, request)
+                return a, d, c, 0
 
             # All retrieval tiers (including generic_search) returned nothing.
             # Raise so query.py falls back to the baseline engine, which uses
@@ -1791,7 +1807,7 @@ class FastEngine:
         if client is None:
             answer, citations = self._build_simple_summary(documents)
             logger.info(f"Composed answer without LLM: {len(answer)} chars, {len(documents)} docs")
-            return answer, documents, citations
+            return answer, documents, citations, 0
         
         try:
             # Prepare documents for prompt (limit to 10 for context window)
@@ -1949,11 +1965,17 @@ class FastEngine:
             
             answer = (response.content or "").strip()
             answer = self._strip_trailing_references(answer)
+            try:
+                tokens_used = int(getattr(response, "tokens_used", 0) or 0)
+            except (TypeError, ValueError):
+                tokens_used = 0
             if not answer:
                 logger.warning("LLM synthesis returned empty content, falling back to deterministic summary")
                 answer, citations = self._build_simple_summary(documents)
-                return answer, documents, citations
-            
+                # Surface the tokens already spent on the (empty) LLM call so the
+                # metric doesn't undercount cost when synthesis silently fails.
+                return answer, documents, citations, tokens_used
+
             # Create citations for all documents passed to the LLM prompt (up to 10)
             # Must match docs_for_prompt range so [6]..[10] refs in the answer are resolvable
             citations = []
@@ -1964,15 +1986,18 @@ class FastEngine:
                     title=doc.title,
                     excerpt=doc.summary[:200] + "..." if doc.summary and len(doc.summary) > 200 else doc.summary
                 ))
-            
-            logger.info(f"Composed answer with LLM: {len(answer)} chars, {len(documents)} docs")
-            
-            return answer, documents, citations
-            
+
+            logger.info(
+                f"Composed answer with LLM: {len(answer)} chars, {len(documents)} docs, "
+                f"{tokens_used} tokens"
+            )
+
+            return answer, documents, citations, tokens_used
+
         except Exception as e:
             logger.error(f"LLM synthesis failed: {e}, falling back to simple summary")
             answer, citations = self._build_simple_summary(documents)
-            return answer, documents, citations
+            return answer, documents, citations, 0
     
     @staticmethod
     def _strip_trailing_references(answer: str) -> str:
