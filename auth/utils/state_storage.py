@@ -124,3 +124,33 @@ def delete_teams_session(session_id: str) -> None:
     """Remove a Teams-SSO session (e.g., on logout)."""
     client = get_redis_client()
     client.delete(f"{TEAMS_SESSION_PREFIX}{session_id}")
+
+
+# ─── Cognito sub → internal user-id mapping ───────────────────────────────────
+# When a user originally registered via Cognito and later authenticates through
+# federated Azure AD SSO, Cognito may issue a new `sub` (federated UUID) that
+# differs from the stable `id` stored in app_users. All FK columns in downstream
+# databases reference that stable id. We persist the mapping here so that
+# validate_request_token can substitute the correct id into X-User-Id without
+# requiring a database round-trip on every request.
+
+COGNITO_ID_MAP_TTL = 518400  # 6 days — outlasts the 5-day Cognito refresh token
+COGNITO_ID_MAP_PREFIX = "cognito:id_map:"
+
+
+def store_cognito_id_map(jwt_sub: str, internal_id: str) -> None:
+    """Persist jwt_sub → internal_id so requests carry the stable app_users.id."""
+    try:
+        client = get_redis_client()
+        client.setex(f"{COGNITO_ID_MAP_PREFIX}{jwt_sub}", COGNITO_ID_MAP_TTL, internal_id)
+    except Exception:
+        pass  # Non-fatal: the missing mapping causes FK errors but doesn't break auth
+
+
+def get_cognito_id_map(jwt_sub: str) -> Optional[str]:
+    """Return the stable internal id for this JWT sub, or None if not mapped."""
+    try:
+        client = get_redis_client()
+        return client.get(f"{COGNITO_ID_MAP_PREFIX}{jwt_sub}")
+    except Exception:
+        return None

@@ -16,7 +16,7 @@ from utils.oauth import exchange_code_for_tokens, validate_jwt_token, extract_us
 from utils.middleware import validate_request_token
 from services.proxy import proxy_request
 from utils.logger import setup_logger
-from utils.state_storage import store_oauth_state, get_oauth_state, delete_oauth_state, store_teams_session, delete_teams_session
+from utils.state_storage import store_oauth_state, get_oauth_state, delete_oauth_state, store_teams_session, delete_teams_session, store_cognito_id_map
 
 # Import OpenTelemetry instrumentation
 try:
@@ -108,6 +108,9 @@ async def _sync_user_on_login(user_id: str, email: str, display_name: str = None
                 resolved_id = data.get("user_id") or user_id
                 if resolved_id != user_id:
                     logger.info(f"SSO mapping: Azure OID {user_id} resolved to internal ID {resolved_id}")
+                    # Persist sub→internal_id in Redis so validate_request_token can
+                    # substitute the stable id into X-User-Id without a DB round-trip.
+                    store_cognito_id_map(user_id, resolved_id)
                 logger.info(f"User {user_id} synced successfully to backend (internal id={resolved_id})")
                 return resolved_id
             else:

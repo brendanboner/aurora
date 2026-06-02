@@ -228,7 +228,7 @@ class TestValidateUserGroup:
         }
         
         # Should not raise any exception
-        validate_user_group(user_info, "aurora-users")
+        validate_user_group(user_info, ["aurora-users"])
     
     def test_validate_user_group_failure(self):
         """Test group validation failure when user not in group."""
@@ -240,7 +240,7 @@ class TestValidateUserGroup:
         }
         
         with pytest.raises(HTTPException) as exc_info:
-            validate_user_group(user_info, "aurora-users")
+            validate_user_group(user_info, ["aurora-users"])
         
         assert exc_info.value.status_code == 403
         assert "aurora-users" in str(exc_info.value.detail)
@@ -255,7 +255,7 @@ class TestValidateUserGroup:
         }
         
         with pytest.raises(HTTPException) as exc_info:
-            validate_user_group(user_info, "aurora-users")
+            validate_user_group(user_info, ["aurora-users"])
         
         assert exc_info.value.status_code == 403
     
@@ -269,6 +269,6 @@ class TestValidateUserGroup:
         }
         
         with pytest.raises(HTTPException) as exc_info:
-            validate_user_group(user_info, "aurora-users")
+            validate_user_group(user_info, ["aurora-users"])
         
         assert exc_info.value.status_code == 403

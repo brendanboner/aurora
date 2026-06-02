@@ -118,7 +118,7 @@ def main():
             f"{args.oracle_url}/query",
             json=payload,
             headers=headers,
-            timeout=60,
+            timeout=120,
         )
         elapsed_time = time.time() - start_time
     except requests.RequestException as e:

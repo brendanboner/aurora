@@ -950,14 +950,14 @@ What would you like to know?`;
 
     // ── AGENTS ────────────────────────────────────────────────────────────────
     if (/^(agents|list agents|show agents|all agents|available agents)$/.test(cmd)) {
-      window.location.href = '/agents';
-      return `**Navigating to Agents…**\n\nYou can also go directly: [View all Aurora agents](/agents)`;
+      window.location.href = '/profile/agents';
+      return `**Navigating to Agents…**\n\nYou can also go directly: [View all Aurora agents](/profile/agents)`;
     }
 
     // ── MY AGENTS ─────────────────────────────────────────────────────────────
     if (/^(my agents?|myagents?|personal agents?|my personal agents?)$/.test(cmd)) {
-      window.location.href = '/my-agents';
-      return `**Navigating to My Agents…**\n\nYou can also go directly: [My Agents](/my-agents)`;
+      window.location.href = '/profile/my-agents';
+      return `**Navigating to My Agents…**\n\nYou can also go directly: [My Agents](/profile/my-agents)`;
     }
 
     // ── FEED ──────────────────────────────────────────────────────────────────

@@ -15,7 +15,16 @@
       "Bash(docker compose *)",
       "Bash(curl -s http://localhost:8001/health)",
       "Bash(python -m json.tool)",
-      "Bash(curl -s http://localhost:8000/health)"
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(make test-oracle *)",
+      "Bash(python -c \"from src.neo4j_context import Neo4jContextGateway; print\\('import OK'\\)\")",
+      "Bash(python -c \"from src.services.generation_service import GenerationService; print\\('generation_service import OK'\\)\")",
+      "Bash(make test-content-creator *)",
+      "Bash(make test *)",
+      "Bash(npm test *)",
+      "Bash(python -c \"from src.routes.agent import router, _get_scraper_types_for_orgs; print\\('OK'\\); print\\(_get_scraper_types_for_orgs\\(['Wireless Broadband Alliance', 'Wi-Fi Alliance']\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(xargs ls)"
     ]
   }
 }

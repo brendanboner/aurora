@@ -168,11 +168,15 @@ export class AuroraUserService {
     if (email.startsWith('aad:')) {
       const aadObjectId = email.substring(4);
 
-      // Priority 1: Direct ID lookup — user's Aurora ID IS the Azure OID after SSO migration
+      // Priority 1: Direct ID lookup — user's Aurora ID IS the Azure OID after SSO migration.
+      // Skip synthetic @teams.aad accounts so Graph API can resolve the real identity.
       const userByOid = await this.getUserById(aadObjectId);
-      if (userByOid) {
+      if (userByOid && !userByOid.email.endsWith('@teams.aad')) {
         console.log(`[UserService] Resolved AAD OID ${aadObjectId} → Aurora user ${userByOid.email} (direct ID match)`);
         return userByOid;
+      }
+      if (userByOid) {
+        console.warn(`[UserService] AAD OID ${aadObjectId} matched synthetic @teams.aad account — continuing to Graph API for real identity`);
       }
 
       // Priority 2: Graph API email resolution

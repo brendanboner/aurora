@@ -3,11 +3,21 @@
 import logging
 from fastapi import Request, HTTPException, status
 from .oauth import validate_jwt_token, refresh_access_token, extract_user_info, validate_user_group
-from .state_storage import get_teams_session
+from .state_storage import get_teams_session, get_cognito_id_map
 from settings import get_settings
 
 settings = get_settings()
 logger = logging.getLogger("auth")
+
+
+def _resolve_user_id(user_info: dict) -> dict:
+    """Substitute the stable internal id if this JWT sub belongs to an SSO-migrated user."""
+    jwt_sub = user_info.get("id")
+    if jwt_sub:
+        internal_id = get_cognito_id_map(jwt_sub)
+        if internal_id and internal_id != jwt_sub:
+            return {**user_info, "id": internal_id}
+    return user_info
 
 
 async def _refresh_and_get_user_info(request: Request, refresh_token: str) -> dict:
@@ -32,8 +42,8 @@ async def _refresh_and_get_user_info(request: Request, refresh_token: str) -> di
         user_info = extract_user_info(token_claims)
         request.state.new_access_token = new_access_token
         logger.info(f"Successfully refreshed access token for user: {user_info.get('email')}")
-    
-    return user_info
+
+    return _resolve_user_id(user_info)
 
 
 async def validate_request_token(request: Request) -> dict:
@@ -93,8 +103,8 @@ async def validate_request_token(request: Request) -> dict:
         
         # Validate user is in required group
         validate_user_group(user_info, settings.allowed_cognito_groups)
-        
-        return user_info
+
+        return _resolve_user_id(user_info)
     
     except HTTPException as e:
         # If access token expired, try to refresh

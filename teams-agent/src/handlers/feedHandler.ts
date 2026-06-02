@@ -1,6 +1,7 @@
 import { TurnContext, CardFactory, Attachment } from 'botbuilder';
 import { AuroraUserService, AuroraUser } from '../services/auroraUserService';
 import { AuroraFeedService, FeedPost } from '../services/auroraFeedService';
+import { conversationReferenceStore } from '../services/conversationReferenceStore';
 import * as ACData from 'adaptivecards-templating';
 import feedPostCardTemplate from '../adaptiveCards/feedPostCard.json';
 
@@ -24,7 +25,11 @@ export class FeedHandler {
       
       // Get or create Aurora user
       const auroraUser = await this.userService.getOrCreateUser(email, displayName);
-      
+      const convId = context.activity.conversation?.id ?? 'default';
+      if (!auroraUser.email.endsWith('@teams.aad')) {
+        conversationReferenceStore.linkAuroraUser(convId, auroraUser.id).catch(() => {});
+      }
+
       // Fetch top posts
       const posts = await this.feedService.getTopPosts(auroraUser.id, 5);
       

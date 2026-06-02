@@ -5,7 +5,7 @@ import asyncio
 import logging
 from typing import List
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, status
 
 from ..models.user_agent import (
     UserAgent,
@@ -146,22 +146,44 @@ async def submit_feedback(
         )
 
 
+async def _run_generation_background(agent_id: int, agent_dict: dict) -> None:
+    """Run generation in the background so the HTTP response returns immediately."""
+    try:
+        result = await asyncio.to_thread(
+            _generation_service.generate_for_user_agent,
+            agent_dict,
+        )
+        if result:
+            logger.info(f"Background generation completed for agent {agent_id}, post {result.get('post_id')}")
+        else:
+            logger.info(f"Background generation returned no content for agent {agent_id}")
+    except Exception as e:
+        logger.error(f"Background generation failed for agent {agent_id}: {e}")
+        try:
+            _user_agent_service.mark_error(agent_id, str(e))
+        except Exception:
+            pass
+
+
 @router.post("/{agent_id}/generate")
 async def trigger_manual_generation(
     agent_id: int,
+    background_tasks: BackgroundTasks,
     x_user_id: str = Header(..., alias="X-User-Id")
 ) -> dict:
-    """Manually trigger content generation for a personal agent."""
+    """Manually trigger content generation for a personal agent.
+
+    Returns immediately with status 'started'; generation runs in the background.
+    The agent's last_error / last_generated_at fields will reflect the outcome.
+    """
     try:
-        # Verify ownership
         agent = _user_agent_service.get_user_agent(x_user_id, agent_id)
         if not agent:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User agent {agent_id} not found or access denied"
             )
-        
-        # Convert UserAgent to dict format expected by generation service
+
         agent_dict = {
             'id': agent.id,
             'user_id': agent.user_id,
@@ -174,40 +196,21 @@ async def trigger_manual_generation(
             'feedback_history': agent.feedback_history,
             'agent_type': 'personal'
         }
-        
-        # Generation performs blocking I/O and internally manages async Oracle discovery.
-        result = await asyncio.to_thread(
-            _generation_service.generate_for_user_agent,
-            agent_dict,
-        )
-        
-        if result:
-            logger.info(f"Manual generation triggered for agent {agent_id}, generated post {result.get('post_id')}")
-            return {
-                "status": "success",
-                "message": "Content generated successfully",
-                "post_id": result.get('post_id'),
-                "post": result.get('post')
-            }
-        else:
-            logger.warning(f"Manual generation for agent {agent_id} returned no content")
-            return {
-                "status": "no_content",
-                "message": "No new content found to generate"
-            }
-            
+
+        background_tasks.add_task(_run_generation_background, agent_id, agent_dict)
+        logger.info(f"Manual generation queued for agent {agent_id} ({agent.name})")
+        return {
+            "status": "started",
+            "message": f"Generating an update for {agent.name}… this takes up to 2 minutes. Refresh to see results.",
+        }
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to trigger manual generation: {e}")
-        # Persist the error so the UI can surface a fix notification
-        try:
-            _user_agent_service.mark_error(agent_id, str(e))
-        except Exception:
-            pass
+        logger.error(f"Failed to queue manual generation for agent {agent_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate content: {str(e)}"
+            detail=f"Failed to start generation: {str(e)}"
         )
 
 

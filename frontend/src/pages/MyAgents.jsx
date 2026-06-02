@@ -17,14 +17,14 @@ const initialForm = {
   name: '',
   project_description: '',
   scope_notes: '',
-  cadence: 'daily-digest',
+  cadence: 'daily',
   show_in_feed: true,
   enabled: true,
 };
 
 const cadenceOptions = [
-  { value: 'daily-digest', label: 'Daily updates' },
-  { value: 'weekly-digest', label: 'Weekly updates' },
+  { value: 'daily', label: 'Daily updates' },
+  { value: 'weekly', label: 'Weekly updates' },
 ];
 
 const MyAgents = () => {
@@ -179,12 +179,26 @@ const MyAgents = () => {
       const result = await triggerMyAgentGeneration(agent.id);
       if (result?.status === 'success') {
         setStatusMessage(`Generated an update for ${agent.name}.`);
+        await loadAgents();
+      } else if (result?.status === 'started') {
+        setStatusMessage(`Generating an update for ${agent.name}… this takes up to 2 minutes.`);
+        // Poll every 20 s for up to 3 minutes then do a final reload
+        let polls = 0;
+        const poll = setInterval(async () => {
+          polls += 1;
+          await loadAgents();
+          if (polls >= 9) {
+            clearInterval(poll);
+            setStatusMessage(`Generation for ${agent.name} complete — refresh if content hasn't appeared.`);
+          }
+        }, 20000);
       } else if (result?.status === 'no_content') {
         setStatusMessage(`No fresh content found for ${agent.name} yet.`);
+        await loadAgents();
       } else {
         setStatusMessage(`Generation finished for ${agent.name}.`);
+        await loadAgents();
       }
-      await loadAgents();
     } catch (err) {
       console.error('Generate personal agent content failed', err);
       setError(`Unable to generate an update for ${agent.name} right now.`);

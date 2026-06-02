@@ -107,6 +107,11 @@ class LocalRouter:
         (r"who (spoke|presented|talked|spoke\s+at|presented\s+at)\s+(at|in|during)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         (r"(speakers?|presenters?|panelists?|keynotes?)\s+(at|for|in)\s+", RouteId.DOCUMENTS_BY_TOPIC),
         
+        # "discussed at [workgroup/org] recently/lately/last X" — use RECENT_CONTENT so the
+        # expanding time-window logic applies and the workgroup datasource filter is honoured.
+        # Must come before the general "discussed at" DOCUMENTS_BY_TOPIC pattern.
+        (r"what (was|is)\s+(discussed|covered|presented|talked about|shown|shared|announced|said)\s+at\s+.*?\b(recent\w*|late\w*|last\s+(week|month|year)|new\w*|latest)\b", RouteId.RECENT_CONTENT),
+        (r"what (happened|occurred|took place)\s+at\s+.*?\b(recent\w*|late\w*|last\s+(week|month|year)|new\w*|latest)\b", RouteId.RECENT_CONTENT),
         # "what was discussed/happened at [EVENT]" (event content queries - broader than workgroup/meeting patterns)
         # This catches: "what was discussed at cisco ai summit", "what happened at the live session"
         (r"what (was|is)\s+(discussed|covered|presented|talked about|shown|shared|announced|said)\s+at\s+", RouteId.DOCUMENTS_BY_TOPIC),
@@ -514,7 +519,17 @@ class LocalRouter:
             route_confidence = max(route_confidence, 0.84)
 
         entities = self._prune_generic_recent_topics(route_id, entities)
-        
+
+        # When the query identified a specific WFA Causeway TG (datasource_id extracted)
+        # AND has a temporal qualifier, always use RECENT_CONTENT so the expanding
+        # time-window logic and scraped_at recency sorting apply correctly.
+        causeway_ids = [w for w in entities.get("workgroups", []) if w.startswith("wfa_causeway_")]
+        if causeway_ids and (relative_days or re.search(r'\b(recent\w*|late\w*|latest|new\w*|last\s+(week|month|year)|this\s+(week|month))\b', question_lower)):
+            if route_id not in {RouteId.RECENT_CONTENT, RouteId.WORKGROUP_DAILY_RECAP, RouteId.WORKGROUP_WEEKLY_RECAP, RouteId.WORKGROUP_MONTHLY_SUMMARY}:
+                logger.debug(f"WFA Causeway TG + temporal qualifier: overriding {route_id.value} → RECENT_CONTENT")
+                route_id = RouteId.RECENT_CONTENT
+                route_confidence = max(route_confidence, 0.88)
+
         if skip_user_prefs:
             logger.debug(f"Skipping user preference expansion for {route_id.value} (focused query)")
         
@@ -772,13 +787,37 @@ class LocalRouter:
             "next gen hotspot": "Next Gen Hotspot",
             "ngh": "Next Gen Hotspot",
             "identity": "Identity",
-            # WFA Causeway task group long-form names
-            "wifi 8 task group": "Wi-Fi 8",
-            "wi-fi 8 task group": "Wi-Fi 8",
-            "wifi 7 task group": "Wi-Fi 7",
-            "wi-fi 7 task group": "Wi-Fi 7",
-            "location task group": "Location",
-            "sensing task group": "Sensing",
+            # WFA Causeway task group — map to actual datasource_ids so the Cypher
+            # ds.datasource_id IN $workgroups filter fires against the real Neo4j node.
+            # Short TG-flavoured variants (unambiguous): map to datasource_id.
+            "location tg": "wfa_causeway_wifilocationtg",
+            "wi-fi location tg": "wfa_causeway_wifilocationtg",
+            "wifi location tg": "wfa_causeway_wifilocationtg",
+            "location task group": "wfa_causeway_wifilocationtg",
+            "wi-fi location task group": "wfa_causeway_wifilocationtg",
+            "wifi location task group": "wfa_causeway_wifilocationtg",
+            "wifi 8 tg": "wfa_causeway_wifi8mtg",
+            "wi-fi 8 tg": "wfa_causeway_wifi8mtg",
+            "wifi 8 task group": "wfa_causeway_wifi8mtg",
+            "wi-fi 8 task group": "wfa_causeway_wifi8mtg",
+            "wifi 8 mtg": "wfa_causeway_wifi8mtg",
+            "wifi 7 tg": "wfa_causeway_wifi7mtg",
+            "wi-fi 7 tg": "wfa_causeway_wifi7mtg",
+            "wifi 7 task group": "wfa_causeway_wifi7mtg",
+            "wi-fi 7 task group": "wfa_causeway_wifi7mtg",
+            "wifi 7 mtg": "wfa_causeway_wifi7mtg",
+            "sensing tg": "wfa_causeway_sensingtg",
+            "sensing task group": "wfa_causeway_sensingtg",
+            "broadcast tg": "wfa_causeway_broadcasttg",
+            "broadcast task group": "wfa_causeway_broadcasttg",
+            "passpoint mtg": "wfa_causeway_passpointmtg",
+            "security mtg": "wfa_causeway_securitymtg",
+            "xrms tg": "wfa_causeway_xrmstg",
+            "xrms task group": "wfa_causeway_xrmstg",
+            "haloww tg": "wfa_causeway_wifihalowtg",
+            "halow tg": "wfa_causeway_wifihalowtg",
+            "wi-fi halow tg": "wfa_causeway_wifihalowtg",
+            "regulatory tg": "wfa_causeway_regulatorytg",
             # IEEE 802.11 task group / amendment aliases
             "802.11bn": "802.11bn",
             "tgbn": "802.11bn",

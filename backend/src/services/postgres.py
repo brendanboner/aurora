@@ -357,7 +357,7 @@ def get_or_create_user(
 
     # Always ensure user is synced to Neo4j (function checks if already synced)
     _ensure_user_in_neo4j(
-        internal_id if user else user_id,
+        user['id'] if user else user_id,
         email,
         user.get('display_name', display_name) if user else display_name,
         given_name,

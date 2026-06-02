@@ -4,6 +4,7 @@ import { AuroraAgentService } from '../services/auroraAgentService';
 import { AuroraOracleService } from '../services/auroraOracleService';
 import { getWorkingGroupBySlug, listWorkingGroups } from '../services/workingGroupResolver';
 import { rememberAnswer, buildMarkdownResponse } from './chatHandler';
+import { conversationReferenceStore } from '../services/conversationReferenceStore';
 
 const ORACLE_TIMEOUT_MS = 30_000;
 
@@ -111,7 +112,13 @@ export class AgentHandler {
     const email = this.userService.extractUserEmail(context.activity);
     const displayName = context.activity.from.name || 'User';
     const auroraUser = await this.userService.getOrCreateUser(email, displayName);
-    const agentService = new AuroraAgentService(auroraUser.id, email);
+    const convId = context.activity.conversation?.id ?? 'default';
+    // Only link the conversation to a real (non-synthetic) account so we don't
+    // overwrite a previously-linked real aurora_user_id with a @teams.aad placeholder.
+    if (!auroraUser.email.endsWith('@teams.aad')) {
+      conversationReferenceStore.linkAuroraUser(convId, auroraUser.id).catch(() => {});
+    }
+    const agentService = new AuroraAgentService(auroraUser.id, email.startsWith('aad:') ? auroraUser.email : email);
 
     let myAgents: any[] = [];
     try {
