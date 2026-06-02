@@ -37,14 +37,14 @@ logger = logging.getLogger(__name__)
 ENTITY_EXISTS_PRECHECK_CYPHER = """
 WITH toLower($entity) AS query, $entity AS raw_entity
 OPTIONAL MATCH (exact)
-  WHERE (exact:Person OR exact:Organization OR exact:Topic OR exact:DataSource)
+  WHERE (exact:Person OR exact:Organization OR exact:Topic OR exact:DataSource OR exact:Agent)
     AND toLower(coalesce(exact.name, '')) = query
 WITH query, raw_entity,
      collect(DISTINCT {name: exact.name, label: head(labels(exact))}) AS exact_matches
 CALL {
   WITH query
   MATCH (n)
-  WHERE (n:Person OR n:Organization OR n:Topic OR n:DataSource)
+  WHERE (n:Person OR n:Organization OR n:Topic OR n:DataSource OR n:Agent)
     AND n.name IS NOT NULL
     AND toLower(n.name) <> query
     AND (toLower(n.name) CONTAINS query OR query CONTAINS toLower(n.name))
@@ -138,6 +138,9 @@ class QueryTemplate:
         params["topics"] = plan.topics if plan.topics else []
         params["organizations"] = plan.organizations if plan.organizations else []
         params["people"] = plan.people if plan.people else []
+        # Content-creator agents (mirrored from creator_agent table as :Agent nodes
+        # in Neo4j via scripts/sync_agents_to_neo4j.py).
+        params["agents"] = list(getattr(plan, "agents", None) or [])
         params["category"] = plan.category if hasattr(plan, 'category') and plan.category else None
         params["exclude_meetings"] = plan.exclude_meetings if hasattr(plan, 'exclude_meetings') and plan.exclude_meetings is not None else None
         params["content_types"] = []  # Content type filter (e.g., ['decision', 'action'])
@@ -1738,6 +1741,49 @@ class QueryTemplateRegistry:
                      ELSE round(normalized_kg_score * 100) / 100.0 END as relevance_score,
                 topic_count as topic_breadth,
                 match_type
+            LIMIT $limit
+            """
+        )
+
+        # AGENT_RECENT_CONTENT - posts authored by a named content-creator agent.
+        # Triggers on queries like "what is Kevin's latest news / posts / content".
+        # Depends on :Agent nodes existing in Neo4j (synced from creator_agent
+        # table by scripts/sync_agents_to_neo4j.py) and (:Agent)-[:AUTHORED]->(:Resource)
+        # edges. Case-insensitive name match; returns recent Resources newest-first.
+        self.templates[RouteId.AGENT_RECENT_CONTENT] = QueryTemplate(
+            route_id=RouteId.AGENT_RECENT_CONTENT,
+            description="Recent content authored by a named content-creator agent",
+            param_schema={
+                "agents": "list[str]",
+                "limit": "int",
+            },
+            cypher="""
+            MATCH (a:Agent)
+            WHERE size($agents) > 0
+              AND any(name IN $agents WHERE toLower(a.name) = toLower(name))
+            MATCH (a)-[:AUTHORED]->(r:Resource)
+            WHERE coalesce(r.archived, false) = false
+            WITH a, r,
+                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
+                       AND datetime(r.publish_date) >= datetime('2000-01-01')
+                       AND datetime(r.publish_date) <= datetime()
+                       THEN datetime(r.publish_date)
+                      WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                      WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                      ELSE datetime()
+                 END AS effective_date
+            ORDER BY effective_date DESC
+            RETURN
+                r.url_hash AS id,
+                r.title AS title,
+                r.summary AS summary,
+                r.url AS url,
+                toString(effective_date) AS date,
+                r.category AS category,
+                a.name AS agent_name,
+                a.persona AS agent_persona,
+                a.expertise_topics AS agent_expertise,
+                1.0 AS relevance_score
             LIMIT $limit
             """
         )

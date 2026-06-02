@@ -109,6 +109,7 @@ class RouteId(str, Enum):
     
     # Creator Agents
     AGENT_CONTENT_DISCOVERY = "agent_content_discovery"
+    AGENT_RECENT_CONTENT = "agent_recent_content"  # "what is Kevin's latest news" → posts by the Kevin agent
     
     # IETF-specific routes
     IETF_WG_UPDATES = "ietf_wg_updates"
@@ -204,7 +205,12 @@ class RoutePlan(BaseModel):
         default_factory=list,
         description="Person names or IDs"
     )
-    
+
+    agents: List[str] = Field(
+        default_factory=list,
+        description="Content-creator agent names (mirrored from creator_agent table as :Agent nodes)"
+    )
+
     category: Optional[str] = Field(
         default=None,
         description="Document category filter (press release, whitepaper, article, blog, newsletter, technical specification)"

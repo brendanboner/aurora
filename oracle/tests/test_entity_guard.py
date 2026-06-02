@@ -217,3 +217,84 @@ def test_compose_entity_missing_answer_caps_at_five_suggestions():
         assert f"Name {i}" in msg
     for i in range(5, 10):
         assert f"Name {i}" not in msg
+
+
+# ---------------------------------------------------------------------------
+# Agent awareness
+# ---------------------------------------------------------------------------
+
+def test_pick_entity_prefers_agents_over_people():
+    """Agents are the most specific bucket — picked first.
+
+    "what is Kevin's latest news" — if both an :Agent named Kevin and a
+    :Person named Kevin exist, we should precheck the agent name first.
+    """
+    engine = _build_engine()
+    plan = RoutePlan(
+        route_id=RouteId.PERSON_PROFILE,
+        agents=["Kevin"],
+        people=["Some Other Person"],
+        raw_query="what is kevin's latest news",
+    )
+    assert engine._pick_entity_for_precheck(plan) == "Kevin"
+
+
+def test_should_run_precheck_fires_with_only_agents_field():
+    engine = _build_engine()
+    plan = RoutePlan(
+        route_id=RouteId.AGENT_RECENT_CONTENT,
+        agents=["Kevin"],
+        raw_query="kevin's posts",
+    )
+    assert engine._should_run_entity_precheck(plan) is True
+
+
+def test_compose_entity_missing_answer_renders_agent_label():
+    msg = FastEngine._compose_entity_missing_answer(
+        entity="Kevn",  # misspelled — should suggest the real Kevin agent
+        suggestions=[{"name": "Kevin", "label": "Agent"}],
+    )
+    assert "Kevin" in msg
+    assert "agent" in msg.lower()
+
+
+def test_run_entity_precheck_recognises_agent_label():
+    """When the precheck returns an :Agent exact match, exists must be True."""
+    client = MagicMock()
+    client.execute_query.return_value = [{
+        "entity": "Kevin",
+        "exact": [{"name": "Kevin", "label": "Agent"}],
+        "suggestions": [],
+    }]
+    out = run_entity_precheck(client, "Kevin")
+    assert out["exists"] is True
+    assert out["exact"][0]["label"] == "Agent"
+
+
+def test_agent_recent_content_template_registered():
+    """The new route must have a registered template with the expected param schema."""
+    from src.services.query_template_registry import QueryTemplateRegistry
+
+    reg = QueryTemplateRegistry()
+    tpl = reg.get_template(RouteId.AGENT_RECENT_CONTENT)
+    assert tpl is not None
+    assert "agents" in tpl.param_schema
+    # The Cypher must read from $agents and follow AUTHORED edges to Resources.
+    assert "Agent" in tpl.cypher
+    assert "AUTHORED" in tpl.cypher
+    assert "Resource" in tpl.cypher
+
+
+def test_agent_recent_content_build_params_includes_agents():
+    """RoutePlan.agents must flow into the Cypher params."""
+    from src.services.query_template_registry import QueryTemplateRegistry
+
+    reg = QueryTemplateRegistry()
+    tpl = reg.get_template(RouteId.AGENT_RECENT_CONTENT)
+    plan = RoutePlan(
+        route_id=RouteId.AGENT_RECENT_CONTENT,
+        agents=["Kevin"],
+        raw_query="what is kevin's latest news",
+    )
+    params = tpl.build_params(plan)
+    assert params["agents"] == ["Kevin"]

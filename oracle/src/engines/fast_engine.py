@@ -646,6 +646,7 @@ class FastEngine:
             RouteId.TOPICS_BY_WORKGROUP: QueryIntent.TREND_ANALYSIS,
             RouteId.WHO_SAID_WHAT: QueryIntent.RELATIONSHIP_QUERY,
             RouteId.MEETING_BY_TITLE: QueryIntent.ENTITY_FOCUSED,
+            RouteId.AGENT_RECENT_CONTENT: QueryIntent.ENTITY_FOCUSED,
             RouteId.GENERIC_SEARCH: QueryIntent.TOPIC_DISCOVERY,
         }
         
@@ -673,6 +674,7 @@ class FastEngine:
         RouteId.MEETING_BY_TITLE,
         RouteId.TOPIC_TIMELINE,
         RouteId.TOPIC_RELATIONSHIPS,
+        RouteId.AGENT_RECENT_CONTENT,
     })
 
     def _should_run_entity_precheck(self, plan: RoutePlan) -> bool:
@@ -691,15 +693,31 @@ class FastEngine:
                 return False
         if route_id not in self._ENTITY_PRECHECK_ROUTES:
             return False
-        return bool(plan.people or plan.organizations or plan.workgroups or plan.topics)
+        return bool(
+            getattr(plan, "agents", None)
+            or plan.people
+            or plan.organizations
+            or plan.workgroups
+            or plan.topics
+        )
 
     def _pick_entity_for_precheck(self, plan: RoutePlan) -> Optional[str]:
         """Pick the single most-specific named entity from a plan to precheck.
 
-        Order: people > organizations > workgroups > topics. Returns the first
-        non-empty string entry from the highest-priority list.
+        Order: agents > people > organizations > workgroups > topics. Agents
+        are most specific (e.g. "Kevin" is unambiguously the Kevin content-
+        creator agent in this system), then humans, then groups, then topics.
+        Returns the first non-empty string entry from the highest-priority
+        list.
         """
-        for bucket in (plan.people, plan.organizations, plan.workgroups, plan.topics):
+        buckets = (
+            getattr(plan, "agents", None) or [],
+            plan.people,
+            plan.organizations,
+            plan.workgroups,
+            plan.topics,
+        )
+        for bucket in buckets:
             for entry in bucket or []:
                 if entry and isinstance(entry, str) and entry.strip():
                     return entry.strip()
@@ -736,6 +754,7 @@ class FastEngine:
                 "Organization": "organization",
                 "Topic": "topic",
                 "DataSource": "workgroup",
+                "Agent": "agent",
             }
             suggestion_strs = []
             for s in deduped:
@@ -1038,6 +1057,30 @@ class FastEngine:
                         cache_hit=False,
                     ), retrieval_time_ms
                 plan.match_quality = "exact"
+
+                # Agent redirect: if the exact match was an :Agent node, swap to
+                # AGENT_RECENT_CONTENT so the user gets the agent's recent posts
+                # rather than running a PERSON_PROFILE / WORKGROUP / etc. template
+                # that doesn't know about Agent→AUTHORED→Resource edges.
+                exact_matches = pre.get("exact", []) or []
+                matched_labels = {m.get("label") for m in exact_matches if isinstance(m, dict)}
+                if "Agent" in matched_labels and plan.route_id != RouteId.AGENT_RECENT_CONTENT:
+                    matched_name = next(
+                        (m["name"] for m in exact_matches
+                         if isinstance(m, dict) and m.get("label") == "Agent" and m.get("name")),
+                        entity,
+                    )
+                    logger.info(
+                        f"entity '{entity}' is an :Agent; redirecting route "
+                        f"{self._get_route_id_str(plan)} → agent_recent_content"
+                    )
+                    plan.route_id = RouteId.AGENT_RECENT_CONTENT
+                    plan.agents = [matched_name]
+                    template = self.template_registry.get_template(plan.route_id)
+                    if not template:
+                        raise Exception(
+                            "AGENT_RECENT_CONTENT template missing after agent redirect"
+                        )
 
         # Build Cypher parameters
         params = template.build_params(plan)
