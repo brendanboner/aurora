@@ -58,6 +58,9 @@ def call_oracle(question: str, oracle_url: str) -> dict[str, Any]:
         "X-User-Role": "user",
     }
     body = {
+        # QueryRequest requires user_id; use a stable synthetic ID so the
+        # personalisation system treats all replay calls as the same user.
+        "user_id": "00000000-0000-0000-0000-replayworst",
         "question": question,
         "mode": "answer",
         "options": {"max_documents": 10, "personalize": "off"},
