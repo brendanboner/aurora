@@ -87,6 +87,17 @@ class LocalRouter:
         (r"(what.{0,20}(in|at)\s+(the\s+)?[\w\s\-\/]+\b(workgroup|programme|program)\b)",
          RouteId.WBA_RECENT_ACTIVITY),
 
+        # "what is the latest from / in / on (the) X working group" — generic recency
+        # for any IETF/standards working group named in the query. The downstream
+        # RECENT_CONTENT template's workgroup filter does CONTAINS-matching against
+        # DataSource name + id, so a short name like "BGP" can resolve to the actual
+        # datasource "IETF BGP Enabled ServiceS (BESS)" / "ietf_wg_bess".
+        (r"(what('?s|\s+is)\s+)?(the\s+)?(latest|new|recent|news|happening|going\s+on|updates?|activity)\s+(from|in|on|with|at)\s+(the\s+)?[\w\s\-\/\.]+\s+(working\s+group|wg|workgroup)\b",
+         RouteId.RECENT_CONTENT),
+        # "X working group news/updates/activity/latest"
+        (r"[\w\s\-\/\.]+\s+(working\s+group|wg|workgroup)\s+(news|updates?|activity|latest|recent|developments?|progress)\b",
+         RouteId.RECENT_CONTENT),
+
         # === PEOPLE QUERIES (highest priority - very specific) ===
         # "who do I talk to / who should I contact / who is the expert on X" → find people in org
         (r"who (do i|should i|can i)\s+(talk to|contact|speak (to|with)|reach out to|ask)\s+(about|regarding|on|for)?", RouteId.ORGANIZATION_REPRESENTATIVES),

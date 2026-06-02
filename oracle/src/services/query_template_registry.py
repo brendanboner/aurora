@@ -648,11 +648,19 @@ class QueryTemplateRegistry:
                     MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)-[:OPERATED_BY]->(org:Organization)
                     WHERE org.name IN $organizations
                 })
-               // Filter by specific workgroups if requested
+               // Filter by specific workgroups if requested. The CONTAINS branch
+               // resolves human-friendly names like "BGP" or "QUIC" to the actual
+               // datasource (e.g. "IETF BGP Enabled ServiceS (BESS)" / "ietf_wg_bess")
+               // without requiring an exact name match from the router.
                AND ($workgroups IS NULL OR size($workgroups) = 0
                  OR EXISTS {
                      MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
-                     WHERE ds.datasource_id IN $workgroups OR ds.name IN $workgroups OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups)
+                     WHERE ds.datasource_id IN $workgroups
+                        OR ds.name IN $workgroups
+                        OR (ds.parent_datasource_id IS NOT NULL AND ds.parent_datasource_id IN $workgroups)
+                        OR ANY(wg IN $workgroups WHERE
+                              toLower(ds.name) CONTAINS toLower(wg)
+                              OR toLower(ds.datasource_id) CONTAINS toLower(wg))
                  })
                // Filter by topic if requested
                 AND ($topics IS NULL OR size($topics) = 0
