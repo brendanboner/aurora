@@ -148,12 +148,12 @@ export class AuroraBot extends TeamsActivityHandler {
           const slugs: string[] = ref?.subscribed_agent_slugs ?? [];
           if (slugs.length === 0) {
             await context.sendActivity(
-              `No active subscriptions. Type \`subscribe @slug\` to receive updates from an agent, or \`agents\` to see what's available.`
+              `No active subscriptions. Type \`subscribe @handle\` to receive updates from an agent, or \`agents\` to see what's available.`
             );
           } else {
             const list = slugs.map(s => `• \`@${s.replace(/^aurora-/, '')}\``).join('\n');
             await context.sendActivity(
-              `**Subscriptions (${slugs.length}):**\n\n${list}\n\nType \`unsubscribe @aurora-slug\` to remove one.`
+              `**Subscriptions (${slugs.length}):**\n\n${list}\n\nType \`unsubscribe @<handle>\` to remove one.`
             );
           }
         }
@@ -177,9 +177,9 @@ export class AuroraBot extends TeamsActivityHandler {
         else if (lower === 'shared' || lower === 'shared agents') {
           const shared = await conversationReferenceStore.getSharedPersonalAgents(convId);
           if (shared.length === 0) {
-            await context.sendActivity('No personal agents are shared to this group.\n\nTo share one: `share @slug` or `share Agent Name`\nType `my agents` to see your agents and their slugs.');
+            await context.sendActivity('No personal agents are shared to this group.\n\nTo share one: `share @handle` or `share Agent Name`\nType `my agents` to see your agents and their handles.');
           } else {
-            await context.sendActivity(`**Personal agents shared here:**\n\n${shared.map(s => `• ${s}`).join('\n')}\n\nTo remove: \`unshare @slug\` or \`unshare Agent Name\``);
+            await context.sendActivity(`**Personal agents shared here:**\n\n${shared.map(s => `• ${s}`).join('\n')}\n\nTo remove: \`unshare @handle\` or \`unshare Agent Name\``);
           }
         }
         // ── show — inline full post from last proactive notification ─────
@@ -354,7 +354,7 @@ export class AuroraBot extends TeamsActivityHandler {
           facts: [
             { title: 'feed', value: 'Your personalised content feed' },
             { title: 'agents', value: 'List available expert agents' },
-            { title: '@slug question', value: 'Ask a specific agent (e.g. @ietf What is new?)' },
+            { title: '@handle question', value: 'Ask a specific agent (e.g. @ietf What is new?)' },
             { title: 'help', value: 'Full command reference' },
           ],
         },
@@ -388,8 +388,8 @@ export class AuroraBot extends TeamsActivityHandler {
           facts: [
             { title: 'agents', value: 'List all available AI agents' },
             { title: 'my agents', value: 'List your personal agents' },
-            { title: '@slug question', value: 'Ask a specific agent — e.g. @ietf What is new?' },
-            { title: 'setChannelAgent @slug', value: 'Lock this channel to one agent' },
+            { title: '@handle question', value: 'Ask a specific agent — e.g. @ietf What is new?' },
+            { title: 'setChannelAgent @handle', value: 'Lock this channel to one agent' },
             { title: 'clearChannelAgent', value: 'Remove the channel lock' },
           ],
         },
@@ -398,8 +398,8 @@ export class AuroraBot extends TeamsActivityHandler {
         {
           type: 'FactSet',
           facts: [
-            { title: 'subscribe @slug', value: 'Receive posts from a system agent in this chat' },
-            { title: 'unsubscribe @slug', value: 'Stop notifications' },
+            { title: 'subscribe @handle', value: 'Receive posts from a system agent in this chat' },
+            { title: 'unsubscribe @handle', value: 'Stop notifications' },
             { title: 'subscriptions', value: 'List active subscriptions' },
             { title: 'share Agent Name', value: 'Share a personal agent\'s output to this group' },
             { title: 'unshare Agent Name', value: 'Stop sharing' },

@@ -346,9 +346,14 @@ export class AgentHandler {
       return;
     }
 
-    // 3. Try as a personal My-Agent slug (e.g. @pqc-project, @open-roaming-agent)
+    // 3. Try as a personal My-Agent handle (e.g. @edgeai, @pqc-project).
+    //    Personal-agent handles in user_agent.teams_slug are stored WITHOUT the
+    //    "aurora-" prefix (that prefix is the creator-agent convention only).
+    //    canonicalSlug() always prepends "aurora-", so strip it back off here
+    //    before the lookup or @edgeai will hit "aurora-edgeai" and miss.
+    const personalHandle = teamsSlug.replace(/^aurora-/, '');
     try {
-      const personalAgent = await agentService.getUserAgentBySlug(teamsSlug);
+      const personalAgent = await agentService.getUserAgentBySlug(personalHandle);
       if (personalAgent) {
         const description = personalAgent.project_description || personalAgent.persona || '';
         const persona = {
@@ -578,7 +583,7 @@ function buildAgentListCard(
       },
       {
         type: 'TextBlock',
-        text: 'Type `@slug your question` at any time, or click **talk** to scope this conversation to an agent. Type `clear` to return to general Aurora.',
+        text: 'Type `@handle your question` at any time, or click **talk** to scope this conversation to an agent. Type `clear` to return to general Aurora.',
         isSubtle: true,
         size: 'Small',
         wrap: true,
