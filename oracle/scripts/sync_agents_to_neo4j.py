@@ -15,8 +15,7 @@ Usage:
 
 Environment variables (uses the same names as the oracle/digester services):
   NEO4J_URI, NEO4J_USER (or NEO4J_USERNAME), NEO4J_PASSWORD
-  CC_POSTGRES_HOST, CC_POSTGRES_PORT, CC_POSTGRES_DB,
-  CC_POSTGRES_USER, CC_POSTGRES_PASSWORD
+  POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
 """
 from __future__ import annotations
 
@@ -96,12 +95,15 @@ RETURN r.url_hash AS url_hash
 
 
 def open_pg() -> psycopg2.extensions.connection:
+    # content_creator_service shares the main `aurora` Postgres database
+    # with the rest of the stack (creator_agent and post tables live there
+    # alongside app_users / oracle_query_history / etc).
     return psycopg2.connect(
-        host=os.environ.get("CC_POSTGRES_HOST", "aurora-postgres"),
-        port=int(os.environ.get("CC_POSTGRES_PORT", "5432")),
-        dbname=os.environ.get("CC_POSTGRES_DB", "content_creator"),
-        user=os.environ.get("CC_POSTGRES_USER", "aurora"),
-        password=os.environ["CC_POSTGRES_PASSWORD"],
+        host=os.environ.get("POSTGRES_HOST", "aurora-postgres"),
+        port=int(os.environ.get("POSTGRES_PORT", "5432")),
+        dbname=os.environ.get("POSTGRES_DB", "aurora"),
+        user=os.environ.get("POSTGRES_USER", "aurora"),
+        password=os.environ["POSTGRES_PASSWORD"],
     )
 
 
