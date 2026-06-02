@@ -58,6 +58,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sample", type=int, default=100, help="Judge sample size")
     p.add_argument("--judge-deployment", default=None,
                    help="Azure OpenAI deployment to use for judging (defaults to $AZURE_OPENAI_DEPLOYMENT)")
+    p.add_argument("--refresh", action="store_true",
+                   help="Force re-pulling DB and re-running judge even if cached parquets exist")
     p.add_argument("--azure-input-price", type=float, default=0.0025,
                    help="USD per 1K input tokens (default = gpt-4o rate; verify for your model)")
     p.add_argument("--azure-output-price", type=float, default=0.010,
@@ -726,7 +728,8 @@ def write_report(
         md.append("LLM-as-judge was not run (use `--judge` to enable).")
         md.append("")
     else:
-        md.append(f"Sample: stratified by (pipeline × intent), judge model = `{args.judge_model}`.")
+        deployment_label = getattr(args, "judge_deployment", None) or os.environ.get("AZURE_OPENAI_DEPLOYMENT", "?")
+        md.append(f"Sample: stratified by (pipeline × intent), Azure OpenAI deployment = `{deployment_label}`.")
         md.append("")
         md.append("| pipeline | n | faithfulness | relevance | citation usefulness | hallucination rate |")
         md.append("|---|---|---|---|---|---|")
@@ -806,24 +809,32 @@ def main() -> int:
     since = datetime.fromisoformat(args.since).replace(tzinfo=timezone.utc) if args.since else None
     until = datetime.fromisoformat(args.until).replace(tzinfo=timezone.utc) if args.until else None
 
-    df = pull_query_history(since=since, until=until)
-    if df.empty:
-        log.error("No rows returned — check window or credentials")
-        return 1
-
-    # Save raw snapshot so a re-run of report formatting doesn't re-hit the DB
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(OUT_DIR / "query_history.parquet", index=False)
-    log.info("Saved snapshot to %s", OUT_DIR / "query_history.parquet")
+    qh_path = OUT_DIR / "query_history.parquet"
+    if qh_path.exists() and not args.refresh:
+        log.info("Loading cached query_history.parquet (use --refresh to re-pull)")
+        df = pd.read_parquet(qh_path)
+    else:
+        df = pull_query_history(since=since, until=until)
+        if df.empty:
+            log.error("No rows returned — check window or credentials")
+            return 1
+        df.to_parquet(qh_path, index=False)
+        log.info("Saved snapshot to %s", qh_path)
 
+    neo4j_path = OUT_DIR / "neo4j_snapshot.json"
     neo4j_snap = None
     if not args.no_neo4j:
-        try:
-            neo4j_snap = pull_neo4j_snapshot()
-            if neo4j_snap:
-                (OUT_DIR / "neo4j_snapshot.json").write_text(json.dumps(neo4j_snap, indent=2, default=str))
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Neo4j snapshot failed: %s", exc)
+        if neo4j_path.exists() and not args.refresh:
+            log.info("Loading cached neo4j_snapshot.json")
+            neo4j_snap = json.loads(neo4j_path.read_text())
+        else:
+            try:
+                neo4j_snap = pull_neo4j_snapshot()
+                if neo4j_snap:
+                    neo4j_path.write_text(json.dumps(neo4j_snap, indent=2, default=str))
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Neo4j snapshot failed: %s", exc)
 
     # Charts
     charts_made = {}
@@ -846,15 +857,20 @@ def main() -> int:
             log.warning("chart %s failed: %s", name, exc)
 
     judgements = None
+    judge_path = OUT_DIR / "judgements.parquet"
     if args.judge:
         deployment = args.judge_deployment or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
         if not deployment:
             log.error("--judge requires AZURE_OPENAI_DEPLOYMENT env var or --judge-deployment flag")
             return 2
-        sample = stratified_sample(df, args.sample)
-        log.info("Judging %d queries with Azure OpenAI deployment %s", len(sample), deployment)
-        judgements = run_judge(sample, deployment)
-        judgements.to_parquet(OUT_DIR / "judgements.parquet", index=False)
+        if judge_path.exists() and not args.refresh:
+            log.info("Loading cached judgements.parquet")
+            judgements = pd.read_parquet(judge_path)
+        else:
+            sample = stratified_sample(df, args.sample)
+            log.info("Judging %d queries with Azure OpenAI deployment %s", len(sample), deployment)
+            judgements = run_judge(sample, deployment)
+            judgements.to_parquet(judge_path, index=False)
         args.judge_deployment = deployment  # for the methodology appendix
 
     report_path = write_report(df, neo4j_snap, judgements, args, charts_made)
