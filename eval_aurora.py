@@ -44,9 +44,12 @@ sns.set_theme(style="whitegrid")
 
 log = logging.getLogger("eval_aurora")
 
-OUT_DIR = Path("eval_output")
-CHARTS_DIR = OUT_DIR / "charts"
 REPORT_DATE = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+# Each run writes to a date-named subdirectory so we keep a history of
+# reports/charts/judgements/snapshots instead of overwriting prior runs.
+# Override with --out-dir if you want a custom location.
+OUT_DIR = Path("eval_output") / REPORT_DATE
+CHARTS_DIR = OUT_DIR / "charts"
 
 
 def parse_args() -> argparse.Namespace:
