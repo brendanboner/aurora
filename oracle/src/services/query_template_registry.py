@@ -1810,14 +1810,26 @@ class QueryTemplateRegistry:
             },
             cypher="""
             WITH datetime() - duration({days: coalesce($relative_days, 14)}) as threshold
-            
+
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
-            WITH r, threshold
+
+            // Resources with no internal date (publish_date / created_at /
+            // scraped_at all NULL — e.g. press releases scraped without page
+            // metadata) used to fall back to datetime() which incorrectly
+            // ranked them as "just published". Pull the IngestionBatch
+            // timestamp instead so the ordering reflects when the digester
+            // actually saw the content.
+            OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
+            WITH r, threshold, batch
             WITH r, threshold,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
                    AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                   THEN datetime(r.publish_date)
+                   WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                   WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                   WHEN batch.created_at IS NOT NULL THEN datetime(batch.created_at)
+                   ELSE datetime('2000-01-01') END as effective_date
             WHERE effective_date >= threshold
               AND effective_date <= datetime()
               AND ($workgroups IS NULL OR size($workgroups) = 0
@@ -2478,9 +2490,31 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Find the person
-            MATCH (p:Person)
-            WHERE ($people IS NULL OR size($people) = 0 OR p.name IN $people OR p.person_id IN $people)
+            // Find the person. Exact name/id match first; if nothing matches,
+            // fall back to fuzzy first-name/last-name STARTS-WITH or CONTAINS
+            // and rank by importance (so "Who is Bruno?" → Bruno Tomas at
+            // importance 0.8, not the low-importance "Bruno" stub).
+            CALL {
+                MATCH (p:Person)
+                WHERE ($people IS NULL OR size($people) = 0
+                       OR p.name IN $people
+                       OR p.person_id IN $people)
+                RETURN p, 'exact' AS match_quality
+                UNION
+                MATCH (p:Person)
+                WHERE size($people) > 0
+                  AND NOT (p.name IN $people OR p.person_id IN $people)
+                  AND ANY(q IN $people WHERE
+                        toLower(p.name) CONTAINS toLower(q)
+                        OR ANY(token IN split(toLower(p.name), ' ') WHERE token = toLower(q)))
+                RETURN p, 'fuzzy' AS match_quality
+            }
+
+            // Prefer exact matches over fuzzy, then break ties by importance.
+            WITH p, match_quality,
+                 CASE match_quality WHEN 'exact' THEN 1 ELSE 0 END AS exact_rank,
+                 coalesce(p.importance, 0.0) AS importance
+            ORDER BY exact_rank DESC, importance DESC
 
             // Get their org affiliations
             OPTIONAL MATCH (p)-[aff:AFFILIATED_WITH]->(o:Organization)
@@ -2497,10 +2531,10 @@ class QueryTemplateRegistry:
               AND coalesce(r.archived, false) = false
 
             // Sort while r is still in scope, then aggregate
-            WITH p, o, aff, ds, t, r
+            WITH p, importance, match_quality, o, aff, ds, t, r
             ORDER BY r.publish_date DESC
 
-            WITH p, o, aff,
+            WITH p, importance, match_quality, o, aff,
                  collect(DISTINCT ds.name)[0..5] as workgroups,
                  collect(DISTINCT t.name)[0..5] as topics,
                  collect(DISTINCT {
@@ -2515,10 +2549,15 @@ class QueryTemplateRegistry:
                 p.person_id as person_id,
                 p.email as email,
                 p.description as description,
+                importance,
+                match_quality,
                 collect(DISTINCT {name: o.name, role: aff.role})[0..5] as affiliations,
                 workgroups,
                 topics,
                 recent_resources
+            ORDER BY
+                CASE match_quality WHEN 'exact' THEN 1 ELSE 0 END DESC,
+                importance DESC
             LIMIT $limit
             """
         )

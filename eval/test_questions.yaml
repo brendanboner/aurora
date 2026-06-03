@@ -1,0 +1,421 @@
+# Aurora Unified Test Question Corpus
+# ============================================================
+# Consolidates the prior cli/fast_questions.txt, cli/demo_questions.txt,
+# and scripts/wba_questions.txt into a single annotated set the evaluation
+# harness can drive automatically.
+#
+# Each entry has:
+#   - id            stable identifier, used in test output
+#   - category      grouping for stratified sampling / reporting
+#   - question      the literal user query
+#   - expects_entity (optional) if the answer SHOULD ground on a specific
+#                              KG entity (e.g. "Bruno Tomas"), declare it
+#                              so the eval can verify rather than just trust
+#                              the judge.
+#   - expects_source (optional) datasource_id or URL substring the answer
+#                              should cite — used by the replay harness.
+#   - notes         (optional) free-form context (e.g. why this is tricky).
+#
+# Categories: recency, topic, comparison, standard, person, organization,
+#             event, datasource, regulatory, technical, wba, mention,
+#             stress (known-broken cases tracked for regression coverage).
+# ============================================================
+
+questions:
+
+  # === RECENT-CONTENT ROLLUPS ===
+  - id: rec-month-all-wgs
+    category: recency
+    question: "What was discussed in the last month across all working groups?"
+  - id: rec-wifi8-last-week
+    category: recency
+    question: "What happened in the Wi-Fi 8 working group last week?"
+  - id: rec-wfa-pubs-summary
+    category: recency
+    question: "Give me a summary of the most recent Wi-Fi Alliance publications"
+  - id: rec-wifi8-meeting-topics
+    category: recency
+    question: "What were the key topics from the latest Wi-Fi 8 meeting minutes?"
+  - id: rec-30d-docs
+    category: recency
+    question: "What documents were published in the last 30 days?"
+  - id: rec-causeway
+    category: recency
+    question: "Summarise the latest Wi-Fi Alliance Causeway workgroup activity"
+  - id: rec-new-content
+    category: recency
+    question: "What new content was added to the knowledge base recently?"
+  - id: rec-wifi8-feb-f2f
+    category: recency
+    question: "What was discussed in the Wi-Fi 8 February 2026 face-to-face meeting?"
+
+  # === TOPIC DEEP-DIVES ===
+  - id: topic-sticky
+    category: topic
+    question: "What are sticky clients and why are they a problem in Wi-Fi?"
+  - id: topic-sticky-docs
+    category: topic
+    question: "What documents discuss sticky client scenarios in Wi-Fi 8?"
+  - id: topic-mlo-all
+    category: topic
+    question: "Show me everything in the knowledge base related to Multi-Link Operation"
+  - id: topic-6ghz-spectrum
+    category: topic
+    question: "What has been written about 6 GHz spectrum management?"
+  - id: topic-upper-6ghz
+    category: topic
+    question: "What documents cover the upper 6 GHz band discussions?"
+  - id: topic-twt
+    category: topic
+    question: "What is discussed in the knowledge base about target wake time?"
+  - id: topic-bf-be
+    category: topic
+    question: "Find all documents related to 802.11be beamforming"
+  - id: topic-wifi-sensing
+    category: topic
+    question: "What are the key documents about Wi-Fi sensing technology?"
+  - id: topic-channel-bonding
+    category: topic
+    question: "What material covers channel bonding in Wi-Fi 7 and Wi-Fi 8?"
+  - id: topic-power-save
+    category: topic
+    question: "What has been documented about power save mechanisms in Wi-Fi 8?"
+  - id: topic-scf
+    category: topic
+    question: "What are Wi-Fi 8 Secure Control Frames?"
+
+  # === TOPIC COMPARISONS ===
+  - id: cmp-wifi7-wifi8
+    category: comparison
+    question: "What is the difference between Wi-Fi 7 and Wi-Fi 8?"
+  - id: cmp-mlo-7-vs-8
+    category: comparison
+    question: "Compare Multi-Link Operation in Wi-Fi 7 versus Wi-Fi 8"
+  - id: cmp-be-vs-ax-channel
+    category: comparison
+    question: "How does 802.11be differ from 802.11ax in terms of channel width?"
+  - id: cmp-wifi8-latency
+    category: comparison
+    question: "What are the improvements in Wi-Fi 8 over Wi-Fi 7 for latency?"
+  - id: cmp-wpa3-wpa2
+    category: comparison
+    question: "Compare the security features of WPA3 versus WPA2"
+  - id: cmp-wifi6-6e
+    category: comparison
+    question: "What changed between Wi-Fi 6 and Wi-Fi 6E?"
+  - id: cmp-6ghz-vs-5ghz
+    category: comparison
+    question: "How does the 6 GHz band compare to the 5 GHz band for enterprise deployments?"
+
+  # === STANDARDS & SPECS ===
+  - id: std-bn-status
+    category: standard
+    question: "What is the current status of the IEEE 802.11bn standard?"
+  - id: std-bc-status
+    category: standard
+    question: "What is the current status of the IEEE 802.11bc standard?"
+  - id: std-be-changes
+    category: standard
+    question: "What are the latest changes to the 802.11be specification?"
+  - id: std-wifi8-milestones
+    category: standard
+    question: "What milestones has the Wi-Fi 8 task group hit recently?"
+  - id: std-wifi8-cert-timeline
+    category: standard
+    question: "What is the timeline for Wi-Fi 8 certification?"
+  - id: std-bn-amendment-debate
+    category: standard
+    question: "What features are being debated in the 802.11bn amendment?"
+  - id: std-wifi7-cert-status
+    category: standard
+    question: "What is the current status of Wi-Fi 7 certification programmes?"
+
+  # === PEOPLE & CONTRIBUTORS ===
+  - id: people-sticky-attendees
+    category: person
+    question: "What has been discussed about sticky clients by meeting attendees?"
+  - id: people-wifi8-feb-presenters
+    category: person
+    question: "Who presented at the Wi-Fi 8 February 2026 face-to-face?"
+  - id: people-mlo-experts
+    category: person
+    question: "What expert opinions exist on Multi-Link Operation performance?"
+  - id: people-sensing-contributors
+    category: person
+    question: "Who is contributing to discussions on Wi-Fi sensing in the working groups?"
+  - id: people-roaming-contributors
+    category: person
+    question: "What do contributors say about roaming improvements in Wi-Fi 8?"
+
+  # KNOWN-PROBLEMATIC: Bruno disambiguation
+  - id: people-bruno
+    category: person
+    question: "Who is Bruno?"
+    expects_entity: "Bruno Tomas"
+    notes: |
+      Multiple Brunos exist in the KG. The high-importance one (Bruno Tomas,
+      importance=0.8, 11 connections, WBA-affiliated) is the intended match.
+      System currently returns the low-importance "Bruno" node — see eval
+      2026-06-02 worst-scoring cases.
+
+  # === ORGANIZATIONS ===
+  - id: org-wfa-wifi7
+    category: organization
+    question: "What has the Wi-Fi Alliance published about Wi-Fi 7 adoption?"
+  - id: org-wfa-press-releases
+    category: organization
+    question: "What are the latest Wi-Fi Alliance press releases?"
+    expects_source: "wba_newsroom"
+    notes: |
+      WBA Newsroom (wballiance.com/newsroom/) is updated daily and indexed
+      (~195 resources). Wi-Fi Alliance press-releases page is also indexed.
+      Baseline currently returns IETF docs instead — see eval 2026-06-02.
+  - id: org-wfa-causeway-docs
+    category: organization
+    question: "What documents come from the Wi-Fi Alliance Causeway working groups?"
+  - id: org-qualcomm
+    category: organization
+    question: "What has Qualcomm contributed to Wi-Fi 8 discussions?"
+  - id: org-intel
+    category: organization
+    question: "What positions has Intel published on next-generation Wi-Fi?"
+
+  # === EVENTS & MEETINGS ===
+  - id: evt-upcoming-wfa
+    category: event
+    question: "What is on the agenda for upcoming Wi-Fi Alliance events?"
+  - id: evt-wifi8-feb-agenda
+    category: event
+    question: "What was the agenda for the Wi-Fi 8 February 2026 face-to-face meeting?"
+  - id: evt-wifi8-last-actions
+    category: event
+    question: "What were the action items from the last Wi-Fi 8 meeting?"
+  - id: evt-wifi8-decisions
+    category: event
+    question: "What decisions were made in the most recent Wi-Fi 8 meeting minutes?"
+  - id: evt-wifi8-feb17
+    category: event
+    question: "What was discussed in the Wi-Fi 8 meeting on February 17, 2026?"
+  - id: evt-wifi8-schedule
+    category: event
+    question: "What is the Wi-Fi 8 meeting schedule for early 2026?"
+
+  # === DATASOURCE ROLL-UPS ===
+  - id: ds-latest-press-release
+    category: datasource
+    question: "What is the latest press release?"
+    expects_source: "wba_newsroom"
+    notes: |
+      WBA Newsroom + wi-fi.org/press-releases are both indexed. Press-release
+      Resources currently have NULL publish_date/created_at/scraped_at — only
+      IngestionBatch.created_at is reliable. Fix: fall back to IngestionBatch
+      timestamp in the effective_date CASE.
+  - id: ds-wfa-latest-press
+    category: datasource
+    question: "What is the latest Wi-Fi Alliance press release?"
+    expects_source: "wba_newsroom"
+  - id: ds-wfa-blogs
+    category: datasource
+    question: "Show me all Wi-Fi Alliance blog posts from the last quarter"
+  - id: ds-wfa-whitepapers
+    category: datasource
+    question: "What whitepapers has the Wi-Fi Alliance published about Wi-Fi 7?"
+  - id: ds-wifi7-cert-resources
+    category: datasource
+    question: "What resources are available about Wi-Fi 7 certification?"
+  - id: ds-wifi8-podcasts
+    category: datasource
+    question: "What podcasts or broadcasts have discussed Wi-Fi 8?"
+  - id: ds-wfa-beacon-6ghz
+    category: datasource
+    question: "Give me a rollup of all WFA Beacon articles about 6 GHz"
+
+  # === REGULATORY & ADOPTION ===
+  - id: reg-6ghz-global
+    category: regulatory
+    question: "What is the latest regulatory update on 6 GHz spectrum globally?"
+  - id: reg-6ghz-approvals
+    category: regulatory
+    question: "Which countries have approved 6 GHz for unlicensed Wi-Fi use?"
+  - id: reg-wifi7-adoption
+    category: regulatory
+    question: "What is the adoption status of Wi-Fi 7 among device manufacturers?"
+  - id: reg-wifi6e-compliance
+    category: regulatory
+    question: "What compliance requirements exist for Wi-Fi 6E devices?"
+  - id: reg-fcc-actions
+    category: regulatory
+    question: "What regulatory actions has the FCC taken regarding Wi-Fi spectrum?"
+  - id: reg-rspg-upper-6ghz
+    category: regulatory
+    question: "What is the RSPG position on the upper 6 GHz band in Europe?"
+
+  # === TECHNICAL EXPLANATIONS ===
+  - id: tech-mlo-wifi7
+    category: technical
+    question: "How does Multi-Link Operation work in Wi-Fi 7?"
+  - id: tech-ofdma-wifi6
+    category: technical
+    question: "Explain the OFDMA resource unit allocation in Wi-Fi 6"
+  - id: tech-twt-iot
+    category: technical
+    question: "How does target wake time reduce power consumption in IoT devices?"
+  - id: tech-bss-coloring
+    category: technical
+    question: "What is the role of BSS colouring in reducing interference?"
+  - id: tech-4kqam-wifi7
+    category: technical
+    question: "How does 4K-QAM improve throughput in Wi-Fi 7?"
+  - id: tech-sticky-roaming
+    category: technical
+    question: "Explain the roaming problem caused by sticky clients"
+  - id: tech-bf-802-11be
+    category: technical
+    question: "How does beamforming improve signal strength in 802.11be?"
+  - id: tech-spatial-reuse
+    category: technical
+    question: "What is spatial reuse and how is it implemented in Wi-Fi 6?"
+  - id: tech-preamble-puncturing
+    category: technical
+    question: "How does preamble puncturing work in Wi-Fi 6E and Wi-Fi 7?"
+
+  # === WBA WORKGROUPS ===
+  - id: wba-priv5g
+    category: wba
+    question: "What is the WBA Enterprise Security for Private 5G workgroup working on?"
+  - id: wba-openroaming
+    category: wba
+    question: "What has the WBA published about OpenRoaming?"
+  - id: wba-roaming-wg
+    category: wba
+    question: "What is the WBA Roaming Work Group focusing on?"
+  - id: wba-aiml-wg
+    category: wba
+    question: "What has the WBA AI/ML for Wi-Fi workgroup produced?"
+  - id: wba-security-wgs
+    category: wba
+    question: "What WBA workgroups are focused on Wi-Fi security topics?"
+  - id: wba-nextgen
+    category: wba
+    question: "What is the WBA NextGen Work Group working on?"
+  - id: wba-qos-latency
+    category: wba
+    question: "What is the WBA doing about E2E Wi-Fi QoS and latency?"
+  - id: wba-pqc-wifi
+    category: wba
+    question: "What has the WBA published on Post-Quantum Cybersecurity for Wi-Fi?"
+  - id: wba-openroaming-iot
+    category: wba
+    question: "What does the WBA say about OpenRoaming for IoT deployments?"
+  - id: wba-6g-wifi
+    category: wba
+    question: "What is the WBA position on 6G and Wi-Fi convergence?"
+  - id: wba-programmes-list
+    category: wba
+    question: "What programmes are available in WBA?"
+  - id: wba-iot-workgroups
+    category: wba
+    question: "What workgroups are in the IoT programme?"
+  - id: wba-pqc-meeting
+    category: wba
+    question: "What was discussed in the last PQC meeting?"
+  - id: wba-aiml-leaders
+    category: wba
+    question: "Who are the leaders of the AI/ML working group?"
+  - id: wba-pqc-chair
+    category: wba
+    question: "Who chairs the PQC workgroup?"
+
+  # === WFA CAUSEWAY ===
+  - id: wfa-broadcast-ttg
+    category: wba
+    question: "What has the WFA Broadcast Technical Task Group published recently?"
+  - id: wfa-location-ttg
+    category: wba
+    question: "What is the WFA Wi-Fi Location Task Group working on?"
+  - id: wfa-wifi8-marketing
+    category: wba
+    question: "What is the WFA Wi-Fi 8 Marketing Task Group focused on?"
+  - id: wfa-passpoint-ttg
+    category: wba
+    question: "What documents has the WFA Passpoint Task Group produced?"
+  - id: wfa-halow-ttg
+    category: wba
+    question: "What is the WFA Wi-Fi HaLow Task Group working on?"
+
+  # === @MENTION DATASOURCE QUERIES ===
+  - id: mention-broadcast
+    category: mention
+    question: "@broadcast what are the latest updates?"
+  - id: mention-wifi8mtg
+    category: mention
+    question: "@wifi8mtg what has been discussed recently in the Wi-Fi 8 task group?"
+  - id: mention-wba
+    category: mention
+    question: "@wba what has the WBA published in the last month?"
+  - id: mention-enterprise
+    category: mention
+    question: "@enterprise what is the latest on Enterprise Security for Private 5G?"
+  - id: mention-openroaming
+    category: mention
+    question: "@openroaming what are the latest OpenRoaming developments?"
+  - id: mention-roaming
+    category: mention
+    question: "@roaming what is the Roaming Work Group focused on?"
+  - id: mention-location
+    category: mention
+    question: "@location what is the Wi-Fi Location Task Group working on?"
+  - id: mention-passpoint
+    category: mention
+    question: "@passpoint what is new in Passpoint standardisation?"
+  - id: mention-pqc
+    category: mention
+    question: "@pqc what is the WBA Post-Quantum Cybersecurity workgroup doing?"
+  - id: mention-nextgen
+    category: mention
+    question: "@nextgen what is the WBA NextGen workgroup working on?"
+  - id: mention-aiml
+    category: mention
+    question: "@aiml what has the AI/ML for Wi-Fi workgroup been discussing?"
+
+  # KNOWN-PROBLEMATIC: @youtube routing
+  - id: mention-youtube-cisco
+    category: mention
+    question: "@youtube who presented at cisco"
+    expects_source: "youtube"
+    notes: |
+      Datasource `youtube` exists with 35 resources including 5 segments of
+      "Cisco Ai Summit | The Event Defining The Future Of Ai". @youtube
+      mention should resolve to datasource_ids=['youtube'] and the answer
+      should cite the Cisco AI Summit segments.
+
+  # === IETF (formerly fast_questions sec 8 + demo) ===
+  - id: ietf-wifi7
+    category: organization
+    question: "What has the IETF published about Wi-Fi 7?"
+  - id: ietf-6ghz-drafts
+    category: organization
+    question: "Show me recent IETF drafts on 6 GHz spectrum."
+  - id: ietf-bgp-wg
+    category: organization
+    question: "What is the latest from the BGP working group?"
+    expects_source: "ietf_wg_idr"
+    notes: |
+      Validates the working-group routing fix (commit 4e589f6) — should now
+      route to RECENT_CONTENT and find IETF 125 BGP/IDR drafts.
+
+  # === STRESS / REGRESSION (worst-scoring cases from prior evals) ===
+  - id: stress-kevins-news
+    category: stress
+    question: "what is kevin's latest news"
+    notes: |
+      No "Kevin" entity (Person or Agent) currently in KG. Expected behaviour
+      after entity-guard deploy: "I don't have specific information about
+      Kevin… Did you mean: …?" — confidence 0.2. Should NOT confidently
+      return Wi-Fi 7 meeting content.
+  - id: stress-task-group-progress
+    category: stress
+    question: "-802-11 what is the latest on task group progress?"
+    notes: |
+      Ambiguous leading "-" and shorthand "802-11". Currently routes to
+      entity_focused with low-quality match. Tracked as a regression case.
