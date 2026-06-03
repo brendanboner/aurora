@@ -56,6 +56,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-neo4j", action="store_true", help="Skip Neo4j snapshot")
     p.add_argument("--judge", action="store_true", help="Run LLM-as-judge on a sample")
     p.add_argument("--sample", type=int, default=100, help="Judge sample size")
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Stratified-sampling seed. Default = today's date (YYYYMMDD) so the "
+            "worst/best Appendix C examples rotate naturally across daily runs "
+            "without re-judging the same rows every time. Pass an explicit "
+            "integer for reproducible runs."
+        ),
+    )
     p.add_argument("--judge-deployment", default=None,
                    help="Azure OpenAI deployment to use for judging (defaults to $AZURE_OPENAI_DEPLOYMENT)")
     p.add_argument("--refresh", action="store_true",
@@ -318,7 +329,7 @@ Return ONLY the JSON object, no markdown, no surrounding text.
 """
 
 
-def stratified_sample(df: pd.DataFrame, n: int) -> pd.DataFrame:
+def stratified_sample(df: pd.DataFrame, n: int, seed: int = 42) -> pd.DataFrame:
     eligible = df[
         (df["error"] != True) &  # noqa: E712
         df["answer"].astype(str).str.strip().ne("") &
@@ -332,7 +343,7 @@ def stratified_sample(df: pd.DataFrame, n: int) -> pd.DataFrame:
     n_strata = len(groups)
     per = max(1, n // n_strata)
     picked = pd.concat(
-        [g.sample(min(len(g), per), random_state=42) for _, g in groups],
+        [g.sample(min(len(g), per), random_state=seed) for _, g in groups],
         ignore_index=True,
     )
     return picked
@@ -872,7 +883,16 @@ def main() -> int:
             log.info("Loading cached judgements.parquet")
             judgements = pd.read_parquet(judge_path)
         else:
-            sample = stratified_sample(df, args.sample)
+            # Default seed = today's date as YYYYMMDD so that daily eval runs
+            # naturally rotate which rows land in the Appendix C best/worst
+            # tables. Avoids the "same Bruno/Kevin/BGP at the bottom every
+            # time" effect that hid newer regressions.
+            sample_seed = (
+                args.seed if args.seed is not None
+                else int(datetime.now(timezone.utc).strftime("%Y%m%d"))
+            )
+            log.info("Stratified sample seed: %d", sample_seed)
+            sample = stratified_sample(df, args.sample, seed=sample_seed)
             log.info("Judging %d queries with Azure OpenAI deployment %s", len(sample), deployment)
             judgements = run_judge(sample, deployment)
             judgements.to_parquet(judge_path, index=False)
