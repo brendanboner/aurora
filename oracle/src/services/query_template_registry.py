@@ -727,27 +727,39 @@ class QueryTemplateRegistry:
               //      no formal publish_date in the portal metadata.
               MATCH (r:Resource)
               WHERE coalesce(r.archived, false) = false
+              // Pre-compute date validity. Same pattern as DATASOURCE_LATEST
+              // and RECENT_PUBLICATIONS: regex-guard the publish_date string
+              // and replace Postgres space-separator with T before datetime()
+              // so bad/non-ISO values can't crash the query or surface as
+              // future "latest" dates.
               WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days,
-                   CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                        AND datetime(r.publish_date) >= datetime('2000-01-01')
-                        AND datetime(r.publish_date) <= datetime()
-                        THEN datetime(r.publish_date)
+                   (r.publish_date IS NOT NULL
+                    AND NOT r.publish_date IN ['', 'unknown']
+                    AND r.publish_date =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS pub_ok,
+                   (r.scraped_at IS NOT NULL
+                    AND toString(r.scraped_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS scraped_ok
+              WITH r, primary_threshold, fallback_threshold, max_threshold, items_per_group, group_limit, requested_days, pub_ok, scraped_ok,
+                   CASE
+                        WHEN pub_ok
+                             AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01')
+                             AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                        THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
                         // Video resources: scraped_at is a reliable recency proxy
-                        WHEN r.category = 'video' AND r.scraped_at IS NOT NULL
-                             AND datetime(r.scraped_at) >= datetime('2020-01-01')
-                        THEN datetime(r.scraped_at)
+                        WHEN r.category = 'video' AND scraped_ok
+                             AND datetime(replace(toString(r.scraped_at), ' ', 'T')) >= datetime('2020-01-01')
+                        THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
                         // WBA Extranet: incremental scraper means scraped_at = upload date
                         WHEN r.datasource_id STARTS WITH 'wba_extranet_'
-                             AND r.scraped_at IS NOT NULL
-                             AND datetime(r.scraped_at) >= datetime('2020-01-01')
-                        THEN datetime(r.scraped_at)
+                             AND scraped_ok
+                             AND datetime(replace(toString(r.scraped_at), ' ', 'T')) >= datetime('2020-01-01')
+                        THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
                         // WFA Causeway: same argument — member-only portal, incremental
                         // scraper, so scraped_at reliably reflects when a document was
                         // first seen (= uploaded to the workgroup folder).
                         WHEN r.datasource_id STARTS WITH 'wfa_causeway_'
-                             AND r.scraped_at IS NOT NULL
-                             AND datetime(r.scraped_at) >= datetime('2020-01-01')
-                        THEN datetime(r.scraped_at)
+                             AND scraped_ok
+                             AND datetime(replace(toString(r.scraped_at), ' ', 'T')) >= datetime('2020-01-01')
+                        THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
                         // NOTE: We deliberately do NOT use created_at as a general fallback here.
                         // For bulk/non-incremental scrapers (wfa_resource_page, ieee802_*, nist_*,
                         // mef_*, etc.) created_at = when Aurora first indexed the document, which
@@ -3207,16 +3219,33 @@ ORDER BY e.start_date DESC
               AND coalesce(r.archived, false) = false
               AND coalesce(trim(r.title), '') <> ''
               AND toLower(trim(r.title)) <> 'untitled'
+            // Pre-compute date validity booleans so datetime() is only called
+            // on rows that match an ISO-style pattern — production has rows
+            // with bad publish_date ("7739-01-03", "tbd") and Postgres-format
+            // timestamps with space separator. Both crash a bare datetime().
             WITH r, ds,
-                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                      AND datetime(r.publish_date) >= datetime('2000-01-01')
-                      AND datetime(r.publish_date) <= datetime()
-                      THEN datetime(r.publish_date)
-                      WHEN r.category = 'video' AND r.scraped_at IS NOT NULL
-                           AND datetime(r.scraped_at) >= datetime('2020-01-01')
-                      THEN datetime(r.scraped_at)
-                      ELSE datetime('1970-01-01')
+                 (r.publish_date IS NOT NULL
+                  AND NOT r.publish_date IN ['', 'unknown']
+                  AND r.publish_date =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS pub_ok,
+                 (r.category = 'video'
+                  AND r.scraped_at IS NOT NULL
+                  AND toString(r.scraped_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS scraped_video_ok
+            WITH r, ds, pub_ok, scraped_video_ok,
+                 CASE
+                   WHEN pub_ok
+                        AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
+                   WHEN scraped_video_ok
+                        AND datetime(replace(toString(r.scraped_at), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
+                   ELSE datetime('1970-01-01')
                  END AS effective_date
+            // Hard belt-and-braces filter — no future-dated rows can sneak
+            // into "latest" results. Awards/event docs sometimes carry the
+            // EVENT date (e.g. Oct 2026) as publish_date; suppress them so
+            // "what is new today" doesn't echo "the most recent is Oct 2026".
+            WHERE effective_date < datetime()
+              AND effective_date > datetime('1970-01-02')
             ORDER BY effective_date DESC
             LIMIT $limit
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)

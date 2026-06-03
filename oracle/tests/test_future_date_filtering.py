@@ -141,6 +141,18 @@ def test_datasource_latest_template_also_rejects_future_dates(registry_source):
     assert 'datetime().year + 1' not in section, (
         "DATASOURCE_LATEST should not use year+1 validation"
     )
-    assert 'datetime(r.publish_date) <= datetime()' in section, (
-        "DATASOURCE_LATEST must filter future publish_dates"
+    # The future-date guard can be expressed as:
+    #   - inline `datetime(r.publish_date) <= datetime()` in the CASE, or
+    #   - a precomputed pub_ok regex check + a hard `effective_date < datetime()`
+    #     WHERE clause (the more robust form added when Postgres-format strings
+    #     started reaching the parser).
+    has_inline_guard = 'datetime(r.publish_date) <= datetime()' in section
+    has_normalised_guard = (
+        ".publish_date), ' ', 'T')) <= datetime()" in section
+        and 'effective_date < datetime()' in section
+    )
+    assert has_inline_guard or has_normalised_guard, (
+        "DATASOURCE_LATEST must filter future publish_dates "
+        "(either inline datetime() comparison or precomputed pub_ok + "
+        "effective_date < datetime() guard)"
     )

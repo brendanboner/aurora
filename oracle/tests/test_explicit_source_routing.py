@@ -219,11 +219,21 @@ class TestDatasourceLatestTemplate:
         assert 'datasource_id IN $workgroups' in registry_source
 
     def test_template_cypher_rejects_future_dates(self, registry_source):
-        """DATASOURCE_LATEST must also filter future-dated documents."""
+        """DATASOURCE_LATEST must also filter future-dated documents.
+
+        Accept either the original inline `datetime(r.publish_date) <= datetime()`
+        comparison OR the newer precomputed-validity + hard `effective_date <
+        datetime()` form (added when Postgres-format timestamps reached the parser).
+        """
         # Use rfind so we land on the template definition, not an earlier comment reference
         start = registry_source.rfind('DATASOURCE_LATEST')
         section = registry_source[start:start + 3000]
-        assert 'datetime(r.publish_date) <= datetime()' in section
+        has_inline_guard = 'datetime(r.publish_date) <= datetime()' in section
+        has_normalised_guard = (
+            ".publish_date), ' ', 'T')) <= datetime()" in section
+            and 'effective_date < datetime()' in section
+        )
+        assert has_inline_guard or has_normalised_guard
 
     def test_template_cypher_marks_results_as_latest_fallback(self, registry_source):
         """DATASOURCE_LATEST must set is_latest_fallback=true in RETURN clause."""
