@@ -97,8 +97,9 @@ def test_category_filter_widens_window_and_drops_conflicting_topics():
 
 
 def test_category_filter_respects_explicit_dates():
-    """If the user said 'press releases in the last week', honour that — only
-    widen when there's no explicit user-specified window."""
+    """If the user typed an explicit temporal phrase ("in the last week"),
+    honour it. The override widens only when the user did NOT request a
+    specific window — i.e. plain "latest press release"."""
     from datetime import date
     reg = QueryTemplateRegistry()
     tpl = reg.get_template(RouteId.RECENT_PUBLICATIONS)
@@ -111,7 +112,28 @@ def test_category_filter_respects_explicit_dates():
         raw_query="press releases in the last week",
     )
     params = tpl.build_params(plan)
-    # Explicit dates set → don't widen
+    # "in the last week" → user-specified window honoured
     assert params["start_date"] == "2026-05-27"
     assert params["end_date"] == "2026-06-03"
     assert params["relative_days"] == 7
+
+
+def test_category_filter_widens_even_when_router_set_dates():
+    """Plain 'latest press release' without an explicit "in the last X"
+    phrase: even if the router heuristically set a 7-day window, widen to
+    365d so we surface the most recent press release across the year."""
+    from datetime import date
+    reg = QueryTemplateRegistry()
+    tpl = reg.get_template(RouteId.RECENT_PUBLICATIONS)
+    plan = RoutePlan(
+        route_id=RouteId.RECENT_PUBLICATIONS,
+        category="press release",
+        start_date=date(2026, 5, 27),  # set by router heuristic
+        end_date=date(2026, 6, 3),
+        relative_days=7,
+        raw_query="what is the latest press release?",
+    )
+    params = tpl.build_params(plan)
+    assert params["relative_days"] == 365
+    assert params["start_date"] is None
+    assert params["end_date"] is None

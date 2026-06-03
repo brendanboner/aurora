@@ -286,10 +286,23 @@ class QueryTemplate:
                     if t.lower() not in cat_terms
                        and t.lower().rstrip("s") not in cat_terms
                 ]
-                # Force a wide lookback when the user is asking for "latest of category".
-                # Router-set start_date/end_date narrow this back if the user said
-                # "in the last month" explicitly.
-                if not (plan.start_date or plan.end_date):
+                # Force a wide lookback when the user is asking for "latest of
+                # category". The router defaults "latest" to a 7-day window —
+                # too tight for press releases that come in waves and whose
+                # most-recent may be weeks old. User intent for "latest of
+                # category" is "top-N most-recent regardless of week", so we
+                # widen to 365d and discard the router's narrow window. Only
+                # preserve the router window if the user used an explicit
+                # temporal phrase that survived in the raw query.
+                raw_q = (plan.raw_query or "").lower()
+                user_specified_window = any(
+                    phrase in raw_q for phrase in (
+                        "in the last ", "in the past ", "last week", "last month",
+                        "this week", "this month", "last quarter", "last year",
+                        "in 2024", "in 2025", "in 2026", "in 2023",
+                    )
+                )
+                if not user_specified_window:
                     params["relative_days"] = 365
                     params["start_date"] = None
                     params["end_date"] = None
