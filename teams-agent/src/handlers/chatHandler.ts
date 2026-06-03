@@ -231,7 +231,6 @@ export class ChatHandler {
                 to: context.activity.from ? [context.activity.from.id] : [],
                 actions: [
                   { type: 'imBack', title: '🔍 Enhance', value: 'enhance' },
-                  { type: 'imBack', title: '📄 Show full post', value: 'show' },
                 ],
               },
             }

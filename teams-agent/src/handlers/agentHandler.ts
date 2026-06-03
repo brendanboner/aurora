@@ -459,15 +459,16 @@ export class AgentHandler {
       hasDocs
         ? {
             text,
-            // Suggested-action chips beneath the message let the user click
-            // "Enhance" (or "Show full post") instead of typing the command.
-            // imBack sends the value back to the bot as if typed, which hits
-            // the existing handler in bot.ts.
+            // Suggested-action chip beneath the message — "Enhance" re-runs
+            // the answer with deeper source analysis (uses the docs already
+            // retrieved). imBack sends the value back to the bot as if typed,
+            // hitting the existing handler in bot.ts. The "show" command is
+            // intentionally NOT exposed here — it's only meaningful for the
+            // last proactive agent notification, not for an interactive Q&A.
             suggestedActions: {
               to: context.activity.from ? [context.activity.from.id] : [],
               actions: [
                 { type: 'imBack', title: '🔍 Enhance', value: 'enhance' },
-                { type: 'imBack', title: '📄 Show full post', value: 'show' },
               ],
             },
           }
