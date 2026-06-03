@@ -1122,7 +1122,14 @@ class FastEngine:
                 logger.info(
                     f"Excluded {before_count - len(processed_results)} results from ignored datasources"
                 )
-        if preferred_ds and processed_results:
+        # When the query already narrows by category (e.g. user asked for
+        # "latest press release"), the category filter IS the dominant intent
+        # — applying a personalisation boost over it tilts results toward
+        # joined-but-off-topic sources (IETF drafts when the user wanted WBA
+        # newsroom). Skip the personalisation boost in that case so category
+        # ranking dominates.
+        category_filter_active = bool(params.get("category"))
+        if preferred_ds and processed_results and not category_filter_active:
             def _source_boost(r: dict) -> float:
                 ds_id = r.get("datasource_id") or r.get("workgroup_id") or ""
                 return 1.4 if ds_id in preferred_ds else 1.0
@@ -1140,6 +1147,12 @@ class FastEngine:
                 )
             except Exception:
                 pass
+        elif preferred_ds and category_filter_active:
+            logger.info(
+                "Skipping source-membership boost: category filter active "
+                "(category=%s, joined_count=%d)",
+                params.get("category"), len(preferred_ds),
+            )
 
         # Apply domain preferences boost (soft, 1.25x — weaker than datasource membership)
         preferred_domains = params.get("preferred_domains", [])

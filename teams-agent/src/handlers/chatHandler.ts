@@ -214,12 +214,29 @@ export class ChatHandler {
         remember(convId, question, response.answer, response.documents);
       }
 
-      // Send as plain markdown with inline linked citations — no Adaptive Card for Q&A
+      // Send as plain markdown with inline linked citations — no Adaptive Card
+      // for Q&A. When the answer cites sources, attach a suggestedActions chip
+      // so the user can click "Enhance" instead of typing the command —
+      // imBack pumps "enhance" back to the bot, hitting the existing handler.
       const text = buildMarkdownResponse(
         response.answer || 'Here are the relevant results:',
         response.documents ?? [],
       );
-      await context.sendActivity(text);
+      const hasDocs = (response.documents?.length ?? 0) > 0;
+      await context.sendActivity(
+        hasDocs
+          ? {
+              text,
+              suggestedActions: {
+                to: context.activity.from ? [context.activity.from.id] : [],
+                actions: [
+                  { type: 'imBack', title: '🔍 Enhance', value: 'enhance' },
+                  { type: 'imBack', title: '📄 Show full post', value: 'show' },
+                ],
+              },
+            }
+          : text,
+      );
 
       if (response.suggestions?.length) {
         const hint = `\n\n**Related:**\n${response.suggestions.slice(0, 2)
@@ -312,30 +329,20 @@ export class ChatHandler {
       return;
     }
 
+    // Use the documents already stored from the brief answer. Re-querying
+    // here used to timeout (>30s) under heavy personalisation filters and
+    // it's redundant anyway — the brief answer already retrieved the relevant
+    // documents. Only re-query when memory truly has no documents at all
+    // (e.g. enhance after a non-Q&A interaction).
     if (!mem.documents?.length) {
-      // Memory exists but no source documents — re-query first to get documents
-      await context.sendActivity(`Re-running *${mem.question}* to retrieve source documents…`);
-      try {
-        const email = this.userService.extractUserEmail(context.activity);
-        const auroraUser = await this.userService.getOrCreateUser(email, context.activity.from.name || 'User');
-        const response = await withTimeout(
-          this.oracleService.query(auroraUser.id, mem.question, undefined, undefined, auroraUser.email),
-          30000, 'pre-enhance query'
-        );
-        if (response?.documents?.length) {
-          remember(convId, mem.question, response.answer || mem.answerSummary, response.documents);
-        } else {
-          await context.sendActivity('No source documents found for that question. The enhance feature works best with factual queries that return cited sources.');
-          return;
-        }
-      } catch {
-        await context.sendActivity('Could not retrieve source documents right now. Please try again.');
-        return;
-      }
+      await context.sendActivity(
+        'No source documents available to enhance — ask a question first, then click **Enhance** on its answer.'
+      );
+      return;
     }
 
-    const freshMem = recall(convId)!;
-    await context.sendActivity(`Fetching source documents for a deeper answer on: *${freshMem.question}*`);
+    const freshMem = mem;
+    await context.sendActivity(`Reading the sources for a deeper answer on: *${freshMem.question}*`);
 
     try {
       const email = this.userService.extractUserEmail(context.activity);

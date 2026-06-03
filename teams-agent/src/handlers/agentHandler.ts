@@ -454,7 +454,25 @@ export class AgentHandler {
       response.documents ?? [],
       speakerName,
     );
-    await context.sendActivity(text);
+    const hasDocs = (response.documents?.length ?? 0) > 0;
+    await context.sendActivity(
+      hasDocs
+        ? {
+            text,
+            // Suggested-action chips beneath the message let the user click
+            // "Enhance" (or "Show full post") instead of typing the command.
+            // imBack sends the value back to the bot as if typed, which hits
+            // the existing handler in bot.ts.
+            suggestedActions: {
+              to: context.activity.from ? [context.activity.from.id] : [],
+              actions: [
+                { type: 'imBack', title: '🔍 Enhance', value: 'enhance' },
+                { type: 'imBack', title: '📄 Show full post', value: 'show' },
+              ],
+            },
+          }
+        : text,
+    );
   }
 }
 
