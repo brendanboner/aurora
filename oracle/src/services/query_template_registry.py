@@ -264,11 +264,35 @@ class QueryTemplate:
                 params["relative_days"] = None
                 params["start_date"] = None
                 params["end_date"] = None
-            # For RECENT_PUBLICATIONS, when a category filter is already set (e.g. "press release"),
-            # the org filter over-restricts (requires MENTIONS/PUBLISHED_BY relationships that
-            # many resources lack). Clear it so the category filter alone narrows the results.
+            # For RECENT_PUBLICATIONS, when a category filter is already set
+            # (e.g. "press release"), strip the over-restrictive filters that
+            # the router picks up alongside it:
+            #   - org filter (requires MENTIONS/PUBLISHED_BY edges most rows lack)
+            #   - topic filter (the router often extracts the category word as a
+            #     Topic too — "press release"/"newsroom" rows have no
+            #     RELATES_TO->Topic edge for those terms, so the AND excludes
+            #     them entirely)
+            #   - tight date window (the router picks "last 7 days" for "latest"
+            #     queries; press releases come in waves and the most recent may
+            #     be weeks old. Latest-of-category should look back a year.)
             if route_id_val == "recent_publications" and params.get("category"):
                 params["organizations"] = []
+                # Strip category-name terms from topics so a row with the right
+                # category but no Topic edge still passes.
+                cat_terms = set(a.lower() for a in params.get("category_aliases", []))
+                cat_terms.add(params["category"].lower())
+                params["topics"] = [
+                    t for t in params["topics"]
+                    if t.lower() not in cat_terms
+                       and t.lower().rstrip("s") not in cat_terms
+                ]
+                # Force a wide lookback when the user is asking for "latest of category".
+                # Router-set start_date/end_date narrow this back if the user said
+                # "in the last month" explicitly.
+                if not (plan.start_date or plan.end_date):
+                    params["relative_days"] = 365
+                    params["start_date"] = None
+                    params["end_date"] = None
             if route_id_val == "documents_by_topic" and not params["topics"] and plan.raw_query:
                 query_lower = plan.raw_query.lower().strip()
                 extracted_term = None

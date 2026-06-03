@@ -68,3 +68,50 @@ def test_build_params_empty_aliases_when_no_category():
     )
     params = tpl.build_params(plan)
     assert params["category_aliases"] == []
+
+
+def test_category_filter_widens_window_and_drops_conflicting_topics():
+    """When the router extracted 'press release' as both category and topic,
+    build_params should: (1) keep the category, (2) drop 'press release' from
+    topics so rows tagged with the alias 'newsroom' aren't excluded by a
+    topic AND that they can't satisfy, (3) extend the date lookback to 365
+    days since user is asking for the latest-of-category, not last-week."""
+    reg = QueryTemplateRegistry()
+    tpl = reg.get_template(RouteId.RECENT_PUBLICATIONS)
+    plan = RoutePlan(
+        route_id=RouteId.RECENT_PUBLICATIONS,
+        category="press release",
+        topics=["press release", "wi-fi"],
+        relative_days=7,
+        raw_query="what is the latest press release",
+    )
+    params = tpl.build_params(plan)
+    assert params["category"] == "press release"
+    # "press release" stripped from topics (it's the category); "wi-fi" stays.
+    assert "press release" not in [t.lower() for t in params["topics"]]
+    assert any("wi-fi" in t.lower() for t in params["topics"])
+    # Window widened to 365 days
+    assert params["relative_days"] == 365
+    # Organizations cleared as part of the existing press-release adjustment
+    assert params["organizations"] == []
+
+
+def test_category_filter_respects_explicit_dates():
+    """If the user said 'press releases in the last week', honour that — only
+    widen when there's no explicit user-specified window."""
+    from datetime import date
+    reg = QueryTemplateRegistry()
+    tpl = reg.get_template(RouteId.RECENT_PUBLICATIONS)
+    plan = RoutePlan(
+        route_id=RouteId.RECENT_PUBLICATIONS,
+        category="press release",
+        start_date=date(2026, 5, 27),
+        end_date=date(2026, 6, 3),
+        relative_days=7,
+        raw_query="press releases in the last week",
+    )
+    params = tpl.build_params(plan)
+    # Explicit dates set → don't widen
+    assert params["start_date"] == "2026-05-27"
+    assert params["end_date"] == "2026-06-03"
+    assert params["relative_days"] == 7
