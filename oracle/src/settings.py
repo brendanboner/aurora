@@ -150,7 +150,7 @@ class Settings(BaseSettings):
     # Fast Pipeline: Cypher Templates
     fast_template_max_nodes: int = 100  # Max nodes returned per template query
     fast_template_timeout: float = 5.0  # Timeout for template execution (seconds)
-    fast_template_version: str = "1.0.11"  # bumped 2026-06-03: latest-of-category always widens window unless user specified one explicitly
+    fast_template_version: str = "1.0.12"  # regex-guard datetime() parsing — Cypher throws on garbage publish_date strings ("tbd", "0430-01-03")
     
     # Fast Pipeline: Rollups (PostgreSQL)
     fast_rollup_enabled: bool = True  # Enable rollup generation and retrieval

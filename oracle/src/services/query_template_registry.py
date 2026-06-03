@@ -1941,15 +1941,26 @@ class QueryTemplateRegistry:
             // ranked them as "just published". Pull the IngestionBatch
             // timestamp instead so the ordering reflects when the digester
             // actually saw the content.
+            //
+            // Regex guard on publish_date: production has rows with garbage
+            // strings ("tbd", "0430-01-03", "Q3 2024") that crash datetime()
+            // with "Text cannot be parsed to a DateTime". The =~ pre-check
+            // short-circuits before the parse so the CASE falls through to
+            // the cleaner created_at / scraped_at / batch fields.
             OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
             WITH r, threshold, batch
             WITH r, threshold,
-                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
+                 CASE WHEN r.publish_date IS NOT NULL
+                       AND NOT r.publish_date IN ['', 'unknown']
+                       AND r.publish_date =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*'
+                       AND datetime(r.publish_date) <= datetime()
                    THEN datetime(r.publish_date)
-                   WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
-                   WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
-                   WHEN batch.created_at IS NOT NULL THEN datetime(batch.created_at)
+                   WHEN r.created_at IS NOT NULL AND toString(r.created_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*'
+                   THEN datetime(r.created_at)
+                   WHEN r.scraped_at IS NOT NULL AND toString(r.scraped_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*'
+                   THEN datetime(r.scraped_at)
+                   WHEN batch.created_at IS NOT NULL
+                   THEN datetime(batch.created_at)
                    ELSE datetime('2000-01-01') END as effective_date
             WHERE effective_date >= threshold
               AND effective_date <= datetime()
