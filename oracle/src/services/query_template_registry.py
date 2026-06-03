@@ -29,6 +29,85 @@ from src.settings import settings
 logger = logging.getLogger(__name__)
 
 
+# Category alias map. Different ingestion sources tag the same conceptual
+# bucket with different category strings (e.g. WBA Newsroom uses 'newsroom',
+# Wi-Fi Alliance uses 'press release', some IETF flows tag 'press_release').
+# Templates that filter by category expand the requested term to ALL known
+# aliases so the filter doesn't miss obvious matches. Keep keys lowercase.
+CATEGORY_ALIASES: Dict[str, List[str]] = {
+    "press release": [
+        "press release", "press_release", "press-release",
+        "newsroom",  # WBA Newsroom ingestion
+        "wi-fi alliance staff documents",  # WFA staff press output
+    ],
+    "meeting minutes": [
+        "meeting minutes",
+        "meeting minutes & attendance",
+        "minutes & attendance",
+        "3-minutes",
+        "meeting documents/meeting minutes & attendance",
+        "rg meetings & documents/minutes & attendance",
+    ],
+    "agenda": [
+        "agenda",
+        "agendas & meeting documents",
+        "meeting documents/meetings agenda",
+        "1-agendas",
+    ],
+    "attendance": [
+        "attendance",
+        "attendance & minutes",
+        "2-attendance",
+    ],
+    "specification": [
+        "specification",
+        "technical specification",
+        "standard",
+        "spec",
+        "working_group_document",
+    ],
+    "whitepaper": [
+        "whitepaper",
+        "white paper",
+        "wba white papers",
+        "paper",
+    ],
+    "blog": [
+        "blog",
+        "blog post",
+        "newsletter",
+    ],
+    "presentation": [
+        "presentation",
+        "presentations",
+        "slides",
+    ],
+    "internet-draft": [
+        "internet-draft",
+        "internet_draft",
+        "draft",
+    ],
+    "video": [
+        "video",
+        "podcast",
+    ],
+}
+
+
+def expand_category_aliases(category: Optional[str]) -> List[str]:
+    """Return the canonical category plus all known aliases (lowercase).
+
+    Unknown categories are returned as-is in a single-element list so callers
+    can always treat the result as a list.
+    """
+    if not category:
+        return []
+    key = category.lower().strip()
+    if key in CATEGORY_ALIASES:
+        return [a.lower() for a in CATEGORY_ALIASES[key]]
+    return [key]
+
+
 # ENTITY_EXISTS_PRECHECK_CYPHER — single batched query the fast pipeline runs before
 # executing an entity-focused template. Returns exact-match status AND up to 5 fuzzy
 # suggestions in one Neo4j round-trip so the system can short-circuit confidently-wrong
@@ -142,6 +221,11 @@ class QueryTemplate:
         # in Neo4j via scripts/sync_agents_to_neo4j.py).
         params["agents"] = list(getattr(plan, "agents", None) or [])
         params["category"] = plan.category if hasattr(plan, 'category') and plan.category else None
+        # Expand category to its known aliases so filters that look for
+        # "press release" also pick up rows tagged "newsroom" etc. (See
+        # CATEGORY_ALIASES at module level.) Empty list when no category
+        # is specified so the filter shorts to "no constraint".
+        params["category_aliases"] = expand_category_aliases(params["category"])
         params["exclude_meetings"] = plan.exclude_meetings if hasattr(plan, 'exclude_meetings') and plan.exclude_meetings is not None else None
         params["content_types"] = []  # Content type filter (e.g., ['decision', 'action'])
         # User source membership filters — populated by fast_engine from user preferences
@@ -1864,7 +1948,10 @@ class QueryTemplateRegistry:
                         toLower(coalesce(r.title, '')) CONTAINS toLower(topic)
                         OR toLower(coalesce(r.summary, '')) CONTAINS toLower(topic)
                     ))
-              AND ($category IS NULL OR toLower(r.category) = toLower($category))
+              AND ($category IS NULL OR
+                   toLower(r.category) = toLower($category) OR
+                   (size(coalesce($category_aliases, [])) > 0 AND
+                    toLower(coalesce(r.category, '')) IN $category_aliases))
             
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             OPTIONAL MATCH (r)-[:MENTIONS|PUBLISHED_BY]->(o:Organization)
