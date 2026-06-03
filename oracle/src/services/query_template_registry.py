@@ -1935,33 +1935,30 @@ class QueryTemplateRegistry:
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
 
-            // Resources with no internal date (publish_date / created_at /
-            // scraped_at all NULL — e.g. press releases scraped without page
-            // metadata) used to fall back to datetime() which incorrectly
-            // ranked them as "just published". Pull the IngestionBatch
-            // timestamp instead so the ordering reflects when the digester
-            // actually saw the content.
-            //
-            // Regex guard on publish_date: production has rows with garbage
-            // strings ("tbd", "0430-01-03", "Q3 2024") that crash datetime()
-            // with "Text cannot be parsed to a DateTime". The =~ pre-check
-            // short-circuits before the parse so the CASE falls through to
-            // the cleaner created_at / scraped_at / batch fields.
+            // Pre-validate date fields BEFORE any datetime() call. Production
+            // has rows with garbage publish_date strings ("tbd", "0430-01-03",
+            // "Q3 2024") that crashed RECENT_PUBLICATIONS with "Text cannot
+            // be parsed to a DateTime" — tearing down the whole query and
+            // forcing fast-pipeline fallback to baseline. Cypher's AND
+            // short-circuit is unreliable inside CASE-WHEN, so we materialise
+            // the validity booleans first in a WITH and only call datetime()
+            // on values we've already confirmed match the ISO pattern.
             OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
-            WITH r, threshold, batch
-            WITH r, threshold,
-                 CASE WHEN r.publish_date IS NOT NULL
-                       AND NOT r.publish_date IN ['', 'unknown']
-                       AND r.publish_date =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*'
-                       AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date)
-                   WHEN r.created_at IS NOT NULL AND toString(r.created_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*'
-                   THEN datetime(r.created_at)
-                   WHEN r.scraped_at IS NOT NULL AND toString(r.scraped_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*'
-                   THEN datetime(r.scraped_at)
-                   WHEN batch.created_at IS NOT NULL
-                   THEN datetime(batch.created_at)
-                   ELSE datetime('2000-01-01') END as effective_date
+            WITH r, threshold, batch,
+                 (r.publish_date IS NOT NULL
+                  AND NOT r.publish_date IN ['', 'unknown']
+                  AND r.publish_date =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS pub_ok,
+                 (r.created_at IS NOT NULL
+                  AND toString(r.created_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS created_ok,
+                 (r.scraped_at IS NOT NULL
+                  AND toString(r.scraped_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS scraped_ok,
+                 (batch IS NOT NULL AND batch.created_at IS NOT NULL) AS batch_ok
+            WITH r, threshold, batch, pub_ok, created_ok, scraped_ok, batch_ok,
+                 CASE WHEN pub_ok     THEN datetime(r.publish_date)
+                      WHEN created_ok THEN datetime(r.created_at)
+                      WHEN scraped_ok THEN datetime(r.scraped_at)
+                      WHEN batch_ok   THEN datetime(batch.created_at)
+                      ELSE datetime('2000-01-01') END as effective_date
             WHERE effective_date >= threshold
               AND effective_date <= datetime()
               AND ($workgroups IS NULL OR size($workgroups) = 0
