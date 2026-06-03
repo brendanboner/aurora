@@ -1943,6 +1943,14 @@ class QueryTemplateRegistry:
             // short-circuit is unreliable inside CASE-WHEN, so we materialise
             // the validity booleans first in a WITH and only call datetime()
             // on values we've already confirmed match the ISO pattern.
+            // Pre-validate AND normalise date fields. Production has two
+            // failure modes:
+            //   1. Garbage publish_date ("tbd", "0430-01-03", "Q3 2024")
+            //      — regex match prevents datetime() from being called.
+            //   2. Postgres-format timestamps "2026-06-02 06:23:00.951801+00:00"
+            //      (space separator) — Neo4j's datetime() requires ISO 8601
+            //      with a T separator. We replace(..., ' ', 'T') so the
+            //      Postgres string can be parsed.
             OPTIONAL MATCH (r)-[:INGESTED_IN]->(batch:IngestionBatch)
             WITH r, threshold, batch,
                  (r.publish_date IS NOT NULL
@@ -1954,10 +1962,10 @@ class QueryTemplateRegistry:
                   AND toString(r.scraped_at) =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS scraped_ok,
                  (batch IS NOT NULL AND batch.created_at IS NOT NULL) AS batch_ok
             WITH r, threshold, batch, pub_ok, created_ok, scraped_ok, batch_ok,
-                 CASE WHEN pub_ok     THEN datetime(r.publish_date)
-                      WHEN created_ok THEN datetime(r.created_at)
-                      WHEN scraped_ok THEN datetime(r.scraped_at)
-                      WHEN batch_ok   THEN datetime(batch.created_at)
+                 CASE WHEN pub_ok     THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
+                      WHEN created_ok THEN datetime(replace(toString(r.created_at), ' ', 'T'))
+                      WHEN scraped_ok THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
+                      WHEN batch_ok   THEN datetime(replace(toString(batch.created_at), ' ', 'T'))
                       ELSE datetime('2000-01-01') END as effective_date
             WHERE effective_date >= threshold
               AND effective_date <= datetime()
