@@ -2070,12 +2070,15 @@ class FastEngine:
                         return documents
                     doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
                     title = doc_node.get("title") or "Untitled"
-                    url = doc_node.get("url", "")
+                    # `.get("url", "")` returns None when the key exists with value None
+                    # (Cypher RETURN r.url AS url with r.url=null) — coerce via `or ""`
+                    # so we don't trip the Document.url string-type pydantic validator.
+                    url = doc_node.get("url") or ""
                     dedupe_key = (doc_id, url, title)
                     if dedupe_key in seen_keys:
                         continue
                     seen_keys.add(dedupe_key)
-                    summary = doc_node.get("summary", "")
+                    summary = doc_node.get("summary") or ""
                     date = doc_node.get("date") or doc_node.get("publishDate") or doc_node.get("publish_date")
                     category = doc_node.get("category") or doc_node.get("type")
                     topics = doc_node.get("topics", [])
@@ -2106,12 +2109,15 @@ class FastEngine:
                         return documents
                     doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
                     title = doc_node.get("title") or "Untitled"
-                    url = doc_node.get("url", "")
+                    # `.get("url", "")` returns None when the key exists with value None
+                    # (Cypher RETURN r.url AS url with r.url=null) — coerce via `or ""`
+                    # so we don't trip the Document.url string-type pydantic validator.
+                    url = doc_node.get("url") or ""
                     dedupe_key = (doc_id, url, title)
                     if dedupe_key in seen_keys:
                         continue
                     seen_keys.add(dedupe_key)
-                    summary = doc_node.get("summary", "")
+                    summary = doc_node.get("summary") or ""
                     date = doc_node.get("publishDate") or doc_node.get("publish_date")
                     category = doc_node.get("category") or doc_node.get("type")
                     
@@ -2167,12 +2173,15 @@ class FastEngine:
                         return documents
                     doc_id = doc_node.get("id") or doc_node.get("url_hash") or f"doc_{len(documents)}"
                     title = doc_node.get("title") or "Untitled"
-                    url = doc_node.get("url", "")
+                    # `.get("url", "")` returns None when the key exists with value None
+                    # (Cypher RETURN r.url AS url with r.url=null) — coerce via `or ""`
+                    # so we don't trip the Document.url string-type pydantic validator.
+                    url = doc_node.get("url") or ""
                     dedupe_key = (doc_id, url, title)
                     if dedupe_key in seen_keys:
                         continue
                     seen_keys.add(dedupe_key)
-                    summary = doc_node.get("summary", "")
+                    summary = doc_node.get("summary") or ""
                     date = doc_node.get("date") or doc_node.get("publishDate") or doc_node.get("publish_date")
 
                     doc = Document(
@@ -2191,12 +2200,13 @@ class FastEngine:
                     return documents
                 doc_id = node.get("id") or node.get("url_hash") or node.get("event_id") or f"node_{idx}"
                 title = node.get("title") or node.get("name") or "Untitled"
-                url = node.get("url", "")
+                # See note above on Cypher returning explicit null — `or ""` coerces.
+                url = node.get("url") or ""
                 dedupe_key = (doc_id, url, title)
                 if dedupe_key in seen_keys:
                     continue
                 seen_keys.add(dedupe_key)
-                summary = node.get("summary") or node.get("description", "")
+                summary = node.get("summary") or node.get("description") or ""
 
                 # Person nodes (from ORGANIZATION_REPRESENTATIVES / PERSON_PROFILE) carry
                 # role + organization instead of a document summary.  Build a human-readable
