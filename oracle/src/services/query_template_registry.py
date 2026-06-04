@@ -2833,6 +2833,12 @@ class QueryTemplateRegistry:
         )
         
         # ISSUE_TRACKING - problems, bugs, limitations
+        # Three traps fixed in 2026-06: NULL publish_date sorted to TOP (Cypher
+        # DESC quirk), no date validity filter (corrupt years like 8365 from
+        # the WFA scraper leaked through), and no recency boost (a 2017 WPA3
+        # spec out-ranked a 2026 security workgroup minutes file). Now uses
+        # the same safe-datetime + recency-weighted scoring as
+        # documents_by_topic, with critical-stance docs getting a boost.
         self.templates[RouteId.ISSUE_TRACKING] = QueryTemplate(
             route_id=RouteId.ISSUE_TRACKING,
             description="Find issues and problems with a technology",
@@ -2843,29 +2849,67 @@ class QueryTemplateRegistry:
             cypher="""
             MATCH (t:Topic)
             WHERE ($topics IS NULL OR size($topics) = 0 OR t.name IN $topics OR t.topic_id IN $topics OR ANY(alias IN t.aliases WHERE alias IN $topics))
-            
-            // Find resources with critical/concerned stance or issue keywords
+
+            // Find resources with critical/concerned stance OR issue keywords in title/summary.
             MATCH (r:Resource)-[rt:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
               AND (rt.stance IN ['critical', 'concerned']
-                   OR r.title =~ '(?i).*(issue|problem|bug|limitation|challenge|concern|vulnerability|flaw|weakness).*')
-            
-            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
-            
+                   OR r.title =~ '(?i).*(issue|problem|bug|limitation|challenge|concern|vulnerability|flaw|weakness|cve).*'
+                   OR toLower(coalesce(r.summary, '')) =~ '.*(security|vulnerability|cve|threat|risk|mitigation|exposure|attack).*')
+
+            // Robust effective_date with Postgres-timestamp coercion + range guard.
+            // Year range [2000, 2030] discards corrupt scraper dates (e.g. 8365-01-05).
             WITH r, t, rt,
-                 collect(DISTINCT o.name)[0..3] as orgs
-            ORDER BY r.publish_date DESC
-            
-            RETURN 
-                r.url_hash as id,
-                r.title as title,
-                r.summary as summary,
-                r.publish_date as date,
-                r.url as url,
-                r.category as type,
-                t.name as topic,
-                rt.stance as stance,
-                orgs as organizations
+                 (r.publish_date IS NOT NULL
+                  AND r.publish_date =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*') AS pub_ok
+            WITH r, t, rt, pub_ok,
+                 CASE
+                    WHEN pub_ok
+                         AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01')
+                         AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime() + duration({days: 1})
+                    THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
+                    WHEN r.created_at IS NOT NULL
+                    THEN datetime(replace(toString(r.created_at), ' ', 'T'))
+                    WHEN r.scraped_at IS NOT NULL
+                    THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
+                    ELSE NULL
+                 END AS effective_date
+
+            // Recency score:  90d → 1.0,  365d → 0.7,  2y → 0.4,  older → 0.2,  no date → 0.0
+            // Stance boost:   critical/concerned stances get +0.3 regardless of age
+            // Title-hit boost: explicit security/vuln words in title get +0.2
+            WITH r, t, effective_date, rt,
+                 CASE
+                    WHEN effective_date IS NULL THEN 0.0
+                    WHEN effective_date >= datetime() - duration({days: 90})  THEN 1.0
+                    WHEN effective_date >= datetime() - duration({days: 365}) THEN 0.7
+                    WHEN effective_date >= datetime() - duration({days: 730}) THEN 0.4
+                    ELSE 0.2
+                 END AS recency_score,
+                 CASE WHEN rt.stance IN ['critical', 'concerned'] THEN 0.3 ELSE 0.0 END AS stance_boost,
+                 CASE WHEN r.title =~ '(?i).*(vulnerability|cve|exploit|flaw|weakness|attack).*' THEN 0.2 ELSE 0.0 END AS title_boost
+
+            WITH r, t, effective_date, rt,
+                 (recency_score + stance_boost + title_boost) AS score
+
+            OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
+
+            WITH r, t, rt, effective_date, score,
+                 collect(DISTINCT o.name)[0..3] AS orgs
+
+            ORDER BY score DESC, effective_date DESC
+
+            RETURN
+                r.url_hash AS id,
+                r.title AS title,
+                r.summary AS summary,
+                toString(effective_date) AS date,
+                r.url AS url,
+                r.category AS type,
+                t.name AS topic,
+                rt.stance AS stance,
+                orgs AS organizations,
+                round(score * 100) / 100.0 AS relevance_score
             LIMIT $limit
             """
         )
