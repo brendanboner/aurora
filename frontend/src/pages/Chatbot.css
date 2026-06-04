@@ -19,7 +19,8 @@
 .chat-controls-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 12px;
   padding: 10px 20px;
   background: rgba(19, 20, 31, 0.70);
   backdrop-filter: blur(12px);

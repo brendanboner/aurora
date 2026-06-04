@@ -24,14 +24,12 @@ const Chatbot = ({ backendStatus }) => {
     const saved = localStorage.getItem('queryMode');
     return saved && ['answer', 'auto'].includes(saved) ? saved : 'answer';
   });
-  const [personalizeMode, setPersonalizeModeState] = useState(() => {
-    const saved = localStorage.getItem('personalizeMode');
-    return saved && ['off', 'on', 'auto'].includes(saved) ? saved : 'auto';
-  });
-  const [pipelineMode, setPipelineModeState] = useState(() => {
-    const saved = localStorage.getItem('pipelineMode');
-    return saved && ['system', 'fast', 'baseline'].includes(saved) ? saved : 'system';
-  });
+  // Personalisation is locked ON for the trial — selector hidden so users
+  // don't accidentally turn it off and degrade their own answers.
+  const personalizeMode = 'on';
+  // Pipeline mode is locked to "system" (fast with baseline fallback) for the
+  // trial — the only path actually validated end-to-end.
+  const pipelineMode = 'system';
   // Persona lens — biases the answer's framing. "off" sends no lens; the
   // four named lenses inject a role-specific emphasis into the prompt.
   const [personaLens, setPersonaLensState] = useState(() => {
@@ -116,18 +114,6 @@ const Chatbot = ({ backendStatus }) => {
     const normalizedMode = 'answer';
     setQueryModeState(normalizedMode);
     localStorage.setItem('queryMode', normalizedMode);
-  };
-
-  // Wrapper to persist personalizeMode to localStorage
-  const setPersonalizeMode = (mode) => {
-    setPersonalizeModeState(mode);
-    localStorage.setItem('personalizeMode', mode);
-  };
-
-  // Wrapper to persist pipelineMode to localStorage
-  const setPipelineMode = (mode) => {
-    setPipelineModeState(mode);
-    localStorage.setItem('pipelineMode', mode);
   };
 
   // Wrapper to persist personaLens to localStorage
@@ -266,7 +252,7 @@ What would you like to know?`;
       <div className="welcome-tip">
         <SearchIcon size={16} style={{ marginRight: '8px', color: '#6b7280' }} />
         <code>help</code>&nbsp;·&nbsp;<code>agents</code>&nbsp;·&nbsp;<code>my agents</code>&nbsp;·&nbsp;
-        <code>feed</code>&nbsp;·&nbsp;<code>pipeline fast</code>&nbsp;·&nbsp;<code>personalize on</code>&nbsp;·&nbsp;<code>about</code>
+        <code>feed</code>&nbsp;·&nbsp;<code>about</code>&nbsp;·&nbsp;<code>clear</code>
       </div>
 
       <div className="welcome-enhance-info">
@@ -968,37 +954,26 @@ What would you like to know?`;
     if (/^(\?|help|show help|how does this work|what can (i|you) do)$/.test(cmd)) {
       return `## Aurora Commands & Tips
 
+[**↩ Back to Aurora chat**](/) — bookmark this page if you keep losing it.
+
 **Navigation shortcuts** *(type to jump)*
 | Command | Action |
 |---|---|
 | \`agents\` | Browse all Aurora content agents |
 | \`my agents\` | Your personal AI agents |
 | \`feed\` | Your personalised content feed |
-
-**Pipeline control**
-| Command | Action |
-|---|---|
-| \`pipeline fast\` | Switch to fast (graph-based) answers |
-| \`pipeline baseline\` | Switch to deep document-search answers |
-| \`pipeline auto\` | Let Aurora choose the best pipeline |
-
-**Personalisation**
-| Command | Action |
-|---|---|
-| \`personalize on\` | Tailor answers to your profile & interests |
-| \`personalize off\` | Use generic (non-personalised) answers |
-
-**Other**
-| Command | Action |
-|---|---|
 | \`clear\` | Start a new chat |
 | \`about\` | About Aurora |
+
+**Reader lens** *(top of the page or via the chat controls)*
+Pick **PM**, **Security**, **Legal**, or **Architect** to bias every answer toward your role's emphasis.
 
 **Example queries**
 - *"What's new with Wi-Fi 8 UHR in the last week?"*
 - *"@wba show me the latest from all workgroups"*
 - *"Compare Wi-Fi 7 and Wi-Fi 8 for dense deployments"*
 - *"What did WBA publish about Smart MDUs?"*
+- *"What's the latest 802.11bn draft?"*
 `;
     }
 
@@ -1018,34 +993,6 @@ What would you like to know?`;
     if (/^(feed|my feed|show feed|content feed)$/.test(cmd)) {
       window.location.href = '/feed';
       return `**Navigating to Feed…**\n\nYou can also go directly: [Content Feed](/feed)`;
-    }
-
-    // ── PIPELINE MODE ─────────────────────────────────────────────────────────
-    const pipelineMatch = cmd.match(/^(?:set |use )?pipeline\s+(fast|baseline|auto|system|default)$/);
-    if (pipelineMatch) {
-      const mode = pipelineMatch[1] === 'system' || pipelineMatch[1] === 'default' ? 'system' : pipelineMatch[1];
-      setPipelineModeState(mode);
-      localStorage.setItem('pipelineMode', mode);
-      const descriptions = {
-        fast: '⚡ **Fast pipeline** active — answers drawn from the knowledge graph. Best for factual lookups, workgroup activity, and entity queries.',
-        baseline: '🔍 **Baseline pipeline** active — answers drawn from full document search. Best for nuanced analysis and complex comparisons.',
-        system: '🔄 **Auto pipeline** active — Aurora will choose fast or baseline based on your query.',
-      };
-      return descriptions[mode] || `Pipeline set to **${mode}**.`;
-    }
-
-    // ── PERSONALIZATION ────────────────────────────────────────────────────────
-    const personMatch = cmd.match(/^personalis?e?\s+(on|off|auto)$/);
-    if (personMatch) {
-      const mode = personMatch[1];
-      setPersonalizeModeState(mode);
-      localStorage.setItem('personalizeMode', mode);
-      const descriptions = {
-        on: '✅ **Personalisation on** — Aurora will tailor answers to your topics, organisations, and history.',
-        off: '⭕ **Personalisation off** — Aurora will give generic answers without profile weighting.',
-        auto: '🔄 **Personalisation auto** — Aurora will personalise when your profile is relevant.',
-      };
-      return descriptions[mode] || `Personalisation set to **${mode}**.`;
     }
 
     // ── CLEAR CHAT ────────────────────────────────────────────────────────────
@@ -1070,7 +1017,7 @@ What would you like to know?`;
 
     // Not a command — return null to proceed with Oracle search
     return null;
-  }, [setPipelineModeState, setPersonalizeModeState]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1192,34 +1139,8 @@ What would you like to know?`;
 
   return (
     <div className="chatbot-container">
-      {/* Floating controls bar */}
+      {/* Floating controls bar — centered, minimal */}
       <div className="chat-controls-bar">
-        {user && (
-          <select
-            className="chat-select"
-            value={pipelineMode}
-            onChange={(e) => setPipelineMode(e.target.value)}
-            disabled={isLoading}
-            title="Engine: Fast uses instant templates, Baseline uses comprehensive LLM synthesis, System auto-selects"
-          >
-            <option value="system">System</option>
-            <option value="fast">Fast</option>
-            <option value="baseline">Baseline</option>
-          </select>
-        )}
-        {user && (
-          <select
-            className="chat-select"
-            value={personalizeMode}
-            onChange={(e) => setPersonalizeMode(e.target.value)}
-            disabled={isLoading}
-            title="Personalization: Tailor answers based on your preferences"
-          >
-            <option value="auto">Auto</option>
-            <option value="on">Personalized</option>
-            <option value="off">Generic</option>
-          </select>
-        )}
         {user && (
           <select
             className="chat-select"
