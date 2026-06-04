@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     # Fast Pipeline: Cypher Templates
     fast_template_max_nodes: int = 100  # Max nodes returned per template query
     fast_template_timeout: float = 5.0  # Timeout for template execution (seconds)
-    fast_template_version: str = "1.0.17"  # ISSUE_TRACKING: recency-boost + corrupt-date guard + NULL-publish_date no longer sorts to top of result
+    fast_template_version: str = "1.0.18"  # ISSUE_TRACKING: clamp relevance_score to [0,1] (pydantic Document validator)
     
     # Fast Pipeline: Rollups (PostgreSQL)
     fast_rollup_enabled: bool = True  # Enable rollup generation and retrieval

@@ -2909,7 +2909,11 @@ class QueryTemplateRegistry:
                 t.name AS topic,
                 rt.stance AS stance,
                 orgs AS organizations,
-                round(score * 100) / 100.0 AS relevance_score
+                // Clamp to [0,1] — Document.relevance_score has le=1.0 validator;
+                // recency(1.0)+stance(0.3)+title(0.2) can reach 1.5 unclamped.
+                CASE WHEN score > 1.0 THEN 1.0
+                     WHEN score < 0.0 THEN 0.0
+                     ELSE round(score * 100) / 100.0 END AS relevance_score
             LIMIT $limit
             """
         )
