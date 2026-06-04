@@ -1,0 +1,110 @@
+{
+  "captured_at": "2026-06-04T21:06:18.070193+00:00",
+  "total_nodes": 57714,
+  "total_relationships": 294196,
+  "nodes_by_label": [
+    {
+      "label": "Resource",
+      "count": 23515
+    },
+    {
+      "label": "Topic",
+      "count": 17228
+    },
+    {
+      "label": "Event",
+      "count": 6508
+    },
+    {
+      "label": "Person",
+      "count": 4127
+    },
+    {
+      "label": "IngestionBatch",
+      "count": 3739
+    },
+    {
+      "label": "Organization",
+      "count": 2436
+    },
+    {
+      "label": "DataSource",
+      "count": 152
+    },
+    {
+      "label": "Agent",
+      "count": 8
+    },
+    {
+      "label": "TestNode",
+      "count": 1
+    }
+  ],
+  "relationships_by_type": [
+    {
+      "type": "RELATES_TO",
+      "count": 108245
+    },
+    {
+      "type": "INGESTED_IN",
+      "count": 65740
+    },
+    {
+      "type": "MENTIONS",
+      "count": 49157
+    },
+    {
+      "type": "ENCOMPASSES",
+      "count": 21126
+    },
+    {
+      "type": "SUBTOPIC_OF",
+      "count": 21126
+    },
+    {
+      "type": "INGESTED_FROM",
+      "count": 15570
+    },
+    {
+      "type": "ASSOCIATED_WITH",
+      "count": 3776
+    },
+    {
+      "type": "BELONGS_TO",
+      "count": 3286
+    },
+    {
+      "type": "AFFILIATED_WITH",
+      "count": 2375
+    },
+    {
+      "type": "CONNECTED_TO",
+      "count": 2024
+    },
+    {
+      "type": "AUTHORED",
+      "count": 1749
+    },
+    {
+      "type": "UPLOADED_BY",
+      "count": 14
+    },
+    {
+      "type": "ATTENDING",
+      "count": 4
+    },
+    {
+      "type": "MEMBER_OF",
+      "count": 4
+    }
+  ],
+  "orphan_nodes": 3448,
+  "resources": 23515,
+  "datasources": 152,
+  "ingestion_batches": 3739,
+  "topics": 17228,
+  "people": 4127,
+  "organizations": 2436,
+  "events": 6508,
+  "agents": 8
+}
