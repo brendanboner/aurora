@@ -75,6 +75,53 @@ baseline_engine = BaselineEngine()
 fast_engine = FastEngine()
 
 
+def _enrich_user_upload_sources(documents) -> None:
+    """Replace generic "User Upload" source label with the uploader's email.
+
+    For documents originating from the user_upload datasource, look up the
+    uploader Person via the UPLOADED_BY relationship and overwrite the
+    `source` field with "Uploaded by <email>" (or name as fallback). One
+    bulk Cypher query covers all user-upload docs in the result set.
+
+    Best-effort — any failure logs at debug and leaves docs untouched so
+    user-facing answers are unaffected.
+    """
+    if not documents:
+        return
+    user_upload_urls = [
+        d.url for d in documents
+        if getattr(d, "datasource_id", None) == "user_upload" and d.url
+    ]
+    if not user_upload_urls:
+        return
+    try:
+        repo = get_repo()
+        rows = repo.client.execute_query(
+            """
+            MATCH (r:Resource)-[:UPLOADED_BY]->(p:Person)
+            WHERE r.url IN $urls
+            RETURN r.url AS url, p.email AS email, p.name AS name
+            """,
+            parameters={"urls": user_upload_urls},
+        )
+        url_to_label: dict[str, str] = {}
+        for row in (rows or []):
+            label = None
+            if row.get("email"):
+                label = f"Uploaded by {row['email']}"
+            elif row.get("name"):
+                label = f"Uploaded by {row['name']}"
+            if label and row.get("url"):
+                url_to_label[row["url"]] = label
+        for doc in documents:
+            if getattr(doc, "datasource_id", None) == "user_upload":
+                new_source = url_to_label.get(doc.url)
+                if new_source:
+                    doc.source = new_source
+    except Exception as exc:
+        logger.debug(f"User-upload source enrichment skipped: {exc}")
+
+
 def _build_history_request_options(request: QueryRequest, response: QueryResponse) -> dict:
     """Persist request options and fast-cache details in existing history JSON."""
     request_options = request.options.model_dump(mode="json") if request.options else {}
@@ -394,9 +441,12 @@ async def query(
                 # Try fast engine with fallback to baseline
                 try:
                     response = await engine.query(request, user, span, query_id)
-                    
+
                     # Set pipeline field to indicate fast pipeline was used
                     response.pipeline = "fast"
+
+                    # Show "Uploaded by <email>" in place of "User Upload"
+                    _enrich_user_upload_sources(response.documents)
                     
                     # Record successful fast pipeline execution
                     processing_time_ms = response.metadata.processing_time_ms
@@ -464,9 +514,12 @@ async def query(
             
             # Execute engine (baseline or fallback)
             response = await engine.query(request, user, span, query_id)
-            
+
             # Set pipeline field to indicate which pipeline was used
             response.pipeline = pipeline_name
+
+            # Show "Uploaded by <email>" in place of "User Upload"
+            _enrich_user_upload_sources(response.documents)
             
             # Record metrics
             processing_time_ms = response.metadata.processing_time_ms
@@ -966,6 +1019,9 @@ async def query_stream(
                     response = await engine.query(request, user=user, query_id=query_id)
                 else:
                     raise
+
+            # Show "Uploaded by <email>" in place of "User Upload"
+            _enrich_user_upload_sources(response.documents)
 
             # Fast pipeline: answer is already fully synthesised — stream the pre-generated
             # text as word chunks rather than calling the LLM a second time.
