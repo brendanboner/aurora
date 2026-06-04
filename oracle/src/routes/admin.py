@@ -115,9 +115,8 @@ async def update_query_settings_config(config: QuerySettingsConfig) -> QuerySett
             logger.warning("Failed to persist config to database, but in-memory settings updated")
         
         logger.info(
-            f"Query settings updated: fast_pipeline_enabled={config.fast_pipeline_enabled}, "
-            f"rollout={config.fast_pipeline_rollout_percentage}%, "
-            f"shadow_mode={config.fast_pipeline_shadow_mode}, "
+            f"Query settings updated: oracle_pipeline_mode={config.oracle_pipeline_mode}, "
+            f"fast_pipeline_enabled={config.fast_pipeline_enabled}, "
             f"confidence_threshold={config.fast_confidence_threshold}, "
             f"persisted={saved}"
         )
@@ -139,9 +138,8 @@ async def reset_query_settings_config() -> Dict[str, Any]:
         default_config = QuerySettingsConfig()
         
         # Update settings to defaults
+        settings.oracle_pipeline_mode = default_config.oracle_pipeline_mode
         settings.fast_pipeline_enabled = default_config.fast_pipeline_enabled
-        settings.fast_pipeline_rollout_percentage = default_config.fast_pipeline_rollout_percentage
-        settings.fast_pipeline_shadow_mode = default_config.fast_pipeline_shadow_mode
         settings.fast_confidence_threshold = default_config.fast_confidence_threshold
         settings.fast_cache_plan_ttl = default_config.fast_cache_plan_ttl_hours * 3600
         settings.fast_cache_result_ttl = default_config.fast_cache_result_ttl_minutes * 60
