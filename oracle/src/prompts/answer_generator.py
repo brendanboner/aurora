@@ -2,6 +2,42 @@
 
 from datetime import datetime
 
+# Persona lens hint — short framing directive appended to the system prompt
+# when the user picks a role lens from the chat UI. Kept deliberately short so
+# it tilts emphasis without overriding the existing accuracy / citation rules.
+_PERSONA_LENS_HINTS = {
+    "pm": (
+        "**READER LENS — Product Manager:** Lead with a one-line summary that "
+        "captures the business or market implication. Highlight timing signals "
+        "(certification dates, ratification timelines, adoption milestones) and "
+        "which vendors or organisations are driving each direction. Keep technical "
+        "depth to what's needed to understand the implication."
+    ),
+    "security": (
+        "**READER LENS — Security Analyst:** Surface threat-surface, attack-vector, "
+        "vulnerability and CVE references explicitly when present. Call out "
+        "authentication, encryption, key-management, and cipher-suite details. "
+        "If the documents discuss a weakness, mitigation, or disclosure, name it "
+        "and describe its scope concretely."
+    ),
+    "legal": (
+        "**READER LENS — Legal / Compliance:** Surface intellectual-property, "
+        "licensing, royalty, FRAND, jurisdiction, regulatory, and compliance "
+        "language explicitly when present. Identify which organisations hold or "
+        "contribute the relevant work, and note any open issues, disclosures, "
+        "or unresolved disputes. Be precise about wording — quote directly when "
+        "the document's exact phrasing matters."
+    ),
+    "architect": (
+        "**READER LENS — Architect:** Preserve technical depth. Highlight design "
+        "rationale, trade-offs, deployment topology implications, interoperability "
+        "concerns, and how each option compares against alternatives. Be specific "
+        "about parameter values, frequencies, protocol behaviours, and standards "
+        "dependencies."
+    ),
+}
+
+
 # Length/depth instruction injected into the system prompt based on detected detail_level.
 _DETAIL_INSTRUCTIONS = {
     "brief":         "**Be concise: 1–2 short paragraphs or a tight bullet list. Maximum 80 words.**",
@@ -315,6 +351,7 @@ def get_answer_generator_messages(
     conversation_history: list[dict] | None = None,
     detail_level: str = "detailed",
     agent_persona=None,
+    persona_lens: str | None = None,
 ) -> list[dict]:
     """Get messages for answer generation.
     
@@ -539,7 +576,15 @@ def get_answer_generator_messages(
             temporal_patterns=temporal,
             conversation_context=conversation_context,
         ) + workgroup_instruction
-    
+
+    # Persona lens — append a single framing block to the system prompt when
+    # the caller passed a recognised lens. Comes after the persona/personalized
+    # block so the lens biases emphasis without overriding citation rules.
+    if persona_lens:
+        lens_hint = _PERSONA_LENS_HINTS.get(persona_lens.lower())
+        if lens_hint:
+            system_prompt = system_prompt + "\n\n" + lens_hint
+
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}

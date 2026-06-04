@@ -1023,6 +1023,7 @@ async def query_stream(
                 gc_dict,
                 user_context=None,
                 conversation_history=conversation_history or None,
+                persona_lens=getattr(request.options, 'persona_lens', None) if request.options else None,
             )
 
             client = get_llm_client()

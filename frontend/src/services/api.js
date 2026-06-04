@@ -290,10 +290,11 @@ export const sendOracleQuery = async (userId, question, options = {}) => {
       datasource_ids: options.datasourceIds || null,
       recency_boost: options.recencyBoost !== false,
       personalize: options.personalize || 'auto', // 'off', 'on', or 'auto'
-      pipeline_override: options.pipelineOverride || null, // 'fast', 'baseline', or null for A/B test
+      pipeline_override: options.pipelineOverride || null, // 'fast' | 'baseline' | null
+      persona_lens: options.personaLens || null,
     },
   };
-  
+
   const response = await apiClient.post('/oracle/query', payload);
   return response.data;
 };
@@ -329,6 +330,7 @@ export async function* sendOracleQueryStream(userId, question, options = {}) {
       recency_boost: options.recencyBoost !== false,
       personalize: options.personalize || 'auto',
       pipeline_override: options.pipelineOverride || null,
+      persona_lens: options.personaLens || null,
     },
   };
 

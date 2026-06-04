@@ -85,6 +85,14 @@ class QueryOptions(BaseModel):
         default=None,
         description="Override the admin-configured pipeline: 'fast' or 'baseline'. None = follow oracle_pipeline_mode setting (default)."
     )
+    persona_lens: Optional[Literal["pm", "security", "legal", "architect"]] = Field(
+        default=None,
+        description=(
+            "Optional role-of-reader lens that biases the answer's framing. "
+            "Pre-trial lightweight alternative to a real user.role field — chosen "
+            "per-session via a chip row in the UI. None = generic framing."
+        ),
+    )
 
 
 class AgentPersona(BaseModel):

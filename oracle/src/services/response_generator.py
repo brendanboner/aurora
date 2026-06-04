@@ -65,6 +65,7 @@ class ResponseGenerator:
         user_context: Optional[str] = None,
         conversation_history: Optional[list[dict]] = None,
         agent_persona=None,
+        persona_lens: Optional[str] = None,
     ) -> AnswerResult:
         """
         Generate an LLM answer with citations.
@@ -118,6 +119,7 @@ class ResponseGenerator:
                 question, docs_for_prompt, gc_dict, user_context,
                 conversation_history=conversation_history,
                 agent_persona=agent_persona,
+                persona_lens=persona_lens,
             )
             response = await call_llm(
                 client=client,

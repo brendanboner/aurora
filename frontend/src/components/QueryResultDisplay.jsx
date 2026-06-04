@@ -165,9 +165,60 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   };
 
   const [currentDocIndex, setCurrentDocIndex] = useState(0);
+  const [copyState, setCopyState] = useState(null); // null | 'copied' | 'error'
   const answerViewRef = useRef(null);
   const prevShowingEnhanced = useRef(message.showingEnhanced);
   const prevIsEnhanced = useRef(message.isEnhanced);
+
+  // Build a self-contained markdown blob users can paste into Teams, email, or
+  // a doc. Includes the question, the answer (citation markers preserved),
+  // and a sources list with title + date + URL + excerpt. This is the
+  // pre-launch alternative to a real "Share to Teams" integration.
+  const buildShareMarkdown = useCallback(() => {
+    const lines = [];
+    const question = message.originalQuery || '';
+    if (question) {
+      lines.push('## Question');
+      lines.push('');
+      lines.push(question);
+      lines.push('');
+    }
+    lines.push('## Answer');
+    lines.push('');
+    lines.push(message.content || '_no answer_');
+    lines.push('');
+
+    const citations = Array.isArray(message.citations) ? message.citations : [];
+    const docsByUrl = new Map((message.documents || []).map((d) => [d.url, d]));
+    if (citations.length > 0) {
+      lines.push('## Sources');
+      lines.push('');
+      citations.forEach((c) => {
+        const doc = docsByUrl.get(c.document_url);
+        const date = doc?.publish_date ? ` (${doc.publish_date})` : '';
+        lines.push(`- [${c.index}] [${c.title || 'Untitled'}](${c.document_url})${date}`);
+        if (c.excerpt) {
+          lines.push(`  > ${c.excerpt}`);
+        }
+      });
+      lines.push('');
+    }
+
+    lines.push(`*Via Aurora — query ${message.queryId || ''}*`);
+    return lines.join('\n');
+  }, [message]);
+
+  const handleCopyAsMarkdown = useCallback(async () => {
+    try {
+      const md = buildShareMarkdown();
+      await navigator.clipboard.writeText(md);
+      setCopyState('copied');
+    } catch (err) {
+      console.error('Copy failed:', err);
+      setCopyState('error');
+    }
+    setTimeout(() => setCopyState(null), 2000);
+  }, [buildShareMarkdown]);
 
   // Scroll to top of answer when toggling between enhanced/original
   useEffect(() => {
@@ -779,31 +830,48 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
           </div>
         )}
 
-        {/* Feedback Buttons - Bottom Right */}
-        {hasAnswer && message.queryId && onFeedback && (
+        {/* Action row — Copy + Feedback */}
+        {hasAnswer && (
           <div className="feedback-section">
-            {feedbackGiven && (
-              <span className="feedback-thanks">Thanks for your feedback!</span>
+            <button
+              type="button"
+              className="copy-md-btn"
+              onClick={handleCopyAsMarkdown}
+              title="Copy this answer + sources as markdown (paste into Teams, email, or a doc)"
+              disabled={copyState === 'copied'}
+            >
+              {copyState === 'copied'
+                ? '✓ Copied'
+                : copyState === 'error'
+                  ? '⚠ Copy failed'
+                  : 'Copy as markdown'}
+            </button>
+            {message.queryId && onFeedback && (
+              <>
+                {feedbackGiven && (
+                  <span className="feedback-thanks">Thanks for your feedback!</span>
+                )}
+                <span className="feedback-label">Was this helpful?</span>
+                <div className="feedback-buttons">
+                  <button
+                    className={`feedback-btn ${feedbackGiven === 'helpful' ? 'active positive' : ''}`}
+                    onClick={() => handleFeedback('helpful')}
+                    disabled={feedbackSubmitting || feedbackGiven !== null}
+                    title="Yes, this was helpful"
+                  >
+                    <Icon Component={ThumbsUpIcon} size={16} />
+                  </button>
+                  <button
+                    className={`feedback-btn ${feedbackGiven === 'not_helpful' ? 'active negative' : ''}`}
+                    onClick={() => handleFeedback('not_helpful')}
+                    disabled={feedbackSubmitting || feedbackGiven !== null}
+                    title="No, this wasn't helpful"
+                  >
+                    <Icon Component={ThumbsDownIcon} size={16} />
+                  </button>
+                </div>
+              </>
             )}
-            <span className="feedback-label">Was this helpful?</span>
-            <div className="feedback-buttons">
-              <button
-                className={`feedback-btn ${feedbackGiven === 'helpful' ? 'active positive' : ''}`}
-                onClick={() => handleFeedback('helpful')}
-                disabled={feedbackSubmitting || feedbackGiven !== null}
-                title="Yes, this was helpful"
-              >
-                <Icon Component={ThumbsUpIcon} size={16} />
-              </button>
-              <button
-                className={`feedback-btn ${feedbackGiven === 'not_helpful' ? 'active negative' : ''}`}
-                onClick={() => handleFeedback('not_helpful')}
-                disabled={feedbackSubmitting || feedbackGiven !== null}
-                title="No, this wasn't helpful"
-              >
-                <Icon Component={ThumbsDownIcon} size={16} />
-              </button>
-            </div>
           </div>
         )}
 

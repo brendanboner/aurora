@@ -1961,6 +1961,7 @@ class FastEngine:
                 conversation_history=conversation_history,
                 detail_level=detail_str,
                 agent_persona=getattr(request, 'agent_persona', None),
+                persona_lens=getattr(request.options, 'persona_lens', None) if request.options else None,
             )
             
             # Allow more tokens for comprehensive requests

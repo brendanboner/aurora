@@ -32,6 +32,12 @@ const Chatbot = ({ backendStatus }) => {
     const saved = localStorage.getItem('pipelineMode');
     return saved && ['system', 'fast', 'baseline'].includes(saved) ? saved : 'system';
   });
+  // Persona lens — biases the answer's framing. "off" sends no lens; the
+  // four named lenses inject a role-specific emphasis into the prompt.
+  const [personaLens, setPersonaLensState] = useState(() => {
+    const saved = localStorage.getItem('personaLens');
+    return saved && ['off', 'pm', 'security', 'legal', 'architect'].includes(saved) ? saved : 'off';
+  });
   const [querySuggestion, setQuerySuggestion] = useState(null); // For pre-query suggestions
   const [pendingQuery, setPendingQuery] = useState(null); // Original query while showing suggestion
   const [pendingDatasourceIds, setPendingDatasourceIds] = useState([]); // Datasources for pending query
@@ -122,6 +128,12 @@ const Chatbot = ({ backendStatus }) => {
   const setPipelineMode = (mode) => {
     setPipelineModeState(mode);
     localStorage.setItem('pipelineMode', mode);
+  };
+
+  // Wrapper to persist personaLens to localStorage
+  const setPersonaLens = (lens) => {
+    setPersonaLensState(lens);
+    localStorage.setItem('personaLens', lens);
   };
 
   const updateScrollState = useCallback(() => {
@@ -261,6 +273,29 @@ What would you like to know?`;
         <p>
           After an answer appears, click <strong>Enhance</strong> for a deeper document-search response. Use <strong>@datasource</strong> to scope a query to a specific workgroup or source.
         </p>
+      </div>
+
+      <div className="welcome-lens-row">
+        <p className="welcome-lens-heading">Tell me your role (optional) so I tilt the answer your way:</p>
+        <div className="welcome-lens-chips">
+          {[
+            { id: 'off', label: 'No lens' },
+            { id: 'pm', label: 'Product Manager' },
+            { id: 'security', label: 'Security' },
+            { id: 'legal', label: 'Legal' },
+            { id: 'architect', label: 'Architect' },
+          ].map((lens) => (
+            <button
+              key={lens.id}
+              type="button"
+              className={`lens-chip ${personaLens === lens.id ? 'active' : ''}`}
+              onClick={() => setPersonaLens(lens.id)}
+              title={lens.id === 'off' ? 'Generic framing' : `Frame answers for a ${lens.label}`}
+            >
+              {lens.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="welcome-starters">
@@ -510,6 +545,7 @@ What would you like to know?`;
       datasourceIds: datasourceIds.length > 0 ? datasourceIds : null,
       personalize: personalizeMode,
       pipelineOverride: pipelineMode === 'system' ? null : pipelineMode,
+      personaLens: personaLens === 'off' ? null : personaLens,
     };
 
     // Streaming placeholder — added once, then updated incrementally
@@ -1182,6 +1218,21 @@ What would you like to know?`;
             <option value="auto">Auto</option>
             <option value="on">Personalized</option>
             <option value="off">Generic</option>
+          </select>
+        )}
+        {user && (
+          <select
+            className="chat-select"
+            value={personaLens}
+            onChange={(e) => setPersonaLens(e.target.value)}
+            disabled={isLoading}
+            title="Reader lens: bias the answer's framing toward your role"
+          >
+            <option value="off">No lens</option>
+            <option value="pm">PM</option>
+            <option value="security">Security</option>
+            <option value="legal">Legal</option>
+            <option value="architect">Architect</option>
           </select>
         )}
         {user && messages.length > 1 && (

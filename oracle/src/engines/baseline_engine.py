@@ -419,6 +419,7 @@ class BaselineEngine:
                         intent=intent,
                         user_context=user_context_str,
                         conversation_history=conversation_history or None,
+                        persona_lens=getattr(request.options, 'persona_lens', None) if request.options else None,
                     )
                     
                     answer_text = answer_result.answer
