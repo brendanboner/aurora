@@ -123,6 +123,7 @@ class UserPreferences:
     organisations: list[str]
     people: list[str]
     domains: list[str] = None
+    background: Optional[str] = None  # Free-text "About me / interests"
 
     def __post_init__(self):
         if self.domains is None:
@@ -130,7 +131,7 @@ class UserPreferences:
 
     def is_empty(self) -> bool:
         """Check if user has any preferences set."""
-        return not (self.topics or self.organisations or self.people or self.domains)
+        return not (self.topics or self.organisations or self.people or self.domains or self.background)
 
 
 @dataclass
@@ -140,11 +141,16 @@ class UserContext:
     organisations: list[str]
     people: list[str]
     joined_workgroups: list[str] = None  # Display names of joined WBA workgroups
+    background: Optional[str] = None  # Free-text user-supplied background/interests
 
     def to_prompt_section(self) -> str:
         """Format user context for inclusion in LLM prompt."""
         parts = []
 
+        if self.background:
+            # Trim and cap so a runaway-long bio doesn't dominate the prompt.
+            bg = " ".join(self.background.split())[:800]
+            parts.append(f"- About this reader (their own description): {bg}")
         if self.topics:
             parts.append(f"- Their areas of interest: {', '.join(self.topics)}")
         if self.organisations:
@@ -178,9 +184,9 @@ async def get_user_preferences(user_id: str) -> UserPreferences:
     Returns:
         UserPreferences with topics, orgs, people, domains (may be empty)
     """
-    query = "SELECT topics, organisations, people, domains FROM user_preferences WHERE user_id = %s"
+    query = "SELECT topics, organisations, people, domains, background FROM user_preferences WHERE user_id = %s"
     result = _fetchone(query, (user_id,))
-    
+
     if not result:
         logger.debug(f"No preferences found for user {user_id}")
         return UserPreferences(
@@ -188,15 +194,17 @@ async def get_user_preferences(user_id: str) -> UserPreferences:
             topics=[],
             organisations=[],
             people=[],
-            domains=[]
+            domains=[],
+            background=None,
         )
-    
+
     return UserPreferences(
         user_id=user_id,
         topics=result.get("topics") or [],
         organisations=result.get("organisations") or [],
         people=result.get("people") or [],
-        domains=result.get("domains") or []
+        domains=result.get("domains") or [],
+        background=(result.get("background") or None),
     )
 
 
@@ -304,7 +312,8 @@ async def decide_personalization(
     user_context = UserContext(
         topics=preferences.topics,
         organisations=preferences.organisations,
-        people=preferences.people
+        people=preferences.people,
+        background=preferences.background,
     )
     
     # Mode: ON - always personalize (if user has preferences)

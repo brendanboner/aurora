@@ -594,3 +594,46 @@ html[data-theme='light'] .search-input .input,
 html[data-theme='light'] .filter-btn {
   background-color: var(--chat-surface);
 }
+
+/* About you — free-text background field at top of preferences tab */
+.profile-about-section {
+  margin-bottom: 16px;
+}
+
+.profile-about-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  background: rgba(30, 31, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--a1-radius, 8px);
+  color: var(--a1-text-primary);
+  font: inherit;
+  font-size: var(--text-sm, 0.9rem);
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.15s ease;
+  font-family: var(--a1-font);
+}
+
+.profile-about-textarea:focus {
+  outline: none;
+  border-color: var(--a1-primary);
+}
+
+.profile-about-textarea::placeholder {
+  color: var(--a1-text-tertiary);
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.profile-about-charcount {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--a1-text-tertiary);
+  text-align: right;
+}
+
+html[data-theme='light'] .profile-about-textarea {
+  background-color: var(--chat-surface);
+}

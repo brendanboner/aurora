@@ -559,10 +559,10 @@ def delete_user(user_id: str) -> int:  # Changed from int to str
 # ========== User Preferences ==========
 
 def get_user_preferences(user_id: str) -> Dict[str, Any]:
-    """Get user preferences (topics, organisations, people, domains, notifications)."""
+    """Get user preferences (topics, organisations, people, domains, notifications, background)."""
     query = """
         SELECT user_id, topics, organisations, people, domains,
-               notify_email, notify_digest
+               notify_email, notify_digest, background
         FROM user_preferences WHERE user_id = %s
     """
     result = fetchone(query, (user_id,))
@@ -575,6 +575,7 @@ def get_user_preferences(user_id: str) -> Dict[str, Any]:
             "domains": [],
             "notify_email": True,
             "notify_digest": True,
+            "background": None,
         }
     return result
 
@@ -587,12 +588,20 @@ def upsert_user_preferences(
     domains: Optional[List[str]] = None,
     notify_email: Optional[bool] = None,
     notify_digest: Optional[bool] = None,
+    background: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Create or update user preferences (topics/orgs/people/domains/notifications)."""
+    """Create or update user preferences (topics/orgs/people/domains/notifications/background).
+
+    Note: `background` uses a sentinel ('' = explicit clear) since plain
+    NULL would be filtered by COALESCE and never overwrite an existing
+    value. Pass None to leave it unchanged.
+    """
+    # Convert empty string to a value the COALESCE will accept (treats '' as a clear).
+    bg_param = background  # None preserves existing; '' clears; any string overwrites
     query = """
         INSERT INTO user_preferences
-            (user_id, topics, organisations, people, domains, notify_email, notify_digest)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (user_id, topics, organisations, people, domains, notify_email, notify_digest, background)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id) DO UPDATE SET
             topics        = COALESCE(EXCLUDED.topics,        user_preferences.topics),
             organisations = COALESCE(EXCLUDED.organisations, user_preferences.organisations),
@@ -600,11 +609,12 @@ def upsert_user_preferences(
             domains       = COALESCE(EXCLUDED.domains,       user_preferences.domains),
             notify_email  = COALESCE(EXCLUDED.notify_email,  user_preferences.notify_email),
             notify_digest = COALESCE(EXCLUDED.notify_digest, user_preferences.notify_digest),
+            background    = COALESCE(EXCLUDED.background,    user_preferences.background),
             updated_at    = NOW()
         RETURNING user_id, topics, organisations, people, domains,
-                  notify_email, notify_digest
+                  notify_email, notify_digest, background
     """
-    params = (user_id, topics, organisations, people, domains, notify_email, notify_digest)
+    params = (user_id, topics, organisations, people, domains, notify_email, notify_digest, bg_param)
     return fetchone(query, params)
 
 

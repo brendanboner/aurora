@@ -13,6 +13,7 @@ const UserProfile = ({ initialSection, initialPreferencesTab }) => {
   const loadDataRef = useRef(false);
   const [preferences, setPreferences] = useState({
     topics: [], organisations: [], people: [], sources: [], notify_email: true, notify_digest: true,
+    background: '',
   });
   const [savedPreferences, setSavedPreferences] = useState(null); // snapshot of last saved prefs
   const [dirty, setDirty] = useState(false); // track user-driven changes
@@ -433,6 +434,31 @@ const UserProfile = ({ initialSection, initialPreferencesTab }) => {
 
       {loading ? (<div className="spinner" />) : (
         <>
+          {/* About you — free-text background/interests. Used by the answer
+              generator to bias the framing of every response. Lives at the top
+              of the landing tab so users see it on first visit. */}
+          {selectedSection === 'preferences' && user && (
+            <div className="profile-section profile-about-section">
+              <h2><span className="icon-heading"><ProfileIcon size={20} /></span> About you</h2>
+              <p className="section-description">
+                A short note about your role, what you're working on, and how you'd like
+                answers framed. Aurora reads this on every query and biases the response
+                toward what's most relevant to you. ~2-3 sentences works best.
+              </p>
+              <textarea
+                className="profile-about-textarea"
+                rows={4}
+                maxLength={1000}
+                placeholder="e.g. 'I'm a product manager at Extreme Networks focused on Wi-Fi 7/8 enterprise deployments. Surface market timing, vendor positioning, and certification milestones; technical depth on MLO and 802.11bn is useful but lead with the business implications.'"
+                value={preferences.background || ''}
+                onChange={(e) => { setPreferences({ ...preferences, background: e.target.value }); setDirty(true); }}
+              />
+              <div className="profile-about-charcount">
+                {(preferences.background || '').length} / 1000
+              </div>
+            </div>
+          )}
+
           {/* Unified preferences panel (Groups/Sources/Technology/Companies) */}
           {selectedSection === 'preferences' && user && (
             <div className="profile-section" style={{ padding: 0, overflow: 'hidden' }}>

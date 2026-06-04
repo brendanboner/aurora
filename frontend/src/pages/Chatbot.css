@@ -15,16 +15,17 @@
   position: relative;
 }
 
-/* ── Floating controls bar ────────────────────────────────────────────────── */
+/* ── Floating controls bar ─────────────────────────────────────────────────
+   No opaque strip — just a slim, transparent container that sits above the
+   message column and lets the New-Chat ghost-pill breathe into the page
+   instead of looking glued to it.  */
 .chat-controls-bar {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 10px 20px;
-  background: rgba(19, 20, 31, 0.70);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding: 8px 20px 0;
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -57,26 +58,30 @@
   cursor: not-allowed;
 }
 
-/* "New chat" button in controls bar */
+/* "New chat" — ghost pill that picks up the page mood instead of
+   sitting in a bordered button shape. Visible on hover, recedes at rest. */
 .chat-new-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
-  background: var(--a1-surface-2);
-  border: 1px solid var(--a1-border-input);
+  gap: 6px;
+  padding: 4px 14px;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--a1-radius-full);
-  color: var(--a1-text-secondary);
+  color: var(--a1-text-tertiary, #898ca4);
   font-size: 12px;
   font-family: var(--a1-font);
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  opacity: 0.65;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .chat-new-btn:hover {
-  border-color: var(--a1-primary);
+  opacity: 1;
   color: var(--a1-text-primary);
-  background: var(--a1-primary-subtle);
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.30);
 }
 
 .chat-warning-inline {
@@ -830,44 +835,3 @@
   opacity: 0.5;
 }
 
-/* Persona lens row — biases answer framing toward a role */
-.welcome-lens-row {
-  margin-top: 16px;
-}
-
-.welcome-lens-heading {
-  margin: 0 0 8px 0;
-  font-size: var(--text-sm, 0.875rem);
-  color: var(--muted-foreground, #9ca3af);
-}
-
-.welcome-lens-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.lens-chip {
-  padding: 4px 12px;
-  font-size: var(--text-sm, 0.875rem);
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 999px;
-  color: var(--foreground);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--text-sm, 0.875rem);
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.lens-chip:hover {
-  background-color: rgba(99, 102, 241, 0.12);
-  border-color: rgba(99, 102, 241, 0.35);
-}
-
-.lens-chip.active {
-  background-color: rgba(99, 102, 241, 0.22);
-  border-color: rgba(99, 102, 241, 0.6);
-  color: var(--foreground);
-  font-weight: 500;
-}

@@ -146,6 +146,9 @@ class UserPreferences(BaseModel):
     source_preferences: List[SourcePreference] = []
     notify_email: bool = True
     notify_digest: bool = True
+    # Free-text "About me / background" that gets injected into the answer
+    # generator's user-context block. Replaces the per-chat persona lens.
+    background: Optional[str] = None
 
 
 class GraphStatistics(BaseModel):
@@ -589,6 +592,7 @@ async def get_preferences(user_id: str, user: Optional[dict] = Depends(get_user_
             source_preferences=[SourcePreference(**sp) for sp in source_prefs],
             notify_email=prefs.get("notify_email", True),
             notify_digest=prefs.get("notify_digest", True),
+            background=prefs.get("background"),
         )
     except HTTPException:
         raise
@@ -619,6 +623,9 @@ async def update_preferences(
             domains=preferences.domains or None,
             notify_email=preferences.notify_email,
             notify_digest=preferences.notify_digest,
+            # Pass the background through as-is; postgres layer treats None as
+            # "don't touch", any string (incl. empty) as the new value.
+            background=preferences.background,
         )
 
         # Replace all source preferences for this user atomically.
