@@ -74,6 +74,15 @@ def parse_args() -> argparse.Namespace:
                    help="Azure OpenAI deployment to use for judging (defaults to $AZURE_OPENAI_DEPLOYMENT)")
     p.add_argument("--refresh", action="store_true",
                    help="Force re-pulling DB and re-running judge even if cached parquets exist")
+    p.add_argument(
+        "--include-legacy",
+        action="store_true",
+        help=(
+            "Include rows whose request_options has no pipeline tag (legacy "
+            "pre-AB-test traffic that's now a closed historical set of ~267 "
+            "rows). Excluded by default so metrics reflect current code paths."
+        ),
+    )
     p.add_argument("--azure-input-price", type=float, default=0.0025,
                    help="USD per 1K input tokens (default = gpt-4o rate; verify for your model)")
     p.add_argument("--azure-output-price", type=float, default=0.010,
@@ -100,7 +109,12 @@ QUERY_HISTORY_SQL = """
 """
 
 
-def pull_query_history(since: datetime | None, until: datetime | None) -> pd.DataFrame:
+def pull_query_history(
+    since: datetime | None,
+    until: datetime | None,
+    *,
+    include_legacy: bool = False,
+) -> pd.DataFrame:
     conn_kwargs = dict(
         host=os.environ.get("POSTGRES_HOST", "aurora-postgres"),
         port=int(os.environ.get("POSTGRES_PORT", "5432")),
@@ -122,6 +136,20 @@ def pull_query_history(since: datetime | None, until: datetime | None) -> pd.Dat
         lambda o: (o or {}).get("pipeline") if isinstance(o, dict) else None
     )
     df["pipeline"] = df["pipeline"].fillna("unspecified")
+    # `unspecified` is a closed historical set of pre-AB-test rows (the AB
+    # test machinery has since been removed; every new row is tagged "fast"
+    # or "baseline"). They confuse correctness metrics because their answers
+    # came from a different code path no longer in production. Drop them
+    # unless include_legacy=True.
+    if not include_legacy:
+        n_legacy = (df["pipeline"] == "unspecified").sum()
+        if n_legacy:
+            df = df[df["pipeline"] != "unspecified"].reset_index(drop=True)
+            log.info(
+                "Excluded %d legacy 'unspecified' rows; %d remain. "
+                "Pass --include-legacy to keep them.",
+                n_legacy, len(df),
+            )
 
     df["citations_count"] = df["citations"].apply(
         lambda c: len(c) if isinstance(c, list) else 0
@@ -768,7 +796,7 @@ def write_report(
     md.append("")
     md.append(f"- **Window:** {earliest} → {latest}")
     md.append(f"- **Total rows:** {len(df):,}")
-    md.append(f"- **Pipeline tagging:** read from `request_options->>'pipeline'`; rows without this tag are bucketed as `unspecified`.")
+    md.append(f"- **Pipeline tagging:** read from `request_options->>'pipeline'`. Legacy rows with no tag (pre-AB-test-removal) are excluded by default; pass `--include-legacy` to keep them.")
     md.append(f"- **Cost rates (placeholder):** input ${args.azure_input_price}/1K, output ${args.azure_output_price}/1K tokens. Verify against the current Azure OpenAI pricing for the deployed model before publishing.")
     if judge_summary:
         md.append(f"- **LLM-as-judge:** Azure OpenAI deployment `{getattr(args, 'judge_deployment', os.environ.get('AZURE_OPENAI_DEPLOYMENT', '?'))}`, sample size {args.sample}, stratified by (pipeline × intent). Rubric: 0–5 on faithfulness, relevance, citation usefulness; boolean hallucination flag. Full prompt embedded in `eval_aurora.py`.")
@@ -834,7 +862,7 @@ def main() -> int:
         log.info("Loading cached query_history.parquet (use --refresh to re-pull)")
         df = pd.read_parquet(qh_path)
     else:
-        df = pull_query_history(since=since, until=until)
+        df = pull_query_history(since=since, until=until, include_legacy=args.include_legacy)
         if df.empty:
             log.error("No rows returned — check window or credentials")
             return 1

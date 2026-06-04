@@ -21,20 +21,22 @@ router = APIRouter(prefix="/admin/config", tags=["admin"])
 class QuerySettingsConfig(BaseModel):
     """Configuration model for Oracle query settings."""
     
-    # Fast Pipeline
+    # Pipeline selection
+    oracle_pipeline_mode: str = Field(
+        default="auto",
+        pattern="^(auto|baseline)$",
+        description=(
+            "Pipeline strategy. 'auto' = fast pipeline with baseline fallback "
+            "(default); 'baseline' = force every request through baseline "
+            "(used for clean-signal eval runs or as a safety lever)."
+        ),
+    )
     fast_pipeline_enabled: bool = Field(
-        default=False,
-        description="Enable fast retrieval pipeline"
-    )
-    fast_pipeline_rollout_percentage: int = Field(
-        default=0,
-        ge=0,
-        le=100,
-        description="Percentage of users in fast pipeline (0-100)"
-    )
-    fast_pipeline_shadow_mode: bool = Field(
-        default=False,
-        description="Run fast pipeline in shadow mode (log only, return baseline)"
+        default=True,
+        description=(
+            "Master kill switch for the fast pipeline. When False, every "
+            "request goes through baseline regardless of oracle_pipeline_mode."
+        ),
     )
     
     # Confidence & Quality
@@ -77,9 +79,8 @@ async def get_query_settings_config() -> QuerySettingsConfig:
     """Retrieve current Oracle query settings."""
     try:
         return QuerySettingsConfig(
+            oracle_pipeline_mode=settings.oracle_pipeline_mode,
             fast_pipeline_enabled=settings.fast_pipeline_enabled,
-            fast_pipeline_rollout_percentage=settings.fast_pipeline_rollout_percentage,
-            fast_pipeline_shadow_mode=settings.fast_pipeline_shadow_mode,
             fast_confidence_threshold=settings.fast_confidence_threshold,
             fast_cache_plan_ttl_hours=settings.fast_cache_plan_ttl // 3600,
             fast_cache_result_ttl_minutes=settings.fast_cache_result_ttl // 60,
@@ -99,9 +100,8 @@ async def update_query_settings_config(config: QuerySettingsConfig) -> QuerySett
     """Update Oracle query settings (persisted to database)."""
     try:
         # Update settings in memory
+        settings.oracle_pipeline_mode = config.oracle_pipeline_mode
         settings.fast_pipeline_enabled = config.fast_pipeline_enabled
-        settings.fast_pipeline_rollout_percentage = config.fast_pipeline_rollout_percentage
-        settings.fast_pipeline_shadow_mode = config.fast_pipeline_shadow_mode
         settings.fast_confidence_threshold = config.fast_confidence_threshold
         settings.fast_cache_plan_ttl = config.fast_cache_plan_ttl_hours * 3600
         settings.fast_cache_result_ttl = config.fast_cache_result_ttl_minutes * 60

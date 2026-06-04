@@ -137,10 +137,23 @@ class Settings(BaseSettings):
     query_history_retention_days: int = 30  # How long to keep history
     query_history_max_response_size: int = 50000  # Max chars to store per response
     
-    # Fast Pipeline (A/B Testing)
-    fast_pipeline_enabled: bool = True  # Enable fast retrieval pipeline
-    fast_pipeline_rollout_percentage: int = 100  # 0-100: percentage of users in fast pipeline
-    fast_pipeline_shadow_mode: bool = False  # Run fast pipeline in shadow mode (log only, return baseline)
+    # Pipeline selection (was A/B test, now a simple admin switch).
+    # "auto"     = fast pipeline with downstream baseline fallback (default)
+    # "baseline" = force baseline for every request — used for clean-signal
+    #              evaluation runs and as a safety lever if fast misbehaves
+    oracle_pipeline_mode: str = "auto"
+
+    # Master fast-pipeline kill switch — kept for backward compatibility but
+    # the same effect can be achieved by setting oracle_pipeline_mode=baseline.
+    # When False, every request uses baseline regardless of the mode setting.
+    fast_pipeline_enabled: bool = True
+
+    # DEPRECATED — A/B-test rollout and shadow-mode knobs are no longer used
+    # (the SHA-bucketing produced a third "unspecified" pipeline bucket in
+    # oracle_query_history that confused eval metrics). Left in place so old
+    # .env files don't fail to load; the values are ignored.
+    fast_pipeline_rollout_percentage: int = 100
+    fast_pipeline_shadow_mode: bool = False
     
     # Fast Pipeline: Routing
     fast_router_confidence_threshold: float = 0.6  # Min confidence to use local router (else LLM fallback)

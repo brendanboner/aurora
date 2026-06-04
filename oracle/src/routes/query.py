@@ -364,31 +364,28 @@ async def query(
                             )
                         break
 
-            # Determine which pipeline to use (A/B test or user override)
+            # Determine which pipeline to use. Source of truth (in priority order):
+            #   1. request.options.pipeline_override (explicit per-request)
+            #   2. settings.oracle_pipeline_mode ("auto" → fast / "baseline" → baseline)
+            #   3. settings.fast_pipeline_enabled (kill switch)
             options = request.options
             pipeline_override = getattr(options, 'pipeline_override', None) if options else None
             use_fast_pipeline = should_use_fast_pipeline(
                 str(request.user_id) if request.user_id else None,
-                pipeline_override=pipeline_override
+                pipeline_override=pipeline_override,
             )
             pipeline_name = "fast" if use_fast_pipeline else "baseline"
-            
+
             span.set_attribute("oracle.pipeline", pipeline_name)
-            span.set_attribute("oracle.ab_test_enabled", settings.fast_pipeline_enabled)
+            span.set_attribute("oracle.pipeline_mode", settings.oracle_pipeline_mode)
             if pipeline_override:
                 span.set_attribute("oracle.pipeline_override_used", True)
                 span.set_attribute("oracle.pipeline_override_value", pipeline_override)
-            
+
             logger.info(
                 f"[{query_id}] Using {pipeline_name} pipeline "
-                f"({'override' if pipeline_override else 'A/B test'})"
+                f"({'override' if pipeline_override else 'mode=' + settings.oracle_pipeline_mode})"
             )
-            
-            # Shadow mode: run fast pipeline but return baseline
-            if settings.fast_pipeline_shadow_mode and not use_fast_pipeline:
-                logger.info(f"[{query_id}] Shadow mode: running fast pipeline in background")
-                # TODO: Implement async shadow execution
-                pass
             
             # Select engine
             if use_fast_pipeline:

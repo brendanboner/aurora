@@ -83,7 +83,7 @@ class QueryOptions(BaseModel):
     )
     pipeline_override: Optional[Literal["fast", "baseline"]] = Field(
         default=None,
-        description="Override A/B test pipeline selection: 'fast' or 'baseline'. None = use A/B test (default)"
+        description="Override the admin-configured pipeline: 'fast' or 'baseline'. None = follow oracle_pipeline_mode setting (default)."
     )
 
 

@@ -1,79 +1,68 @@
-"""A/B testing logic for fast pipeline rollout."""
+"""Pipeline selection — Fast-first with baseline fallback, or baseline-only.
 
-import hashlib
+This module used to implement deterministic A/B-test user-bucketing via SHA
+hashing of the user_id. That added a `pipeline=unspecified` bucket of users
+whose UUIDs hashed below the rollout cutoff and, more importantly, made
+eval metrics noisy because three different code paths were producing
+answers that all landed in the same `oracle_query_history` sample.
+
+We now run one of two modes, controlled by `settings.oracle_pipeline_mode`:
+
+  - "auto"     (default): every request goes through the fast pipeline. The
+                          existing `fast_fallback_to_baseline` handles the
+                          fast→baseline cascade when fast errs or returns
+                          insufficient docs.
+  - "baseline":           fast pipeline is bypassed entirely. Every request
+                          goes through baseline. Useful for evaluation
+                          runs that want a clean baseline-only signal.
+
+A per-request `pipeline_override` (from QueryOptions) still wins over the
+mode setting so individual eval/debug calls can force one path or the other.
+"""
+
 import logging
 from typing import Optional
+
 from src.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-def should_use_fast_pipeline(user_id: Optional[str], pipeline_override: Optional[str] = None) -> bool:
+def should_use_fast_pipeline(
+    user_id: Optional[str] = None,
+    pipeline_override: Optional[str] = None,
+) -> bool:
+    """Decide whether to attempt the fast pipeline for this request.
+
+    Returns True for fast (with fallback handled by the caller); False for
+    baseline-only. The `user_id` parameter is kept on the signature for
+    backward compatibility with existing call sites but is no longer used
+    in the decision — bucketing by user_id was the A/B test machinery we
+    just removed.
     """
-    Determine if a user should use the fast pipeline based on A/B test assignment or override.
-    
-    Uses deterministic hash-based bucketing to ensure consistent assignment
-    for the same user across requests, unless overridden by user selection.
-    
-    Args:
-        user_id: User identifier (Cognito UUID or similar)
-        pipeline_override: Optional user override ('fast' or 'baseline')
-        
-    Returns:
-        True if user should use fast pipeline, False for baseline
-    """
-    # Check for explicit override first (beta feature for user testing)
+    # Explicit per-request override always wins.
     if pipeline_override is not None:
-        use_fast = pipeline_override.lower() == "fast"
-        logger.info(
-            f"Pipeline override: user={user_id[:8] if user_id else 'anonymous'}... "
-            f"override={pipeline_override} -> {'fast' if use_fast else 'baseline'}"
+        choice = pipeline_override.lower()
+        if choice == "fast":
+            return True
+        if choice == "baseline":
+            return False
+        logger.warning(
+            "Unknown pipeline_override=%r — falling through to mode setting",
+            pipeline_override,
         )
-        return use_fast
-    
-    # Fast pipeline must be enabled
-    if not settings.fast_pipeline_enabled:
+
+    # Master kill switch — if fast is disabled outright, force baseline.
+    if not getattr(settings, "fast_pipeline_enabled", True):
         return False
-    
-    # If no user_id, default to baseline
-    if not user_id:
-        logger.debug("No user_id provided, using baseline pipeline")
+
+    mode = (getattr(settings, "oracle_pipeline_mode", "auto") or "auto").lower()
+    if mode == "baseline":
         return False
-    
-    # Rollout percentage controls exposure
-    rollout_pct = settings.fast_pipeline_rollout_percentage
-    
-    # 0% = nobody gets fast pipeline
-    if rollout_pct <= 0:
-        return False
-    
-    # 100% = everyone gets fast pipeline
-    if rollout_pct >= 100:
-        return True
-    
-    # Hash user ID to get consistent bucket assignment (0-99)
-    user_hash = hashlib.sha256(user_id.encode()).hexdigest()
-    bucket = int(user_hash[:8], 16) % 100
-    
-    # User is in fast pipeline if their bucket < rollout percentage
-    use_fast = bucket < rollout_pct
-    
-    logger.debug(
-        f"A/B test assignment: user={user_id[:8]}... bucket={bucket} "
-        f"rollout={rollout_pct}% -> {'fast' if use_fast else 'baseline'}"
-    )
-    
-    return use_fast
+    # Default ("auto" or any other value) = fast with downstream fallback.
+    return True
 
 
-def get_pipeline_name(user_id: Optional[str]) -> str:
-    """
-    Get the pipeline name that should be used for a user.
-    
-    Args:
-        user_id: User identifier
-        
-    Returns:
-        "fast" or "baseline"
-    """
+def get_pipeline_name(user_id: Optional[str] = None) -> str:
+    """Return the pipeline name a request would use under current settings."""
     return "fast" if should_use_fast_pipeline(user_id) else "baseline"
