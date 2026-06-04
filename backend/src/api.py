@@ -637,7 +637,11 @@ async def update_preferences(
             for ds_id in existing - incoming:
                 postgres.delete_user_source_preference(user_id, ds_id)
 
-        return await get_preferences(user_id, user)
+        # `user=user` (keyword!) — get_preferences is wrapped by @require_user_context,
+        # which only inspects the `user` keyword. Passing it positionally lets the
+        # wrapper's default (None) win and the inner call 401s even though the
+        # outer PUT was perfectly authenticated.
+        return await get_preferences(user_id, user=user)
     except HTTPException:
         raise
     except Exception as e:
