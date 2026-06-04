@@ -36,7 +36,6 @@ What documents discuss sticky client scenarios in Wi-Fi 8?
 Show me everything in the knowledge base related to Multi-Link Operation
 What has been written about 6 GHz spectrum management?
 What documents cover the upper 6 GHz band discussions?
-What is discussed in the knowledge base about target wake time?
 Find all documents related to 802.11be beamforming
 What are the key documents about Wi-Fi sensing technology?
 What material covers channel bonding in Wi-Fi 7 and Wi-Fi 8?
@@ -100,7 +99,6 @@ What is the RSPG position on the upper 6 GHz band in Europe?
 # --- 10. TECHNICAL EXPLANATIONS ---
 How does Multi-Link Operation work in Wi-Fi 7?
 Explain the OFDMA resource unit allocation in Wi-Fi 6
-How does target wake time reduce power consumption in IoT devices?
 What is the role of BSS colouring in reducing interference?
 How does 4K-QAM improve throughput in Wi-Fi 7?
 Explain the roaming problem caused by sticky clients
