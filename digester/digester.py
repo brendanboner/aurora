@@ -731,7 +731,13 @@ class DocumentDigester:
             try:
                 import base64 as _b64
                 cache_key = f"binary_content:{redis_url}"
-                cached = await asyncio.to_thread(self.redis_client.get, cache_key)
+                # self.redis_client is `redis.asyncio.Redis` — `.get()` is already
+                # a coroutine. Wrapping it in asyncio.to_thread runs the coroutine
+                # factory in a thread and returns the coroutine object (not the
+                # bytes), which then fails decode with "argument should be a
+                # bytes-like object or ASCII string, not 'coroutine'". Await
+                # the async client directly.
+                cached = await self.redis_client.get(cache_key)
                 if cached:
                     if isinstance(cached, bytes):
                         cached = cached.decode("ascii")
