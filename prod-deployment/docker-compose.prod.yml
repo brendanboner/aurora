@@ -956,6 +956,10 @@ services:
       AURORA_ORACLE_URL: http://oracle:8000
       AURORA_CONTENT_CREATOR_URL: http://content_creator_service:8000
       AURORA_FRONTEND_URL: https://${DEPLOYMENT_DOMAIN}
+      # Mirror the auth-service admin lists so pushSystemAlert can target the
+      # right personal Teams chats (there is no `role` column on app_users).
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      SUPERADMIN_EMAILS: ${SUPERADMIN_EMAILS:-}
       TEST_USER_EMAIL: ${TEST_USER_EMAIL}
       TEST_USER_ID: ${TEST_USER_ID}
     healthcheck:

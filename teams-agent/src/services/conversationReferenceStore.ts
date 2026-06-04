@@ -172,20 +172,34 @@ export class ConversationReferenceStore {
   }
 
   /**
-   * Returns personal-chat conversations for all aurora users with admin or superadmin role.
-   * Used by pushSystemAlert() to send operational alerts directly to admins' personal chats.
+   * Returns personal-chat conversations for all admin users.
+   *
+   * Aurora doesn't store role on the user table — role comes from Cognito
+   * groups at JWT-validation time. So we resolve admin status from the
+   * ADMIN_EMAILS / SUPERADMIN_EMAILS env vars (same ones the auth service
+   * uses) and look up matching personal Teams chats by email.
    */
   async getAdminConversations(): Promise<StoredConversationReference[]> {
+    const emails = [
+      ...((process.env.ADMIN_EMAILS || '').split(',')),
+      ...((process.env.SUPERADMIN_EMAILS || '').split(',')),
+    ]
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (emails.length === 0) {
+      return [];
+    }
+
     return withDb(async () => {
-      // Join aurora_user (role) with teams_conversation_references (personal chats only)
       const res = await getPool().query<StoredConversationReference>(`
         SELECT tcr.*
         FROM teams_conversation_references tcr
-        INNER JOIN aurora_user au ON au.id::text = tcr.aurora_user_id
-        WHERE au.role IN ('admin', 'superadmin')
+        INNER JOIN app_users au ON au.id::text = tcr.aurora_user_id
+        WHERE lower(au.email) = ANY($1::text[])
           AND (tcr.conversation_type = 'personal' OR tcr.conversation_type IS NULL)
         ORDER BY tcr.updated_at DESC
-      `);
+      `, [emails]);
       return res.rows;
     }, []);
   }
