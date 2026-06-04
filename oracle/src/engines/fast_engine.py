@@ -2046,14 +2046,43 @@ class FastEngine:
                 break
         return "\n".join(lines[:cut]).rstrip()
 
+    @staticmethod
+    def _is_sane_publish_date(date_str: Optional[str]) -> bool:
+        """Return True iff the date string represents a year in [2000, current_year+1].
+
+        WFA's CMS scraper occasionally emits dates with garbage years like
+        9806-01-05 or 0430-01-03 in resource pages. They get stored on the
+        Resource node, and then sort to the TOP of any 'latest' query (year
+        9806 > everything). Defense-in-depth: drop any node whose date is
+        outside the plausible window when converting to Document objects,
+        regardless of which template produced it.
+        """
+        if not date_str:
+            return True  # No date is fine — falls through to NULL handling
+        try:
+            from datetime import datetime as _dt
+            s = str(date_str)
+            # Strip timezone suffix to keep parsing simple
+            for sep in ('T', ' '):
+                if sep in s:
+                    s = s.split(sep, 1)[0]
+                    break
+            # Just check the year prefix (YYYY-MM-DD)
+            year = int(s[:4])
+        except Exception:
+            return True  # Unparseable — let downstream handle it
+        from datetime import datetime as _dt2
+        current_year = _dt2.now().year
+        return 2000 <= year <= current_year + 1
+
     def _nodes_to_documents(self, nodes: List[Dict], max_documents: Optional[int] = None) -> List[Document]:
         """
         Convert Neo4j nodes to Document objects.
         Handles both flat node structure and grouped structure (recent_documents/recent_events).
-        
+
         Args:
             nodes: List of node dictionaries from Cypher results
-            
+
         Returns:
             List of Document objects
         """
@@ -2262,5 +2291,21 @@ class FastEngine:
                 )
                 
                 documents.append(doc)
-        
-        return documents
+
+        # Defense-in-depth: drop any doc whose publish_date parses to a year
+        # outside [2000, current_year+1]. WFA CMS scraper has historically
+        # produced years like 9806, 7794, 0430 — these would otherwise sort
+        # to the TOP of any 'latest …' query (year 9806 beats every real date).
+        kept: List[Document] = []
+        dropped_bogus_dates = 0
+        for d in documents:
+            if self._is_sane_publish_date(getattr(d, "publish_date", None)):
+                kept.append(d)
+            else:
+                dropped_bogus_dates += 1
+        if dropped_bogus_dates:
+            logger.warning(
+                f"_nodes_to_documents: dropped {dropped_bogus_dates} doc(s) with "
+                f"out-of-range publish_date (sanity guard against WFA scraper garbage)"
+            )
+        return kept
