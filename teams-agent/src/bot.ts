@@ -365,12 +365,22 @@ export class AuroraBot extends TeamsActivityHandler {
   }
 
   private async sendHelpMessage(context: TurnContext): Promise<void> {
+    // Trial users keep losing the web URL — surface it both as a hyperlink in
+    // the intro text (clickable inline) AND as a primary action button at the
+    // bottom of the card (visible no matter where Teams crops the body).
+    const frontendUrl = process.env.AURORA_FRONTEND_URL || 'https://aurora-octo.xcloudiq.com';
     const card = {
       type: 'AdaptiveCard',
       $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
       version: '1.3',
       body: [
         { type: 'TextBlock', text: 'Aurora — Commands', weight: 'Bolder', size: 'Large' },
+        {
+          type: 'TextBlock',
+          text: `Web app: [${frontendUrl}](${frontendUrl})`,
+          wrap: true,
+          spacing: 'Small',
+        },
         // Feed
         { type: 'TextBlock', text: 'Feed & History', weight: 'Bolder', separator: true, spacing: 'Medium' },
         {
@@ -418,11 +428,19 @@ export class AuroraBot extends TeamsActivityHandler {
         },
         { type: 'TextBlock', text: 'Or just type any question and Aurora will search its knowledge base.', wrap: true, isSubtle: true, spacing: 'Medium' },
       ],
+      actions: [
+        {
+          type: 'Action.OpenUrl',
+          title: 'Open Aurora web app ↗',
+          url: frontendUrl,
+        },
+      ],
     };
     await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
   }
 
   private async sendAboutMessage(context: TurnContext): Promise<void> {
+    const frontendUrl = process.env.AURORA_FRONTEND_URL || 'https://aurora-octo.xcloudiq.com';
     const card = {
       type: 'AdaptiveCard',
       $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
@@ -432,6 +450,12 @@ export class AuroraBot extends TeamsActivityHandler {
         {
           type: 'TextBlock',
           text: 'Aurora is an intelligent knowledge system built on Wi-Fi Alliance, WBA, IETF, and IEEE standards content.',
+          wrap: true,
+          spacing: 'Small',
+        },
+        {
+          type: 'TextBlock',
+          text: `Web app: [${frontendUrl}](${frontendUrl})`,
           wrap: true,
           spacing: 'Small',
         },
@@ -446,6 +470,13 @@ export class AuroraBot extends TeamsActivityHandler {
           ],
         },
         { type: 'TextBlock', text: 'Type `help` for a full command reference.', wrap: true, isSubtle: true, spacing: 'Medium' },
+      ],
+      actions: [
+        {
+          type: 'Action.OpenUrl',
+          title: 'Open Aurora web app ↗',
+          url: frontendUrl,
+        },
       ],
     };
     await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
