@@ -8,8 +8,8 @@ All temporal queries MUST use robust date fallback since publish_date is often N
 
 Use this pattern in Cypher expressions (WITH/RETURN):
     CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                   AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
 
 This must be a single expression, not a block. Cypher does not support SQL-style CASE blocks.
 
@@ -997,8 +997,8 @@ class QueryTemplateRegistry:
             WITH ds, r,
                 CASE
                   WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                       AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                    THEN datetime(r.publish_date)
+                       AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                    THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
                   WHEN r.created_at IS NOT NULL
                     THEN r.created_at
                   ELSE datetime('1970-01-01')
@@ -1052,8 +1052,8 @@ class QueryTemplateRegistry:
             WITH ds, r,
                 CASE
                   WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                       AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                    THEN datetime(r.publish_date)
+                       AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                    THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
                   WHEN r.created_at IS NOT NULL
                     THEN r.created_at
                   ELSE datetime('1970-01-01')
@@ -1105,8 +1105,8 @@ class QueryTemplateRegistry:
               WITH r, doc_threshold, half_limit
               WITH r, doc_threshold, half_limit,
                   CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year
-                   THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
+                   AND datetime(replace(toString(r.publish_date), ' ', 'T')).year >= 2000 AND datetime(replace(toString(r.publish_date), ' ', 'T')).year <= datetime().year
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T')) ELSE datetime('1970-01-01') END as effective_date
             WHERE effective_date >= doc_threshold
               AND effective_date <= datetime()
             
@@ -1173,7 +1173,7 @@ class QueryTemplateRegistry:
             MATCH (r:Resource)
             WHERE coalesce(r.archived, false) = false
               WITH r,
-                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                  CASE WHEN r.publish_date IS NOT NULL THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
             WHERE toLower(r.category) = 'decision'
               AND ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
@@ -1267,7 +1267,7 @@ class QueryTemplateRegistry:
             MATCH (r:Resource)-[rt:RELATES_TO]->(t:Topic)
             WHERE coalesce(r.archived, false) = false
             WITH r, rt, t,
-                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
               AND rt.relevance >= 0.5
@@ -1309,8 +1309,8 @@ class QueryTemplateRegistry:
             MATCH (r:Resource)-[:MENTIONS]->(p:Person)
             WHERE coalesce(r.archived, false) = false
             WITH r, p,
-                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
-                      WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T'))
+                      WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
             WHERE ($people IS NULL OR size($people) = 0 OR p.name IN $people)
               AND ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
@@ -1590,8 +1590,8 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH r, threshold,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                      AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year
-                      THEN datetime(r.publish_date) ELSE datetime('1970-01-01') END as effective_date
+                      AND datetime(replace(toString(r.publish_date), ' ', 'T')).year >= 2000 AND datetime(replace(toString(r.publish_date), ' ', 'T')).year <= datetime().year
+                      THEN datetime(replace(toString(r.publish_date), ' ', 'T')) ELSE datetime('1970-01-01') END as effective_date
             WHERE toLower(r.category) = 'decision'
               AND effective_date >= threshold
               AND effective_date <= datetime()
@@ -1634,8 +1634,8 @@ class QueryTemplateRegistry:
               AND toLower(r.category) = 'decision'
               AND rt.relevance >= 0.5
               AND t.name IN $topics
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+              AND ($start_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime($start_date))
+              AND ($end_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime($end_date))
             
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
             
@@ -1710,8 +1710,8 @@ class QueryTemplateRegistry:
                 // Date fallback with validation - handle NULL publish_date
                 WITH r, t, rt.relevance as base_relevance, rt.stance as stance,
                      CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                   AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
                 
                 RETURN r, effective_date, base_relevance, stance, t.name as topic_name, 'exact' as match_type
                 
@@ -1737,8 +1737,8 @@ class QueryTemplateRegistry:
                 // Date fallback - handle NULL publish_date
                 WITH r,
                      CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                   AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
                 
                 // Get the first matching topic for metadata and calculate match quality
                 WITH r, effective_date,
@@ -1906,11 +1906,11 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH a, r,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                       AND datetime(r.publish_date) >= datetime('2000-01-01')
-                       AND datetime(r.publish_date) <= datetime()
-                       THEN datetime(r.publish_date)
-                      WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
-                      WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at)
+                       AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01')
+                       AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                       THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
+                      WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T'))
+                      WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
                       ELSE datetime()
                  END AS effective_date
             ORDER BY effective_date DESC
@@ -2059,8 +2059,8 @@ class QueryTemplateRegistry:
             MATCH (p:Person)<-[:MENTIONS]-(r:Resource)
             WHERE coalesce(r.archived, false) = false
               AND p.name IN $people
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+              AND ($start_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime($start_date))
+              AND ($end_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime($end_date))
             
             OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
             
@@ -2100,8 +2100,8 @@ class QueryTemplateRegistry:
             // Date fallback with validation
             WITH r, p,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                   AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
             
             // Extract segment number or URL timestamp for secondary sorting of video series
             WITH r, p, effective_date,
@@ -2156,8 +2156,8 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
               AND any(topic IN $topics WHERE toLower(t.name) = toLower(topic))
               AND rt.relevance >= 0.5
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
-              AND ($end_date IS NULL OR datetime(r.publish_date) <= datetime($end_date))
+              AND ($start_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime($start_date))
+              AND ($end_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime($end_date))
             
             WITH t, r
             ORDER BY r.publish_date ASC
@@ -2228,8 +2228,8 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH ds, r,
                 CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+                   AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime('1970-01-01') END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -2275,7 +2275,7 @@ class QueryTemplateRegistry:
             MATCH (o)<-[:MENTIONS]-(r:Resource)
             WHERE coalesce(r.archived, false) = false
             WITH o, r,
-                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime() END as effective_date
+                 CASE WHEN r.publish_date IS NOT NULL THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime() END as effective_date
             WHERE ($start_date IS NULL OR effective_date >= datetime($start_date))
               AND ($end_date IS NULL OR effective_date <= datetime($end_date))
             
@@ -2371,9 +2371,9 @@ class QueryTemplateRegistry:
             WHERE coalesce(r.archived, false) = false
             WITH r, doc_threshold,
                  CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                      AND datetime(r.publish_date).year >= 2000 AND datetime(r.publish_date).year <= datetime().year
-                      THEN datetime(r.publish_date)
-                      WHEN r.created_at IS NOT NULL THEN datetime(r.created_at)
+                      AND datetime(replace(toString(r.publish_date), ' ', 'T')).year >= 2000 AND datetime(replace(toString(r.publish_date), ' ', 'T')).year <= datetime().year
+                      THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
+                      WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T'))
                       ELSE datetime('1970-01-01') END as effective_date
             WHERE effective_date >= doc_threshold
               AND effective_date <= datetime()
@@ -2431,7 +2431,7 @@ class QueryTemplateRegistry:
 
                  // Recency: 7-day half-life — content >3 weeks old scores near zero
                  CASE WHEN r.publish_date IS NULL OR r.publish_date IN ['', 'unknown'] THEN 0.3
-                      ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 7.0)
+                      ELSE exp(-duration.between(datetime(replace(toString(r.publish_date), ' ', 'T')), datetime()).days / 7.0)
                  END as recency_score,
 
                  // Importance multiplier — toString() prevents TypeError when importance is a float
@@ -2495,7 +2495,7 @@ class QueryTemplateRegistry:
             MATCH (r:Resource)-[rt:RELATES_TO]->(t)
             WHERE coalesce(r.archived, false) = false
               AND rt.relevance >= 0.5
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
+              AND ($start_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime($start_date))
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
             RETURN t.name AS subject_name, t.topic_id AS subject_id,
                    t.description AS description, t.classification AS classification,
@@ -2509,7 +2509,7 @@ class QueryTemplateRegistry:
                 toLower(ds.name) = toLower(term) OR ds.datasource_id = term)
             MATCH (r:Resource)-[:INGESTED_FROM]->(ds)
             WHERE coalesce(r.archived, false) = false
-              AND ($start_date IS NULL OR datetime(r.publish_date) >= datetime($start_date))
+              AND ($start_date IS NULL OR datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime($start_date))
             OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
             RETURN ds.name AS subject_name, ds.datasource_id AS subject_id,
                    ds.description AS description, null AS classification,
@@ -3010,8 +3010,8 @@ ORDER BY e.start_date DESC
             
             // Calculate effective date with robust fallback
             WITH r, CASE WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01') AND datetime(r.publish_date) <= datetime()
-                   THEN datetime(r.publish_date) WHEN r.created_at IS NOT NULL THEN datetime(r.created_at) WHEN r.scraped_at IS NOT NULL THEN datetime(r.scraped_at) ELSE datetime('1970-01-01') END as effective_date
+                   AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime('2000-01-01') AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+                   THEN datetime(replace(toString(r.publish_date), ' ', 'T')) WHEN r.created_at IS NOT NULL THEN datetime(replace(toString(r.created_at), ' ', 'T')) WHEN r.scraped_at IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T')) ELSE datetime('1970-01-01') END as effective_date
             
             // Filter by date range if provided
             WITH r, effective_date
@@ -3128,11 +3128,11 @@ ORDER BY e.start_date DESC
                                   'presentation', 'specification']
               AND (
                 r.publish_date IS NOT NULL
-                AND datetime(r.publish_date) >= datetime() - duration({days: $days})
+                AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime() - duration({days: $days})
               )
             WITH r ORDER BY
-              CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
-                   WHEN r.scraped_at  IS NOT NULL THEN datetime(r.scraped_at)
+              CASE WHEN r.publish_date IS NOT NULL THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
+                   WHEN r.scraped_at  IS NOT NULL THEN datetime(replace(toString(r.scraped_at), ' ', 'T'))
                    ELSE datetime() END DESC
             RETURN r.url_hash   AS id,
                    r.title      AS title,
@@ -3160,7 +3160,7 @@ ORDER BY e.start_date DESC
             OPTIONAL MATCH (r:Resource {datasource_id: ds.datasource_id})
             WHERE r.doc_type IN ['meeting-prep-call', 'meeting-minutes', 'agenda']
             WITH ds, r ORDER BY
-              CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+              CASE WHEN r.publish_date IS NOT NULL THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
                    ELSE datetime('1970-01-01') END DESC
             WITH ds, collect(r)[0] AS latest_resource
 
@@ -3190,10 +3190,10 @@ ORDER BY e.start_date DESC
                                   'presentation', 'specification']
               AND (
                 r.publish_date IS NOT NULL
-                AND datetime(r.publish_date) >= datetime() - duration({days: $days})
+                AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= datetime() - duration({days: $days})
               )
             WITH r ORDER BY
-              CASE WHEN r.publish_date IS NOT NULL THEN datetime(r.publish_date)
+              CASE WHEN r.publish_date IS NOT NULL THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
                    ELSE datetime() END DESC
             RETURN r.url_hash   AS id,
                    r.title      AS title,

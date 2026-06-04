@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     # Fast Pipeline: Cypher Templates
     fast_template_max_nodes: int = 100  # Max nodes returned per template query
     fast_template_timeout: float = 5.0  # Timeout for template execution (seconds)
-    fast_template_version: str = "1.0.15"  # hard future-date filter + Postgres-timestamp coercion in RECENT_CONTENT + DATASOURCE_LATEST
+    fast_template_version: str = "1.0.16"  # safe-datetime parser applied to ALL templates (fixes generic_search + documents_by_topic crashes on Postgres-timestamp publish_date values)
     
     # Fast Pipeline: Rollups (PostgreSQL)
     fast_rollup_enabled: bool = True  # Enable rollup generation and retrieval
