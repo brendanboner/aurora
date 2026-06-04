@@ -429,6 +429,83 @@
   opacity: 1;
 }
 
+/* Citation hover popover — receipts on demand for [n] markers */
+.citation-popover-wrap {
+  position: relative;
+  display: inline;
+}
+
+.citation-popover {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 320px;
+  max-width: 90vw;
+  padding: 10px 12px;
+  background-color: var(--card, #1f2937);
+  color: var(--foreground, #f3f4f6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  font-size: var(--text-sm, 0.875rem);
+  line-height: 1.4;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, visibility 0.12s ease, transform 0.12s ease;
+  z-index: 1000;
+  white-space: normal;
+  text-align: left;
+}
+
+.citation-popover-wrap:hover .citation-popover,
+.citation-popover-wrap:focus-within .citation-popover {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(-10px);
+}
+
+.citation-popover-title {
+  font-weight: 600;
+  color: var(--primary, #8b5cf6);
+}
+
+.citation-popover-date {
+  font-size: 0.8em;
+  color: var(--muted-foreground, #9ca3af);
+}
+
+.citation-popover-excerpt {
+  color: var(--foreground);
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.citation-popover-link {
+  font-size: 0.75em;
+  color: var(--muted-foreground, #9ca3af);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
+.reference-publish-date {
+  font-size: 0.78em;
+  color: var(--muted-foreground, #9ca3af);
+  padding: 2px 6px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
 /* Answer Stats Row - Confidence and Stats on one line above answer */
 .answer-stats-row {
   display: flex;
@@ -1012,6 +1089,27 @@
   background-color: var(--card);
   border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.suggestion-clickable {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+
+.suggestion-clickable:hover:not(:disabled) {
+  background-color: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.suggestion-clickable:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.suggestion-clickable:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .suggestion-query {

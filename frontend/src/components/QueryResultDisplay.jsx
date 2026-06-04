@@ -92,25 +92,12 @@ const isYouTubeVideo = (doc) => {
 };
 
 /**
- * Check if we should show query suggestions (poor results)
- * DISABLED: Post-query suggestions temporarily disabled - uncomment to re-enable
+ * Show follow-up suggestion chips whenever the backend produced any.
+ * Backend already filters via should_show_suggestions() (low confidence or
+ * sparse documents), so trusting `message.suggestions` is sufficient here.
  */
 const shouldShowSuggestions = (message) => {
-  // Temporarily disabled - return false to hide post-query suggestions
-  return false;
-  
-  // Original logic - uncomment to re-enable:
-  // Show suggestions if:
-  // 1. We have suggestions available
-  // 2. AND (confidence is low OR few documents)
-  // if (!message.suggestions || message.suggestions.length === 0) return false;
-  // 
-  // const hasLowConfidence = message.confidenceScore !== null && 
-  //                         message.confidenceScore !== undefined && 
-  //                         message.confidenceScore < 0.5;
-  // const hasFewDocs = !message.documents || message.documents.length < 3;
-  // 
-  // return hasLowConfidence || hasFewDocs;
+  return Array.isArray(message.suggestions) && message.suggestions.length > 0;
 };
 
 /**
@@ -129,7 +116,7 @@ const shouldShowSuggestions = (message) => {
  * - isEnhancing: Whether enhance is currently in progress
  * - onFeedback: Callback for user feedback (queryId, feedbackType) => void
  */
-const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhanced, isEnhancing = false, onDisplayModeChange, onFeedback }) => {
+const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhanced, isEnhancing = false, onDisplayModeChange, onFeedback, onSuggestionClick }) => {
   // Initialize display mode from message or default based on content
   const getInitialDisplayMode = () => {
     // If message has a saved display mode, use it
@@ -149,7 +136,10 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   const [displayMode, setDisplayModeState] = useState(getInitialDisplayMode);
   const [feedbackGiven, setFeedbackGiven] = useState(message.feedbackGiven || null); // 'helpful' | 'not_helpful' | null
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
-  const [referencesOpen, setReferencesOpen] = useState(false);
+  // Open by default when the answer has citations — trust signal for legal/security/PM users.
+  const [referencesOpen, setReferencesOpen] = useState(
+    Array.isArray(message.citations) && message.citations.length > 0
+  );
   
   // Wrapper to update both local state and persist to parent
   const setDisplayMode = useCallback((mode) => {
@@ -202,7 +192,21 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   const hasAnswer = message.content && message.content !== 'Here are the relevant documents:';
   const hasDocuments = message.documents && message.documents.length > 0;
   const hasCitations = message.citations && message.citations.length > 0;
-  const citationUrlMap = new Map((message.citations || []).map((citation) => [String(citation.index), citation.document_url]));
+  // Per-doc lookup so citation hover popovers can show publish_date alongside
+  // title/excerpt (citation payload itself only has url/title/excerpt).
+  const docByUrl = new Map((message.documents || []).map((d) => [d.url, d]));
+  // Citation popover payload: index → {url, title, excerpt, publish_date}
+  const citationMetaMap = new Map(
+    (message.citations || []).map((citation) => [
+      String(citation.index),
+      {
+        url: citation.document_url,
+        title: citation.title,
+        excerpt: citation.excerpt,
+        publish_date: docByUrl.get(citation.document_url)?.publish_date || null,
+      },
+    ])
+  );
 
   // Format date helper
   const formatDate = (dateStr) => {
@@ -259,20 +263,37 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
       const match = part.match(/^\[(?:Doc )?(\d+)\]$/);
       if (!match) return part;
 
-      const url = citationUrlMap.get(match[1]);
-      if (!url) return <span key={idx} className="citation-ref">[{match[1]}]</span>;
+      const meta = citationMetaMap.get(match[1]);
+      if (!meta?.url) return <span key={idx} className="citation-ref">[{match[1]}]</span>;
+
+      const excerptSnippet = typeof meta.excerpt === 'string' && meta.excerpt.length > 180
+        ? meta.excerpt.slice(0, 177).trimEnd() + '…'
+        : meta.excerpt;
 
       return (
-        <a
-          key={idx}
-          className="citation-ref citation-link"
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Open referenced document"
-        >
-          [{match[1]}]
-        </a>
+        <span key={idx} className="citation-popover-wrap">
+          <a
+            className="citation-ref citation-link"
+            href={meta.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={meta.title ? `Open citation: ${meta.title}` : 'Open referenced document'}
+          >
+            [{match[1]}]
+          </a>
+          <span className="citation-popover" role="tooltip">
+            {meta.title && (
+              <span className="citation-popover-title">{meta.title}</span>
+            )}
+            {meta.publish_date && (
+              <span className="citation-popover-date">{formatDate(meta.publish_date)}</span>
+            )}
+            {excerptSnippet && (
+              <span className="citation-popover-excerpt">“{excerptSnippet}”</span>
+            )}
+            <span className="citation-popover-link">Click to open document →</span>
+          </span>
+        </span>
       );
     });
   };
@@ -457,19 +478,28 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
           </div>
         </div>
 
-        {/* Query Suggestions for Poor Results - Outside the document box */}
+        {/* Query Suggestions — clickable follow-up chips */}
         {shouldShowSuggestions(message) && (
           <div className="query-suggestions-section">
             <div className="suggestions-header">
               <Icon Component={LightbulbIcon} size={16} className="suggestions-icon" />
-              <strong>Try a different query?</strong>
+              <strong>Try a follow-up</strong>
             </div>
             <div className="suggestions-list-inline">
               {message.suggestions.map((suggestion, i) => (
-                <div key={i} className="suggestion-item">
-                  <span className="suggestion-query">"{suggestion.suggestion}"</span>
-                  <span className="suggestion-reason">{suggestion.reason}</span>
-                </div>
+                <button
+                  key={i}
+                  type="button"
+                  className="suggestion-item suggestion-clickable"
+                  onClick={() => onSuggestionClick && onSuggestionClick(suggestion.suggestion)}
+                  disabled={!onSuggestionClick}
+                  title={suggestion.reason}
+                >
+                  <span className="suggestion-query">{suggestion.suggestion}</span>
+                  {suggestion.reason && (
+                    <span className="suggestion-reason">{suggestion.reason}</span>
+                  )}
+                </button>
               ))}
             </div>
           </div>
@@ -705,6 +735,11 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                         <a href={doc.url} target="_blank" rel="noopener noreferrer">
                           {doc.title || 'Untitled'}
                         </a>
+                        {doc.publish_date && (
+                          <span className="reference-publish-date">
+                            {formatDate(doc.publish_date)}
+                          </span>
+                        )}
                         {getDatasourceName(doc) && (
                           <span className="reference-datasource">
                             {getDatasourceName(doc)}
@@ -772,19 +807,28 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
           </div>
         )}
 
-        {/* Query Suggestions for Poor Results */}
+        {/* Query Suggestions — clickable follow-up chips */}
         {shouldShowSuggestions(message) && (
           <div className="query-suggestions-section">
             <div className="suggestions-header">
               <Icon Component={LightbulbIcon} size={16} className="suggestions-icon" />
-              <strong>Try a different query?</strong>
+              <strong>Try a follow-up</strong>
             </div>
             <div className="suggestions-list-inline">
               {message.suggestions.map((suggestion, i) => (
-                <div key={i} className="suggestion-item">
-                  <span className="suggestion-query">"{suggestion.suggestion}"</span>
-                  <span className="suggestion-reason">{suggestion.reason}</span>
-                </div>
+                <button
+                  key={i}
+                  type="button"
+                  className="suggestion-item suggestion-clickable"
+                  onClick={() => onSuggestionClick && onSuggestionClick(suggestion.suggestion)}
+                  disabled={!onSuggestionClick}
+                  title={suggestion.reason}
+                >
+                  <span className="suggestion-query">{suggestion.suggestion}</span>
+                  {suggestion.reason && (
+                    <span className="suggestion-reason">{suggestion.reason}</span>
+                  )}
+                </button>
               ))}
             </div>
           </div>

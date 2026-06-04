@@ -459,6 +459,13 @@ export const submitOracleFeedback = async (queryId, feedback, options = {}) => {
   return response.data;
 };
 
+// Wipe the caller's server-side conversation memory (Redis-backed turn history).
+// Frontend calls this on "New chat" so the next query starts with a fresh slate.
+export const clearOracleConversation = async () => {
+  const response = await apiClient.post('/oracle/conversation/clear');
+  return response.data;
+};
+
 // Oracle Settings - Get Oracle service configuration (fast pipeline, etc.)
 export const getOracleSettings = async () => {
   const response = await apiClient.get('/oracle/admin/config/query-settings');

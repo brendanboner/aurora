@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendOracleQuery, sendOracleQueryStream, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings } from '../services/api';
+import { sendOracleQuery, sendOracleQueryStream, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings, clearOracleConversation } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, ChevronDownIcon } from '../components/icons';
 import Icon from '../components/Icon';
@@ -232,6 +232,19 @@ const Chatbot = ({ backendStatus }) => {
 
 What would you like to know?`;
 
+  // Curated starter prompts shown on the welcome screen. Clicking a chip
+  // submits the question immediately so first-time users have an obvious
+  // on-ramp without having to invent a good query themselves.
+  // TODO(#2 role-aware roadmap): filter by user.role once that field exists.
+  const STARTER_PROMPTS = [
+    "What's new with Wi-Fi 8 UHR in the last 30 days?",
+    "Compare Wi-Fi 7 and Wi-Fi 8 for dense enterprise deployments",
+    "Which companies are most active in 802.11bn?",
+    "Summarise the latest Wi-Fi Alliance press releases",
+    "What are the open security concerns in WPA3?",
+    "What did the WBA AI/ML workgroup publish recently?",
+  ];
+
   // Welcome message JSX with icons
   const getWelcomeMessageJSX = (email) => (
     <div className="welcome-message">
@@ -250,17 +263,22 @@ What would you like to know?`;
         </p>
       </div>
 
-      <div className="welcome-examples">
-        <p><strong>Example queries:</strong></p>
-        <ul>
-          <li>"What's new with Wi-Fi 8 UHR in the last week?"</li>
-          <li>"@wba show me the latest from all workgroups"</li>
-          <li>"Compare Wi-Fi 7 and Wi-Fi 8 for dense deployments"</li>
-          <li>"Which companies are contributing to 802.11bn?"</li>
-        </ul>
+      <div className="welcome-starters">
+        <p className="welcome-starters-heading"><LightbulbIcon size={16} style={{ marginRight: '6px' }} /> Try one of these to get started:</p>
+        <div className="welcome-starters-grid">
+          {STARTER_PROMPTS.map((prompt, i) => (
+            <button
+              key={i}
+              type="button"
+              className="welcome-starter-chip"
+              onClick={() => executeQuery(prompt, [])}
+              disabled={isLoading || backendStatus !== 'connected'}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
       </div>
-
-      <p>What would you like to know?</p>
     </div>
   );
 
@@ -1127,6 +1145,13 @@ What would you like to know?`;
     // Clear the saved chat history for this user
     const chatHistoryKey = `chatHistory_${user.id}`;
     localStorage.removeItem(chatHistoryKey);
+
+    // Wipe server-side conversation memory so follow-up context doesn't bleed
+    // from the cleared session into the next query. Best-effort — if the
+    // endpoint is unreachable, the memory still expires via its 2-hour TTL.
+    clearOracleConversation().catch((err) => {
+      console.warn('Failed to clear server-side conversation memory:', err);
+    });
   };
 
   return (
@@ -1260,6 +1285,7 @@ What would you like to know?`;
                         onToggleEnhanced={() => handleToggleEnhanced(index)}
                         isEnhancing={enhancingMessageIndex === index}
                         onFeedback={handleFeedback}
+                        onSuggestionClick={(text) => executeQuery(text, [])}
                         onDisplayModeChange={(mode) => {
                           setMessages((prev) => {
                             const updated = [...prev];

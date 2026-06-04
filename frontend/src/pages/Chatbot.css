@@ -777,3 +777,54 @@
     padding: 8px 14px;
   }
 }
+
+/* ============================================ */
+/* WELCOME STARTER PROMPTS                       */
+/* ============================================ */
+
+.welcome-starters {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.welcome-starters-heading {
+  display: flex;
+  align-items: center;
+  margin: 0 0 10px 0;
+  font-weight: 500;
+  color: var(--muted-foreground, #9ca3af);
+}
+
+.welcome-starters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.welcome-starter-chip {
+  text-align: left;
+  padding: 10px 14px;
+  background-color: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius, 8px);
+  color: var(--foreground);
+  font: inherit;
+  font-size: var(--text-sm, 0.875rem);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+
+.welcome-starter-chip:hover:not(:disabled) {
+  background-color: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.welcome-starter-chip:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.welcome-starter-chip:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

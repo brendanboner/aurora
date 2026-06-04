@@ -1216,6 +1216,33 @@ async def enhance_answer(
         )
 
 
+@router.post("/conversation/clear")
+@require_user_context
+async def clear_conversation(
+    user: Optional[dict] = Depends(get_user_context),
+) -> dict:
+    """Wipe the caller's server-side conversation memory.
+
+    The chat UI calls this when the user clicks "New chat" so the next query
+    starts with a clean slate — without this, the Redis-backed memory
+    survives until its 2-hour TTL expires and bleeds context into what the
+    user perceives as a fresh conversation.
+    """
+    from src.services.conversation_store import ConversationStore
+    from src.services.cache import OracleCache
+
+    user_id = user.get("user_id") if user else None
+    if not user_id:
+        return {"status": "skipped", "reason": "no user context"}
+
+    cache = await OracleCache.get_cache()
+    redis_client = cache._redis_client if cache.enabled else None
+    conv_store = ConversationStore(redis_client=redis_client)
+    await conv_store.clear(str(user_id))
+    logger.info(f"Cleared conversation memory for user={user_id}")
+    return {"status": "cleared", "user_id": str(user_id)}
+
+
 @router.post("/feedback", response_model=FeedbackResponse)
 @require_user_context
 async def submit_feedback(
