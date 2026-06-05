@@ -37,9 +37,18 @@ from scrapers.base import BaseScraper, Event, Resource
 
 logger = logging.getLogger(__name__)
 
-# The Kinsta staging site is the canonical source for the WP REST API —
-# techfieldday.com itself blocks scrapers (403 from any non-browser UA).
-WP_API = "https://stg-techfielddayq-staging.kinsta.cloud/wp-json/wp/v2"
+# Source of truth for the WP REST API. We use the production techfieldday.com
+# domain because the Kinsta staging mirror is thin — its `post_tag` taxonomy
+# reports count=1 for events that actually have ~57 blog posts on production.
+# techfieldday.com only blocks scrapers that use a non-browser UA; with the
+# Safari UA we send below, every endpoint we need (video, event, posts, tags)
+# returns 200.
+WP_API = "https://techfieldday.com/wp-json/wp/v2"
+
+# Per-event blog-post fetch cap. Each TFD event has dozens of write-ups (NFD40
+# has ~57). We cap to avoid burying the digester under hundreds of identical
+# event-history posts; this still surfaces the recent ones for each event.
+POSTS_PER_EVENT = 40
 
 # Event-slug-prefix → topic-slug mapping. TFD uses systematic short prefixes
 # (aifd1, aifd2, … aifd8 for "AI Field Day"; cfd*, nfd*, mfd*, etc.). We map
@@ -183,6 +192,129 @@ class TechFieldDayScraper(BaseScraper):
                     out[slug.lower()] = ev
         logger.info(f"TFD: indexed {len(out)} recent event posts")
         return out
+
+    async def _resolve_tag_id(self, event_slug: str) -> Optional[int]:
+        """Look up the post_tag taxonomy term ID for an event slug.
+
+        Each TFD event has a same-named tag (``nfd40``, ``aifd8``, …) that
+        the blog-post stream uses to group write-ups. We need the numeric
+        term ID so we can later call ``/wp/v2/posts?tags=<id>``.
+        """
+        if not event_slug:
+            return None
+        url = f"{WP_API}/tags?slug={event_slug}"
+        data = await self._get_json(url)
+        if isinstance(data, list) and data:
+            tid = data[0].get("id")
+            try:
+                return int(tid) if tid is not None else None
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    async def _scrape_blog_posts_for_event(
+        self,
+        event_slug: str,
+        datasource_id_default: str,
+        event_index: Dict[str, Dict[str, Any]],
+        cutoff_iso: str,
+    ) -> int:
+        """Publish blog posts that are tagged with this event's slug.
+
+        TFD writes a per-presentation blog post (URL pattern
+        ``/<year>/<post-slug>/``) for most presentations. They live under
+        ``/wp/v2/posts`` and are tagged with the event's slug (``nfd40``,
+        ``aifd8``, …). Returns count seen — actual publish count comes
+        from the base-scraper batch counter.
+        """
+        tag_id = await self._resolve_tag_id(event_slug)
+        if tag_id is None:
+            return 0
+
+        # Resolve target datasource — same logic as videos: route to a topic
+        # bucket via the event slug, fall back to the parent on partner events.
+        topic = _slug_to_topic(event_slug)
+        if topic and topic in KNOWN_TOPIC_SLUGS:
+            ds_id = f"techfieldday_{topic}"
+        else:
+            ds_id = datasource_id_default
+        event_post = event_index.get(event_slug.lower())
+        event_name = (event_post.get("title", {}).get("rendered") if event_post else None) or event_slug
+
+        seen = 0
+        for page in range(1, 6):
+            if seen >= POSTS_PER_EVENT:
+                break
+            url = (
+                f"{WP_API}/posts?tags={tag_id}"
+                f"&per_page={min(POSTS_PER_EVENT - seen, 50)}&page={page}"
+                f"&orderby=date&order=desc&after={cutoff_iso}"
+            )
+            data = await self._get_json(url)
+            if not data or not isinstance(data, list) or not data:
+                break
+
+            for p in data:
+                title = unescape(p.get("title", {}).get("rendered") or "").strip()
+                link = p.get("link") or ""
+                if not (title and link):
+                    continue
+                date_iso = p.get("date") or p.get("date_gmt") or ""
+                content_html = p.get("content", {}).get("rendered") or ""
+                excerpt_html = p.get("excerpt", {}).get("rendered") or ""
+                description = _strip_html(content_html or excerpt_html, max_chars=3500)
+
+                # The blog post's class_list also carries event-/sponsor-/personnel-
+                # tokens (same convention as videos), so we can reuse our existing
+                # term parser to pull facts.
+                terms = self._terms_from_class_list(p)
+
+                def _name_from_slug(slug: str) -> str:
+                    return " ".join(w.capitalize() for w in slug.replace("_", " ").split("-"))
+
+                authors = ", ".join(_name_from_slug(s) for s in terms["personnel"][:3])
+                sponsors = ", ".join(_name_from_slug(s) for s in terms["sponsor"][:3])
+
+                # Build a brief summary header: date · event · sponsor · author
+                head_bits: List[str] = []
+                if date_iso:
+                    head_bits.append(date_iso[:10])
+                if event_name:
+                    head_bits.append(event_name)
+                if sponsors:
+                    head_bits.append(f"about {sponsors}")
+                if authors:
+                    head_bits.append(f"by {authors}")
+                summary_parts: List[str] = []
+                if head_bits:
+                    summary_parts.append(" · ".join(head_bits) + ".")
+                if description:
+                    summary_parts.append(description)
+                summary = "\n".join(summary_parts)
+
+                # Dedup against the existing url_hash so re-running the scraper
+                # is cheap and idempotent (publish_resource will also lookback-
+                # filter older items on repeat runs).
+                if self.neo4j_client and not self.has_content_changed(link, summary or ""):
+                    continue
+
+                self.publish_resource(Resource(
+                    title=title,
+                    url=link,
+                    category="article",
+                    content=summary,
+                    summary=summary,
+                    publish_date=date_iso,
+                    datasource_id=ds_id,
+                    doc_type="tfd-post",
+                ))
+                seen += 1
+                if seen >= POSTS_PER_EVENT:
+                    break
+
+            await asyncio.sleep(PAGE_DELAY_S)
+
+        return seen
 
     # ---------------------------------------------------------------
     # Term extraction
@@ -426,19 +558,29 @@ class TechFieldDayScraper(BaseScraper):
         Returns count seen — actual publish count is tracked via the base
         scraper batch counter, since publish_event may filter via lookback.
         """
+        event_index = await self._build_event_post_index()
+        return await self._scrape_events_from_index(
+            datasource_id_default=datasource_id_default,
+            cutoff_iso=cutoff_iso,
+            event_index=event_index,
+        )
+
+    async def _scrape_events_from_index(
+        self,
+        datasource_id_default: str,
+        cutoff_iso: str,
+        event_index: Dict[str, Dict[str, Any]],
+    ) -> int:
+        """Same as _scrape_events but reuses a pre-built event index.
+
+        Lets the orchestrator fetch the index once and pass it through to
+        both this method and the blog-post pass below, instead of paying for
+        a second /wp/v2/event round-trip.
+        """
         seen = 0
         cutoff_day = cutoff_iso[:10]  # 'YYYY-MM-DD' for client-side filtering
 
-        # One page of 50 events covers TFD's full recent slate. We can't rely
-        # on `orderby=date&order=desc` to give us future-first since the
-        # WP `date` is a 2013 placeholder for every event — instead we fetch
-        # the page and filter+sort client-side on the real `sdate`.
-        url = f"{WP_API}/event?per_page=50&page=1&orderby=modified&order=desc"
-        data = await self._get_json(url)
-        if not data or not isinstance(data, list):
-            return 0
-
-        for ev in data:
+        for ev in event_index.values():
             slug = (ev.get("slug") or "").lower()
             title = unescape(ev.get("title", {}).get("rendered") or "").strip()
             link = ev.get("link") or ""
@@ -490,6 +632,8 @@ class TechFieldDayScraper(BaseScraper):
             # Snapshot the batch counter around each phase so we report the
             # number of items that actually went to RabbitMQ (i.e. weren't
             # filtered out by the base-scraper lookback guard).
+
+            # 1) Videos — paginated /wp/v2/video sweep.
             pre_videos = self._batch_items_count
             videos_seen = await self._scrape_videos(
                 datasource_id_default=ds_id,
@@ -499,16 +643,42 @@ class TechFieldDayScraper(BaseScraper):
             )
             videos_published = self._batch_items_count - pre_videos
 
+            # 2) Events — used both for the calendar AND to drive the
+            # per-event blog-post pass below.
             pre_events = self._batch_items_count
-            events_seen = await self._scrape_events(
+            event_index = await self._build_event_post_index()
+            events_seen = await self._scrape_events_from_index(
                 datasource_id_default=ds_id,
                 cutoff_iso=cutoff_iso,
+                event_index=event_index,
             )
             events_published = self._batch_items_count - pre_events
 
+            # 3) Blog posts — one /wp/v2/posts?tags=<tag-id> call per known
+            # event slug. This is where the per-event coverage comes from:
+            # without it, the global /video pagination only surfaces the most
+            # recent 100–200 videos across all events, so any specific event
+            # (e.g. NFD40) gets sparse representation. Capped at
+            # POSTS_PER_EVENT per event to bound the digester load.
+            pre_posts = self._batch_items_count
+            for slug, ev in list(event_index.items()):
+                try:
+                    await self._scrape_blog_posts_for_event(
+                        event_slug=slug,
+                        datasource_id_default=ds_id,
+                        event_index=event_index,
+                        cutoff_iso=cutoff_iso,
+                    )
+                except Exception as exc:
+                    logger.warning(f"TFD: blog scrape failed for {slug}: {type(exc).__name__}: {exc}")
+                await asyncio.sleep(scraper_delay or PAGE_DELAY_S)
+            posts_published = self._batch_items_count - pre_posts
+
             logger.info(
                 f"TFD ({ds_id}): published {videos_published}/{videos_seen} videos, "
-                f"{events_published}/{events_seen} events (cutoff={cutoff_iso[:10]})"
+                f"{events_published}/{events_seen} events, "
+                f"{posts_published} blog posts across {len(event_index)} event tags "
+                f"(cutoff={cutoff_iso[:10]})"
             )
         finally:
             self.end_batch(items_scraped=self._batch_items_count)
