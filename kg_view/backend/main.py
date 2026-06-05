@@ -151,7 +151,7 @@ async def get_connected_graph_data(
 async def get_recent_connected_graph_data(
     seed_resource_count: int = Query(default=80, ge=10, le=300, description="How many recent Resources to seed the view with"),
     days_back: int = Query(default=120, ge=14, le=365, description="Recency window in days"),
-    node_budget: int = Query(default=500, ge=100, le=2000, description="Hard cap on total nodes returned"),
+    node_budget: int = Query(default=500, ge=100, le=8000, description="Hard cap on total nodes returned"),
     anchor_orgs: str = Query(default='', description="Comma-separated org names to always include with their 1-hop"),
     anchor_people: str = Query(default='', description="Comma-separated person names/emails to always include with their 1-hop"),
 ):

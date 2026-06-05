@@ -219,7 +219,7 @@ const GraphViewer = () => {
   const [viewMode,        setViewMode]        = useState('recent_connected');
   // Default: no importance filter (threshold=0) so all node types appear
   const [importanceThreshold, setImportanceThreshold] = useState(0);
-  const [nodeLimit,       setNodeLimit]       = useState(500);
+  const [nodeLimit,       setNodeLimit]       = useState(1500);
 
   // Continuous pulsing-ring animation at the focused node's position.
   // The pulse follows the node — if vis-network re-positions it, pans, or
@@ -757,10 +757,10 @@ const GraphViewer = () => {
                 value={nodeLimit}
                 onChange={e => setNodeLimit(parseInt(e.target.value, 10))}
               >
-                <option value={300}>300</option>
                 <option value={500}>500</option>
-                <option value={1000}>1000</option>
-                <option value={2000}>2000</option>
+                <option value={1500}>1500</option>
+                <option value={4500}>4500</option>
+                <option value={6000}>6000</option>
               </select>
             </div>
 
