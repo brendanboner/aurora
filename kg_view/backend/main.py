@@ -132,7 +132,7 @@ async def get_connected_graph_data(
 ):
     """
     Get graph data prioritizing well-connected nodes (hubs) while maintaining type diversity.
-    
+
     This endpoint creates a more interconnected view by selecting the most connected nodes
     of each type and ensuring their relationships are included, showing actual connection
     patterns in the knowledge graph rather than isolated nodes.
@@ -141,6 +141,29 @@ async def get_connected_graph_data(
         data = neo4j_service.get_connected_graph_data(
             total_limit=limit,
             importance_threshold=importance_threshold
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/graph/recent-connected")
+async def get_recent_connected_graph_data(
+    seed_resource_count: int = Query(default=80, ge=10, le=300, description="How many recent Resources to seed the view with"),
+    days_back: int = Query(default=120, ge=14, le=365, description="Recency window in days"),
+    node_budget: int = Query(default=500, ge=100, le=2000, description="Hard cap on total nodes returned"),
+):
+    """
+    Default view for the KG viewer. Seeds with the most-recent Resources (within
+    `days_back`, importance-weighted) and expands 1-hop to their Topics, Orgs,
+    People and Events. The result is an interlinked cluster of actually-related
+    recent work — not a 3000-event random galaxy.
+    """
+    try:
+        data = neo4j_service.get_recent_connected_graph_data(
+            seed_resource_count=seed_resource_count,
+            days_back=days_back,
+            node_budget=node_budget,
         )
         return data
     except Exception as e:

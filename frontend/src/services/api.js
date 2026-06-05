@@ -861,6 +861,23 @@ export const getBalancedGraphData = async (limit = 800, importanceThreshold = 0.
   return res.data;
 };
 
+// Default-view graph: seeded by recent Resources, 1-hop expanded.
+// Produces an interlinked cluster (~400-500 nodes) instead of a 3000-event galaxy.
+export const getRecentConnectedGraphData = async ({
+  seedResourceCount = 80,
+  daysBack = 120,
+  nodeBudget = 500,
+} = {}) => {
+  const res = await apiClient.get('/visualisation/graph/recent-connected', {
+    params: {
+      seed_resource_count: seedResourceCount,
+      days_back: daysBack,
+      node_budget: nodeBudget,
+    },
+  });
+  return res.data;
+};
+
 export const searchGraphNodes = async (q, limit = 20) => {
   const res = await apiClient.get('/visualisation/graph/search', { params: { q, limit } });
   return res.data;

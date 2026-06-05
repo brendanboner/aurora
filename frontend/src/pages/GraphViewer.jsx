@@ -4,6 +4,7 @@ import { SearchIcon, RefreshIcon, CloseIcon } from '../components/icons';
 import {
   getGraphVisualisationStats,
   getBalancedGraphData,
+  getRecentConnectedGraphData,
   getSingleTypeGraphData,
   searchGraphNodes,
   getNodeNeighborhood,
@@ -108,21 +109,46 @@ function buildTooltipElement(n) {
   return el;
 }
 
+// Brighter-tinted halo per node type — used for the "glow" effect on
+// high-importance nodes so they stand out from the background field.
+const GLOW_COLOR = {
+  Resource:     '#7fb3e8',
+  Topic:        '#c382e8',
+  Organization: '#5fd49a',
+  Person:       '#f0857b',
+  Event:        '#f8c060',
+};
+
 function toVisNode(n) {
   const meta = NODE_META[n.label] || { color: '#6E7079' };
+  const importance = n.properties?.importance || 0;
+  // Glow when importance crosses a threshold OR the node is unusually well
+  // connected (degree ≥ 20 — usually a hub topic/org). Two intensities so
+  // exceptional nodes pop more than merely-prominent ones.
+  const isHighlyImportant = importance >= 0.7;
+  const isImportant = importance >= 0.45 || (n.degree || 0) >= 20;
+  const glowColor = GLOW_COLOR[n.label] || '#a89df5';
+  const shadow = isHighlyImportant
+    ? { enabled: true, color: glowColor, size: 28, x: 0, y: 0 }
+    : isImportant
+      ? { enabled: true, color: glowColor, size: 14, x: 0, y: 0 }
+      : { enabled: false };
+
   return {
     id: n.id,
     label: (n.name || String(n.id)).slice(0, 28),
     title: buildTooltipElement(n),
     // Non-Resources have importance=0; give them a baseline size so they appear
-    value: n.properties?.importance > 0 ? n.properties.importance : 0.15,
+    value: importance > 0 ? importance : 0.15,
     color: {
       background: meta.color,
       border: meta.color,
       highlight: { background: '#ffffff', border: meta.color },
       hover: { background: '#ffffff', border: meta.color },
     },
+    shadow,
     _label: n.label,
+    _important: isImportant || isHighlyImportant,
     _raw: n,
   };
 }
@@ -155,6 +181,8 @@ const GraphViewer = () => {
   const networkRef   = useRef(null);
   const nodesDS      = useRef(null);
   const edgesDS      = useRef(null);
+  const pulseRef     = useRef(null);  // DOM ref to the target-pulse overlay
+  const pulseTimer   = useRef(null);
 
   const [stats,           setStats]           = useState(null);
   const [loading,         setLoading]         = useState(true);
@@ -167,9 +195,43 @@ const GraphViewer = () => {
   const [nodeCountByType, setNodeCountByType] = useState({});
   const [focussed,        setFocussed]        = useState(false);
   const [soloType,        setSoloType]        = useState(null);
+  // 'recent_connected' is the default — interlinked recent cluster (~400 nodes).
+  // 'balanced' is the legacy random-sample view, kept for completeness.
+  const [viewMode,        setViewMode]        = useState('recent_connected');
   // Default: no importance filter (threshold=0) so all node types appear
   const [importanceThreshold, setImportanceThreshold] = useState(0);
-  const [nodeLimit,       setNodeLimit]       = useState(1000);
+  const [nodeLimit,       setNodeLimit]       = useState(500);
+
+  // Subtle pulsing-ring animation at the focused node's position.
+  // Called after fit() so the user's eye lands on the target.
+  const showTargetPulse = useCallback((nodeId) => {
+    if (!networkRef.current || !pulseRef.current || !nodeId) return;
+    const network = networkRef.current;
+
+    // Wait for the fit animation to settle before drawing the ring
+    const draw = () => {
+      try {
+        const positions = network.getPositions([nodeId]);
+        const canvasPos = positions[nodeId];
+        if (!canvasPos) return;
+        const domPos = network.canvasToDOM(canvasPos);
+        const el = pulseRef.current;
+        el.style.transform = `translate(${domPos.x}px, ${domPos.y}px) translate(-50%, -50%)`;
+        // Restart the animation by toggling the class
+        el.classList.remove('gv-pulse-active');
+        // Force reflow so the next class add restarts the keyframes
+        // eslint-disable-next-line no-unused-expressions
+        el.offsetHeight;
+        el.classList.add('gv-pulse-active');
+        clearTimeout(pulseTimer.current);
+        pulseTimer.current = setTimeout(() => {
+          el?.classList.remove('gv-pulse-active');
+        }, 1800);
+      } catch (_) { /* ignore */ }
+    };
+    // Defer slightly so the fit() animation has a chance to land
+    setTimeout(draw, 650);
+  }, []);
 
   const buildNetwork = useCallback((graphData) => {
     const counts = {};
@@ -214,6 +276,7 @@ const GraphViewer = () => {
   // Stable ref so the click handler inside buildNetwork can call the latest version
   const expandAndFocusRef = useRef(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const expandAndFocus = useCallback(async (nodeId) => {
     if (!nodeId || !networkRef.current || !nodesDS.current) return;
     setExpanding(true);
@@ -239,6 +302,7 @@ const GraphViewer = () => {
             nodes: focusIds,
             animation: { duration: 600, easingFunction: 'easeInOutQuad' },
           });
+          showTargetPulse(nodeId);
         });
         networkRef.current.stabilize(80);
       } else {
@@ -247,6 +311,7 @@ const GraphViewer = () => {
           nodes: focusIds,
           animation: { duration: 600, easingFunction: 'easeInOutQuad' },
         });
+        showTargetPulse(nodeId);
       }
       setFocussed(true);
     } catch (_) {
@@ -259,15 +324,18 @@ const GraphViewer = () => {
   // Keep ref in sync
   useEffect(() => { expandAndFocusRef.current = expandAndFocus; }, [expandAndFocus]);
 
-  const loadGraph = useCallback(async (limit, threshold) => {
+  const loadGraph = useCallback(async (limit, threshold, mode = viewMode) => {
     setLoading(true);
     setLoadingMsg('Fetching graph data…');
     setError(null);
     setSelectedNode(null);
     try {
+      const fetcher = mode === 'recent_connected'
+        ? getRecentConnectedGraphData({ nodeBudget: limit, seedResourceCount: Math.min(120, Math.max(40, Math.floor(limit / 6))) })
+        : getBalancedGraphData(limit, threshold);
       const [statsData, graphData] = await Promise.all([
         getGraphVisualisationStats(),
-        getBalancedGraphData(limit, threshold),
+        fetcher,
       ]);
       setStats(statsData);
       setLoadingMsg('Rendering…');
@@ -276,11 +344,15 @@ const GraphViewer = () => {
       setError(err?.response?.data?.detail || err.message || 'Failed to load graph');
       setLoading(false);
     }
-  }, [buildNetwork]);
+  }, [buildNetwork, viewMode]);
 
   useEffect(() => {
-    loadGraph(nodeLimit, importanceThreshold);
-    return () => { networkRef.current?.destroy(); networkRef.current = null; };
+    loadGraph(nodeLimit, importanceThreshold, viewMode);
+    return () => {
+      networkRef.current?.destroy();
+      networkRef.current = null;
+      clearTimeout(pulseTimer.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -302,6 +374,8 @@ const GraphViewer = () => {
       if (matches.length > 0) {
         networkRef.current.selectNodes(matches);
         networkRef.current.fit({ nodes: matches, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+        // Single hit → pulse the target so the eye lands on it
+        if (matches.length === 1) showTargetPulse(matches[0]);
       } else if (q.length > 2) {
         try {
           const results = await searchGraphNodes(searchQuery, 20);
@@ -309,6 +383,7 @@ const GraphViewer = () => {
           if (ids.length) {
             networkRef.current.selectNodes(ids);
             networkRef.current.fit({ nodes: ids, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+            if (ids.length === 1) showTargetPulse(ids[0]);
           }
         } catch (_) { /* non-critical */ }
       }
@@ -351,10 +426,10 @@ const GraphViewer = () => {
 
   const handleSoloToggle = (type) => {
     if (soloType === type) {
-      // Exit solo — reload full balanced graph
+      // Exit solo — reload current view mode
       setSoloType(null);
       setHiddenTypes(new Set());
-      loadGraph(nodeLimit, importanceThreshold);
+      loadGraph(nodeLimit, importanceThreshold, viewMode);
     } else {
       setSoloType(type);
       setHiddenTypes(new Set());
@@ -367,7 +442,7 @@ const GraphViewer = () => {
     if (soloType) {
       loadSolo(soloType, nodeLimit);
     } else {
-      loadGraph(nodeLimit, importanceThreshold);
+      loadGraph(nodeLimit, importanceThreshold, viewMode);
     }
   };
 
@@ -494,6 +569,20 @@ const GraphViewer = () => {
             <p className="gv-section-title">Controls</p>
 
             <div className="gv-control-row">
+              <span className="gv-control-label">View</span>
+              <select
+                className="gv-select"
+                value={viewMode}
+                onChange={e => setViewMode(e.target.value)}
+                disabled={!!soloType}
+                title={soloType ? 'Exit solo view to change view mode' : 'Switch between recency-clustered and random-balanced sampling'}
+              >
+                <option value="recent_connected">Recent & connected</option>
+                <option value="balanced">Balanced sample</option>
+              </select>
+            </div>
+
+            <div className="gv-control-row">
               <span className="gv-control-label">Min importance</span>
               <input
                 type="range"
@@ -501,6 +590,8 @@ const GraphViewer = () => {
                 min="0" max="0.9" step="0.05"
                 value={importanceThreshold}
                 onChange={e => setImportanceThreshold(parseFloat(e.target.value))}
+                disabled={viewMode === 'recent_connected'}
+                title={viewMode === 'recent_connected' ? 'Importance is implicit in the recency seed — switch to Balanced to filter' : ''}
               />
               <span className="gv-control-value">
                 {importanceThreshold === 0 ? 'off' : `${(importanceThreshold * 100).toFixed(0)}%`}
@@ -514,10 +605,10 @@ const GraphViewer = () => {
                 value={nodeLimit}
                 onChange={e => setNodeLimit(parseInt(e.target.value, 10))}
               >
+                <option value={300}>300</option>
                 <option value={500}>500</option>
                 <option value={1000}>1000</option>
                 <option value={2000}>2000</option>
-                <option value={5000}>5000</option>
               </select>
             </div>
 
@@ -582,6 +673,15 @@ const GraphViewer = () => {
 
       <div className="gv-canvas-wrap">
         <div id="gv-network-container" ref={containerRef} />
+
+        {/* Target-pulse overlay — positioned via JS at the focused node's
+            screen coords. Hidden by default; CSS keyframes fade & expand
+            three concentric rings when .gv-pulse-active is toggled on. */}
+        <div className="gv-target-pulse" ref={pulseRef} aria-hidden="true">
+          <span className="gv-pulse-ring gv-pulse-ring-1" />
+          <span className="gv-pulse-ring gv-pulse-ring-2" />
+          <span className="gv-pulse-ring gv-pulse-ring-3" />
+        </div>
 
         <div className={`gv-overlay${loading ? '' : ' gv-hidden'}`}>
           <div className="gv-spinner" />

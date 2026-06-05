@@ -454,6 +454,161 @@ class Neo4jService:
             'target_distribution': node_type_config
         }
     
+    def get_recent_connected_graph_data(
+        self,
+        seed_resource_count: int = 80,
+        days_back: int = 120,
+        node_budget: int = 500,
+    ) -> Dict[str, Any]:
+        """
+        Default-view graph: seed with the N most-recent Resources (importance-
+        weighted), expand 1-hop to their Topics/Orgs/People/Events, then pull
+        all edges among the resulting node set.
+
+        Produces a *clustered, interlinked* view of what the system has
+        ingested recently, rather than a random-sampled "galaxy" of mostly
+        disconnected nodes. ~80 seed resources + their direct neighbours
+        typically yields 300-500 nodes with strong inter-connectivity.
+
+        Args:
+            seed_resource_count: How many recent Resources to seed with
+            days_back: Recency cutoff (only Resources newer than this)
+            node_budget: Hard cap on total nodes returned (after dedup)
+        """
+        # 1) Seed: most-recent Resources with valid publish_date
+        seed_query = """
+        WITH datetime() - duration({days: $days_back}) AS cutoff
+        MATCH (r:Resource)
+        WHERE r.publish_date IS NOT NULL
+          AND r.publish_date =~ '20[0-9]{2}-[01][0-9]-[0-3][0-9].*'
+          AND datetime(replace(toString(r.publish_date), ' ', 'T')) >= cutoff
+          AND datetime(replace(toString(r.publish_date), ' ', 'T')) <= datetime()
+        WITH r, COALESCE(r.importance, 0) AS imp
+        ORDER BY imp DESC, r.publish_date DESC
+        LIMIT $seed_resource_count
+        RETURN elementId(r) AS id
+        """
+        try:
+            seed_rows = self.client.execute_query(seed_query, {
+                'days_back': days_back,
+                'seed_resource_count': seed_resource_count,
+            })
+        except Exception as e:
+            print(f"recent_connected: seed query failed: {e}")
+            return {'nodes': [], 'links': [], 'total_returned': 0, 'total_links': 0}
+
+        seed_ids = [row['id'] for row in seed_rows]
+        if not seed_ids:
+            return {'nodes': [], 'links': [], 'total_returned': 0, 'total_links': 0}
+
+        # 2) Expand 1-hop to neighbours, prioritising high-degree connectors.
+        # We let neighbours of any type through so the cluster shows the full
+        # web around recent work (topics, orgs, people, events).
+        expand_query = """
+        MATCH (r:Resource) WHERE elementId(r) IN $seed_ids
+        MATCH (r)-[]-(n)
+        WHERE n:Topic OR n:Organization OR n:Person OR n:Event OR n:Resource OR n:DataSource
+        WITH DISTINCT n, COUNT { (n)--() } AS degree
+        ORDER BY degree DESC
+        LIMIT $neighbour_limit
+        RETURN elementId(n) AS id,
+               labels(n)[0]   AS label,
+               COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id) AS name,
+               COALESCE(n.importance, 0) AS importance,
+               COALESCE(n.tier, 2) AS tier,
+               properties(n)  AS properties,
+               degree
+        """
+        # Reserve room for seeds in the budget — neighbours fill the rest
+        neighbour_limit = max(0, node_budget - len(seed_ids))
+        try:
+            neighbour_rows = self.client.execute_query(expand_query, {
+                'seed_ids': seed_ids,
+                'neighbour_limit': neighbour_limit,
+            })
+        except Exception as e:
+            print(f"recent_connected: expand query failed: {e}")
+            neighbour_rows = []
+
+        # 3) Also fetch the seed nodes' own properties so they appear in the output
+        seed_props_query = """
+        MATCH (r:Resource) WHERE elementId(r) IN $seed_ids
+        WITH r, COUNT { (r)--() } AS degree
+        RETURN elementId(r) AS id,
+               labels(r)[0]  AS label,
+               COALESCE(r.name, r.title, r.topic_id, r.org_id, r.person_id, r.source_id) AS name,
+               COALESCE(r.importance, 0) AS importance,
+               COALESCE(r.tier, 2) AS tier,
+               properties(r) AS properties,
+               degree
+        """
+        try:
+            seed_prop_rows = self.client.execute_query(seed_props_query, {'seed_ids': seed_ids})
+        except Exception as e:
+            print(f"recent_connected: seed props query failed: {e}")
+            seed_prop_rows = []
+
+        # Merge seeds + neighbours, dedupe on id
+        all_nodes_by_id: Dict[str, Dict[str, Any]] = {}
+        for row in list(seed_prop_rows) + list(neighbour_rows):
+            nid = row['id']
+            if nid not in all_nodes_by_id:
+                all_nodes_by_id[nid] = {
+                    'id': nid,
+                    'label': row['label'],
+                    'name': row['name'],
+                    'importance': row['importance'],
+                    'tier': row['tier'],
+                    'properties': row['properties'],
+                    'degree': row['degree'],
+                }
+        all_nodes = list(all_nodes_by_id.values())
+        node_id_set = set(all_nodes_by_id.keys())
+
+        # 4) All edges among the final node set
+        links: List[Dict[str, Any]] = []
+        if node_id_set:
+            links_query = """
+            MATCH (n)-[rel]->(m)
+            WHERE elementId(n) IN $node_ids AND elementId(m) IN $node_ids
+            RETURN elementId(n) AS source,
+                   elementId(m) AS target,
+                   type(rel)    AS type,
+                   properties(rel) AS properties
+            LIMIT 10000
+            """
+            try:
+                link_rows = self.client.execute_query(links_query, {'node_ids': list(node_id_set)})
+                links = [
+                    {
+                        'source': r['source'],
+                        'target': r['target'],
+                        'type':   r['type'],
+                        'properties': r['properties'],
+                    }
+                    for r in link_rows
+                ]
+            except Exception as e:
+                print(f"recent_connected: links query failed: {e}")
+
+        # Type distribution + connectivity metric
+        type_distribution: Dict[str, int] = {}
+        for n in all_nodes:
+            type_distribution[n['label']] = type_distribution.get(n['label'], 0) + 1
+        avg_degree = sum(n.get('degree', 0) for n in all_nodes) / len(all_nodes) if all_nodes else 0
+
+        return {
+            'nodes': all_nodes,
+            'links': links,
+            'total_returned': len(all_nodes),
+            'total_links': len(links),
+            'seed_resource_count': len(seed_ids),
+            'days_back': days_back,
+            'avg_degree': avg_degree,
+            'type_distribution': type_distribution,
+            'view': 'recent_connected',
+        }
+
     def get_topics_autocomplete(self, search: str = "", limit: int = 50, curated_only: bool = False) -> List[Dict[str, str]]:
         """
         Get topics for autocomplete with search filter and tier-aware results

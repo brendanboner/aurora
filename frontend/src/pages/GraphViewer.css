@@ -481,3 +481,56 @@
   color: rgba(255, 255, 255, 0.25);
   pointer-events: none;
 }
+
+/* ---- Target pulse (search / focus animation) ----
+   The wrapper is moved to the focused node's screen coords by JS via
+   transform. Three concentric rings fade outward in sequence. Hidden by
+   default; the .gv-pulse-active class triggers the ~1.5s animation. */
+.gv-target-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.gv-pulse-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 50%;
+  border: 2px solid rgba(168, 157, 245, 0);
+  box-shadow: 0 0 8px rgba(168, 157, 245, 0);
+  opacity: 0;
+}
+
+.gv-pulse-active .gv-pulse-ring {
+  animation: gv-pulse 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.gv-pulse-active .gv-pulse-ring-2 { animation-delay: 0.18s; }
+.gv-pulse-active .gv-pulse-ring-3 { animation-delay: 0.36s; }
+
+@keyframes gv-pulse {
+  0% {
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border-color: rgba(168, 157, 245, 0.95);
+    box-shadow: 0 0 12px rgba(168, 157, 245, 0.7);
+    opacity: 1;
+  }
+  100% {
+    width: 80px;
+    height: 80px;
+    margin: -40px 0 0 -40px;
+    border-color: rgba(168, 157, 245, 0);
+    box-shadow: 0 0 20px rgba(168, 157, 245, 0);
+    opacity: 0;
+  }
+}
