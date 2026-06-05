@@ -76,8 +76,10 @@ KNOWN_TOPIC_SLUGS = {
 # Hard upper bound on lookback (per user requirement — no further than 1y).
 MAX_LOOKBACK_DAYS = 365
 
-# WP per_page max is usually 100
-PER_PAGE = 100
+# Kinsta times out on `_embed=wp:term` once per_page climbs past ~25, so we
+# keep video pages small. We still hit the daily incremental window in a single
+# page for ~weeks of activity.
+PER_PAGE = 25
 
 # Polite delay between paginated fetches
 PAGE_DELAY_S = 0.4
@@ -154,7 +156,8 @@ class TechFieldDayScraper(BaseScraper):
                     return None
                 return await resp.json(content_type=None)
         except Exception as exc:
-            logger.error(f"TFD: error fetching {url}: {exc}")
+            # asyncio.TimeoutError's str() is empty — surface the class name
+            logger.error(f"TFD: error fetching {url}: {type(exc).__name__}: {exc}")
             return None
 
     # ---------------------------------------------------------------
@@ -345,14 +348,14 @@ class TechFieldDayScraper(BaseScraper):
         max_resources: int,
         scraper_delay: float,
     ) -> int:
-        """Fetch /wp/v2/video pages until older than cutoff. Returns count published."""
+        """Fetch /wp/v2/video pages until older than cutoff. Returns count seen."""
         event_index = await self._build_event_post_index()
-        published = 0
+        seen = 0
         consecutive_dupes = 0
         max_dupes = 20  # stop pagination early if every recent video is unchanged
 
         for page in range(1, 50):
-            if max_resources and published >= max_resources:
+            if max_resources and seen >= max_resources:
                 break
             url = (
                 f"{WP_API}/video"
@@ -381,17 +384,17 @@ class TechFieldDayScraper(BaseScraper):
                             f"TFD: {max_dupes} consecutive unchanged sessions — "
                             f"stopping pagination at page {page}"
                         )
-                        return published
+                        return seen
                     continue
                 consecutive_dupes = 0
                 self.publish_resource(res)
-                published += 1
-                if max_resources and published >= max_resources:
-                    return published
+                seen += 1
+                if max_resources and seen >= max_resources:
+                    return seen
 
             await asyncio.sleep(scraper_delay or PAGE_DELAY_S)
 
-        return published
+        return seen
 
     # ---------------------------------------------------------------
     # Events (for the calendar / Event nodes)
@@ -402,9 +405,11 @@ class TechFieldDayScraper(BaseScraper):
 
         Upcoming events get start_date in the future; past events from the
         last year get historical Event entries (useful for "what was
-        discussed at AI Field Day 8?" queries).
+        discussed at AI Field Day 8?" queries). Returns count seen — actual
+        publish count is tracked via the base scraper batch counter, since
+        publish_event may filter via lookback.
         """
-        published = 0
+        seen = 0
         # Cover future events too (some posts have future dates)
         # WP REST orderby=date with order=desc gives newest first.
         for page in range(1, 8):
@@ -447,12 +452,12 @@ class TechFieldDayScraper(BaseScraper):
                     datasource_id=ds_id,
                 )
                 self.publish_event(event_obj)
-                published += 1
+                seen += 1
             if done_window:
                 break
             await asyncio.sleep(PAGE_DELAY_S)
 
-        return published
+        return seen
 
     # ---------------------------------------------------------------
     # Required entry points
@@ -473,19 +478,28 @@ class TechFieldDayScraper(BaseScraper):
 
         try:
             self.start_batch(ds_id)
-            videos_published = await self._scrape_videos(
+            # Snapshot the batch counter around each phase so we report the
+            # number of items that actually went to RabbitMQ (i.e. weren't
+            # filtered out by the base-scraper lookback guard).
+            pre_videos = self._batch_items_count
+            videos_seen = await self._scrape_videos(
                 datasource_id_default=ds_id,
                 cutoff_iso=cutoff_iso,
                 max_resources=max_resources,
                 scraper_delay=scraper_delay,
             )
-            events_published = await self._scrape_events(
+            videos_published = self._batch_items_count - pre_videos
+
+            pre_events = self._batch_items_count
+            events_seen = await self._scrape_events(
                 datasource_id_default=ds_id,
                 cutoff_iso=cutoff_iso,
             )
+            events_published = self._batch_items_count - pre_events
+
             logger.info(
-                f"TFD ({ds_id}): published {videos_published} videos, "
-                f"{events_published} events (cutoff={cutoff_iso[:10]})"
+                f"TFD ({ds_id}): published {videos_published}/{videos_seen} videos, "
+                f"{events_published}/{events_seen} events (cutoff={cutoff_iso[:10]})"
             )
         finally:
             self.end_batch(items_scraped=self._batch_items_count)
