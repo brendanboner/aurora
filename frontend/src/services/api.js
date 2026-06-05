@@ -890,10 +890,10 @@ export const getSingleTypeGraphData = async (nodeType, limit = 1000) => {
   return res.data;
 };
 
-export const getNodeNeighborhood = async (nodeId, hops = 1, limit = 50) => {
+export const getNodeNeighborhood = async (nodeId, hops = 1, limit = 80, opts = {}) => {
   const res = await apiClient.get(
     `/visualisation/graph/neighborhood/${encodeURIComponent(String(nodeId))}`,
-    { params: { hops, limit } }
+    { params: { hops, limit, stratified: opts.stratified ? 'true' : 'false' } }
   );
   return res.data;
 };

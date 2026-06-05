@@ -694,25 +694,133 @@ class Neo4jService:
         results = self.client.execute_query(query, {'search': search, 'limit': limit})
         return [dict(record) for record in results]
     
+    # Per-type caps used by the stratified 1-hop expansion. Tuned so the
+    # visual layout stays bounded no matter how connected the focused node
+    # is (a hub topic like "wi-fi 7" with degree 2893 would otherwise dump
+    # 60+ Person nodes and swamp the canvas).
+    NEIGHBOURHOOD_TYPE_CAPS = {
+        'Topic':        12,
+        'Organization': 10,
+        'Person':       12,
+        'Event':         8,
+        'Resource':     16,
+    }
+
+    def _get_stratified_neighborhood(self, node_id: str, total_limit: int) -> Dict[str, Any]:
+        """1-hop expansion that returns at most N per type, ordered by
+        importance then degree then publish_date (for Resources).
+
+        Skips IngestionBatch / DataSource paths so pipeline plumbing
+        never leaks into the visualisation.
+        """
+        all_nodes: Dict[str, Dict[str, Any]] = {}
+        all_links: List[Dict[str, Any]] = []
+        start_id_recorded = False
+
+        for ntype, cap in self.NEIGHBOURHOOD_TYPE_CAPS.items():
+            cap = min(cap, max(1, total_limit - len(all_nodes)))
+            if cap <= 0:
+                break
+            # Use a Resource-tweaked ordering so recent docs surface first
+            order_extra = (
+                ", COALESCE(n.publish_date, '') DESC" if ntype == 'Resource' else ''
+            )
+            query = f"""
+            MATCH (start)-[rel]-(n:{ntype})
+            WHERE elementId(start) = $node_id
+              AND NOT n:IngestionBatch
+              AND NOT n:DataSource
+            WITH start, n, rel,
+                 COUNT {{ (n)--() }} AS degree,
+                 COALESCE(n.importance, 0) AS imp
+            ORDER BY imp DESC, degree DESC{order_extra}
+            LIMIT $cap
+            RETURN
+                elementId(start) AS start_id,
+                labels(start)[0] AS start_label,
+                COALESCE(start.name, start.title, start.topic_id, start.org_id) AS start_name,
+                COALESCE(start.importance, 0) AS start_importance,
+                properties(start) AS start_props,
+                COUNT {{ (start)--() }} AS start_degree,
+
+                elementId(n) AS id,
+                labels(n)[0] AS label,
+                COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id) AS name,
+                imp AS importance,
+                degree,
+                COALESCE(n.tier, 2) AS tier,
+                properties(n) AS properties,
+
+                elementId(startNode(rel)) AS source,
+                elementId(endNode(rel))   AS target,
+                type(rel) AS rel_type,
+                properties(rel) AS rel_props
+            """
+            try:
+                rows = self.client.execute_query(query, {'node_id': node_id, 'cap': cap})
+            except Exception as e:
+                print(f"stratified neighborhood: {ntype} query failed: {e}")
+                continue
+
+            for r in rows:
+                # Record the starting node once
+                if not start_id_recorded and r.get('start_id'):
+                    all_nodes[r['start_id']] = {
+                        'id': r['start_id'],
+                        'label': r['start_label'],
+                        'name': r['start_name'],
+                        'importance': r['start_importance'],
+                        'tier': 2,
+                        'properties': r['start_props'],
+                        'degree': r['start_degree'],
+                    }
+                    start_id_recorded = True
+                nid = r['id']
+                if nid not in all_nodes:
+                    all_nodes[nid] = {
+                        'id': nid,
+                        'label': r['label'],
+                        'name': r['name'],
+                        'importance': r['importance'],
+                        'tier': r['tier'],
+                        'properties': r['properties'],
+                        'degree': r['degree'],
+                    }
+                all_links.append({
+                    'source': r['source'],
+                    'target': r['target'],
+                    'type':   r['rel_type'],
+                    'properties': r['rel_props'],
+                })
+
+        return {'nodes': list(all_nodes.values()), 'links': all_links}
+
     def get_node_neighborhood(
-        self, 
+        self,
         node_id: str,  # Changed to str to support elementId format
         hops: int = 2,
         limit: int = 100,
-        load_child_topics: bool = False
+        load_child_topics: bool = False,
+        stratified: bool = False
     ) -> Dict[str, Any]:
         """
         Get neighborhood of a node up to k hops away, with optional child topic loading
-        
+
         Args:
             node_id: Neo4j elementId string (format: '4:uuid:internal_id')
             hops: Number of hops to traverse
             limit: Maximum nodes to return
             load_child_topics: If True and node is a topic, also load child topics via ENCOMPASSES
-            
+            stratified: If True and hops==1, use the per-type cap path
+                (NEIGHBOURHOOD_TYPE_CAPS) so the result stays balanced and
+                bounded even for hub nodes with thousands of edges.
+
         Returns:
             Dictionary with nodes and links
         """
+        if stratified and hops == 1:
+            return self._get_stratified_neighborhood(node_id, total_limit=limit)
+
         # include `degree` so the frontend can size/glow expanded nodes by
         # connectivity the same way the initial-load nodes are sized.
         # Skip nodes that are pipeline plumbing (IngestionBatch, DataSource)

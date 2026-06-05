@@ -264,11 +264,14 @@ async def autocomplete_all(
 async def get_node_neighborhood(
     node_id: str,  # Changed to str to support Neo4j elementId format
     hops: int = Query(default=2, ge=1, le=3, description="Number of hops"),
-    limit: int = Query(default=100, le=500)
+    limit: int = Query(default=100, le=500),
+    stratified: bool = Query(default=False, description="When hops=1, cap per type for a balanced result")
 ):
     """Get neighborhood of a node"""
     try:
-        data = neo4j_service.get_node_neighborhood(node_id=node_id, hops=hops, limit=limit)
+        data = neo4j_service.get_node_neighborhood(
+            node_id=node_id, hops=hops, limit=limit, stratified=stratified
+        )
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

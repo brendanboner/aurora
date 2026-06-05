@@ -314,58 +314,92 @@ const GraphViewer = () => {
   const stopPulseRef = useRef(null);
   useEffect(() => { stopPulseRef.current = stopContinuousPulse; }, [stopContinuousPulse]);
 
+  // Which ring each node type sits in when expanding. Higher-importance
+  // types go outer so they read as the "frame" of the cluster; single
+  // documents (Resources) sit inner so they don't dominate visually.
+  const RING_BY_TYPE = {
+    Resource: 0,     // inner
+    Event:    0,
+    Person:   1,     // middle
+    Organization: 2, // outer
+    Topic:    2,     // outer
+  };
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const expandAndFocus = useCallback(async (nodeId) => {
     if (!nodeId || !networkRef.current || !nodesDS.current) return;
     setExpanding(true);
     try {
-      // 1-hop only. The previous 2-hop version pulled hundreds of nodes
-      // and triggered a long physics restart that shoved everything to the
-      // bottom of the canvas. With 1-hop + radial placement (below) the
-      // focused node stays centered and new neighbours land in a tidy ring.
-      // Any 2-hop connections that were already loaded in the initial view
-      // remain visible — they're already in the DataSet.
-      const hood = await getNodeNeighborhood(nodeId, 1, 80);
+      // 1-hop stratified — capped per type so a hub topic like "wi-fi 7"
+      // (degree ≈ 2.9k) returns ~12 People + ~12 Topics + ~10 Orgs + 16
+      // Resources instead of 60+ People that swamp the canvas.
+      const hood = await getNodeNeighborhood(nodeId, 1, 80, { stratified: true });
 
-      // Anchor: focused node's current canvas position (if it has one).
-      // For radial placement we pin new nodes at known coords so they don't
-      // get tossed around by the physics engine.
+      // Anchor at the focused node's current canvas position
       const positions = networkRef.current.getPositions([nodeId]);
       const anchor = positions[nodeId] || { x: 0, y: 0 };
 
+      // Adapt ring radii to the canvas size so the cluster fills it. Use
+      // canvas pixel dims as a proxy for the visible scale — fit() will
+      // pull the camera back to show everything afterwards.
+      const wrap = containerRef.current;
+      const canvasDim = wrap
+        ? Math.min(wrap.clientWidth, wrap.clientHeight) || 800
+        : 800;
+      // Three rings spanning ~30% / 50% / 70% of the smaller canvas dim.
+      const ringRadii = [
+        canvasDim * 0.30,
+        canvasDim * 0.50,
+        canvasDim * 0.70,
+      ];
+
       const incomingNodes = hood.nodes || [];
-      const newRaw = incomingNodes.filter(n => !nodesDS.current.get(n.id));
-      const newNodes = newRaw.map((raw, i) => {
-        const total = Math.max(1, newRaw.length);
-        const angle = (i / total) * Math.PI * 2;
-        const radius = 220;  // px from anchor — gives room for labels
-        return {
-          ...toVisNode(raw),
-          x: anchor.x + Math.cos(angle) * radius,
-          y: anchor.y + Math.sin(angle) * radius,
-          fixed: { x: false, y: false },  // let user drag once placed
-        };
+      const newRaw = incomingNodes.filter(n => n.id !== nodeId && !nodesDS.current.get(n.id));
+
+      // Group by ring so we can space each ring's members evenly.
+      const grouped = { 0: [], 1: [], 2: [] };
+      newRaw.forEach(n => {
+        const r = RING_BY_TYPE[n.label] ?? 1;
+        grouped[r].push(n);
       });
+
+      const newNodes = [];
+      Object.entries(grouped).forEach(([ringStr, items]) => {
+        const ring = parseInt(ringStr, 10);
+        const radius = ringRadii[ring];
+        const total = items.length;
+        if (total === 0) return;
+        // Offset each ring's start angle so concentric rings don't align
+        // along the same radial spokes.
+        const angleOffset = (ring * Math.PI) / 7;
+        items.forEach((raw, i) => {
+          const angle = angleOffset + (i / total) * Math.PI * 2;
+          newNodes.push({
+            ...toVisNode(raw),
+            x: anchor.x + Math.cos(angle) * radius,
+            y: anchor.y + Math.sin(angle) * radius,
+          });
+        });
+      });
+
       const newEdges = (hood.links || [])
         .map(toVisEdge)
         .filter(e => !edgesDS.current.get(e.id));
 
       if (newNodes.length || newEdges.length) {
-        // Physics OFF while we drop new nodes in — they're already at
-        // sensible coordinates from the radial layout above, so there's
-        // no need to re-stabilise the whole graph (that's what was
-        // throwing nodes to the bottom).
+        // Physics OFF — new nodes are at exact ring coordinates already.
         networkRef.current.setOptions({ physics: { enabled: false } });
         nodesDS.current.add(newNodes);
         edgesDS.current.add(newEdges);
       }
 
-      // Centre the focused node and continuously pulse it. focus() smoothly
-      // pans + zooms so the node lands in the centre of the canvas.
-      networkRef.current.focus(nodeId, {
-        scale: 1.2,
+      // Fit the focused node + all 1-hop neighbours so the whole cluster
+      // uses the full canvas. The focus() call earlier was leaving most
+      // of the canvas empty — fit() respects the actual cluster bounds.
+      const focusIds = [nodeId, ...newNodes.map(n => n.id)];
+      networkRef.current.fit({
+        nodes: focusIds,
         animation: { duration: 700, easingFunction: 'easeInOutQuad' },
-        locked: false,
       });
       startContinuousPulse(nodeId);
       setFocussed(true);
@@ -442,18 +476,36 @@ const GraphViewer = () => {
       } else if (q.length > 2) {
         try {
           const results = await searchGraphNodes(searchQuery, 20);
-          const ids = (results || []).map(r => r.id).filter(id => nodesDS.current.get(id));
-          if (ids.length) {
-            networkRef.current.selectNodes(ids);
-            networkRef.current.fit({ nodes: ids, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
-            if (ids.length === 1) {
-              const target = ids[0];
-              const item = nodesDS.current.get(target);
-              setSelectedNode(item?._raw ?? null);
-              startContinuousPulse(target);
-              if (expandAndFocusRef.current) expandAndFocusRef.current(target);
+          if (!results?.length) return;
+
+          // Of the matches, prefer ones already in the graph (cheaper).
+          // If none are in the DataSet, take the best match and *fetch* it
+          // — this is the path that lets a user search for "Extreme
+          // Networks" (or any entity not in the initial recent view) and
+          // have its full neighbourhood load in.
+          const inGraph = results.filter(r => nodesDS.current.get(r.id));
+          const target = inGraph[0] || results[0];
+          if (!target) return;
+
+          if (!nodesDS.current.get(target.id)) {
+            // The node isn't loaded — fetch its stratified 1-hop, add the
+            // target itself first so expandAndFocus can anchor on it, then
+            // re-use the normal expand path for radial placement + fit.
+            try {
+              // Drop the seed node at the canvas centre relative to the
+              // current view, then expandAndFocus handles its neighbours.
+              const view = networkRef.current.getViewPosition();
+              nodesDS.current.add([{ ...toVisNode(target), x: view.x, y: view.y }]);
+            } catch (_) {
+              // Fallback: just add it without an anchor position
+              nodesDS.current.add([toVisNode(target)]);
             }
           }
+          networkRef.current.selectNodes([target.id]);
+          const item = nodesDS.current.get(target.id);
+          setSelectedNode(item?._raw ?? target);
+          startContinuousPulse(target.id);
+          if (expandAndFocusRef.current) expandAndFocusRef.current(target.id);
         } catch (_) { /* non-critical */ }
       }
     }, 300);
