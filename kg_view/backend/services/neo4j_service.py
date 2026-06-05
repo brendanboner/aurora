@@ -715,9 +715,15 @@ class Neo4jService:
         """
         # include `degree` so the frontend can size/glow expanded nodes by
         # connectivity the same way the initial-load nodes are sized.
+        # Skip nodes that are pipeline plumbing (IngestionBatch, DataSource)
+        # and likewise skip paths that route through them — users never want
+        # to see an "INGESTED_FROM" or batch edge in the visualisation.
         query = f"""
         MATCH path = (start)-[*1..{hops}]-(connected)
         WHERE elementId(start) = $node_id
+          AND NOT connected:IngestionBatch
+          AND NOT connected:DataSource
+          AND ALL(n IN nodes(path) WHERE NOT n:IngestionBatch AND NOT n:DataSource)
         WITH start, connected, relationships(path) as rels
         LIMIT $limit
         WITH start, connected, rels,

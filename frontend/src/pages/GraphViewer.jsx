@@ -202,7 +202,6 @@ const GraphViewer = () => {
   const nodesDS      = useRef(null);
   const edgesDS      = useRef(null);
   const pulseRef     = useRef(null);  // DOM ref to the target-pulse overlay
-  const pulseTimer   = useRef(null);
 
   const [stats,           setStats]           = useState(null);
   const [loading,         setLoading]         = useState(true);
@@ -222,36 +221,35 @@ const GraphViewer = () => {
   const [importanceThreshold, setImportanceThreshold] = useState(0);
   const [nodeLimit,       setNodeLimit]       = useState(500);
 
-  // Subtle pulsing-ring animation at the focused node's position.
-  // Called after fit() so the user's eye lands on the target.
-  const showTargetPulse = useCallback((nodeId) => {
+  // Continuous pulsing-ring animation at the focused node's position.
+  // The pulse follows the node — if vis-network re-positions it, pans, or
+  // zooms, the overlay tracks it via the `afterDrawing` callback. The CSS
+  // keyframes loop, so the user always sees a "target" marker on the
+  // current selection until they click away.
+  const pulseNodeId = useRef(null);
+  const startContinuousPulse = useCallback((nodeId) => {
     if (!networkRef.current || !pulseRef.current || !nodeId) return;
-    const network = networkRef.current;
-
-    // Wait for the fit animation to settle before drawing the ring
-    const draw = () => {
-      try {
-        const positions = network.getPositions([nodeId]);
-        const canvasPos = positions[nodeId];
-        if (!canvasPos) return;
-        const domPos = network.canvasToDOM(canvasPos);
-        const el = pulseRef.current;
+    pulseNodeId.current = nodeId;
+    const el = pulseRef.current;
+    el.classList.add('gv-pulse-active');
+    // Force a position refresh now (afterDrawing will continue updating it)
+    try {
+      const positions = networkRef.current.getPositions([nodeId]);
+      const canvasPos = positions[nodeId];
+      if (canvasPos) {
+        const domPos = networkRef.current.canvasToDOM(canvasPos);
         el.style.transform = `translate(${domPos.x}px, ${domPos.y}px) translate(-50%, -50%)`;
-        // Restart the animation by toggling the class
-        el.classList.remove('gv-pulse-active');
-        // Force reflow so the next class add restarts the keyframes
-        // eslint-disable-next-line no-unused-expressions
-        el.offsetHeight;
-        el.classList.add('gv-pulse-active');
-        clearTimeout(pulseTimer.current);
-        // Final ring delay is 0.8s + 2.6s anim = ~3.4s; give it a hair more
-        pulseTimer.current = setTimeout(() => {
-          el?.classList.remove('gv-pulse-active');
-        }, 3600);
-      } catch (_) { /* ignore */ }
-    };
-    // Defer slightly so the fit() animation has a chance to land
-    setTimeout(draw, 650);
+        el.style.opacity = '1';
+      }
+    } catch (_) { /* ignore */ }
+  }, []);
+
+  const stopContinuousPulse = useCallback(() => {
+    pulseNodeId.current = null;
+    if (pulseRef.current) {
+      pulseRef.current.classList.remove('gv-pulse-active');
+      pulseRef.current.style.opacity = '0';
+    }
   }, []);
 
   const buildNetwork = useCallback((graphData) => {
@@ -282,6 +280,7 @@ const GraphViewer = () => {
     net.on('click', (params) => {
       if (!params.nodes.length) {
         setSelectedNode(null);
+        stopPulseRef.current?.();
         return;
       }
       const nodeId = params.nodes[0];
@@ -291,53 +290,84 @@ const GraphViewer = () => {
       if (expandAndFocusRef.current) expandAndFocusRef.current(nodeId);
     });
 
+    // Keep the pulse overlay glued to the focused node — recomputed on
+    // every vis-network render so it tracks pan / zoom / drag in real time.
+    net.on('afterDrawing', () => {
+      const id = pulseNodeId.current;
+      if (!id || !pulseRef.current) return;
+      try {
+        const positions = net.getPositions([id]);
+        const canvasPos = positions[id];
+        if (!canvasPos) return;
+        const domPos = net.canvasToDOM(canvasPos);
+        pulseRef.current.style.transform =
+          `translate(${domPos.x}px, ${domPos.y}px) translate(-50%, -50%)`;
+      } catch (_) { /* node was removed — pulse fades naturally */ }
+    });
+
     networkRef.current = net;
   }, []);
 
-  // Stable ref so the click handler inside buildNetwork can call the latest version
+  // Stable refs so the network event handlers (registered once in
+  // buildNetwork) can call the latest versions of the focus/pulse helpers.
   const expandAndFocusRef = useRef(null);
+  const stopPulseRef = useRef(null);
+  useEffect(() => { stopPulseRef.current = stopContinuousPulse; }, [stopContinuousPulse]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const expandAndFocus = useCallback(async (nodeId) => {
     if (!nodeId || !networkRef.current || !nodesDS.current) return;
     setExpanding(true);
     try {
-      // 2-hop expand: brings in the node's direct neighbours AND THEIR
-      // neighbours, so clicking a Topic surfaces the documents that mention
-      // it AND the other topics those documents are about — the full
-      // "all 1- and 2-hop connections" view for deep dives.
-      const hood = await getNodeNeighborhood(nodeId, 2, 200);
-      const newNodes = (hood.nodes || [])
-        .filter(n => !nodesDS.current.get(n.id))
-        .map(toVisNode);
+      // 1-hop only. The previous 2-hop version pulled hundreds of nodes
+      // and triggered a long physics restart that shoved everything to the
+      // bottom of the canvas. With 1-hop + radial placement (below) the
+      // focused node stays centered and new neighbours land in a tidy ring.
+      // Any 2-hop connections that were already loaded in the initial view
+      // remain visible — they're already in the DataSet.
+      const hood = await getNodeNeighborhood(nodeId, 1, 80);
+
+      // Anchor: focused node's current canvas position (if it has one).
+      // For radial placement we pin new nodes at known coords so they don't
+      // get tossed around by the physics engine.
+      const positions = networkRef.current.getPositions([nodeId]);
+      const anchor = positions[nodeId] || { x: 0, y: 0 };
+
+      const incomingNodes = hood.nodes || [];
+      const newRaw = incomingNodes.filter(n => !nodesDS.current.get(n.id));
+      const newNodes = newRaw.map((raw, i) => {
+        const total = Math.max(1, newRaw.length);
+        const angle = (i / total) * Math.PI * 2;
+        const radius = 220;  // px from anchor — gives room for labels
+        return {
+          ...toVisNode(raw),
+          x: anchor.x + Math.cos(angle) * radius,
+          y: anchor.y + Math.sin(angle) * radius,
+          fixed: { x: false, y: false },  // let user drag once placed
+        };
+      });
       const newEdges = (hood.links || [])
         .map(toVisEdge)
         .filter(e => !edgesDS.current.get(e.id));
 
-      const neighbourIds = (hood.nodes || []).map(n => n.id);
-      const focusIds = [nodeId, ...neighbourIds];
-
       if (newNodes.length || newEdges.length) {
+        // Physics OFF while we drop new nodes in — they're already at
+        // sensible coordinates from the radial layout above, so there's
+        // no need to re-stabilise the whole graph (that's what was
+        // throwing nodes to the bottom).
+        networkRef.current.setOptions({ physics: { enabled: false } });
         nodesDS.current.add(newNodes);
         edgesDS.current.add(newEdges);
-        networkRef.current.setOptions({ physics: { enabled: true } });
-        networkRef.current.once('stabilizationIterationsDone', () => {
-          networkRef.current?.setOptions({ physics: { enabled: false } });
-          networkRef.current?.fit({
-            nodes: focusIds,
-            animation: { duration: 600, easingFunction: 'easeInOutQuad' },
-          });
-          showTargetPulse(nodeId);
-        });
-        networkRef.current.stabilize(80);
-      } else {
-        // All neighbours already present — just zoom to them
-        networkRef.current.fit({
-          nodes: focusIds,
-          animation: { duration: 600, easingFunction: 'easeInOutQuad' },
-        });
-        showTargetPulse(nodeId);
       }
+
+      // Centre the focused node and continuously pulse it. focus() smoothly
+      // pans + zooms so the node lands in the centre of the canvas.
+      networkRef.current.focus(nodeId, {
+        scale: 1.2,
+        animation: { duration: 700, easingFunction: 'easeInOutQuad' },
+        locked: false,
+      });
+      startContinuousPulse(nodeId);
       setFocussed(true);
     } catch (_) {
       // Non-critical
@@ -376,7 +406,6 @@ const GraphViewer = () => {
     return () => {
       networkRef.current?.destroy();
       networkRef.current = null;
-      clearTimeout(pulseTimer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -387,6 +416,7 @@ const GraphViewer = () => {
 
     if (!searchQuery.trim()) {
       networkRef.current.unselectAll();
+      stopContinuousPulse();
       return;
     }
 
@@ -406,7 +436,7 @@ const GraphViewer = () => {
           const target = matches[0];
           const item = nodesDS.current.get(target);
           setSelectedNode(item?._raw ?? null);
-          showTargetPulse(target);
+          startContinuousPulse(target);
           if (expandAndFocusRef.current) expandAndFocusRef.current(target);
         }
       } else if (q.length > 2) {
@@ -420,7 +450,7 @@ const GraphViewer = () => {
               const target = ids[0];
               const item = nodesDS.current.get(target);
               setSelectedNode(item?._raw ?? null);
-              showTargetPulse(target);
+              startContinuousPulse(target);
               if (expandAndFocusRef.current) expandAndFocusRef.current(target);
             }
           }
@@ -488,6 +518,7 @@ const GraphViewer = () => {
   const handleFitAll = () => {
     setFocussed(false);
     setSelectedNode(null);
+    stopContinuousPulse();
     networkRef.current?.unselectAll();
     networkRef.current?.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
   };

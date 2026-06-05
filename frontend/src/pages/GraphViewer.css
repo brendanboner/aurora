@@ -509,12 +509,16 @@
   opacity: 0;
 }
 
+/* Loops continuously while a node is focused. Each ring takes 2.6s and
+   the three are staggered so there's always a visible ring sweeping out.
+   The pulse stops when the user clicks empty canvas, clears search, or
+   hits Fit All. */
 .gv-pulse-active .gv-pulse-ring {
-  animation: gv-pulse 2.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: gv-pulse 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
 
-.gv-pulse-active .gv-pulse-ring-2 { animation-delay: 0.4s; }
-.gv-pulse-active .gv-pulse-ring-3 { animation-delay: 0.8s; }
+.gv-pulse-active .gv-pulse-ring-2 { animation-delay: 0.85s; }
+.gv-pulse-active .gv-pulse-ring-3 { animation-delay: 1.7s; }
 
 @keyframes gv-pulse {
   0% {
