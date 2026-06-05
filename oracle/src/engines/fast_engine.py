@@ -87,40 +87,43 @@ class FastEngine:
         self.conv_store = ConversationStore(redis_client=redis_client)
         self._initialized = True
     
-    async def _expand_wba_children(self, datasource_ids: list) -> list:
-        """Expand any WBA Extranet programme IDs to include their child workgroups.
+    async def _expand_datasource_parents(self, datasource_ids: list) -> list:
+        """Expand any parent DataSource IDs to include their child datasources.
 
-        A one-hop lookup on parent_datasource_id so that "what's new in my
-        groups" automatically includes workgroups belonging to joined programmes.
-        Results are cached in Redis for 5 minutes.
+        One-hop lookup on parent_datasource_id, applied uniformly across every
+        scraper that uses the hierarchy: WBA Extranet (programme → workgroups),
+        Tech Field Day (techfieldday → techfieldday_ai/cloud/networking/…),
+        and any future parent–child setup. Results are cached in Redis for
+        5 minutes.
+
+        Idempotent: if a child ID is passed in directly, it stays as-is and
+        we don't pull in its siblings.
         """
         if not datasource_ids:
             return datasource_ids
 
-        cache_key = "fast:datasource_tree:wba_children"
-        # Try Redis cache first
+        cache_key = "fast:datasource_tree:children"
+        child_map: dict = {}
         if self.fast_cache and self.fast_cache._redis_client:
             try:
                 import json as _json
                 cached = self.fast_cache._redis_client.get(cache_key)
                 if cached:
-                    child_map: dict = _json.loads(cached)
-                else:
-                    child_map = {}
+                    child_map = _json.loads(cached)
             except Exception:
                 child_map = {}
-        else:
-            child_map = {}
 
         if not child_map:
-            # Build map from Neo4j
+            # Build map from Neo4j — every DataSource with a parent contributes
+            # one entry. Scraper-agnostic.
             try:
                 from src.services.graph_service_oracle import get_oracle_repo
                 repo = get_oracle_repo()
                 rows = repo.client.execute_query(
                     """
-                    MATCH (child:DataSource {scraper_type: 'wba_extranet'})
+                    MATCH (child:DataSource)
                     WHERE child.parent_datasource_id IS NOT NULL
+                      AND child.parent_datasource_id <> ''
                     RETURN child.parent_datasource_id AS parent,
                            child.datasource_id        AS child
                     """,
@@ -132,7 +135,7 @@ class FastEngine:
                     import json as _json
                     self.fast_cache._redis_client.setex(cache_key, 300, _json.dumps(child_map))
             except Exception as exc:
-                logger.warning(f"_expand_wba_children: Neo4j lookup failed: {exc}")
+                logger.warning(f"_expand_datasource_parents: Neo4j lookup failed: {exc}")
                 return datasource_ids
 
         expanded = list(datasource_ids)
@@ -141,6 +144,10 @@ class FastEngine:
                 if child_id not in expanded:
                     expanded.append(child_id)
         return expanded
+
+    # Back-compat alias — existing call sites used the WBA-specific name.
+    async def _expand_wba_children(self, datasource_ids: list) -> list:
+        return await self._expand_datasource_parents(datasource_ids)
 
     def get_name(self) -> str:
         """Get engine name."""
@@ -329,9 +336,13 @@ class FastEngine:
             options = request.options
             personalize_mode = getattr(options, 'personalize', PersonalizeMode.AUTO) if options else PersonalizeMode.AUTO
             
-            # Extract datasource_ids (workgroups) from options if provided
+            # Extract datasource_ids (workgroups / topic buckets / …) from options.
+            # Expand any parent IDs so an @-mention of a parent (e.g. @tfd or
+            # @wba_extranet) automatically fans out to all its children —
+            # see _expand_datasource_parents docstring.
             datasource_ids = getattr(options, 'datasource_ids', None) if options else None
             if datasource_ids:
+                datasource_ids = await self._expand_datasource_parents(list(datasource_ids))
                 logger.info(f"[{query_id}] Using datasource_ids filter: {datasource_ids}")
             else:
                 logger.debug(f"[{query_id}] No datasource_ids filter provided")
@@ -423,14 +434,14 @@ class FastEngine:
             if user_preferred_domains:
                 plan.preferred_domains = user_preferred_domains
 
-            # WBA: for programme-level routes, expand preferred_datasources to
-            # include child workgroups (one hop via parent_datasource_id).
+            # Expand any parent IDs in preferred_datasources too, so a user who
+            # has "joined" a parent datasource (e.g. techfieldday, wba_extranet)
+            # also picks up its children. Applies to every route, not just the
+            # WBA-specific ones.
             route_id_value = plan.route_id.value if hasattr(plan.route_id, 'value') else plan.route_id
             from src.models.route_plan import RouteId as _RI
-            if route_id_value in (
-                _RI.WBA_RECENT_ACTIVITY.value, _RI.MY_GROUPS_DIGEST.value
-            ) and plan.preferred_datasources:
-                plan.preferred_datasources = await self._expand_wba_children(
+            if plan.preferred_datasources:
+                plan.preferred_datasources = await self._expand_datasource_parents(
                     plan.preferred_datasources
                 )
 
