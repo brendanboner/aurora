@@ -880,7 +880,10 @@ export const getRecentConnectedGraphData = async ({
 
 export const searchGraphNodes = async (q, limit = 20) => {
   const res = await apiClient.get('/visualisation/graph/search', { params: { q, limit } });
-  return res.data;
+  // Backend returns { results: [...], count: N } — unwrap to the array
+  // so callers can `.map()` regardless of API shape.
+  if (Array.isArray(res.data)) return res.data;
+  return res.data?.results || [];
 };
 
 export const getSingleTypeGraphData = async (nodeType, limit = 1000) => {
