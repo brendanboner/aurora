@@ -249,7 +249,11 @@ class IEEE80211TGScraper(BaseScraper):
                     f"Venue: {hotel}, {location}.\n"
                     f"All active task groups (TGbn, TGbi, TGbp, TGbt, TGbq, TGbr, TGmf) meet."
                 ),
-                url=MEETING_URL,
+                # Each session needs a unique URL so the Event url_hash
+                # (sha256 of url) doesn't MERGE every session onto a single
+                # Neo4j Event node. The fragment leaves the canonical link
+                # intact when followed in a browser.
+                url=f"{MEETING_URL}#session-{session}",
                 status=status,
                 datasource_id=datasource_id,
             ))
@@ -323,11 +327,19 @@ class IEEE80211TGScraper(BaseScraper):
 
                 # Build session number if visible
                 session_num = ""
+                session_id = ""
                 for cell in cells:
                     m2 = re.match(r"^(\d{3})$", cell)
                     if m2:
                         session_num = f" Session {m2.group(1)}"
+                        session_id = m2.group(1)
 
+                # Same per-session URL fragment as the known-list path to
+                # keep each Event distinct in Neo4j (Event.url_hash =
+                # sha256(url), so a shared MEETING_URL would MERGE them).
+                # Use start_date as the disambiguator when no session id is
+                # visible on the page.
+                fragment = session_id or start_date
                 events.append(Event(
                     name=f"IEEE 802.11 WG{session_num} — {location}",
                     event_type=event_type,
@@ -335,7 +347,7 @@ class IEEE80211TGScraper(BaseScraper):
                     end_date=end_date or start_date,
                     location=location,
                     description=f"IEEE 802.11 Working Group session.\n{raw[:500]}",
-                    url=MEETING_URL,
+                    url=f"{MEETING_URL}#session-{fragment}" if fragment else MEETING_URL,
                     status="scheduled" if start_dt >= now else "completed",
                     datasource_id=datasource_id,
                 ))
