@@ -459,6 +459,8 @@ class Neo4jService:
         seed_resource_count: int = 80,
         days_back: int = 120,
         node_budget: int = 500,
+        anchor_orgs: Optional[List[str]] = None,
+        anchor_people: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Default-view graph: seed with the N most-recent Resources (importance-
@@ -562,6 +564,72 @@ class Neo4jService:
                     'properties': row['properties'],
                     'degree': row['degree'],
                 }
+
+        # 3b) ANCHOR nodes — always include the demo's home org + a small set
+        # of named people, plus their 1-hop neighbours. Lets the user see
+        # themselves and their colleagues on the canvas the moment the view
+        # loads, regardless of whether they've published anything recently.
+        # IngestionBatch / DataSource excluded so we don't drag pipeline
+        # plumbing in.
+        if anchor_orgs or anchor_people:
+            anchor_query = """
+            // Match orgs by exact name (fuzzy folded to lowercase contains)
+            CALL {
+                WITH $anchor_orgs AS orgs
+                MATCH (o:Organization)
+                WHERE size(orgs) > 0
+                  AND (toLower(o.name) IN [x IN orgs | toLower(x)]
+                       OR any(x IN orgs WHERE toLower(o.name) CONTAINS toLower(x)))
+                RETURN o AS anchor
+                UNION
+                WITH $anchor_people AS ppl
+                MATCH (p:Person)
+                WHERE size(ppl) > 0
+                  AND (toLower(p.name) IN [x IN ppl | toLower(x)]
+                       OR any(x IN ppl WHERE toLower(p.name) CONTAINS toLower(x))
+                       OR any(x IN ppl WHERE toLower(coalesce(p.email,'')) CONTAINS toLower(x)))
+                RETURN p AS anchor
+            }
+            // Each anchor + its 1-hop neighbours (excluding pipeline types)
+            OPTIONAL MATCH (anchor)-[]-(neigh)
+            WHERE NOT neigh:IngestionBatch AND NOT neigh:DataSource
+            WITH anchor, collect(DISTINCT neigh) AS neighbours
+            UNWIND ([anchor] + neighbours) AS n
+            WITH DISTINCT n
+            WHERE n IS NOT NULL
+              AND NOT n:IngestionBatch
+              AND NOT n:DataSource
+            RETURN elementId(n) AS id,
+                   labels(n)[0]  AS label,
+                   COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id) AS name,
+                   COALESCE(n.importance, 0) AS importance,
+                   COALESCE(n.tier, 2)       AS tier,
+                   properties(n)             AS properties,
+                   COUNT { (n)--() }         AS degree
+            """
+            try:
+                anchor_rows = self.client.execute_query(anchor_query, {
+                    'anchor_orgs':   anchor_orgs   or [],
+                    'anchor_people': anchor_people or [],
+                })
+                for row in anchor_rows:
+                    nid = row['id']
+                    if nid not in all_nodes_by_id:
+                        all_nodes_by_id[nid] = {
+                            'id': nid,
+                            'label': row['label'],
+                            'name': row['name'],
+                            'importance': row['importance'],
+                            'tier': row['tier'],
+                            'properties': row['properties'],
+                            'degree': row['degree'],
+                            'is_anchor': True,
+                        }
+                    else:
+                        all_nodes_by_id[nid]['is_anchor'] = True
+            except Exception as e:
+                print(f"recent_connected: anchor query failed: {e}")
+
         all_nodes = list(all_nodes_by_id.values())
         node_id_set = set(all_nodes_by_id.keys())
 

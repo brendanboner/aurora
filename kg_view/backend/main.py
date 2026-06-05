@@ -152,18 +152,28 @@ async def get_recent_connected_graph_data(
     seed_resource_count: int = Query(default=80, ge=10, le=300, description="How many recent Resources to seed the view with"),
     days_back: int = Query(default=120, ge=14, le=365, description="Recency window in days"),
     node_budget: int = Query(default=500, ge=100, le=2000, description="Hard cap on total nodes returned"),
+    anchor_orgs: str = Query(default='', description="Comma-separated org names to always include with their 1-hop"),
+    anchor_people: str = Query(default='', description="Comma-separated person names/emails to always include with their 1-hop"),
 ):
     """
     Default view for the KG viewer. Seeds with the most-recent Resources (within
     `days_back`, importance-weighted) and expands 1-hop to their Topics, Orgs,
     People and Events. The result is an interlinked cluster of actually-related
     recent work — not a 3000-event random galaxy.
+
+    `anchor_orgs` / `anchor_people` always appear in the result (with their
+    1-hop neighbours), regardless of recency — useful for demos that want the
+    viewer's home org and named colleagues visible from the first paint.
     """
     try:
+        orgs   = [s.strip() for s in anchor_orgs.split(',')   if s.strip()] if anchor_orgs   else []
+        people = [s.strip() for s in anchor_people.split(',') if s.strip()] if anchor_people else []
         data = neo4j_service.get_recent_connected_graph_data(
             seed_resource_count=seed_resource_count,
             days_back=days_back,
             node_budget=node_budget,
+            anchor_orgs=orgs,
+            anchor_people=people,
         )
         return data
     except Exception as e:

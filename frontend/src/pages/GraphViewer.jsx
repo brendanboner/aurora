@@ -330,55 +330,66 @@ const GraphViewer = () => {
     if (!nodeId || !networkRef.current || !nodesDS.current) return;
     setExpanding(true);
     try {
-      // 1-hop stratified — capped per type so a hub topic like "wi-fi 7"
-      // (degree ≈ 2.9k) returns ~12 People + ~12 Topics + ~10 Orgs + 16
-      // Resources instead of 60+ People that swamp the canvas.
+      // Unpin the previously focused node so it can re-flow with the new
+      // layout (we only want exactly one pinned anchor at a time).
+      const prevFocused = pulseNodeId.current;
+      if (prevFocused && prevFocused !== nodeId && nodesDS.current.get(prevFocused)) {
+        nodesDS.current.update({ id: prevFocused, fixed: { x: false, y: false } });
+      }
+
+      // 1-hop stratified — bounded by type cap so a hub topic doesn't flood
+      // the canvas with one node type.
       const hood = await getNodeNeighborhood(nodeId, 1, 80, { stratified: true });
 
-      // Anchor at the focused node's current canvas position
-      const positions = networkRef.current.getPositions([nodeId]);
-      const anchor = positions[nodeId] || { x: 0, y: 0 };
+      // Place the focused node at canvas origin and PIN it there so vis-
+      // network can't drift the position on hover/redraw (was the source
+      // of the "pulse jumps from centre to node and back" bug).
+      const focusedNeighborIds = new Set((hood.nodes || []).map(n => n.id));
+      focusedNeighborIds.add(nodeId);
 
-      // Adapt ring radii to the canvas size so the cluster fills it. Use
-      // canvas pixel dims as a proxy for the visible scale — fit() will
-      // pull the camera back to show everything afterwards.
+      // Anchor focused node at (0, 0); ring coords are relative to it.
+      const anchorX = 0;
+      const anchorY = 0;
+
+      // Adapt ring radii to canvas size for a fill-the-canvas layout.
       const wrap = containerRef.current;
       const canvasDim = wrap
         ? Math.min(wrap.clientWidth, wrap.clientHeight) || 800
         : 800;
-      // Three rings spanning ~30% / 50% / 70% of the smaller canvas dim.
       const ringRadii = [
         canvasDim * 0.30,
         canvasDim * 0.50,
         canvasDim * 0.70,
       ];
 
-      const incomingNodes = hood.nodes || [];
-      const newRaw = incomingNodes.filter(n => n.id !== nodeId && !nodesDS.current.get(n.id));
-
-      // Group by ring so we can space each ring's members evenly.
+      // Group incoming neighbours by ring (skip the focused node itself).
+      const incoming = (hood.nodes || []).filter(n => n.id !== nodeId);
       const grouped = { 0: [], 1: [], 2: [] };
-      newRaw.forEach(n => {
+      incoming.forEach(n => {
         const r = RING_BY_TYPE[n.label] ?? 1;
         grouped[r].push(n);
       });
 
-      const newNodes = [];
+      // Build the positions update for every focused-set member: new nodes
+      // get added with x/y; existing nodes get repositioned via update().
+      const nodeUpdates = [];
+      const nodesToAdd = [];
       Object.entries(grouped).forEach(([ringStr, items]) => {
         const ring = parseInt(ringStr, 10);
         const radius = ringRadii[ring];
         const total = items.length;
         if (total === 0) return;
-        // Offset each ring's start angle so concentric rings don't align
-        // along the same radial spokes.
         const angleOffset = (ring * Math.PI) / 7;
         items.forEach((raw, i) => {
           const angle = angleOffset + (i / total) * Math.PI * 2;
-          newNodes.push({
-            ...toVisNode(raw),
-            x: anchor.x + Math.cos(angle) * radius,
-            y: anchor.y + Math.sin(angle) * radius,
-          });
+          const x = anchorX + Math.cos(angle) * radius;
+          const y = anchorY + Math.sin(angle) * radius;
+          if (nodesDS.current.get(raw.id)) {
+            // Existing node — reposition and ensure visible
+            nodeUpdates.push({ id: raw.id, x, y, hidden: false, fixed: { x: false, y: false } });
+          } else {
+            nodesToAdd.push({ ...toVisNode(raw), x, y });
+          }
         });
       });
 
@@ -386,19 +397,24 @@ const GraphViewer = () => {
         .map(toVisEdge)
         .filter(e => !edgesDS.current.get(e.id));
 
-      if (newNodes.length || newEdges.length) {
-        // Physics OFF — new nodes are at exact ring coordinates already.
-        networkRef.current.setOptions({ physics: { enabled: false } });
-        nodesDS.current.add(newNodes);
-        edgesDS.current.add(newEdges);
-      }
+      // Hide everything that isn't in the focused set so the canvas
+      // shows ONLY the clicked node + its 1-hop. Restore via "Fit All".
+      const hideUpdates = nodesDS.current
+        .get({ filter: n => !focusedNeighborIds.has(n.id) })
+        .map(n => ({ id: n.id, hidden: true }));
 
-      // Fit the focused node + all 1-hop neighbours so the whole cluster
-      // uses the full canvas. The focus() call earlier was leaving most
-      // of the canvas empty — fit() respects the actual cluster bounds.
-      const focusIds = [nodeId, ...newNodes.map(n => n.id)];
+      // Pin the focused node at the origin so hover/redraw can't drift it.
+      const focusedNodePin = { id: nodeId, x: anchorX, y: anchorY, hidden: false, fixed: { x: true, y: true } };
+
+      networkRef.current.setOptions({ physics: { enabled: false } });
+      // Apply all in one tick — single render pass, no flicker
+      if (nodesToAdd.length) nodesDS.current.add(nodesToAdd);
+      if (newEdges.length) edgesDS.current.add(newEdges);
+      nodesDS.current.update([focusedNodePin, ...nodeUpdates, ...hideUpdates]);
+
+      // Fit to the focused subgraph — canvas now shows just this cluster.
       networkRef.current.fit({
-        nodes: focusIds,
+        nodes: Array.from(focusedNeighborIds),
         animation: { duration: 700, easingFunction: 'easeInOutQuad' },
       });
       startContinuousPulse(nodeId);
@@ -420,7 +436,14 @@ const GraphViewer = () => {
     setSelectedNode(null);
     try {
       const fetcher = mode === 'recent_connected'
-        ? getRecentConnectedGraphData({ nodeBudget: limit, seedResourceCount: Math.min(120, Math.max(40, Math.floor(limit / 6))) })
+        ? getRecentConnectedGraphData({
+            nodeBudget: limit,
+            seedResourceCount: Math.min(120, Math.max(40, Math.floor(limit / 6))),
+            // Demo anchors — always include these in the initial view so
+            // the trial audience sees themselves + colleagues on landing.
+            anchorOrgs:   ['Extreme Networks'],
+            anchorPeople: ['Brendan Bonner', 'David Coleman', 'Nabil', 'Hardik'],
+          })
         : getBalancedGraphData(limit, threshold);
       const [statsData, graphData] = await Promise.all([
         getGraphVisualisationStats(),
@@ -572,6 +595,13 @@ const GraphViewer = () => {
     setSelectedNode(null);
     stopContinuousPulse();
     networkRef.current?.unselectAll();
+    // Restore any nodes the focus mode hid + unpin the previously-focused node
+    if (nodesDS.current) {
+      const restore = nodesDS.current
+        .get({ filter: n => n.hidden || (n.fixed && (n.fixed.x || n.fixed.y)) })
+        .map(n => ({ id: n.id, hidden: false, fixed: { x: false, y: false } }));
+      if (restore.length) nodesDS.current.update(restore);
+    }
     networkRef.current?.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
   };
 

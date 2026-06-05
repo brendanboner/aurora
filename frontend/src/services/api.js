@@ -861,18 +861,23 @@ export const getBalancedGraphData = async (limit = 800, importanceThreshold = 0.
   return res.data;
 };
 
-// Default-view graph: seeded by recent Resources, 1-hop expanded.
-// Produces an interlinked cluster (~400-500 nodes) instead of a 3000-event galaxy.
+// Default-view graph: seeded by recent Resources, 1-hop expanded, plus
+// optional anchor entities (home org + named colleagues) so the demo
+// canvas always shows the trial team's neighbourhood from the first paint.
 export const getRecentConnectedGraphData = async ({
   seedResourceCount = 80,
   daysBack = 120,
   nodeBudget = 500,
+  anchorOrgs = [],
+  anchorPeople = [],
 } = {}) => {
   const res = await apiClient.get('/visualisation/graph/recent-connected', {
     params: {
       seed_resource_count: seedResourceCount,
       days_back: daysBack,
       node_budget: nodeBudget,
+      anchor_orgs: anchorOrgs.join(','),
+      anchor_people: anchorPeople.join(','),
     },
   });
   return res.data;

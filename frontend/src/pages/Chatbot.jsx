@@ -225,13 +225,17 @@ What would you like to know?`;
   // submits the question immediately so first-time users have an obvious
   // on-ramp without having to invent a good query themselves.
   // TODO(#2 role-aware roadmap): filter by user.role once that field exists.
+  // Chosen so each routes to the FAST pipeline and returns public-content
+  // citations (no WBA Causeway login walls). The WBA AI/ML / press-release
+  // variants were swapped after pre-trial probing — the previous wording
+  // dropped to baseline or pulled login-required URLs.
   const STARTER_PROMPTS = [
     "What's new with Wi-Fi 8 UHR in the last 30 days?",
     "Compare Wi-Fi 7 and Wi-Fi 8 for dense enterprise deployments",
-    "Which companies are most active in 802.11bn?",
-    "Summarise the latest Wi-Fi Alliance press releases",
+    "What are the latest press releases?",
     "What are the open security concerns in WPA3?",
-    "What did the WBA AI/ML workgroup publish recently?",
+    "What are the latest IEEE 802.11 task group updates?",
+    "What's the status of 802.11bn (Wi-Fi 8)?",
   ];
 
   // Welcome message JSX with icons
