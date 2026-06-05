@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendOracleQuery, sendOracleQueryStream, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings, clearOracleConversation } from '../services/api';
+import { sendOracleQuery, sendOracleQueryStream, analyzeQuery, sendEnhanceQuery, getDatasources, submitOracleFeedback, getOracleSettings, clearOracleConversation, fetchOracleNewsBrief } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ProfileIcon, ChatIcon, WarningIcon, HourglassIcon, SendIcon, SearchIcon, BuildingIcon, CalendarIcon, DocumentIcon, LightbulbIcon, ChevronDownIcon } from '../components/icons';
 import Icon from '../components/Icon';
@@ -914,27 +914,35 @@ What would you like to know?`;
   };
 
   // ---------------------------------------------------------------------------
-  // Command router — intercepts short commands before they reach Oracle search.
-  // Returns a response string if the input is a known command, or null to fall
-  // through to the normal query path.
+  // Command router — intercepts slash commands (and legacy unprefixed forms)
+  // before they reach Oracle search. Returns one of:
+  //   { kind: 'reply', content }            — display this assistant message
+  //   { kind: 'async', loading, run }       — display `loading`, then run() which
+  //                                            resolves to a reply for the same slot
+  //   null                                   — not a command, fall through to Oracle
   // ---------------------------------------------------------------------------
   const handleChatCommand = useCallback((rawInput) => {
-    const cmd = rawInput.trim().toLowerCase();
+    const raw = rawInput.trim();
+    // Strip a leading slash so /help and "help" both match.
+    const cmd = raw.replace(/^\//, '').toLowerCase();
 
     // ── HELP ──────────────────────────────────────────────────────────────────
     if (/^(\?|help|show help|how does this work|what can (i|you) do)$/.test(cmd)) {
-      return `## Aurora Commands & Tips
+      return { kind: 'reply', content: `## Aurora Commands & Tips
 
 [**↩ Back to Aurora chat**](/) — bookmark this page if you keep losing it.
 
-**Navigation shortcuts** *(type to jump)*
+**Slash commands**
 | Command | Action |
 |---|---|
-| \`agents\` | Browse all Aurora content agents |
-| \`my agents\` | Your personal AI agents |
-| \`feed\` | Your personalised content feed |
-| \`clear\` | Start a new chat |
-| \`about\` | About Aurora |
+| \`/help\` | Show this guide |
+| \`/news\` | Brief news update since your last check |
+| \`/agents\` | Browse all Aurora content agents |
+| \`/myagents\` | Your personal AI agents |
+| \`/feed\` | Your personalised content feed |
+| \`/enhance\` | Re-run the last answer with deeper synthesis |
+| \`/clear\` | Start a new chat |
+| \`/about\` | About Aurora |
 
 **Tailor answers to you**
 Set your role, interests, and how you'd like answers framed once in [your profile](/profile/preferences) — Aurora reads it on every query.
@@ -945,35 +953,35 @@ Set your role, interests, and how you'd like answers framed once in [your profil
 - *"Compare Wi-Fi 7 and Wi-Fi 8 for dense deployments"*
 - *"What did WBA publish about Smart MDUs?"*
 - *"What's the latest 802.11bn draft?"*
-`;
+` };
     }
 
     // ── AGENTS ────────────────────────────────────────────────────────────────
     if (/^(agents|list agents|show agents|all agents|available agents)$/.test(cmd)) {
       window.location.href = '/profile/agents';
-      return `**Navigating to Agents…**\n\nYou can also go directly: [View all Aurora agents](/profile/agents)`;
+      return { kind: 'reply', content: `**Navigating to Agents…**\n\nYou can also go directly: [View all Aurora agents](/profile/agents)` };
     }
 
     // ── MY AGENTS ─────────────────────────────────────────────────────────────
     if (/^(my agents?|myagents?|personal agents?|my personal agents?)$/.test(cmd)) {
       window.location.href = '/profile/my-agents';
-      return `**Navigating to My Agents…**\n\nYou can also go directly: [My Agents](/profile/my-agents)`;
+      return { kind: 'reply', content: `**Navigating to My Agents…**\n\nYou can also go directly: [My Agents](/profile/my-agents)` };
     }
 
     // ── FEED ──────────────────────────────────────────────────────────────────
     if (/^(feed|my feed|show feed|content feed)$/.test(cmd)) {
       window.location.href = '/feed';
-      return `**Navigating to Feed…**\n\nYou can also go directly: [Content Feed](/feed)`;
+      return { kind: 'reply', content: `**Navigating to Feed…**\n\nYou can also go directly: [Content Feed](/feed)` };
     }
 
     // ── CLEAR CHAT ────────────────────────────────────────────────────────────
     if (/^(clear|new chat|reset|reset chat|start over)$/.test(cmd)) {
-      return '**Starting a new chat…**\n\nClick the **New Chat** button in the toolbar above to clear this conversation.';
+      return { kind: 'reply', content: '**Starting a new chat…**\n\nClick the **New Chat** button in the toolbar above to clear this conversation.' };
     }
 
     // ── ABOUT ─────────────────────────────────────────────────────────────────
     if (/^(about|info|about aurora|what is aurora)$/.test(cmd)) {
-      return `## About Aurora
+      return { kind: 'reply', content: `## About Aurora
 
 **Aurora** is a RAG (Retrieval-Augmented Generation) knowledge assistant built for wireless standards professionals.
 
@@ -983,12 +991,65 @@ Set your role, interests, and how you'd like answers framed once in [your profil
 - **Creator agents**: AI personas that monitor workgroup activity and publish curated updates
 - **Teams integration**: Query Aurora directly from Microsoft Teams
 
-*Built by Extreme Networks · Aurora uses Azure OpenAI*`;
+*Built by Extreme Networks · Aurora uses Azure OpenAI*` };
+    }
+
+    // ── ENHANCE ───────────────────────────────────────────────────────────────
+    if (/^(enhance|deeper|enhance answer|elaborate)$/.test(cmd)) {
+      // Find the most recent assistant message that has documents we can enhance.
+      let targetIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const m = messages[i];
+        if (m.role === 'assistant' && m.documents?.length && m.originalQuery) {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx < 0) {
+        return { kind: 'reply', content: '**Nothing to enhance** — ask a question first, then use `/enhance` to deepen the answer.' };
+      }
+      // Defer to the existing button handler so the message updates in place.
+      setTimeout(() => handleEnhanceMessage(targetIdx), 0);
+      return { kind: 'reply', content: '_Re-running the last answer with deeper synthesis — this may take a moment._' };
+    }
+
+    // ── NEWS ──────────────────────────────────────────────────────────────────
+    if (/^(news|news update|what'?s new|whats new)$/.test(cmd)) {
+      return {
+        kind: 'async',
+        loading: '_Pulling your personalised news brief…_',
+        run: async () => {
+          try {
+            const brief = await fetchOracleNewsBrief();
+            const sinceLabel = brief.since
+              ? `since **${new Date(brief.since).toLocaleString()}**`
+              : 'from the **last few days**';
+            const sourceLabel = brief.source === 'subscriptions'
+              ? 'across your subscribed sources'
+              : brief.source === 'profile'
+                ? 'matched to your profile (no subscriptions found)'
+                : 'across Aurora';
+            let body = `## Your news ${sinceLabel}\n_${sourceLabel}_\n\n`;
+            if (!brief.items || brief.items.length === 0) {
+              body += '_No new updates since your last check._';
+            } else {
+              body += brief.items.map((it, i) => {
+                const date = it.publish_date ? ` · *${it.publish_date.slice(0, 10)}*` : '';
+                const link = it.url ? ` ([source](${it.url}))` : '';
+                return `${i + 1}. **${it.title}**${date}${link}\n   ${it.summary || ''}`;
+              }).join('\n\n');
+            }
+            return { content: body, citations: (brief.items || []).map((it, idx) => ({ index: idx + 1, document_url: it.url, title: it.title, excerpt: it.summary })) };
+          } catch (err) {
+            return { content: `**News brief unavailable.** ${err?.message || err}` };
+          }
+        },
+      };
     }
 
     // Not a command — return null to proceed with Oracle search
     return null;
-  }, []);
+  }, [messages]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1010,19 +1071,43 @@ Set your role, interests, and how you'd like answers framed once in [your profil
     const datasourceIds = selectedDatasources.map(ds => ds.datasource_id);
 
     // ── COMMAND ROUTING ──────────────────────────────────────────────────────
-    // Intercept short commands before they reach Oracle search.
-    // Commands are exact/near-exact matches — long questions always pass through.
-    if (queryText.split(' ').length <= 6) {
+    // Slash commands always route here. Legacy unprefixed forms also route
+    // for back-compat. Long questions (>6 words) always pass through to Oracle.
+    const looksLikeSlash = queryText.startsWith('/');
+    if (looksLikeSlash || queryText.split(' ').length <= 6) {
       const commandResponse = handleChatCommand(queryText);
       if (commandResponse !== null) {
         setInputValue('');
         setShowMentionDropdown(false);
         setSelectedDatasources([]);
-        // Add the user's command as a message so conversation history is preserved
         const userMsg = { role: 'user', content: queryText, timestamp: new Date() };
-        const assistantMsg = { role: 'assistant', content: commandResponse, timestamp: new Date(), isWelcomeMessage: false };
-        setMessages(prev => [...prev, userMsg, assistantMsg]);
-        return;
+
+        if (commandResponse.kind === 'reply') {
+          const assistantMsg = { role: 'assistant', content: commandResponse.content, timestamp: new Date(), isWelcomeMessage: false };
+          setMessages(prev => [...prev, userMsg, assistantMsg]);
+          return;
+        }
+
+        if (commandResponse.kind === 'async') {
+          // Pop a placeholder while the async work runs, then patch it in place.
+          const placeholderTs = new Date();
+          const placeholder = { role: 'assistant', content: commandResponse.loading, timestamp: placeholderTs, isWelcomeMessage: false };
+          setMessages(prev => [...prev, userMsg, placeholder]);
+          commandResponse.run().then((result) => {
+            setMessages(prev => prev.map(m => (
+              m === placeholder
+                ? { ...m, content: result?.content || '', citations: result?.citations || m.citations }
+                : m
+            )));
+          }).catch((err) => {
+            setMessages(prev => prev.map(m => (
+              m === placeholder
+                ? { ...m, content: `**Command failed.** ${err?.message || err}` }
+                : m
+            )));
+          });
+          return;
+        }
       }
     }
 

@@ -15,6 +15,7 @@ from src.routes.metrics import router as metrics_router
 from src.routes.admin import router as admin_router, cache_router as admin_cache_router
 from src.routes.agent import router as agent_router
 from src.routes.ingest import router as ingest_router
+from src.routes.news import router as news_router
 from src.services.query_history import get_query_history_service
 from src.services.fast_prewarm import FastPrewarmService
 from src.services.rollup_scheduler import RollupScheduler
@@ -69,6 +70,7 @@ app.include_router(admin_router)
 app.include_router(admin_cache_router)
 app.include_router(agent_router)
 app.include_router(ingest_router)
+app.include_router(news_router)
 
 
 @app.on_event("startup")

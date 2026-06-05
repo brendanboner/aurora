@@ -468,6 +468,14 @@ export const clearOracleConversation = async () => {
   return response.data;
 };
 
+// Personalised "news since last check" brief. Reads cached brief if fresh,
+// otherwise computes one from the user's joined subscriptions (or profile if
+// they have none). See oracle/src/routes/news.py for the response shape.
+export const fetchOracleNewsBrief = async () => {
+  const response = await apiClient.get('/oracle/news');
+  return response.data;
+};
+
 // Oracle Settings - Get Oracle service configuration (fast pipeline, etc.)
 export const getOracleSettings = async () => {
   const response = await apiClient.get('/oracle/admin/config/query-settings');
