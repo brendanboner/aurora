@@ -162,7 +162,14 @@ class TechFieldDayScraper(BaseScraper):
                 },
             ) as resp:
                 if resp.status != 200:
-                    logger.warning(f"TFD: HTTP {resp.status} for {url}")
+                    # WP returns 400 ("rest_post_invalid_page_number") when you
+                    # paginate past the last page — it's the canonical end-of-
+                    # pagination signal, not an error. Log at debug so the
+                    # scraper output isn't dominated by these.
+                    if resp.status == 400:
+                        logger.debug(f"TFD: HTTP 400 (end of pages) for {url}")
+                    else:
+                        logger.warning(f"TFD: HTTP {resp.status} for {url}")
                     return None
                 return await resp.json(content_type=None)
         except Exception as exc:
