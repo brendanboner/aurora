@@ -400,62 +400,73 @@ class TechFieldDayScraper(BaseScraper):
     # Events (for the calendar / Event nodes)
     # ---------------------------------------------------------------
 
+    @staticmethod
+    def _event_start_date(ev: Dict[str, Any]) -> str:
+        """Extract the real start date of a TFD event.
+
+        WP's `date` field is a meaningless placeholder (every event has
+        `2013-04-01`). The actual start date lives in
+        ``toolset-meta.event-information.sdate`` — a Unix epoch in ``.raw``
+        plus a human-readable ``.formatted``. Return ISO ``YYYY-MM-DD``,
+        or "" if unparseable.
+        """
+        tm = ev.get("toolset-meta") or {}
+        info = tm.get("event-information") or {}
+        sdate = info.get("sdate") or {}
+        raw = sdate.get("raw")
+        if raw:
+            try:
+                ts = int(raw)
+                return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            except (TypeError, ValueError):
+                pass
+        return ""
+
     async def _scrape_events(self, datasource_id_default: str, cutoff_iso: str) -> int:
         """Pull the event POST type and publish them as calendar Events.
 
-        Upcoming events get start_date in the future; past events from the
-        last year get historical Event entries (useful for "what was
-        discussed at AI Field Day 8?" queries). Returns count seen — actual
-        publish count is tracked via the base scraper batch counter, since
-        publish_event may filter via lookback.
+        Returns count seen — actual publish count is tracked via the base
+        scraper batch counter, since publish_event may filter via lookback.
         """
         seen = 0
-        # Cover future events too (some posts have future dates)
-        # WP REST orderby=date with order=desc gives newest first.
-        for page in range(1, 8):
-            # No `_embed` here — calendar Event nodes don't need the term
-            # details and the embed payload causes Kinsta to time out on
-            # the events endpoint when per_page is large.
-            url = (
-                f"{WP_API}/event"
-                f"?per_page=50&page={page}"
-                f"&orderby=date&order=desc"
+        cutoff_day = cutoff_iso[:10]  # 'YYYY-MM-DD' for client-side filtering
+
+        # One page of 50 events covers TFD's full recent slate. We can't rely
+        # on `orderby=date&order=desc` to give us future-first since the
+        # WP `date` is a 2013 placeholder for every event — instead we fetch
+        # the page and filter+sort client-side on the real `sdate`.
+        url = f"{WP_API}/event?per_page=50&page=1&orderby=modified&order=desc"
+        data = await self._get_json(url)
+        if not data or not isinstance(data, list):
+            return 0
+
+        for ev in data:
+            slug = (ev.get("slug") or "").lower()
+            title = unescape(ev.get("title", {}).get("rendered") or "").strip()
+            link = ev.get("link") or ""
+            content_html = ev.get("content", {}).get("rendered") or ""
+            description = _strip_html(content_html, max_chars=2500)
+            start_date = self._event_start_date(ev)
+            if not (title and link and start_date):
+                continue
+            # Skip events older than the 1-year cutoff. Future events
+            # (start_date > today) pass through unconditionally.
+            if start_date < cutoff_day:
+                continue
+
+            topic = _slug_to_topic(slug)
+            ds_id = f"techfieldday_{topic}" if topic and topic in KNOWN_TOPIC_SLUGS \
+                    else datasource_id_default
+            event_obj = Event(
+                name=title,
+                event_type="conference",
+                start_date=start_date,
+                description=description,
+                url=link,
+                datasource_id=ds_id,
             )
-            data = await self._get_json(url)
-            if not data or isinstance(data, dict) or len(data) == 0:
-                break
-
-            done_window = False
-            for ev in data:
-                slug = (ev.get("slug") or "").lower()
-                title = unescape(ev.get("title", {}).get("rendered") or "").strip()
-                link = ev.get("link") or ""
-                content_html = ev.get("content", {}).get("rendered") or ""
-                description = _strip_html(content_html, max_chars=2500)
-                date_iso = ev.get("date") or ev.get("date_gmt") or ""
-                if not (title and link and date_iso):
-                    continue
-                # 1-year lookback ceiling — older events get dropped
-                if date_iso < cutoff_iso:
-                    done_window = True
-                    continue
-
-                topic = _slug_to_topic(slug)
-                ds_id = f"techfieldday_{topic}" if topic and topic in KNOWN_TOPIC_SLUGS \
-                        else datasource_id_default
-                event_obj = Event(
-                    name=title,
-                    event_type="conference",
-                    start_date=date_iso[:10],
-                    description=description,
-                    url=link,
-                    datasource_id=ds_id,
-                )
-                self.publish_event(event_obj)
-                seen += 1
-            if done_window:
-                break
-            await asyncio.sleep(PAGE_DELAY_S)
+            self.publish_event(event_obj)
+            seen += 1
 
         return seen
 
@@ -504,6 +515,31 @@ class TechFieldDayScraper(BaseScraper):
         finally:
             self.end_batch(items_scraped=self._batch_items_count)
             self.mark_datasource_scraped(ds_id)
+
+    def publish_event(self, event: Event):
+        """Publish an Event to RabbitMQ, bypassing the global 4-month lookback.
+
+        Base ``publish_event`` calls ``_should_skip_by_lookback`` with
+        ``allow_initial_backfill=False``, so past TFD events older than the
+        site-wide ingestion-lookback window get dropped even on the first
+        scrape. We already enforce our own 1-year cap at the scraper level
+        (in ``_scrape_events``), so the global cutoff is redundant here —
+        and harmful, because it would silently throw away last summer's
+        events that are still highly relevant for ``what was discussed at
+        AI Field Day 7?``-style queries.
+        """
+        if self._current_batch_id and not event.batch_id:
+            event.batch_id = self._current_batch_id
+        message = event.to_message()
+        if self._collect_mode:
+            self._collected_messages.append(message)
+        else:
+            try:
+                self.rabbitmq_producer.publish(message)
+            except Exception as e:
+                logger.error(f"Error publishing TFD event to RabbitMQ: {e}")
+                raise
+        self.increment_batch_count(1)
 
     async def scrape_resource(self, resource: Resource) -> Resource:
         """Single-URL refresh — re-fetch the video page and refresh its summary."""
