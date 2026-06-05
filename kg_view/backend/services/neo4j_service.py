@@ -713,19 +713,25 @@ class Neo4jService:
         Returns:
             Dictionary with nodes and links
         """
+        # include `degree` so the frontend can size/glow expanded nodes by
+        # connectivity the same way the initial-load nodes are sized.
         query = f"""
         MATCH path = (start)-[*1..{hops}]-(connected)
         WHERE elementId(start) = $node_id
         WITH start, connected, relationships(path) as rels
         LIMIT $limit
-        RETURN 
+        WITH start, connected, rels,
+             COUNT {{ (start)--() }} as start_degree,
+             COUNT {{ (connected)--() }} as connected_degree
+        RETURN
             collect(DISTINCT {{
                 id: elementId(start),
                 label: labels(start)[0],
                 name: COALESCE(start.name, start.title, start.topic_id, start.org_id),
                 importance: COALESCE(start.importance, 0),
                 tier: COALESCE(start.tier, 2),
-                properties: properties(start)
+                properties: properties(start),
+                degree: start_degree
             }}) +
             collect(DISTINCT {{
                 id: elementId(connected),
@@ -733,7 +739,8 @@ class Neo4jService:
                 name: COALESCE(connected.name, connected.title, connected.topic_id, connected.org_id),
                 importance: COALESCE(connected.importance, 0),
                 tier: COALESCE(connected.tier, 2),
-                properties: properties(connected)
+                properties: properties(connected),
+                degree: connected_degree
             }}) as nodes,
             [rel IN rels | {{
                 source: elementId(startNode(rel)),
@@ -751,13 +758,15 @@ class Neo4jService:
             for result in results:
                 all_links.extend(result.get('links', []))
             
-            # Deduplicate nodes
+            # Deduplicate nodes; if the same node appears via different paths,
+            # keep the max degree (most-informative version).
             nodes_dict = {}
             for result in results:
                 for node in result.get('nodes', []):
-                    node_id = node['id']
-                    if node_id not in nodes_dict:
-                        nodes_dict[node_id] = node
+                    nid = node['id']
+                    existing = nodes_dict.get(nid)
+                    if existing is None or (node.get('degree', 0) or 0) > (existing.get('degree', 0) or 0):
+                        nodes_dict[nid] = node
             
             return {
                 'nodes': list(nodes_dict.values()),

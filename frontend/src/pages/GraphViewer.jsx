@@ -47,9 +47,9 @@ const VIS_OPTIONS = {
   nodes: {
     shape: 'dot',
     scaling: {
-      min: 6,
-      max: 28,
-      label: { enabled: true, min: 10, max: 16, maxVisible: 20, drawThreshold: 8 },
+      min: 5,
+      max: 42,
+      label: { enabled: true, min: 9, max: 18, maxVisible: 22, drawThreshold: 7 },
     },
     font: { size: 11, color: '#e8e8f0', face: 'system-ui, sans-serif' },
     borderWidth: 0,
@@ -119,14 +119,26 @@ const GLOW_COLOR = {
   Event:        '#f8c060',
 };
 
+// Visual size weight by node type — Resources are individual docs/pages, so
+// each one looks "too important" if sized like a Topic/Org. Aggregate types
+// get a multiplicative boost so the eye reads the hierarchy correctly.
+const SIZE_WEIGHT = {
+  Topic:        2.0,   // Topics are conceptual aggregates → biggest
+  Organization: 1.6,
+  Person:       1.4,
+  Event:        1.3,
+  Resource:     0.8,   // Single documents — smallest in the family
+};
+
 function toVisNode(n) {
   const meta = NODE_META[n.label] || { color: '#6E7079' };
   const importance = n.properties?.importance || 0;
+  const degree = n.degree || 0;
   // Glow when importance crosses a threshold OR the node is unusually well
   // connected (degree ≥ 20 — usually a hub topic/org). Two intensities so
   // exceptional nodes pop more than merely-prominent ones.
   const isHighlyImportant = importance >= 0.7;
-  const isImportant = importance >= 0.45 || (n.degree || 0) >= 20;
+  const isImportant = importance >= 0.45 || degree >= 20;
   const glowColor = GLOW_COLOR[n.label] || '#a89df5';
   const shadow = isHighlyImportant
     ? { enabled: true, color: glowColor, size: 28, x: 0, y: 0 }
@@ -134,12 +146,20 @@ function toVisNode(n) {
       ? { enabled: true, color: glowColor, size: 14, x: 0, y: 0 }
       : { enabled: false };
 
+  // Combine type-weight, importance, and degree into a single sizing value.
+  // Resources use their `importance` directly (most have it set 0.0-1.0).
+  // Non-Resources have importance=0 in the KG, so we fall back to degree-
+  // based scaling — a Topic linked to 50 docs is bigger than one linked to 3.
+  const typeWeight = SIZE_WEIGHT[n.label] ?? 1.0;
+  const degreeScore = Math.min(1.0, degree / 40);  // 40+ degree → max
+  const baseScore = importance > 0 ? importance : Math.max(0.2, degreeScore);
+  const value = baseScore * typeWeight;
+
   return {
     id: n.id,
     label: (n.name || String(n.id)).slice(0, 28),
     title: buildTooltipElement(n),
-    // Non-Resources have importance=0; give them a baseline size so they appear
-    value: importance > 0 ? importance : 0.15,
+    value,
     color: {
       background: meta.color,
       border: meta.color,
@@ -224,9 +244,10 @@ const GraphViewer = () => {
         el.offsetHeight;
         el.classList.add('gv-pulse-active');
         clearTimeout(pulseTimer.current);
+        // Final ring delay is 0.8s + 2.6s anim = ~3.4s; give it a hair more
         pulseTimer.current = setTimeout(() => {
           el?.classList.remove('gv-pulse-active');
-        }, 1800);
+        }, 3600);
       } catch (_) { /* ignore */ }
     };
     // Defer slightly so the fit() animation has a chance to land
@@ -281,7 +302,11 @@ const GraphViewer = () => {
     if (!nodeId || !networkRef.current || !nodesDS.current) return;
     setExpanding(true);
     try {
-      const hood = await getNodeNeighborhood(nodeId, 1, 50);
+      // 2-hop expand: brings in the node's direct neighbours AND THEIR
+      // neighbours, so clicking a Topic surfaces the documents that mention
+      // it AND the other topics those documents are about — the full
+      // "all 1- and 2-hop connections" view for deep dives.
+      const hood = await getNodeNeighborhood(nodeId, 2, 200);
       const newNodes = (hood.nodes || [])
         .filter(n => !nodesDS.current.get(n.id))
         .map(toVisNode);
@@ -374,8 +399,16 @@ const GraphViewer = () => {
       if (matches.length > 0) {
         networkRef.current.selectNodes(matches);
         networkRef.current.fit({ nodes: matches, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
-        // Single hit → pulse the target so the eye lands on it
-        if (matches.length === 1) showTargetPulse(matches[0]);
+        // Single hit → also pull the 2-hop neighbourhood so the user sees
+        // the full connected web of the thing they searched for. Pulse the
+        // target so the eye lands on the focus node first.
+        if (matches.length === 1) {
+          const target = matches[0];
+          const item = nodesDS.current.get(target);
+          setSelectedNode(item?._raw ?? null);
+          showTargetPulse(target);
+          if (expandAndFocusRef.current) expandAndFocusRef.current(target);
+        }
       } else if (q.length > 2) {
         try {
           const results = await searchGraphNodes(searchQuery, 20);
@@ -383,7 +416,13 @@ const GraphViewer = () => {
           if (ids.length) {
             networkRef.current.selectNodes(ids);
             networkRef.current.fit({ nodes: ids, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
-            if (ids.length === 1) showTargetPulse(ids[0]);
+            if (ids.length === 1) {
+              const target = ids[0];
+              const item = nodesDS.current.get(target);
+              setSelectedNode(item?._raw ?? null);
+              showTargetPulse(target);
+              if (expandAndFocusRef.current) expandAndFocusRef.current(target);
+            }
           }
         } catch (_) { /* non-critical */ }
       }
