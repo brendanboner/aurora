@@ -1018,12 +1018,30 @@ class DocumentDigester:
                 event_data["end_date"] = None
     
     def _get_message_id(self, message: Dict[str, Any]) -> str:
-        """Extract a unique identifier from a message for tracking purposes."""
+        """Extract a unique identifier from a message for tracking purposes.
+
+        Note: for events we combine url + name + start_date. Some scrapers
+        emit several distinct events all anchored at the same canonical page
+        (e.g. ``IEEE_80211_tg`` publishes 6 working-group sessions all with
+        ``url=Meeting_Plan.html``). URL alone aliased them onto a single
+        Redis delivery-counter key, so concurrent fan-out tripped the
+        redelivery limit and DLQ'd the trailing events on their first
+        delivery. The name disambiguates them; the start_date guards against
+        same-name recurring events.
+        """
         resource_data = message.get("resource_data", {})
         event_data = message.get("event_data", {})
-        # For events, use URL (unique) not name (can be duplicate for recurring events)
-        # For resources, use URL
-        return resource_data.get("url") or event_data.get("url") or event_data.get("name") or message.get("id", "unknown")
+        if resource_data:
+            return resource_data.get("url") or message.get("id", "unknown")
+        if event_data:
+            parts = [
+                event_data.get("url") or "",
+                event_data.get("name") or "",
+                event_data.get("start_date") or "",
+            ]
+            joined = "|".join(parts).strip("|")
+            return joined or message.get("id", "unknown")
+        return message.get("id", "unknown")
     
     def _get_message_title(self, message: Dict[str, Any]) -> str:
         """Extract a display title from a message for logging purposes."""
