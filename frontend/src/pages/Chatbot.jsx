@@ -937,6 +937,7 @@ What would you like to know?`;
 |---|---|
 | \`/help\` | Show this guide |
 | \`/news\` | Brief news update since your last check |
+| \`/workgroups [filter]\` | List datasources (e.g. \`/workgroups wba\`, \`/workgroups tfd\`) |
 | \`/agents\` | Browse all Aurora content agents |
 | \`/myagents\` | Your personal AI agents |
 | \`/feed\` | Your personalised content feed |
@@ -1011,6 +1012,95 @@ Set your role, interests, and how you'd like answers framed once in [your profil
       // Defer to the existing button handler so the message updates in place.
       setTimeout(() => handleEnhanceMessage(targetIdx), 0);
       return { kind: 'reply', content: '_Re-running the last answer with deeper synthesis — this may take a moment._' };
+    }
+
+    // ── WORKGROUPS ────────────────────────────────────────────────────────────
+    // /workgroups            → grouped overview (counts per scraper / parent)
+    // /workgroups <filter>   → flat list of matches (id, name, primary_alias)
+    {
+      const wgMatch = cmd.match(/^(?:workgroups?|wgs?|sources)(?:\s+(.+))?$/);
+      if (wgMatch) {
+        const filter = (wgMatch[1] || '').trim().toLowerCase();
+        return {
+          kind: 'async',
+          loading: filter
+            ? `_Listing workgroups matching **${filter}**…_`
+            : '_Listing all available workgroups…_',
+          run: async () => {
+            try {
+              const resp = await getDatasources();
+              const all = resp.datasources || [];
+              const formatRow = (d) => {
+                const alias = d.primary_alias ? `\`@${d.primary_alias}\`` : `\`${d.datasource_id}\``;
+                const docs = d.document_count ? ` · ${d.document_count} docs` : '';
+                const parent = d.parent_datasource_id ? ` _(child of ${d.parent_datasource_id})_` : '';
+                return `- ${alias} — **${d.name || d.datasource_id}**${docs}${parent}`;
+              };
+
+              if (!filter) {
+                // Grouped overview — by scraper_type, with top parent counts.
+                const byScraper = new Map();
+                for (const d of all) {
+                  const key = d.scraper_type || '(unknown)';
+                  if (!byScraper.has(key)) byScraper.set(key, []);
+                  byScraper.get(key).push(d);
+                }
+                const lines = [`## Workgroups & datasources (${all.length} total)`];
+                lines.push('Use `/workgroups <filter>` to narrow — e.g. `/workgroups wba`, `/workgroups tfd`, `/workgroups iot`.');
+                lines.push('');
+                const sorted = [...byScraper.entries()].sort((a, b) => b[1].length - a[1].length);
+                for (const [scraper, items] of sorted) {
+                  // Find the "root" parent for this scraper if any
+                  const parents = items.filter(i => !i.parent_datasource_id);
+                  const children = items.filter(i => i.parent_datasource_id);
+                  lines.push(`**${scraper}** — ${items.length} entries`);
+                  for (const p of parents.slice(0, 4)) {
+                    const childCount = children.filter(c => c.parent_datasource_id === p.datasource_id).length;
+                    const cn = childCount ? ` _(+${childCount} children)_` : '';
+                    lines.push(`  - \`@${p.primary_alias || p.datasource_id}\` — ${p.name || p.datasource_id}${cn}`);
+                  }
+                  if (parents.length > 4) {
+                    lines.push(`  - …and ${parents.length - 4} more (use \`/workgroups ${scraper}\`)`);
+                  }
+                }
+                return { content: lines.join('\n') };
+              }
+
+              // Filtered list — substring match on id, name, alias, scraper_type, parent.
+              const needle = filter;
+              const matches = all.filter((d) => {
+                const hay = [
+                  d.datasource_id,
+                  d.name,
+                  d.primary_alias,
+                  d.scraper_type,
+                  d.parent_datasource_id || '',
+                  ...(d.aliases || []),
+                ].join(' ').toLowerCase();
+                return hay.includes(needle);
+              });
+
+              if (matches.length === 0) {
+                return { content: `_No workgroups match **${filter}**._ Type \`/workgroups\` to see all.` };
+              }
+
+              matches.sort((a, b) => (b.document_count || 0) - (a.document_count || 0));
+              const lines = [`## Workgroups matching **${filter}** (${matches.length})`];
+              lines.push('');
+              for (const d of matches.slice(0, 60)) {
+                lines.push(formatRow(d));
+              }
+              if (matches.length > 60) {
+                lines.push(`\n_…and ${matches.length - 60} more. Narrow the filter for the rest._`);
+              }
+              lines.push('\n_Use `@<alias>` in any question to scope answers to one workgroup._');
+              return { content: lines.join('\n') };
+            } catch (err) {
+              return { content: `**Could not list workgroups.** ${err?.message || err}` };
+            }
+          },
+        };
+      }
     }
 
     // ── NEWS ──────────────────────────────────────────────────────────────────

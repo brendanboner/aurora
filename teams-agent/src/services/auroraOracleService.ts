@@ -246,6 +246,22 @@ export class AuroraOracleService {
     }
   }
 
+  /** List all known datasources (id, name, alias, parent). Used by /workgroups. */
+  async listDatasources(): Promise<Array<{
+    datasource_id: string;
+    name?: string;
+    description?: string | null;
+    document_count?: number;
+    parent_datasource_id?: string | null;
+    scraper_type?: string;
+    primary_alias?: string;
+    aliases?: string[];
+  }>> {
+    const client = this.clientFor();
+    const response = await client.get('/datasources');
+    return response.data?.datasources || [];
+  }
+
   /** Personalised /news brief for the given user. See oracle/src/routes/news.py. */
   async getNewsBrief(
     userId?: string,

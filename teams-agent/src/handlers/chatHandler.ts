@@ -376,6 +376,79 @@ export class ChatHandler {
   }
 
   /**
+   * Handle "/workgroups [filter]" — list datasources.
+   *   no filter   → grouped overview by scraper_type
+   *   filter      → flat substring-matched list
+   */
+  async handleWorkgroups(context: TurnContext, filter?: string): Promise<void> {
+    try {
+      const all = await this.oracleService.listDatasources();
+      const needle = (filter || '').trim().toLowerCase();
+
+      const formatRow = (d: { datasource_id: string; name?: string; primary_alias?: string; document_count?: number; parent_datasource_id?: string | null }) => {
+        const alias = d.primary_alias ? `\`@${d.primary_alias}\`` : `\`${d.datasource_id}\``;
+        const docs = d.document_count ? ` · ${d.document_count} docs` : '';
+        const parent = d.parent_datasource_id ? ` _(child of ${d.parent_datasource_id})_` : '';
+        return `- ${alias} — **${d.name || d.datasource_id}**${docs}${parent}`;
+      };
+
+      if (!needle) {
+        // Grouped overview by scraper_type.
+        const byScraper = new Map<string, typeof all>();
+        for (const d of all) {
+          const key = d.scraper_type || '(unknown)';
+          if (!byScraper.has(key)) byScraper.set(key, [] as any);
+          byScraper.get(key)!.push(d);
+        }
+        const lines: string[] = [`**Workgroups & datasources (${all.length} total)**`];
+        lines.push('Use `/workgroups <filter>` to narrow — e.g. `/workgroups wba`, `/workgroups tfd`, `/workgroups iot`.', '');
+        const sorted = [...byScraper.entries()].sort((a, b) => b[1].length - a[1].length);
+        for (const [scraper, items] of sorted) {
+          const parents = items.filter(i => !i.parent_datasource_id);
+          const children = items.filter(i => !!i.parent_datasource_id);
+          lines.push(`**${scraper}** — ${items.length} entries`);
+          for (const p of parents.slice(0, 4)) {
+            const childCount = children.filter(c => c.parent_datasource_id === p.datasource_id).length;
+            const cn = childCount ? ` _(+${childCount} children)_` : '';
+            lines.push(`  - \`@${p.primary_alias || p.datasource_id}\` — ${p.name || p.datasource_id}${cn}`);
+          }
+          if (parents.length > 4) {
+            lines.push(`  - …and ${parents.length - 4} more (\`/workgroups ${scraper}\`)`);
+          }
+        }
+        await context.sendActivity(lines.join('\n'));
+        return;
+      }
+
+      const matches = all.filter((d) => {
+        const hay = [
+          d.datasource_id, d.name, d.primary_alias, d.scraper_type,
+          d.parent_datasource_id || '', ...(d.aliases || []),
+        ].join(' ').toLowerCase();
+        return hay.includes(needle);
+      });
+
+      if (matches.length === 0) {
+        await context.sendActivity(`_No workgroups match **${needle}**._ Type \`/workgroups\` to see all.`);
+        return;
+      }
+      matches.sort((a, b) => (b.document_count || 0) - (a.document_count || 0));
+      const lines = [`**Workgroups matching ${needle} (${matches.length})**`, ''];
+      for (const d of matches.slice(0, 50)) {
+        lines.push(formatRow(d));
+      }
+      if (matches.length > 50) {
+        lines.push(`\n_…and ${matches.length - 50} more. Narrow the filter for the rest._`);
+      }
+      lines.push('\n_Use `@<alias>` in any question to scope answers to one workgroup._');
+      await context.sendActivity(lines.join('\n'));
+    } catch (err: any) {
+      console.error('[ChatHandler] handleWorkgroups error:', err?.response?.data || err?.message || err);
+      await context.sendActivity('Could not list workgroups right now. Try again in a moment.');
+    }
+  }
+
+  /**
    * Handle "/news" — personalised brief from the Oracle.
    * Mirrors the web chat behaviour: short list of new items since the
    * user's last /news request (or the last few days on first use).

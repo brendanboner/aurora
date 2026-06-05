@@ -210,6 +210,12 @@ export class AuroraBot extends TeamsActivityHandler {
         else if (lower === 'news' || lower === 'news update' || lower === "what's new" || lower === 'whats new') {
           await this.chatHandler.handleNews(context);
         }
+        // ── workgroups [filter] ───────────────────────────────────────────
+        else if (/^(workgroups?|wgs?|sources)(\s+.+)?$/.test(lower)) {
+          const m = lower.match(/^(?:workgroups?|wgs?|sources)(?:\s+(.+))?$/);
+          const filter = m?.[1]?.trim();
+          await this.chatHandler.handleWorkgroups(context, filter);
+        }
         // ── enhance ───────────────────────────────────────────────────────
         else if (lower === 'enhance' || lower === 'enhance answer' || lower === 'more detail') {
           await this.chatHandler.handleEnhance(context);
@@ -399,6 +405,7 @@ export class AuroraBot extends TeamsActivityHandler {
           facts: [
             { title: '/news', value: 'Personalised brief of updates since you last asked' },
             { title: '/feed', value: 'Your personalised content feed' },
+            { title: '/workgroups [filter]', value: 'List datasources — e.g. `/workgroups wba`, `/workgroups tfd`' },
             { title: '/show', value: 'Read the full text of the last agent notification' },
             { title: '/enhance', value: 'Re-run the last answer with deeper source analysis' },
           ],

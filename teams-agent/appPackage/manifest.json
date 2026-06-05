@@ -51,6 +51,10 @@
               "description": "Show your personalized content feed"
             },
             {
+              "title": "/workgroups",
+              "description": "List available workgroups / datasources (use /workgroups <filter> to narrow)"
+            },
+            {
               "title": "/agents",
               "description": "List available AI agents"
             },
