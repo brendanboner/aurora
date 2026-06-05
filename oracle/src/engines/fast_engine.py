@@ -104,10 +104,12 @@ class FastEngine:
 
         cache_key = "fast:datasource_tree:children"
         child_map: dict = {}
-        if self.fast_cache and self.fast_cache._redis_client:
+        redis_client = getattr(self.fast_cache, "redis_client", None) if self.fast_cache else None
+
+        if redis_client is not None:
             try:
                 import json as _json
-                cached = self.fast_cache._redis_client.get(cache_key)
+                cached = await redis_client.get(cache_key)
                 if cached:
                     child_map = _json.loads(cached)
             except Exception:
@@ -131,9 +133,12 @@ class FastEngine:
                 )
                 for r in rows:
                     child_map.setdefault(r["parent"], []).append(r["child"])
-                if self.fast_cache and self.fast_cache._redis_client:
-                    import json as _json
-                    self.fast_cache._redis_client.setex(cache_key, 300, _json.dumps(child_map))
+                if redis_client is not None and child_map:
+                    try:
+                        import json as _json
+                        await redis_client.setex(cache_key, 300, _json.dumps(child_map))
+                    except Exception:
+                        pass
             except Exception as exc:
                 logger.warning(f"_expand_datasource_parents: Neo4j lookup failed: {exc}")
                 return datasource_ids
