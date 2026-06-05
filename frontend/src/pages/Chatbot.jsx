@@ -234,8 +234,8 @@ What would you like to know?`;
     "Compare Wi-Fi 7 and Wi-Fi 8 for dense enterprise deployments",
     "What are the latest press releases?",
     "What are the open security concerns in WPA3?",
-    "What are the latest IEEE 802.11 task group updates?",
-    "What's the status of 802.11bn (Wi-Fi 8)?",
+    "What is OFDMA and how does it work?",
+    "What's new in Wi-Fi 7?",
   ];
 
   // Welcome message JSX with icons

@@ -566,39 +566,31 @@ class Neo4jService:
                 }
 
         # 3b) ANCHOR nodes — always include the demo's home org + a small set
-        # of named people, plus their 1-hop neighbours. Lets the user see
-        # themselves and their colleagues on the canvas the moment the view
-        # loads, regardless of whether they've published anything recently.
-        # IngestionBatch / DataSource excluded so we don't drag pipeline
-        # plumbing in.
+        # of named people, but NOT their 1-hop neighbours (that would dump
+        # 100+ Extreme employees on the initial canvas). The full cluster
+        # opens when the user clicks the Extreme Networks node.
+        # Exact-name match preferred; fall back to lowercase-equal so
+        # "Brendan Bonner" matches "brendan bonner" but not random
+        # substrings.
         if anchor_orgs or anchor_people:
             anchor_query = """
-            // Match orgs by exact name (fuzzy folded to lowercase contains)
             CALL {
                 WITH $anchor_orgs AS orgs
                 MATCH (o:Organization)
                 WHERE size(orgs) > 0
-                  AND (toLower(o.name) IN [x IN orgs | toLower(x)]
-                       OR any(x IN orgs WHERE toLower(o.name) CONTAINS toLower(x)))
-                RETURN o AS anchor
+                  AND toLower(o.name) IN [x IN orgs | toLower(x)]
+                RETURN o AS n
                 UNION
                 WITH $anchor_people AS ppl
                 MATCH (p:Person)
                 WHERE size(ppl) > 0
                   AND (toLower(p.name) IN [x IN ppl | toLower(x)]
-                       OR any(x IN ppl WHERE toLower(p.name) CONTAINS toLower(x))
-                       OR any(x IN ppl WHERE toLower(coalesce(p.email,'')) CONTAINS toLower(x)))
-                RETURN p AS anchor
+                       OR (p.email IS NOT NULL
+                           AND any(x IN ppl WHERE toLower(p.email) = toLower(x))))
+                RETURN p AS n
             }
-            // Each anchor + its 1-hop neighbours (excluding pipeline types)
-            OPTIONAL MATCH (anchor)-[]-(neigh)
-            WHERE NOT neigh:IngestionBatch AND NOT neigh:DataSource
-            WITH anchor, collect(DISTINCT neigh) AS neighbours
-            UNWIND ([anchor] + neighbours) AS n
             WITH DISTINCT n
-            WHERE n IS NOT NULL
-              AND NOT n:IngestionBatch
-              AND NOT n:DataSource
+            WHERE NOT n:IngestionBatch AND NOT n:DataSource
             RETURN elementId(n) AS id,
                    labels(n)[0]  AS label,
                    COALESCE(n.name, n.title, n.topic_id, n.org_id, n.person_id, n.source_id) AS name,
