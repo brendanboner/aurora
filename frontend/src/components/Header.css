@@ -27,7 +27,11 @@
   overflow: hidden;
 }
 
-/* Hamburger button */
+/* Hamburger button — visible-bar centre is nudged right so it lines up
+   with the drawer's menu-item icons when the drawer is open. Drawer item
+   icons centre at viewport x = drawer.left (10) + drawer-nav.padding-left
+   (10) + drawer-item.padding-left (12) + half-icon (9) = 41. Without
+   the offset the bars would sit 4px left of that. */
 .mobile-menu-btn {
   display: inline-flex;
   flex-direction: column;
@@ -39,6 +43,7 @@
   color: var(--a1-text-tertiary);
   cursor: pointer;
   padding: 7px;
+  margin-left: 4px;
   border-radius: var(--a1-radius-md);
   width: 34px;
   height: 34px;
