@@ -76,10 +76,11 @@ KNOWN_TOPIC_SLUGS = {
 # Hard upper bound on lookback (per user requirement — no further than 1y).
 MAX_LOOKBACK_DAYS = 365
 
-# Kinsta times out on `_embed=wp:term` once per_page climbs past ~25, so we
-# keep video pages small. We still hit the daily incremental window in a single
-# page for ~weeks of activity.
-PER_PAGE = 25
+# WP per_page max is 100. We don't use _embed=wp:term any more (it returned
+# the global event-post registry instead of per-video taxonomy terms, due to
+# a WP rest_base collision — we read class_list tokens instead), so the larger
+# page is no longer a timeout risk.
+PER_PAGE = 100
 
 # Polite delay between paginated fetches
 PAGE_DELAY_S = 0.4
@@ -188,69 +189,64 @@ class TechFieldDayScraper(BaseScraper):
     # ---------------------------------------------------------------
 
     @staticmethod
-    def _extract_embedded_terms(video: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
-        """Return a {taxonomy: [terms]} mapping from a `?_embed=wp:term` response.
+    def _terms_from_class_list(video: Dict[str, Any]) -> Dict[str, List[str]]:
+        """Bucket the post's `class_list` tokens by taxonomy.
 
-        WP's `_embedded.wp:term` is a list of lists (one per taxonomy attached
-        to the post). Each inner list contains term objects with name/slug/
-        taxonomy. We bucket them by taxonomy for easier lookup downstream.
+        The WP REST API exposes a name collision: ``event`` is both a custom
+        post type *and* a taxonomy attached to ``video``. Because of that
+        collision, ``_embed=wp:term`` returns the global event-post registry
+        instead of the per-video taxonomy terms, which is useless. The
+        ``class_list`` field, however, contains the WP post-CSS classes —
+        and WP emits ``event-<slug>``, ``personnel-<slug>``, ``sponsor-<slug>``,
+        ``configuration-<slug>`` tokens there, one per attached term. We
+        parse those directly to recover the per-video term slugs.
         """
-        out: Dict[str, List[Dict[str, Any]]] = {}
-        emb = (video.get("_embedded") or {}).get("wp:term") or []
-        for terms_group in emb:
-            for t in terms_group or []:
-                if not t:
-                    continue
-                tax = t.get("taxonomy") or "?"
-                out.setdefault(tax, []).append(t)
+        out: Dict[str, List[str]] = {"event": [], "personnel": [], "sponsor": [], "configuration": []}
+        for token in (video.get("class_list") or []):
+            for tax in out.keys():
+                prefix = tax + "-"
+                if token.startswith(prefix):
+                    out[tax].append(token[len(prefix):])
+                    break
         return out
 
     @classmethod
     def _resolve_topic_datasource(
         cls,
-        video: Dict[str, Any],
+        terms: Dict[str, List[str]],
         event_index: Dict[str, Dict[str, Any]],
     ) -> Tuple[str, Optional[str], Optional[str]]:
         """Return (datasource_id, event_slug, event_name) for a video.
 
-        Falls back to the parent `techfieldday` datasource for partner events
-        (KubeCon, RSAC, Cisco Live, …) that don't follow the *FD<num> pattern.
+        Iterates the per-video event-term slugs (from ``class_list``) and
+        picks the first one whose prefix matches a known TFD event series
+        (aifd, cfd, nfd, …). Falls back to the parent ``techfieldday``
+        datasource for partner events (KubeCon, RSAC, Cisco Live, …) that
+        don't follow the *FD<num> pattern.
         """
-        terms = cls._extract_embedded_terms(video)
-        # The first 'event' term on a video is the primary one (WP orders by
-        # term creation; the canonical event for the video is the most recent
-        # one tagged on it — but in our observed data the first slug matches
-        # the link path, so we use that).
-        # Robust approach: pick the event term whose slug is a known TFD
-        # event-series prefix; otherwise fall through.
-        event_terms = terms.get("event") or terms.get("?", [])  # Sometimes taxonomy field is absent
-        # Filter only term objects that look like 'event' taxonomy entries —
-        # they're the ones with slug matching the event's own slug regex.
         topic = None
         event_slug = None
-        event_name = None
-        # Strategy A: iterate event terms; first one with a topic prefix wins
-        for term in event_terms:
-            slug = (term.get("slug") or "").lower()
+        for slug in terms.get("event", []):
             mapped = _slug_to_topic(slug)
             if mapped:
                 topic = mapped
                 event_slug = slug
-                event_name = term.get("name") or slug
                 break
-        # Strategy B: still no topic — try the event POST index via the
-        # video's own slug pattern or the first event term slug
-        if topic is None and event_terms:
-            first = event_terms[0]
-            event_slug = (first.get("slug") or "").lower()
-            event_name = first.get("name") or event_slug
+        # If no topic-mapped event was found, still remember the first event
+        # slug so the summary can name the (partner) event.
+        if event_slug is None and terms.get("event"):
+            event_slug = terms["event"][0]
+
+        # Resolve a human-readable event name via the recent-events index
+        # if possible.
+        event_name: Optional[str] = None
+        if event_slug:
             post = event_index.get(event_slug)
             if post:
-                # Map post.topic[term_id] to a topic slug via the embedded
-                # taxonomy terms on the post — but we don't fetch those for
-                # every event. Skip for now: fall through to parent.
-                pass
-        # Default: parent datasource
+                event_name = unescape(post.get("title", {}).get("rendered") or "") or event_slug
+            else:
+                event_name = event_slug
+
         topic_slug = topic if topic in KNOWN_TOPIC_SLUGS else None
         datasource_id = f"techfieldday_{topic_slug}" if topic_slug else "techfieldday"
         return datasource_id, event_slug, event_name
@@ -302,14 +298,17 @@ class TechFieldDayScraper(BaseScraper):
         excerpt_html = video.get("excerpt", {}).get("rendered") or ""
         description = _strip_html(content_html or excerpt_html, max_chars=3500)
 
-        terms = cls._extract_embedded_terms(video)
-        personnel = terms.get("personnel") or []
-        sponsors = terms.get("sponsor") or []
-        configurations = terms.get("configuration") or []
+        terms = cls._terms_from_class_list(video)
+        # Slugs → human names. We don't have the full term registry in-hand,
+        # so we titlecase the slug as a serviceable fallback (e.g.
+        # ``vmware-by-broadcom`` → ``Vmware By Broadcom``). Good enough for
+        # the digester's NER pass to recognise the entity.
+        def _name_from_slug(slug: str) -> str:
+            return " ".join(w.capitalize() for w in slug.replace("_", " ").split("-"))
 
-        presenter = ", ".join(t.get("name") or "" for t in personnel[:3] if t.get("name"))
-        sponsor = ", ".join(t.get("name") or "" for t in sponsors[:3] if t.get("name"))
-        kind = (configurations[0].get("name") if configurations else "video") or "video"
+        presenter = ", ".join(_name_from_slug(s) for s in terms["personnel"][:3])
+        sponsor = ", ".join(_name_from_slug(s) for s in terms["sponsor"][:3])
+        kind = (terms["configuration"][0] if terms["configuration"] else "video") or "video"
 
         # toolset-meta carries youtube / vimeo IDs
         tm = video.get("toolset-meta") or {}
@@ -317,8 +316,8 @@ class TechFieldDayScraper(BaseScraper):
         youtube_id = (vi.get("youtube-id") or {}).get("raw") or ""
         vimeo_id = (vi.get("vimeo-id") or {}).get("raw") or ""
 
-        ds_id, event_slug, event_name = cls._resolve_topic_datasource(video, event_index)
-        if ds_id == "techfieldday" and datasource_id_default:
+        ds_id, event_slug, event_name = cls._resolve_topic_datasource(terms, event_index)
+        if ds_id == "techfieldday" and datasource_id_default and datasource_id_default != "techfieldday":
             ds_id = datasource_id_default
 
         summary = cls._video_summary(
@@ -362,7 +361,6 @@ class TechFieldDayScraper(BaseScraper):
                 f"?per_page={PER_PAGE}&page={page}"
                 f"&orderby=date&order=desc"
                 f"&after={cutoff_iso}"
-                f"&_embed=wp:term"
             )
             data = await self._get_json(url)
             if not data or isinstance(data, dict) or len(data) == 0:
@@ -548,7 +546,7 @@ class TechFieldDayScraper(BaseScraper):
         if not m:
             return resource
         slug = m.group(1)
-        data = await self._get_json(f"{WP_API}/video?slug={slug}&_embed=wp:term")
+        data = await self._get_json(f"{WP_API}/video?slug={slug}")
         if not data:
             return resource
         v = data[0]
