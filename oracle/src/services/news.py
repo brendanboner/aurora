@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional
@@ -58,6 +59,9 @@ class NewsItem:
     summary: Optional[str]
     publish_date: Optional[str]
     datasource_id: Optional[str]
+    people: List[str] = field(default_factory=list)
+    organizations: List[str] = field(default_factory=list)
+    topics: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -66,7 +70,142 @@ class NewsItem:
             "summary": self.summary,
             "publish_date": self.publish_date,
             "datasource_id": self.datasource_id,
+            "people": self.people,
+            "organizations": self.organizations,
+            "topics": self.topics,
         }
+
+
+# Leading-prefix filler — boilerplate that the digester's LLM tacks onto
+# otherwise factual sentences ("This document outlines the agenda for X" →
+# we strip the "This document outlines (the|an|some)?" prefix and keep the
+# factual tail "agenda for X").
+_LEADING_FILLER_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        # "This/The (document|presentation|note|file|...) (outlines|covers|highlights|...) (the|a|an)?"
+        r"^(?:this|the)\s+"
+        r"(?:document|file|presentation|video|note|notes|deck|slide(?:s|deck)?|minutes|"
+        r"brief(?:ing)?|recording|session|update|report|blog|article|post|email|"
+        r"agenda|page)\s+"
+        r"(?:also\s+)?"
+        r"(?:outlines?|covers?|highlights?|describes?|discusses?|presents?|"
+        r"introduces?|explains?|examines?|explores?|focuses?\s+on|details?|"
+        r"provides?|offers?|emphasi[zs]es?|aims?\s+to|seeks?\s+to|reviews?|"
+        r"summari[zs]es?|mentions?|notes?|states?|reports?\s+on|gives?|"
+        r"includes?)\s+"
+        r"(?:the\s+|an?\s+|some\s+)?",
+        # "It (also)? (highlights|outlines|covers|...) (the|a)?"
+        r"^it\s+(?:also\s+)?"
+        r"(?:outlines?|covers?|highlights?|describes?|discusses?|presents?|"
+        r"introduces?|explains?|examines?|explores?|focuses?\s+on|details?|"
+        r"provides?|offers?|emphasi[zs]es?|reviews?|summari[zs]es?|"
+        r"mentions?|notes?|states?|reports?\s+on|gives?|includes?)\s+"
+        r"(?:the\s+|an?\s+|some\s+)?",
+    ]
+]
+
+# Whole-sentence filler — generic "this document is essential for tracking
+# progress"-style closers. These have no factual content to preserve and
+# get dropped entirely.
+_FULL_FILLER_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"^(?:this|the)\s+(?:document|file|note|notes|presentation|deck|recording|"
+        r"brief(?:ing)?|video|session|report)\s+"
+        r"(?:is|are|serves?|aims?|seeks?)\b[^.]*"
+        r"(?:essential|crucial|vital|important|key|critical|valuable)\b",
+        r"(?:essential|crucial|vital|important|key|critical)\s+for\s+"
+        r"(?:tracking|reference|stakeholders|future\s+reference|the\s+team|"
+        r"collaboration|maintaining|ensuring|navigating)",
+        r"serves?\s+as\s+(?:a|an|the)\s+(?:record|reference|key|valuable|"
+        r"comprehensive|essential|critical|crucial|primary|important)\b",
+        r"providing\s+(?:valuable\s+)?(?:insights?|context|an?\s+overview)\s+"
+        r"into\s+(?:the\s+)?(?:ongoing|current|broader)?\s*work",
+        r"contributions?\s+of\s+(?:various|the|all)\s+(?:participants?|members|"
+        r"attendees|stakeholders|individuals)",
+        r"only\s+for\s+general\s+understanding",
+    ]
+]
+
+# Mid-sentence hedge phrases — strip in place, the surrounding sentence
+# usually still reads fine after they're removed.
+_HEDGE_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r",?\s*providing\s+(?:valuable\s+)?(?:insights?|context|an?\s+overview)"
+        r"\s+into\s+[^.]+(?=\.|$)",
+        r",?\s*(?:essential|crucial|vital|important)\s+for\s+"
+        r"(?:tracking|reference|stakeholders|future\s+reference|the\s+team|"
+        r"collaboration)(?=[\s.,]|$)",
+        r",?\s*serving\s+as\s+(?:a|an|the)\s+(?:record|reference)\s+of\s+[^.]+(?=\.|$)",
+    ]
+]
+
+
+def _strip_filler(summary: Optional[str]) -> Optional[str]:
+    """Strip generic LLM filler from a Resource summary.
+
+    Three layers of cleanup, applied per sentence:
+      1. Drop the sentence entirely if it matches one of the "whole-filler"
+         patterns (e.g. "This document is essential for tracking progress").
+      2. Strip mid-sentence hedge phrases ("providing insights into X",
+         "essential for stakeholders") in place.
+      3. Strip the leading "This document outlines / It also highlights"
+         filler prefix, keeping the factual tail. Re-capitalise the first
+         remaining letter.
+
+    Returns the cleaned string, or None if nothing factual survives.
+    """
+    if not summary:
+        return None
+    sentences = re.split(r"(?<=[.!?])\s+", summary.strip())
+    kept: List[str] = []
+    for raw in sentences:
+        s = raw.strip()
+        if not s:
+            continue
+        # 1. Whole-sentence filler — drop.
+        if any(p.search(s) for p in _FULL_FILLER_PATTERNS):
+            continue
+        # 2. Mid-sentence hedges — strip in place.
+        for hp in _HEDGE_PATTERNS:
+            s = hp.sub("", s)
+        # 3. Leading-prefix filler — strip from the start, keep the tail.
+        for lp in _LEADING_FILLER_PATTERNS:
+            s = lp.sub("", s, count=1)
+        # Tidy up whitespace and stray commas.
+        s = re.sub(r"\s+,", ",", s)
+        s = re.sub(r"\s{2,}", " ", s).strip()
+        # Drop trailing-comma artefacts left behind by the hedge strip.
+        s = re.sub(r",\s*\.\s*$", ".", s).strip()
+        if len(s) < 20:
+            continue
+        # Re-capitalise the first character so "agenda for X" → "Agenda for X".
+        if s and s[0].islower():
+            s = s[0].upper() + s[1:]
+        kept.append(s)
+    if not kept:
+        return None
+    return " ".join(kept)
+
+
+def _format_facts(item: NewsItem) -> str:
+    """Build a one-liner of structured facts pulled from the graph.
+
+    Skips a category when the underlying list is empty; the result is "" when
+    we have nothing concrete (which is the signal to fall back to the cleaned
+    summary in the caller).
+    """
+    parts: List[str] = []
+    if item.people:
+        # Cap at 3 people — more than that and the line stops being readable.
+        parts.append("Presented by " + ", ".join(item.people[:3]))
+    if item.organizations:
+        parts.append("Companies: " + ", ".join(item.organizations[:5]))
+    if item.topics:
+        parts.append("Topics: " + ", ".join(item.topics[:6]))
+    return " · ".join(parts)
 
 
 @dataclass
@@ -243,11 +382,26 @@ async def _fetch_news_items(
     MATCH (r:Resource)
     WHERE {' AND '.join(where_clauses)}
     {' '.join(boost_terms)}
+    // Pull structured facts from the graph alongside the LLM summary so we
+    // can build a fact-led brief (presenter / companies / topics) instead
+    // of leaning on the boilerplate-heavy free-text summary.
+    OPTIONAL MATCH (r)-[:MENTIONS]->(p_out:Person)
+    OPTIONAL MATCH (p_in:Person)-[:MENTIONS]->(r)
+    OPTIONAL MATCH (r)-[:MENTIONS]->(o_out:Organization)
+    OPTIONAL MATCH (o_in:Organization)-[:MENTIONS]->(r)
+    OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
+    WITH r,
+         collect(DISTINCT p_out.name) + collect(DISTINCT p_in.name) AS people_raw,
+         collect(DISTINCT o_out.name) + collect(DISTINCT o_in.name) AS orgs_raw,
+         collect(DISTINCT t.name)                                   AS topics_raw
     RETURN r.title         AS title,
            r.url           AS url,
            r.summary       AS summary,
            toString(r.publish_date) AS publish_date,
-           r.datasource_id AS datasource_id
+           r.datasource_id AS datasource_id,
+           [x IN people_raw WHERE x IS NOT NULL AND x <> ''] AS people,
+           [x IN orgs_raw   WHERE x IS NOT NULL AND x <> ''] AS organizations,
+           [x IN topics_raw WHERE x IS NOT NULL AND x <> ''] AS topics
     ORDER BY {order_by}
     LIMIT $limit
     """
@@ -260,15 +414,35 @@ async def _fetch_news_items(
 
     items: List[NewsItem] = []
     for r in rows or []:
-        items.append(
-            NewsItem(
-                title=(r.get("title") or "").strip() or "(untitled)",
-                url=r.get("url"),
-                summary=(r.get("summary") or "").strip() or None,
-                publish_date=r.get("publish_date"),
-                datasource_id=r.get("datasource_id"),
-            )
+        raw_summary = (r.get("summary") or "").strip() or None
+        cleaned = _strip_filler(raw_summary)
+
+        people = sorted(set(r.get("people") or []))
+        orgs = sorted(set(r.get("organizations") or []))
+        topics = sorted(set(r.get("topics") or []))
+
+        item = NewsItem(
+            title=(r.get("title") or "").strip() or "(untitled)",
+            url=r.get("url"),
+            summary=None,  # rebuilt below
+            publish_date=r.get("publish_date"),
+            datasource_id=r.get("datasource_id"),
+            people=people,
+            organizations=orgs,
+            topics=topics,
         )
+
+        # Compose the displayed summary: structured graph facts first (most
+        # informative), then the cleaned narrative as a fallback / supplement.
+        facts_line = _format_facts(item)
+        body_parts: List[str] = []
+        if facts_line:
+            body_parts.append(facts_line)
+        if cleaned:
+            body_parts.append(cleaned)
+        item.summary = "\n".join(body_parts) if body_parts else None
+
+        items.append(item)
     return items
 
 
