@@ -245,4 +245,24 @@ export class AuroraOracleService {
       return false;
     }
   }
+
+  /** Personalised /news brief for the given user. See oracle/src/routes/news.py. */
+  async getNewsBrief(
+    userId?: string,
+    userEmail?: string,
+    opts: { markSeen?: boolean; refresh?: boolean } = {},
+  ): Promise<{
+    items: Array<{ title: string; url?: string; summary?: string; publish_date?: string; datasource_id?: string }>;
+    since?: string;
+    source?: string;
+    datasource_count?: number;
+  }> {
+    const client = this.clientFor(userId, userEmail);
+    const params = new URLSearchParams();
+    if (opts.markSeen === false) params.set('mark_seen', 'false');
+    if (opts.refresh) params.set('refresh', 'true');
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const response = await client.get(`/news${qs}`);
+    return response.data;
+  }
 }

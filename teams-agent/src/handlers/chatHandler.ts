@@ -374,4 +374,45 @@ export class ChatHandler {
       );
     }
   }
+
+  /**
+   * Handle "/news" — personalised brief from the Oracle.
+   * Mirrors the web chat behaviour: short list of new items since the
+   * user's last /news request (or the last few days on first use).
+   */
+  async handleNews(context: TurnContext): Promise<void> {
+    try {
+      const email = this.userService.extractUserEmail(context.activity);
+      const displayName = context.activity.from.name || 'User';
+      const auroraUser = await this.userService.getOrCreateUser(email, displayName);
+
+      const brief = await this.oracleService.getNewsBrief(auroraUser.id, auroraUser.email);
+
+      const items = brief.items || [];
+      const sinceLabel = brief.since
+        ? `since **${new Date(brief.since).toLocaleString()}**`
+        : 'from the **last few days**';
+      const sourceLabel = brief.source === 'subscriptions'
+        ? 'across your subscribed sources'
+        : brief.source === 'profile'
+          ? 'matched to your profile (no subscriptions found)'
+          : 'across Aurora';
+
+      if (items.length === 0) {
+        await context.sendActivity(`**Your news ${sinceLabel}**\n_${sourceLabel}_\n\n_No new updates since your last check._`);
+        return;
+      }
+
+      const lines = items.map((it, i) => {
+        const date = it.publish_date ? ` · *${it.publish_date.slice(0, 10)}*` : '';
+        const link = it.url ? ` ([source](${it.url}))` : '';
+        const summary = it.summary ? `\n   ${it.summary}` : '';
+        return `${i + 1}. **${it.title}**${date}${link}${summary}`;
+      });
+      await context.sendActivity(`**Your news ${sinceLabel}**\n_${sourceLabel}_\n\n${lines.join('\n\n')}`);
+    } catch (err: any) {
+      console.error('[ChatHandler] handleNews error:', err?.response?.data || err?.message || err);
+      await context.sendActivity('News brief unavailable right now. Try again in a moment.');
+    }
+  }
 }

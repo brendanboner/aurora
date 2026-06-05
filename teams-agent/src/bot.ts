@@ -69,6 +69,12 @@ export class AuroraBot extends TeamsActivityHandler {
       } else if (/^@aurora\s+/i.test(text)) {
         text = text.replace(/^@aurora\s+/i, '').trim();
       }
+      // Slash-command normalisation: "/news" and "news" should both match
+      // the news case below. Stripping the leading slash here means every
+      // existing equality check (lower === 'news', etc.) keeps working.
+      if (text.startsWith('/')) {
+        text = text.slice(1).trim();
+      }
       const lower = text.toLowerCase().trim();
 
       console.log(`[${new Date().toISOString()}] Received message from ${context.activity.from.name}: "${text}" (lower="${lower}"`);
@@ -199,6 +205,10 @@ export class AuroraBot extends TeamsActivityHandler {
         // ── feed ──────────────────────────────────────────────────────────
         else if (lower === 'feed' || lower === 'show feed' || lower === 'my feed') {
           await this.feedHandler.handleShowFeedCommand(context, 5);
+        }
+        // ── news ──────────────────────────────────────────────────────────
+        else if (lower === 'news' || lower === 'news update' || lower === "what's new" || lower === 'whats new') {
+          await this.chatHandler.handleNews(context);
         }
         // ── enhance ───────────────────────────────────────────────────────
         else if (lower === 'enhance' || lower === 'enhance answer' || lower === 'more detail') {
@@ -352,10 +362,11 @@ export class AuroraBot extends TeamsActivityHandler {
         {
           type: 'FactSet',
           facts: [
-            { title: 'feed', value: 'Your personalised content feed' },
-            { title: 'agents', value: 'List available expert agents' },
+            { title: '/news', value: 'Brief news update since your last check' },
+            { title: '/feed', value: 'Your personalised content feed' },
+            { title: '/agents', value: 'List available expert agents' },
             { title: '@handle question', value: 'Ask a specific agent (e.g. @ietf What is new?)' },
-            { title: 'help', value: 'Full command reference' },
+            { title: '/help', value: 'Full command reference' },
           ],
         },
         { type: 'TextBlock', text: 'Or just type any question — Aurora will search its knowledge base.', wrap: true, isSubtle: true, spacing: 'Medium' },
@@ -381,14 +392,15 @@ export class AuroraBot extends TeamsActivityHandler {
           wrap: true,
           spacing: 'Small',
         },
-        // Feed
-        { type: 'TextBlock', text: 'Feed & History', weight: 'Bolder', separator: true, spacing: 'Medium' },
+        // News & Feed
+        { type: 'TextBlock', text: 'News & Feed', weight: 'Bolder', separator: true, spacing: 'Medium' },
         {
           type: 'FactSet',
           facts: [
-            { title: 'feed', value: 'Your personalised content feed' },
-            { title: 'show', value: 'Read the full text of the last agent notification' },
-            { title: 'enhance', value: 'Re-run the last answer with deeper source analysis' },
+            { title: '/news', value: 'Personalised brief of updates since you last asked' },
+            { title: '/feed', value: 'Your personalised content feed' },
+            { title: '/show', value: 'Read the full text of the last agent notification' },
+            { title: '/enhance', value: 'Re-run the last answer with deeper source analysis' },
           ],
         },
         // Agents
@@ -396,8 +408,8 @@ export class AuroraBot extends TeamsActivityHandler {
         {
           type: 'FactSet',
           facts: [
-            { title: 'agents', value: 'List all available AI agents' },
-            { title: 'my agents', value: 'List your personal agents' },
+            { title: '/agents', value: 'List all available AI agents' },
+            { title: '/myagents', value: 'List your personal agents' },
             { title: '@handle question', value: 'Ask a specific agent — e.g. @ietf What is new?' },
             { title: 'setChannelAgent @handle', value: 'Lock this channel to one agent' },
             { title: 'clearChannelAgent', value: 'Remove the channel lock' },
@@ -421,9 +433,9 @@ export class AuroraBot extends TeamsActivityHandler {
         {
           type: 'FactSet',
           facts: [
-            { title: 'about', value: 'About Aurora' },
-            { title: 'clear', value: 'Reset conversation context' },
-            { title: 'help', value: 'This message' },
+            { title: '/about', value: 'About Aurora' },
+            { title: '/clear', value: 'Reset conversation context' },
+            { title: '/help', value: 'This message' },
           ],
         },
         { type: 'TextBlock', text: 'Or just type any question and Aurora will search its knowledge base.', wrap: true, isSubtle: true, spacing: 'Medium' },

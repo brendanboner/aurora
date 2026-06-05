@@ -43,19 +43,35 @@
           "scopes": ["personal", "team", "groupchat"],
           "commands": [
             {
-              "title": "feed",
+              "title": "/news",
+              "description": "Brief news update since your last check"
+            },
+            {
+              "title": "/feed",
               "description": "Show your personalized content feed"
             },
             {
-              "title": "agents",
+              "title": "/agents",
               "description": "List available AI agents"
             },
             {
-              "title": "my agents",
+              "title": "/myagents",
               "description": "List your personal agents"
             },
             {
-              "title": "help",
+              "title": "/enhance",
+              "description": "Re-run the last answer with deeper source analysis"
+            },
+            {
+              "title": "/about",
+              "description": "About Aurora"
+            },
+            {
+              "title": "/clear",
+              "description": "Reset conversation context"
+            },
+            {
+              "title": "/help",
               "description": "Show available commands and examples"
             }
           ]
