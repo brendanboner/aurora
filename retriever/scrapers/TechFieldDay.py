@@ -162,40 +162,22 @@ class TechFieldDayScraper(BaseScraper):
     # ---------------------------------------------------------------
 
     async def _build_event_post_index(self) -> Dict[str, Dict[str, Any]]:
-        """Build a slug→event-post lookup for the event custom post type.
+        """Build a small slug→event-post lookup for fallback topic resolution.
 
-        We only need it to resolve which TFD event series a video belongs
-        to if the event-prefix shortcut fails. We page only as many event
-        posts as we need (most recent first); after 1y back we stop.
+        Only fetches the most-recent ~50 events without embeds — the
+        per_page=100 + _embed=wp:term variant times out on Kinsta. The
+        video-side embedded `event` term is the primary signal anyway;
+        this index is only a fallback when the slug regex doesn't match.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=MAX_LOOKBACK_DAYS)
         out: Dict[str, Dict[str, Any]] = {}
-        for page in range(1, 25):
-            url = (
-                f"{WP_API}/event"
-                f"?per_page={PER_PAGE}&page={page}"
-                f"&orderby=date&order=desc"
-            )
-            data = await self._get_json(url)
-            if not data or isinstance(data, dict):
-                break
+        url = f"{WP_API}/event?per_page=50&page=1&orderby=date&order=desc"
+        data = await self._get_json(url)
+        if data and isinstance(data, list):
             for ev in data:
                 slug = ev.get("slug") or ""
                 if slug:
                     out[slug.lower()] = ev
-            # Stop once the page is fully older than cutoff
-            try:
-                last_date = ev.get("date") or ""
-                if last_date:
-                    last_dt = datetime.fromisoformat(last_date.replace("Z", "+00:00"))
-                    if last_dt.tzinfo is None:
-                        last_dt = last_dt.replace(tzinfo=timezone.utc)
-                    if last_dt < cutoff:
-                        break
-            except Exception:
-                pass
-            await asyncio.sleep(PAGE_DELAY_S)
-        logger.info(f"TFD: indexed {len(out)} event posts")
+        logger.info(f"TFD: indexed {len(out)} recent event posts")
         return out
 
     # ---------------------------------------------------------------
@@ -426,11 +408,13 @@ class TechFieldDayScraper(BaseScraper):
         # Cover future events too (some posts have future dates)
         # WP REST orderby=date with order=desc gives newest first.
         for page in range(1, 8):
+            # No `_embed` here — calendar Event nodes don't need the term
+            # details and the embed payload causes Kinsta to time out on
+            # the events endpoint when per_page is large.
             url = (
                 f"{WP_API}/event"
-                f"?per_page={PER_PAGE}&page={page}"
+                f"?per_page=50&page={page}"
                 f"&orderby=date&order=desc"
-                f"&_embed=wp:term"
             )
             data = await self._get_json(url)
             if not data or isinstance(data, dict) or len(data) == 0:
