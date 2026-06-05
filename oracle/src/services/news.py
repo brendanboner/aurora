@@ -93,14 +93,14 @@ _LEADING_FILLER_PATTERNS = [
         r"introduces?|explains?|examines?|explores?|focuses?\s+on|details?|"
         r"provides?|offers?|emphasi[zs]es?|aims?\s+to|seeks?\s+to|reviews?|"
         r"summari[zs]es?|mentions?|notes?|states?|reports?\s+on|gives?|"
-        r"includes?)\s+"
+        r"includes?|contains?)\s+"
         r"(?:the\s+|an?\s+|some\s+)?",
         # "It (also)? (highlights|outlines|covers|...) (the|a)?"
         r"^it\s+(?:also\s+)?"
         r"(?:outlines?|covers?|highlights?|describes?|discusses?|presents?|"
         r"introduces?|explains?|examines?|explores?|focuses?\s+on|details?|"
         r"provides?|offers?|emphasi[zs]es?|reviews?|summari[zs]es?|"
-        r"mentions?|notes?|states?|reports?\s+on|gives?|includes?)\s+"
+        r"mentions?|notes?|states?|reports?\s+on|gives?|includes?|contains?)\s+"
         r"(?:the\s+|an?\s+|some\s+)?",
     ]
 ]
@@ -118,8 +118,12 @@ _FULL_FILLER_PATTERNS = [
         r"(?:essential|crucial|vital|important|key|critical)\s+for\s+"
         r"(?:tracking|reference|stakeholders|future\s+reference|the\s+team|"
         r"collaboration|maintaining|ensuring|navigating)",
-        r"serves?\s+as\s+(?:a|an|the)\s+(?:record|reference|key|valuable|"
-        r"comprehensive|essential|critical|crucial|primary|important)\b",
+        # Allow one optional adjective before record/reference so
+        # "serves as a formal record" / "serves as a primary reference"
+        # also get caught.
+        r"serves?\s+as\s+(?:a|an|the)\s+(?:[a-z]+\s+)?"
+        r"(?:record|reference|key|valuable|comprehensive|essential|critical|"
+        r"crucial|primary|important|guide|resource|tool)\b",
         r"providing\s+(?:valuable\s+)?(?:insights?|context|an?\s+overview)\s+"
         r"into\s+(?:the\s+)?(?:ongoing|current|broader)?\s*work",
         r"contributions?\s+of\s+(?:various|the|all)\s+(?:participants?|members|"
