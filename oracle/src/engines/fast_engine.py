@@ -119,8 +119,7 @@ class FastEngine:
             # Build map from Neo4j — every DataSource with a parent contributes
             # one entry. Scraper-agnostic.
             try:
-                from src.services.graph_service_oracle import get_oracle_repo
-                repo = get_oracle_repo()
+                repo = get_repo()
                 rows = repo.client.execute_query(
                     """
                     MATCH (child:DataSource)
@@ -140,7 +139,10 @@ class FastEngine:
                     except Exception:
                         pass
             except Exception as exc:
-                logger.warning(f"_expand_datasource_parents: Neo4j lookup failed: {exc}")
+                logger.warning(
+                    f"_expand_datasource_parents: Neo4j lookup failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
                 return datasource_ids
 
         expanded = list(datasource_ids)
