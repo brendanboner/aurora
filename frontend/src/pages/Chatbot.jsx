@@ -1068,17 +1068,27 @@ Set your role, interests, and how you'd like answers framed once in [your profil
 
               // Filtered list — substring match on id, name, alias, scraper_type, parent.
               const needle = filter;
-              const matches = all.filter((d) => {
-                const hay = [
-                  d.datasource_id,
-                  d.name,
-                  d.primary_alias,
-                  d.scraper_type,
-                  d.parent_datasource_id || '',
-                  ...(d.aliases || []),
-                ].join(' ').toLowerCase();
-                return hay.includes(needle);
-              });
+              const hay = (d) => [
+                d.datasource_id,
+                d.name,
+                d.primary_alias,
+                d.scraper_type,
+                d.parent_datasource_id || '',
+                ...(d.aliases || []),
+              ].join(' ').toLowerCase();
+
+              const directMatches = all.filter((d) => hay(d).includes(needle));
+              // Parent-expansion: if a parent matched, pull in its children too.
+              // This is what makes `/workgroups tfd` surface all 15 TFD topics
+              // (the children's aliases are aifd/cfd/nfd/… — none contain the
+              // literal "tfd" — but their parent's alias does).
+              const matched = new Set(directMatches.map(d => d.datasource_id));
+              for (const d of all) {
+                if (d.parent_datasource_id && matched.has(d.parent_datasource_id)) {
+                  matched.add(d.datasource_id);
+                }
+              }
+              const matches = all.filter(d => matched.has(d.datasource_id));
 
               if (matches.length === 0) {
                 return { content: `_No workgroups match **${filter}**._ Type \`/workgroups\` to see all.` };

@@ -420,13 +420,23 @@ export class ChatHandler {
         return;
       }
 
-      const matches = all.filter((d) => {
-        const hay = [
-          d.datasource_id, d.name, d.primary_alias, d.scraper_type,
-          d.parent_datasource_id || '', ...(d.aliases || []),
-        ].join(' ').toLowerCase();
-        return hay.includes(needle);
-      });
+      const hay = (d: { datasource_id: string; name?: string; primary_alias?: string; scraper_type?: string; parent_datasource_id?: string | null; aliases?: string[] }) =>
+        [d.datasource_id, d.name, d.primary_alias, d.scraper_type,
+         d.parent_datasource_id || '', ...(d.aliases || [])]
+          .join(' ').toLowerCase();
+
+      const directMatches = all.filter(d => hay(d).includes(needle));
+      // If a parent matched, fan out to include its children too — so
+      // `/workgroups tfd` surfaces all 15 TFD topic children (their own
+      // aliases are aifd/cfd/nfd/…, none of which contain the literal
+      // "tfd"; the parent's alias does).
+      const matchedIds = new Set(directMatches.map(d => d.datasource_id));
+      for (const d of all) {
+        if (d.parent_datasource_id && matchedIds.has(d.parent_datasource_id)) {
+          matchedIds.add(d.datasource_id);
+        }
+      }
+      const matches = all.filter(d => matchedIds.has(d.datasource_id));
 
       if (matches.length === 0) {
         await context.sendActivity(`_No workgroups match **${needle}**._ Type \`/workgroups\` to see all.`);
