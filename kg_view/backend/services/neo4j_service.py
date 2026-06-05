@@ -573,6 +573,11 @@ class Neo4jService:
         # "Brendan Bonner" matches "brendan bonner" but not random
         # substrings.
         if anchor_orgs or anchor_people:
+            # Hybrid people match:
+            #   - multi-word input (e.g. "Brendan Bonner") → exact lowercase eq
+            #     OR exact email match
+            #   - single-word input (e.g. "Nabil") → STARTS WITH that word
+            #     (so "Nabil" finds "Nabil Bukhari" but not unrelated names)
             anchor_query = """
             CALL {
                 WITH $anchor_orgs AS orgs
@@ -583,10 +588,19 @@ class Neo4jService:
                 UNION
                 WITH $anchor_people AS ppl
                 MATCH (p:Person)
-                WHERE size(ppl) > 0
-                  AND (toLower(p.name) IN [x IN ppl | toLower(x)]
-                       OR (p.email IS NOT NULL
-                           AND any(x IN ppl WHERE toLower(p.email) = toLower(x))))
+                WHERE size(ppl) > 0 AND p.name IS NOT NULL
+                  AND (
+                    // Exact (case-insensitive) match for full-name anchors
+                    toLower(p.name) IN [x IN ppl | toLower(x)]
+                    // Email exact match
+                    OR (p.email IS NOT NULL
+                        AND any(x IN ppl WHERE toLower(p.email) = toLower(x)))
+                    // Single-word anchor → first-name prefix match.
+                    // Only fires when the anchor string has no space.
+                    OR any(x IN ppl
+                           WHERE NOT (x CONTAINS ' ')
+                             AND toLower(p.name) STARTS WITH (toLower(x) + ' '))
+                  )
                 RETURN p AS n
             }
             WITH DISTINCT n
