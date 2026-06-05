@@ -39,6 +39,7 @@ class Migrations:
             Migrations.add_datasource_parent_index,
             Migrations.add_wba_extranet_root_datasource,
             Migrations.fix_wba_extranet_child_scraper_type,
+            Migrations.add_techfieldday_datasources,
         ]
         
         for migration_func in migrations:
@@ -1458,6 +1459,154 @@ class Migrations:
             return True
         except Exception as e:
             logger.error(f"Error in fix_wba_extranet_child_scraper_type: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # Tech Field Day datasource migrations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def add_techfieldday_datasources(session: Session) -> bool:
+        """
+        Upsert the Tech Field Day root datasource + one child per topic listed
+        at https://techfieldday.com/topics. Children inherit auth/config from
+        the root via parent_datasource_id.
+
+        @-mention aliases follow the community-standard short forms:
+          @aifd  → AI Field Day        @cfd   → Cloud Field Day
+          @nfd   → Networking Field Day @mfd  → Mobility Field Day
+          @sfd   → Storage Field Day   @secfd → Security Field Day
+          @vfd   → Virtualization Field Day  @efd → Edge Field Day
+        etc. The root @techfieldday / @tfd matches all of them.
+
+        Idempotent — MERGE on datasource_id.
+        """
+        root = {
+            "datasource_id": "techfieldday",
+            "name": "Tech Field Day",
+            "display_name": "Tech Field Day",
+            "org_id": "techfieldday",
+            "source_type": "scraped_webpage",
+            "fetch_url": "https://stg-techfielddayq-staging.kinsta.cloud",
+            "has_events": True,
+            "scraper_type": "techfieldday",
+            "resource_url": "https://stg-techfielddayq-staging.kinsta.cloud",
+            "scrape_schedule": "15 7 * * *",   # daily 07:15 UTC
+            "run_on_startup": False,
+            "check_content_hash": True,
+            "publish_weight": 1.0,
+            "update_weight": 0.8,
+            "event_weight": 1.0,
+            "temporal_extraction_days": 365,
+            "scraper_delay": 0.5,
+            "max_resources": 600,
+            "max_redirects": 5,
+            "discovery_mode": "incremental",
+            "consecutive_duplicates_limit": 20,
+            "description": (
+                "Tech Field Day — an invite-only enterprise IT influencer programme "
+                "(AI Field Day, Cloud Field Day, Networking Field Day, etc.). "
+                "Each video session links delegates, presenters and sponsor companies."
+            ),
+            "primary_alias": "techfieldday",
+            "aliases": ["tfd", "techfieldday"],
+            "parent_datasource_id": None,
+        }
+
+        # (datasource_id_suffix, display_name, primary_alias, [aliases…])
+        topics = [
+            ("ai",                     "AI Field Day",                       "aifd",   ["aifd", "ai-field-day", "tfd-ai"]),
+            ("ai-infrastructure",      "AI Infrastructure Field Day",        "aiifd",  ["aiifd", "ai-infra", "ai-infrastructure-field-day"]),
+            ("appdev",                 "AppDev Field Day",                   "adfd",   ["adfd", "appdev-field-day"]),
+            ("cloud",                  "Cloud Field Day",                    "cfd",    ["cfd", "cloud-field-day"]),
+            ("data",                   "Data Field Day",                     "datafd", ["datafd", "data-field-day"]),
+            ("edge",                   "Edge Field Day",                     "efd",    ["efd", "edge-field-day"]),
+            ("mainframe",              "Mainframe Field Day",                "mffd",   ["mffd", "mainframe-field-day"]),
+            ("mobility",               "Mobility Field Day",                 "mfd",    ["mfd", "mobility-field-day"]),
+            ("networking",             "Networking Field Day",               "nfd",    ["nfd", "networking-field-day"]),
+            ("security",               "Security Field Day",                 "xfd",    ["xfd", "secfd", "security-field-day"]),
+            ("storage",                "Storage Field Day",                  "sfd",    ["sfd", "storage-field-day"]),
+            ("tech",                   "Tech Field Day",                     "tfdcore",["tfd-core", "tech-field-day"]),
+            ("unified-communications", "Unified Communications Field Day",   "ucfd",   ["ucfd", "uc-field-day"]),
+            ("virtualization",         "Virtualization Field Day",           "vfd",    ["vfd", "virt-field-day"]),
+            ("wireless",               "Wireless Field Day",                 "wfd",    ["wfd", "wireless-field-day"]),
+        ]
+
+        upsert_query = """
+        MERGE (d:DataSource {datasource_id: $datasource_id})
+        ON CREATE SET
+            d.name                        = $name,
+            d.display_name                = $display_name,
+            d.org_id                      = $org_id,
+            d.source_type                 = $source_type,
+            d.fetch_url                   = $fetch_url,
+            d.has_events                  = $has_events,
+            d.scraper_type                = $scraper_type,
+            d.resource_url                = $resource_url,
+            d.scrape_schedule             = $scrape_schedule,
+            d.run_on_startup              = $run_on_startup,
+            d.check_content_hash          = $check_content_hash,
+            d.publish_weight              = $publish_weight,
+            d.update_weight               = $update_weight,
+            d.event_weight                = $event_weight,
+            d.temporal_extraction_days    = $temporal_extraction_days,
+            d.scraper_delay               = $scraper_delay,
+            d.max_resources               = $max_resources,
+            d.max_redirects               = $max_redirects,
+            d.discovery_mode              = $discovery_mode,
+            d.consecutive_duplicates_limit= $consecutive_duplicates_limit,
+            d.description                 = $description,
+            d.primary_alias               = $primary_alias,
+            d.aliases                     = $aliases,
+            d.parent_datasource_id        = $parent_datasource_id
+        ON MATCH SET
+            d.display_name                = $display_name,
+            d.description                 = $description,
+            d.primary_alias               = $primary_alias,
+            d.aliases                     = $aliases,
+            d.parent_datasource_id        = $parent_datasource_id,
+            d.scraper_type                = $scraper_type
+        RETURN d.datasource_id as id, (d.name IS NOT NULL) as existed
+        """
+
+        try:
+            session.run(upsert_query, **root)
+            for topic_slug, display_name, primary, aliases in topics:
+                ds = {
+                    "datasource_id": f"techfieldday_{topic_slug}",
+                    "name": display_name,
+                    "display_name": display_name,
+                    "org_id": "techfieldday",
+                    "source_type": "scraped_webpage",
+                    "fetch_url": f"https://stg-techfielddayq-staging.kinsta.cloud/topic/{topic_slug}/",
+                    "has_events": True,
+                    "scraper_type": "techfieldday",
+                    "resource_url": f"https://stg-techfielddayq-staging.kinsta.cloud/topic/{topic_slug}/",
+                    "scrape_schedule": "15 7 * * *",
+                    "run_on_startup": False,
+                    "check_content_hash": True,
+                    "publish_weight": 1.0,
+                    "update_weight": 0.8,
+                    "event_weight": 1.0,
+                    "temporal_extraction_days": 365,
+                    "scraper_delay": 0.5,
+                    "max_resources": -1,
+                    "max_redirects": 5,
+                    "discovery_mode": "incremental",
+                    "consecutive_duplicates_limit": 20,
+                    "description": (
+                        f"{display_name} — Tech Field Day sessions on {display_name.lower().replace(' field day','')}. "
+                        f"Includes presenter, sponsor company, event date, and video link."
+                    ),
+                    "primary_alias": primary,
+                    "aliases": aliases,
+                    "parent_datasource_id": "techfieldday",
+                }
+                session.run(upsert_query, **ds)
+            logger.info(f"Tech Field Day datasources: root + {len(topics)} topic children upserted")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting Tech Field Day datasources: {e}")
             return False
 
     @staticmethod

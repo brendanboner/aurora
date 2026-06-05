@@ -23,6 +23,7 @@ from scrapers import (
     WFAScraper, WFACausewayScraper, WBAScraper, WBAExtranetScraper,
     IETFBlogScraper, IETFDatatrackerScraper,
     IEEE802Scraper, IEEE80211TGScraper, MEFScraper, NISTScraper, ONFScraper, DMTFScraper,
+    TechFieldDayScraper,
 )
 from scrapers.base import BaseScraper, Resource
 from config_manager import ConfigManager
@@ -72,6 +73,7 @@ SCRAPER_CLASSES: Dict[str, Type[BaseScraper]] = {
     "nist": NISTScraper,
     "onf": ONFScraper,
     "dmtf": DMTFScraper,
+    "techfieldday": TechFieldDayScraper,
 }
 
 logger.info(f"Available scraper types: {list(SCRAPER_CLASSES.keys())}")

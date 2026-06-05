@@ -17,6 +17,7 @@ from .MEF import MEFScraper
 from .NIST import NISTScraper
 from .ONF import ONFScraper
 from .DMTF import DMTFScraper
+from .TechFieldDay import TechFieldDayScraper
 
 # Add new scrapers to this list
 ALL_SCRAPERS = {
@@ -32,6 +33,7 @@ ALL_SCRAPERS = {
     "NISTScraper": NISTScraper,
     "ONFScraper": ONFScraper,
     "DMTFScraper": DMTFScraper,
+    "TechFieldDayScraper": TechFieldDayScraper,
 }
 
 __all__ = [
@@ -48,5 +50,6 @@ __all__ = [
     'NISTScraper',
     'ONFScraper',
     'DMTFScraper',
+    'TechFieldDayScraper',
     'ALL_SCRAPERS',
 ]
