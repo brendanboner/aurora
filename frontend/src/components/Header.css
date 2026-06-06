@@ -220,6 +220,14 @@
   .app-header {
     padding: 0 14px;
   }
+  /* On mobile the header padding drops 20 → 14 and the drawer shifts 10 → 8.
+     The +4 margin we use on desktop puts the bars at viewport x=35; the
+     drawer-item icon centre on mobile is at x=39 (drawer 8 + nav 10 + item 12
+     + half-icon 9). Bump margin-left another 4px so bar centre = 14+8+17=39
+     and the icon column lines up with the hamburger column. */
+  .mobile-menu-btn {
+    margin-left: 8px;
+  }
   .header-product-name {
     font-size: 14px;
   }
