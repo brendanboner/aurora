@@ -70,9 +70,11 @@ def build_event_model(
         Event model instance
     """
     try:
-        # Parse dates
-        start_date = parse_date(event_data.get("start_date"))
-        end_date = parse_date(event_data.get("end_date"))
+        # Parse dates. Events legitimately have future start/end dates (any
+        # upcoming conference / WG meeting), so pass allow_future=True. The
+        # publish-date typo guard is for Resources, not Events.
+        start_date = parse_date(event_data.get("start_date"), allow_future=True)
+        end_date = parse_date(event_data.get("end_date"), allow_future=True)
         scraped_at_dt = parse_date(scraped_at)
         
         return Event(

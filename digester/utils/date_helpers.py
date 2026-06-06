@@ -44,50 +44,55 @@ TITLE_DATE_PATTERNS: List[Tuple[str, Optional[str]]] = [
 ]
 
 
-def parse_date(date_value: Any) -> Optional[datetime]:
+def parse_date(date_value: Any, allow_future: bool = False) -> Optional[datetime]:
     """
     Parse a date value into a datetime object.
-    
+
     Handles multiple input formats:
     - ISO 8601 strings: "2025-11-06", "2025-11-06T10:30:00"
     - Human-readable dates: "November 6, 2025", "6 Nov 2025"
     - Datetime objects (returned as-is)
     - Unix timestamps (integers/floats)
-    
+
     Args:
-        date_value: Date value to parse (str, datetime, int, float, or None)
-        
+        date_value: Date value to parse (str, datetime, int, float, or None).
+        allow_future: When False (default), future dates are rejected — this
+            guards against typo'd resource publish_dates (e.g. "Oct 3 2026"
+            scraped from a page with a typo) poisoning recency queries. For
+            Event start_dates the caller must pass ``allow_future=True``,
+            because upcoming events legitimately have a future date —
+            otherwise AIFD9 / NFD41 / etc. lose their date in the digester
+            and the "when is the next…" queries return nothing.
+
     Returns:
         Parsed datetime object, or None if parsing fails or value is None/empty
     """
     if not date_value:
         return None
-    
+
     # If already a datetime, return it
     if isinstance(date_value, datetime):
         return date_value
-    
+
     # If it's a string, try to parse it
     if isinstance(date_value, str):
         date_str = date_value.strip()
         if not date_str or date_str.lower() == "unknown":
             return None
-        
+
         try:
             # Use dateutil.parser which handles many formats
             parsed = date_parser.parse(date_str)
-            # Reject future dates — cap at today to prevent data entry errors
-            # (e.g. "Oct 3 2026" scraped from a page with a typo) from poisoning
-            # recency queries.
-            from datetime import timezone as _tz
-            now = datetime.now(tz=_tz.utc).replace(tzinfo=None)
-            parsed_naive = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
-            if parsed_naive > now:
-                logger.warning(
-                    f"Future publish_date '{date_str}' rejected (parsed: {parsed_naive.date()}); "
-                    "setting to None so temporal_confidence is flagged 'low'."
-                )
-                return None
+            if not allow_future:
+                from datetime import timezone as _tz
+                now = datetime.now(tz=_tz.utc).replace(tzinfo=None)
+                parsed_naive = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+                if parsed_naive > now:
+                    logger.warning(
+                        f"Future publish_date '{date_str}' rejected (parsed: {parsed_naive.date()}); "
+                        "setting to None so temporal_confidence is flagged 'low'."
+                    )
+                    return None
             return parsed
         except Exception as e:
             logger.warning(f"Failed to parse date string '{date_str}': {e}")
