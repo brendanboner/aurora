@@ -461,6 +461,75 @@ class QueryTemplate:
                     params["topics"] = []
                     params["workgroups"] = []
 
+                    # ── Family-alias expansion ────────────────────────────────
+                    # "tech field day" is not the name of a single event — each
+                    # individual Field Day (AI Field Day 9, NFD41, CFD26, …) is
+                    # one. Same for "WBA congress" (US/EMEA/Asia trio) and
+                    # "IETF" (IETF 125 etc.). When the user names an umbrella,
+                    # swap the literal-name filter for a datasource-family
+                    # filter so all the family members surface, ranked by
+                    # start_date.
+                    #
+                    # Entries: (umbrella alias substring → datasource family
+                    # prefix, optional event_type filter, exclude_meetings).
+                    _FAMILY_ALIASES: list = [
+                        # Tech Field Day — every TFD event lives under a
+                        # techfieldday_<topic> datasource. The org doesn't run
+                        # "meetings", so exclude_meetings is irrelevant.
+                        (("tech field day", "techfieldday", "tfd"),
+                         "techfieldday", None, False),
+                        # WBA "congress" — the three-times-a-year big events
+                        # (Wireless Global Congress US / EMEA / Asia). The
+                        # event names include "Congress" / "WGC" so we narrow
+                        # by event_type=conference AND exclude per-workgroup
+                        # meetings.
+                        (("wba congress", "wireless global congress",
+                          "wba wgc", "wgc"),
+                         "wba", "conference", True),
+                        # WBA workgroup meetings — small, ~weekly.
+                        (("wba meeting", "wba workgroup",
+                          "wba working group", "wba wg"),
+                         "wba", "meeting", False),
+                        # IETF plenary / big event — IETF 125 etc. The big
+                        # events have all working groups co-located; we
+                        # exclude per-WG meetings.
+                        (("ietf plenary", "ietf meeting big",
+                          "ietf conference"),
+                         "ietf", "conference", True),
+                        # IETF working group meetings — daily during plenaries
+                        # and weekly otherwise.
+                        (("ietf meeting", "ietf wg meeting",
+                          "ietf working group"),
+                         "ietf", "meeting", False),
+                        # Wi-Fi Alliance member meeting (3x/year big event).
+                        (("wfa member meeting", "wi-fi alliance member meeting",
+                          "wfa plenary"),
+                         "wfa", "conference", True),
+                        # Generic WFA task-group meeting.
+                        (("wfa meeting", "wfa task group", "wfa mstg",
+                          "wfa working group"),
+                         "wfa", "meeting", False),
+                    ]
+
+                    ename_lower = event_name_extracted.lower().strip()
+                    for aliases, family, etype, excl in _FAMILY_ALIASES:
+                        if any(a == ename_lower or a in ename_lower for a in aliases):
+                            params["event_name"] = None  # drop the literal-name filter
+                            params["workgroups"] = [family]
+                            # We carry event_type for downstream answer
+                            # composition but the Cypher only uses
+                            # exclude_meetings today; the event_type_filter
+                            # is for future inclusive-type filtering.
+                            if etype is not None:
+                                params["event_type_filter"] = etype
+                            params["exclude_meetings"] = excl
+                            logger.info(
+                                f"Family alias '{event_name_extracted}' → "
+                                f"workgroup family='{family}', event_type={etype!r}, "
+                                f"exclude_meetings={excl}"
+                            )
+                            break
+
             # For UPCOMING_EVENTS, expand recognised org shortcodes to datasource prefixes
             # so "wfa" matches wfa_*, "wba" matches wba_*, etc.
             # Also: when "this week" query has end_date = today, extend to Sunday.
