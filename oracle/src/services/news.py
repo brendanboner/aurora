@@ -59,6 +59,7 @@ class NewsItem:
     summary: Optional[str]
     publish_date: Optional[str]
     datasource_id: Optional[str]
+    source_name: Optional[str] = None
     people: List[str] = field(default_factory=list)
     organizations: List[str] = field(default_factory=list)
     topics: List[str] = field(default_factory=list)
@@ -70,6 +71,7 @@ class NewsItem:
             "summary": self.summary,
             "publish_date": self.publish_date,
             "datasource_id": self.datasource_id,
+            "source_name": self.source_name,
             "people": self.people,
             "organizations": self.organizations,
             "topics": self.topics,
@@ -84,10 +86,16 @@ _LEADING_FILLER_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in [
         # "This/The (document|presentation|note|file|...) (outlines|covers|highlights|...) (the|a|an)?"
+        # Allows an optional "titled 'X'" / "from May 11th" interpolation between
+        # the noun and the verb so e.g. "The document titled 'agenda 7th june
+        # 2026' outlines …" and "The meeting notes from may 11th detail …" also
+        # get caught.
         r"^(?:this|the)\s+"
         r"(?:document|file|presentation|video|note|notes|deck|slide(?:s|deck)?|minutes|"
         r"brief(?:ing)?|recording|session|update|report|blog|article|post|email|"
         r"agenda|page)\s+"
+        r"(?:titled\s+['\"][^'\"]+['\"]\s+|from\s+[a-z0-9 ,.-]{1,40}\s+|"
+        r"about\s+[a-z0-9 ,.-]{1,40}\s+)?"
         r"(?:also\s+)?"
         r"(?:outlines?|covers?|highlights?|describes?|discusses?|presents?|"
         r"introduces?|explains?|examines?|explores?|focuses?\s+on|details?|"
@@ -123,12 +131,28 @@ _FULL_FILLER_PATTERNS = [
         # also get caught.
         r"serves?\s+as\s+(?:a|an|the)\s+(?:[a-z]+\s+)?"
         r"(?:record|reference|key|valuable|comprehensive|essential|critical|"
-        r"crucial|primary|important|guide|resource|tool)\b",
+        r"crucial|primary|important|guide|resource|tool|agenda|summary)\b",
         r"providing\s+(?:valuable\s+)?(?:insights?|context|an?\s+overview)\s+"
         r"into\s+(?:the\s+)?(?:ongoing|current|broader)?\s*work",
         r"contributions?\s+of\s+(?:various|the|all)\s+(?:participants?|members|"
         r"attendees|stakeholders|individuals)",
         r"only\s+for\s+general\s+understanding",
+        # "It is intended for stakeholders involved in..." / "It is meant for X".
+        r"^it\s+(?:is|was)\s+(?:intended|meant|designed|created)\s+for\b",
+        # "Key topics included updates on ongoing projects, action items..." —
+        # generic meeting-notes summary that names no actual topic.
+        r"^(?:key|main|primary)\s+(?:topics?|points?|items?|themes?|areas?)\s+"
+        r"(?:included|covered|discussed|addressed|were)\s+"
+        r"(?:updates?|discussions?|reviews?|action\s+items?|next\s+steps?|"
+        r"future\s+meeting|ongoing\s+projects?|status\s+updates?)\b[^.]*",
+        # "Detail discussions and decisions made during the meeting" — pure meta.
+        r"detail(?:s|ed)?\s+(?:the\s+)?discussions?\s+and\s+decisions?\s+made",
+        # "Outlines the key topics and discussions planned for X" — meta about
+        # an agenda doc that says nothing about the actual topics.
+        r"^(?:outlines?|describes?|covers?)\s+(?:the\s+)?(?:key\s+)?"
+        r"(?:topics?|items?|subjects?)\s+and\s+(?:discussions?|decisions?|"
+        r"action\s+items?)\s+(?:planned|scheduled|to\s+be\s+(?:addressed|"
+        r"discussed|made))\b[^.]*",
     ]
 ]
 
@@ -389,12 +413,13 @@ async def _fetch_news_items(
     // Pull structured facts from the graph alongside the LLM summary so we
     // can build a fact-led brief (presenter / companies / topics) instead
     // of leaning on the boilerplate-heavy free-text summary.
+    OPTIONAL MATCH (r)-[:INGESTED_FROM]->(ds:DataSource)
     OPTIONAL MATCH (r)-[:MENTIONS]->(p_out:Person)
     OPTIONAL MATCH (p_in:Person)-[:MENTIONS]->(r)
     OPTIONAL MATCH (r)-[:MENTIONS]->(o_out:Organization)
     OPTIONAL MATCH (o_in:Organization)-[:MENTIONS]->(r)
     OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
-    WITH r,
+    WITH r, ds,
          collect(DISTINCT p_out.name) + collect(DISTINCT p_in.name) AS people_raw,
          collect(DISTINCT o_out.name) + collect(DISTINCT o_in.name) AS orgs_raw,
          collect(DISTINCT t.name)                                   AS topics_raw
@@ -403,6 +428,7 @@ async def _fetch_news_items(
            r.summary       AS summary,
            toString(r.publish_date) AS publish_date,
            r.datasource_id AS datasource_id,
+           ds.name         AS source_name,
            [x IN people_raw WHERE x IS NOT NULL AND x <> ''] AS people,
            [x IN orgs_raw   WHERE x IS NOT NULL AND x <> ''] AS organizations,
            [x IN topics_raw WHERE x IS NOT NULL AND x <> ''] AS topics
@@ -425,12 +451,22 @@ async def _fetch_news_items(
         orgs = sorted(set(r.get("organizations") or []))
         topics = sorted(set(r.get("topics") or []))
 
+        # Friendly source name: prefer DataSource.name from the graph, fall back
+        # to a Title-Cased datasource_id ("wfa_causeway" → "Wfa Causeway") so the
+        # UI never has to guess. The cleaner mapping (uppercased acronyms etc.)
+        # lives in the frontend; we just give it something readable to start.
+        ds_id = r.get("datasource_id")
+        source_name = (r.get("source_name") or "").strip() or None
+        if not source_name and ds_id:
+            source_name = ds_id.replace("_", " ").strip().title() or None
+
         item = NewsItem(
             title=(r.get("title") or "").strip() or "(untitled)",
             url=r.get("url"),
             summary=None,  # rebuilt below
             publish_date=r.get("publish_date"),
-            datasource_id=r.get("datasource_id"),
+            datasource_id=ds_id,
+            source_name=source_name,
             people=people,
             organizations=orgs,
             topics=topics,

@@ -1122,21 +1122,40 @@ Set your role, interests, and how you'd like answers framed once in [your profil
           try {
             const brief = await fetchOracleNewsBrief();
             const sinceLabel = brief.since
-              ? `since **${new Date(brief.since).toLocaleString()}**`
-              : 'from the **last few days**';
+              ? `Since ${new Date(brief.since).toLocaleString()}`
+              : 'From the last few days';
             const sourceLabel = brief.source === 'subscriptions'
               ? 'across your subscribed sources'
               : brief.source === 'profile'
                 ? 'matched to your profile (no subscriptions found)'
                 : 'across Aurora';
-            let body = `## Your news ${sinceLabel}\n_${sourceLabel}_\n\n`;
+            // Blank line between the heading and the meta line so markdown
+            // renderers can't visually run them together.
+            let body = `## Your news brief\n\n**${sinceLabel}** — ${sourceLabel}\n\n`;
             if (!brief.items || brief.items.length === 0) {
               body += '_No new updates since your last check._';
             } else {
               body += brief.items.map((it, i) => {
-                const date = it.publish_date ? ` · *${it.publish_date.slice(0, 10)}*` : '';
-                const link = it.url ? ` ([source](${it.url}))` : '';
-                return `${i + 1}. **${it.title}**${date}${link}\n   ${it.summary || ''}`;
+                const sourceName = it.source_name || it.datasource_id || null;
+                const metaBits = [];
+                if (sourceName) metaBits.push(`_${sourceName}_`);
+                if (it.publish_date) metaBits.push(`*${it.publish_date.slice(0, 10)}*`);
+                if (it.url) metaBits.push(`[source](${it.url})`);
+                const meta = metaBits.length ? `\n   ${metaBits.join(' · ')}` : '';
+                // Build a body line. Prefer the (cleaned) summary; when it's
+                // empty fall back to whatever structured facts we have so we
+                // never render a bare title with no detail.
+                let detail = (it.summary || '').trim();
+                if (!detail) {
+                  const facts = [];
+                  if (it.people?.length) facts.push(`Presented by ${it.people.slice(0, 3).join(', ')}`);
+                  if (it.organizations?.length) facts.push(`Companies: ${it.organizations.slice(0, 5).join(', ')}`);
+                  if (it.topics?.length) facts.push(`Topics: ${it.topics.slice(0, 6).join(', ')}`);
+                  detail = facts.length
+                    ? facts.join(' · ')
+                    : '_No summary yet — open the source for details._';
+                }
+                return `${i + 1}. **${it.title}**${meta}\n   ${detail}`;
               }).join('\n\n');
             }
             return { content: body, citations: (brief.items || []).map((it, idx) => ({ index: idx + 1, document_url: it.url, title: it.title, excerpt: it.summary })) };
