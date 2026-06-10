@@ -57,9 +57,33 @@ make ship-oracle                                 # test + build + push for one s
 make migrate
 make migrate-status
 
-# Deploy to production EC2
-make connect_aurora_ec2          # SSM session, then: sudo -i -u ec2-user; cd ~/octo-rapid-aurora/prod-deployment && make update
+# Deploy a single service to production EC2 (non-interactive — preferred)
+make deploy-oracle               # SSM send-command: pull oracle image + recreate container
+make release-oracle              # = ship-oracle + deploy-oracle (test + build + push + deploy)
+
+# If deploy-oracle fails with "authorization token has expired" / "pull access denied",
+# the EC2's ECR creds rotated out. Refresh them in-place via SSM and retry:
+AWS_PAGER="" aws ssm send-command \
+  --instance-ids "$$(grep ^EC2_INSTANCE_ID .env | cut -d= -f2)" \
+  --document-name "AWS-RunShellScript" \
+  --parameters 'commands=["sudo -u ec2-user bash -lc \"cd /home/ec2-user/octo-rapid-aurora/prod-deployment && make ecr-login && docker compose -f docker-compose.prod.yml pull oracle && docker compose -f docker-compose.prod.yml up -d oracle\""]' \
+  --profile "$$(grep ^AWS_SSO_PROFILE .env | cut -d= -f2)" --region us-east-1 \
+  --output text --query 'Command.CommandId'
+# Poll status with: aws ssm get-command-invocation --command-id <id> --instance-id <ec2-id> ...
+
+# Interactive SSM session (fallback — only if you need a shell on the box)
+make connect_aurora_ec2          # then: sudo -i -u ec2-user; cd ~/octo-rapid-aurora/prod-deployment && make update
 ```
+
+**Production deploy procedure (single service, e.g. oracle):**
+1. `git commit` and `git push` the fix
+2. `make ship-oracle` — runs tests, builds the linux/arm64 image, pushes both `:<git-sha>` and `:latest` tags to ECR. Skip if you've already shipped (look for `✓ Image built and pushed`).
+3. `make deploy-oracle` — sends `docker compose pull <svc> && up -d <svc>` to the EC2 via SSM and waits for completion.
+4. Verify: `aws ssm send-command ... 'docker ps --filter name=aurora-oracle --format "{{.Image}}\t{{.Status}}"'` — expect `:latest` and `Up`/`healthy`.
+
+Or in one shot: `make release-oracle` (chains 2 + 3). Same `release-<service>` target exists for `auth`, `backend`, `curator`, `digester`, `retriever`, `frontend`, `neo4j-init`, `nginx`, `content-creator`, `kg-view`.
+
+Auth requirements before any of this: `make aws-login` (SSO + ECR login on your laptop) and `AWS_SSO_PROFILE` + `EC2_INSTANCE_ID` + `ECR_REGISTRY` set in `.env`.
 
 Each service Makefile follows the same pattern via `Makefile.common`: `test` (creates a fresh `.venv`, runs pytest with coverage, tears the venv down), `build-push`, `ship`. `oracle/Makefile` also `pip install -e ../neo4j-client` — most other Python services do the same for the shared libraries they import.
 

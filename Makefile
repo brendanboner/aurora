@@ -275,13 +275,17 @@ ship-kg-view:
 EC2_DEPLOY_PATH ?= /home/ec2-user/octo-rapid-aurora/prod-deployment
 EC2_COMPOSE     ?= docker compose -f docker-compose.prod.yml
 
-# Internal macro: send a shell command to EC2 via SSM and wait for it to finish
+# Internal macro: send a shell command to EC2 via SSM and wait for it to finish.
+# Always re-logs the EC2 into ECR first — the auth token is short-lived (~12h)
+# and an expired token surfaces as "pull access denied" mid-deploy. `make
+# ecr-login` is idempotent + sub-second, so paying for it on every deploy is
+# cheaper than diagnosing a flaky deploy failure later.
 define ssm-run
 	@echo "$(CYAN)Deploying to EC2 via SSM...$(NC)"
 	@CMD_ID=$$(aws ssm send-command \
 		--instance-ids $(EC2_INSTANCE_ID) \
 		--document-name "AWS-RunShellScript" \
-		--parameters 'commands=["sudo -u ec2-user bash -c \"cd $(EC2_DEPLOY_PATH) && $(1)\""]' \
+		--parameters 'commands=["sudo -u ec2-user bash -lc \"cd $(EC2_DEPLOY_PATH) && make ecr-login && $(1)\""]' \
 		--profile $(AWS_SSO_PROFILE) \
 		--region $(AWS_REGION) \
 		--output text --query 'Command.CommandId'); \
