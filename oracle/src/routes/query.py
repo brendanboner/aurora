@@ -1094,17 +1094,39 @@ async def query_stream(
                 yield "data: [DONE]\n\n"
                 return
 
-            full_answer = []
-            async for token in call_llm_stream(
-                client, messages,
-                max_tokens=settings.max_answer_tokens,
-                temperature=0.3,
-            ):
-                full_answer.append(token)
-                yield f"data: {json.dumps({'token': token})}\n\n"
+            # Defense-in-depth: the baseline engine already synthesised a
+            # complete answer in response.answer above; call_llm_stream here is
+            # purely a UX layer to deliver tokens live. If it errors mid-flight
+            # (Azure rate-limit, content-filter trip on the conversation_history,
+            # transient network drop), fall back to streaming the pre-generated
+            # answer as word chunks rather than surfacing "Unable to get a
+            # response" to the user — which is what the outer except would do.
+            # Same fallback pattern as the fast→baseline cascade above.
+            full_answer: list[str] = []
+            stream_failed = False
+            try:
+                async for token in call_llm_stream(
+                    client, messages,
+                    max_tokens=settings.max_answer_tokens,
+                    temperature=0.3,
+                ):
+                    full_answer.append(token)
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+                complete_answer = "".join(full_answer)
+            except Exception as stream_err:
+                stream_failed = True
+                logger.warning(
+                    f"[{query_id}] Stream: LLM re-stream failed after baseline produced an answer; "
+                    f"falling back to engine-generated answer: {stream_err}"
+                )
+                # Any partial tokens already sent will be overwritten on the
+                # client when META arrives with the authoritative answer.
+                complete_answer = response.answer or ""
+                if complete_answer:
+                    for chunk in _split_into_chunks(complete_answer):
+                        yield f"data: {json.dumps({'token': chunk})}\n\n"
 
             # Save the streaming turn to conversation store
-            complete_answer = "".join(full_answer)
             if complete_answer and request.user_id:
                 await conv_store.append_turn(
                     str(request.user_id), request.question, complete_answer
@@ -1114,6 +1136,8 @@ async def query_stream(
             # before the generator closes on [DONE]
             meta = _build_stream_meta(response)
             meta["answer"] = complete_answer
+            if stream_failed:
+                meta["stream_fallback"] = True
             yield f"data: [META] {json.dumps(meta)}\n\n"
             yield "data: [DONE]\n\n"
 
