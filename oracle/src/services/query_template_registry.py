@@ -1533,9 +1533,16 @@ class QueryTemplateRegistry:
                 "limit": "int"
             },
             cypher="""
-            // Find Event nodes: upcoming + recent past (last 60 days covers "just happened")
+            // Find Event nodes: strictly future ("upcoming" means upcoming).
+            // Used to widen to last-60-days for "just happened" context, but
+            // ORDER BY start_date ASC sorted those past events ahead of true
+            // future ones and LIMIT cropped the future out — "when is the
+            // next field day" then answered with past events. If zero true
+            // future events match, fast_engine.py:1408 falls back to
+            // PAST_EVENTS and the answer prompt frames it as "no upcoming,
+            // here's the most recent past" via _no_upcoming_found_showing_past.
             MATCH (e:Event)
-            WHERE datetime(e.start_date) >= datetime() - duration({days: 60})
+            WHERE datetime(e.start_date) >= datetime()
               AND ($start_date IS NULL OR datetime(e.start_date) >= datetime($start_date))
               AND ($end_date IS NULL OR datetime(e.start_date) <= datetime($end_date))
               AND ($exclude_meetings IS NULL OR $exclude_meetings = false
