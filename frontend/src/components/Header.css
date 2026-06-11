@@ -27,11 +27,17 @@
   overflow: hidden;
 }
 
-/* Hamburger button — visible-bar centre is nudged right so it lines up
-   with the drawer's menu-item icons when the drawer is open. Drawer item
-   icons centre at viewport x = drawer.left (10) + drawer-nav.padding-left
-   (10) + drawer-item.padding-left (12) + half-icon (9) = 41. Without
-   the offset the bars would sit 4px left of that. */
+/* Hamburger button — aligned with the drawer so opening the drawer makes
+   the bars "morph" into the menu-item icons. Two things line up:
+     1. Button LEFT EDGE = drawer-item LEFT EDGE
+        = drawer.left + drawer-nav.padding-left  (= 20 desktop, 18 mobile)
+        → driven by .app-header padding-left (button has margin-left: 0).
+     2. Bar CENTRE = drawer-item icon CENTRE
+        = drawer-item LEFT + drawer-item.padding-left (12) + half-icon (9)
+        = button_left + 21
+   Bars are 16px wide; centred in the 34px button they'd sit at button_left+17.
+   Asymmetric horizontal padding (11 left / 3 right) shifts them 4px right
+   so their centre lands at button_left + 21 without changing button width. */
 .mobile-menu-btn {
   display: inline-flex;
   flex-direction: column;
@@ -42,8 +48,8 @@
   border: none;
   color: var(--a1-text-tertiary);
   cursor: pointer;
-  padding: 7px;
-  margin-left: 4px;
+  padding: 7px 3px 7px 11px;
+  margin-left: 0;
   border-radius: var(--a1-radius-md);
   width: 34px;
   height: 34px;
@@ -217,17 +223,16 @@
 }
 
 @media (max-width: 768px) {
+  /* Drawer shifts from left:10 to left:8 (-2px). Keep the header's left
+     padding equal to drawer.left + nav.padding-left so the button's left
+     edge tracks the drawer-item left edge: 8 + 10 = 18. Right padding stays
+     14px to give the header room on narrow screens. */
   .app-header {
     padding: 0 14px;
+    padding-left: max(18px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
   }
-  /* On mobile the header padding drops 20 → 14 and the drawer shifts 10 → 8.
-     The +4 margin we use on desktop puts the bars at viewport x=35; the
-     drawer-item icon centre on mobile is at x=39 (drawer 8 + nav 10 + item 12
-     + half-icon 9). Bump margin-left another 4px so bar centre = 14+8+17=39
-     and the icon column lines up with the hamburger column. */
-  .mobile-menu-btn {
-    margin-left: 8px;
-  }
+  /* margin-left stays 0 from the desktop rule; no override needed. */
   .header-product-name {
     font-size: 14px;
   }

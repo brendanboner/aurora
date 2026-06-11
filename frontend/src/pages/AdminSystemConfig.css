@@ -73,7 +73,7 @@
   50% { opacity: 0.6; }
 }
 
-.header-actions {
+.config-header .header-actions {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -1065,12 +1065,12 @@ button.sc-meta-chip:hover { opacity: 0.75; }
     align-items: stretch;
   }
   
-  .header-actions {
+  .config-header .header-actions {
     width: 100%;
     flex-direction: column;
   }
-  
-  .header-actions button {
+
+  .config-header .header-actions button {
     width: 100%;
   }
   

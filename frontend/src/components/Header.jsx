@@ -11,15 +11,14 @@ const Header = ({ onMenuToggle, isMenuOpen }) => {
   const menuRef = useRef(null);
 
   const getUserInitials = () => {
-    if (!user) return 'U';
-    if (user.email) {
-      const emailParts = user.email.split('@')[0].split('.');
-      if (emailParts.length > 1) {
-        return `${emailParts[0][0]}${emailParts[1][0]}`.toUpperCase();
-      }
-      return user.email[0].toUpperCase();
+    if (!user?.email) return 'U';
+    const local = user.email.split('@')[0];
+    const parts = local.split(/[._-]+/).filter(Boolean);
+    if (parts.length > 1) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     }
-    return 'U';
+    const letters = local.replace(/[^a-zA-Z]/g, '') || local;
+    return letters.slice(0, 2).toUpperCase() || 'U';
   };
 
   const handleLogout = () => {
