@@ -40,6 +40,7 @@ class Migrations:
             Migrations.add_wba_extranet_root_datasource,
             Migrations.fix_wba_extranet_child_scraper_type,
             Migrations.add_techfieldday_datasources,
+            Migrations.add_wfa_root_datasource_hierarchy,
         ]
         
         for migration_func in migrations:
@@ -1607,6 +1608,81 @@ class Migrations:
             return True
         except Exception as e:
             logger.error(f"Error upserting Tech Field Day datasources: {e}")
+            return False
+
+    @staticmethod
+    def add_wfa_root_datasource_hierarchy(session: Session) -> bool:
+        """
+        Upsert a `wfa` root DataSource and parent every wfa_causeway_* /
+        wfa_resource_page node to it.
+
+        Without this, the wfa_* DataSource nodes are all siblings with no
+        parent, so the @-mention resolver and `_expand_datasource_parents`
+        cannot fan `@wfa` out to every workgroup — it ends up scoping the
+        chat to whichever single wfa_* node won the alphabetical tiebreak
+        (typically `wfa_resource_page`). That made docs from `OperatorMSTG`
+        and other Causeway TGs invisible unless the user explicitly
+        @-mentioned them by exact slug.
+
+        The root is metadata only — `scraper_type` is left unset so the
+        retriever scheduler never picks it up; the children continue to do
+        the actual scraping. Idempotent — MERGE on datasource_id.
+        """
+        try:
+            root = {
+                "datasource_id": "wfa",
+                "name": "Wi-Fi Alliance",
+                "display_name": "Wi-Fi Alliance",
+                "org_id": "wfa",
+                "source_type": "umbrella",
+                "description": (
+                    "Wi-Fi Alliance — umbrella DataSource that fans @wfa out "
+                    "to every Wi-Fi Alliance child source (Causeway task/"
+                    "market segment groups plus the public Resource Center)."
+                ),
+                "primary_alias": "wfa",
+                "aliases": ["wfa", "wi-fi alliance", "wifi alliance", "wifialliance"],
+            }
+            session.run(
+                """
+                MERGE (d:DataSource {datasource_id: $datasource_id})
+                ON CREATE SET
+                    d.name           = $name,
+                    d.display_name   = $display_name,
+                    d.org_id         = $org_id,
+                    d.source_type    = $source_type,
+                    d.description    = $description,
+                    d.primary_alias  = $primary_alias,
+                    d.aliases        = $aliases,
+                    d.parent_datasource_id = NULL
+                ON MATCH SET
+                    d.display_name   = $display_name,
+                    d.description    = $description,
+                    d.primary_alias  = $primary_alias,
+                    d.aliases        = $aliases
+                """,
+                **root,
+            )
+
+            # Re-parent all wfa_* children except the root itself.
+            result = session.run(
+                """
+                MATCH (d:DataSource)
+                WHERE d.datasource_id STARTS WITH 'wfa_'
+                  AND (d.parent_datasource_id IS NULL OR d.parent_datasource_id <> 'wfa')
+                SET d.parent_datasource_id = 'wfa'
+                RETURN count(d) AS reparented
+                """
+            )
+            record = result.single()
+            reparented = record["reparented"] if record else 0
+            logger.info(
+                "add_wfa_root_datasource_hierarchy: ensured wfa root + reparented "
+                f"{reparented} wfa_* child(ren)"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error wiring WFA datasource hierarchy: {e}")
             return False
 
     @staticmethod

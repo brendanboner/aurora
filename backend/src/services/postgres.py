@@ -74,6 +74,47 @@ def execute(query, params=None):
 
 # ========== User Management ==========
 
+# Umbrella DataSources whose contents we want every new user to see in the
+# unboosted retrieval path. Joining the parent fans out to all children via
+# the workgroup filter (`ds.datasource_id IN $workgroups OR
+# ds.parent_datasource_id IN $workgroups`).
+#
+# Kept small and parent-only — children carry the actual scrape config and
+# new ones land under these parents automatically. Power users can still
+# tweak via Settings → Workgroups.
+DEFAULT_JOINED_DATASOURCES: List[str] = [
+    "wfa",
+    "wba_extranet",
+    "techfieldday",
+]
+
+
+def seed_default_source_memberships(user_id: str) -> int:
+    """Add `joined` rows for our default umbrella DataSources.
+
+    Idempotent — uses ON CONFLICT DO NOTHING so re-running is safe and any
+    existing user choices (joined or ignored) are preserved.
+    """
+    if not DEFAULT_JOINED_DATASOURCES:
+        return 0
+    placeholders = ", ".join(["(%s, %s, 'joined')"] * len(DEFAULT_JOINED_DATASOURCES))
+    params: List[Any] = []
+    for ds_id in DEFAULT_JOINED_DATASOURCES:
+        params.extend([user_id, ds_id])
+    query = f"""
+        INSERT INTO user_source_memberships (user_id, datasource_id, status)
+        VALUES {placeholders}
+        ON CONFLICT (user_id, datasource_id) DO NOTHING
+    """
+    try:
+        return execute(query, params)
+    except Exception as exc:
+        # FK violation here means the user row isn't there yet — caller
+        # should arrange ordering. Anything else (table missing during early
+        # migration) is logged and swallowed; defaults are best-effort.
+        logger.warning(f"Failed to seed default source memberships for {user_id}: {exc}")
+        return 0
+
 def create_user(user_id: str, email: str, display_name: str) -> Dict[str, Any]:
     """
     Create a new user with Cognito UUID.
@@ -102,7 +143,7 @@ def create_user(user_id: str, email: str, display_name: str) -> Dict[str, Any]:
         RETURNING id, email, display_name, created_at, updated_at
     """
     try:
-        return fetchone(query, (user_id, email, display_name))
+        user = fetchone(query, (user_id, email, display_name))
     except psycopg2.IntegrityError as e:
         if 'app_users_email_key' in str(e) or 'duplicate key value violates unique constraint' in str(e):
             # Email already exists with different user_id - this is a data inconsistency
@@ -115,6 +156,15 @@ def create_user(user_id: str, email: str, display_name: str) -> Dict[str, Any]:
                 "This should not happen with Cognito. Please contact support."
             ) from e
         raise
+
+    # Best-effort: give new users a starter set of "joined" umbrella sources
+    # so unboosted retrieval surfaces WFA/WBA/TFD content out of the box.
+    try:
+        seed_default_source_memberships(user_id)
+    except Exception as seed_err:
+        logger.warning(f"Default source memberships seed failed for {user_id}: {seed_err}")
+
+    return user
 
 def _migrate_user_id(old_id: str, new_id: str, email: str, display_name: str) -> Dict[str, Any]:
     """

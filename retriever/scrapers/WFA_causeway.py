@@ -323,6 +323,13 @@ class WFACausewayScraper(BaseScraper):
         if allowed_folders:
             logger.debug(f"Allowed folders: {allowed_folders}")
         
+        # Track (title, mod-date) within this TG scrape so the same document
+        # uploaded twice under different doc IDs (e.g. WFA Causeway listing
+        # docs 104331 and 104333 with identical title + revision date) is
+        # only emitted once. The digester also dedups by content_hash, but
+        # parallel RabbitMQ consumers can race past that check.
+        seen_title_date: set = set()
+
         try:
             await self._scrape_folder_recursive(
                 folder_url=group_url,
@@ -331,11 +338,12 @@ class WFACausewayScraper(BaseScraper):
                 allowed_folders=allowed_folders,
                 resources=resources,
                 visited_urls=visited_urls,
+                seen_title_date=seen_title_date,
                 max_resources=max_resources,
                 last_scraped_at=last_scraped_at,
                 discovery_mode=discovery_mode
             )
-            
+
             logger.info(f"Discovery complete: found {len(resources)} new documents")
             
         except Exception as e:
@@ -353,6 +361,7 @@ class WFACausewayScraper(BaseScraper):
         allowed_folders: Optional[List[str]],
         resources: List[Resource],
         visited_urls: set,
+        seen_title_date: set,
         max_resources: int,
         last_scraped_at: Optional[datetime] = None,
         discovery_mode: str = "date_based"
@@ -415,7 +424,16 @@ class WFACausewayScraper(BaseScraper):
                 if max_resources > 0 and len(resources) >= max_resources:
                     logger.info(f"Reached max_resources limit ({max_resources})")
                     break
-                
+
+                title_key = ((doc.title or "").strip().lower(), str(doc_mod_date or ""))
+                if title_key[0] and title_key in seen_title_date:
+                    logger.info(
+                        f"Skipping in-scrape duplicate by (title, mod_date): "
+                        f"{doc.title} @ {doc_mod_date} ({doc.url})"
+                    )
+                    continue
+                seen_title_date.add(title_key)
+
                 doc.category = current_path or "root"
                 resources.append(doc)
                 logger.debug(f"Added document: {doc.title} (mod: {doc_mod_date})")
@@ -425,11 +443,20 @@ class WFACausewayScraper(BaseScraper):
                 if max_resources > 0 and len(resources) >= max_resources:
                     logger.info(f"Reached max_resources limit ({max_resources})")
                     break
-                
+
                 if self.url_exists_in_db(doc.url):
                     logger.debug(f"Skipping duplicate: {doc.title}")
                     continue
-                
+
+                title_key = ((doc.title or "").strip().lower(), str(doc_mod_date or ""))
+                if title_key[0] and title_key in seen_title_date:
+                    logger.info(
+                        f"Skipping in-scrape duplicate by (title, mod_date): "
+                        f"{doc.title} @ {doc_mod_date} ({doc.url})"
+                    )
+                    continue
+                seen_title_date.add(title_key)
+
                 doc.category = current_path or "root"
                 resources.append(doc)
                 logger.debug(f"Added document: {doc.title}")
@@ -467,6 +494,7 @@ class WFACausewayScraper(BaseScraper):
                 allowed_folders=allowed_folders,
                 resources=resources,
                 visited_urls=visited_urls,
+                seen_title_date=seen_title_date,
                 max_resources=max_resources,
                 last_scraped_at=last_scraped_at,
                 discovery_mode=discovery_mode

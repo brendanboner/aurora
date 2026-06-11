@@ -638,6 +638,16 @@ class GenerationService:
             logger.warning("Failed to aggregate user reactions: %s", e)
             return None
 
+    @staticmethod
+    def _normalise_source_key(value: Any) -> Optional[str]:
+        """Lowercase + strip trailing slash so LLM-cited URLs match retrieved ones."""
+        if not value:
+            return None
+        text = str(value).strip().lower()
+        if not text:
+            return None
+        return text.rstrip("/")
+
     def _coerce_sources(
         self,
         raw_sources: Optional[List[Dict[str, Any]]],
@@ -645,17 +655,45 @@ class GenerationService:
         documents: List[Dict[str, Any]],
     ) -> List[PostSource]:
         """
-        Extract sources from LLM response or context.
-        
-        Now uses content 'id' as source_identifier for proper deduplication tracking.
+        Build PostSource records from LLM-cited sources, falling back to the
+        actual retrieved context if the LLM omits any.
+
+        LLM-claimed sources are validated against the retrieved context: a URL
+        or content_id that wasn't in the events/documents we passed in is
+        dropped (LLMs occasionally fabricate plausible-looking URLs that
+        otherwise land in post_source as if they were real citations).
         """
+        # Build the allow-set of identifiers/URLs the LLM was actually shown.
+        allowed_keys: set[str] = set()
+        for record in (*events, *documents):
+            for field in ("id", "url", "source_identifier"):
+                key = self._normalise_source_key(record.get(field))
+                if key:
+                    allowed_keys.add(key)
+
         sources: List[PostSource] = []
         if raw_sources:
             for raw in raw_sources:
                 try:
-                    sources.append(PostSource(**raw))
+                    candidate = PostSource(**raw)
                 except ValidationError:
                     logger.warning("Discarded invalid LLM source payload: %s", raw)
+                    continue
+                claimed_keys = {
+                    k
+                    for k in (
+                        self._normalise_source_key(candidate.url),
+                        self._normalise_source_key(candidate.source_identifier),
+                    )
+                    if k
+                }
+                if allowed_keys and claimed_keys and not (claimed_keys & allowed_keys):
+                    logger.warning(
+                        "Dropping LLM-cited source not in retrieved context: %s",
+                        candidate.url or candidate.source_identifier,
+                    )
+                    continue
+                sources.append(candidate)
         if sources:
             return sources
 
