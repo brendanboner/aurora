@@ -83,34 +83,37 @@ class Neo4jContextGateway:
                 WHERE toLower(org.name) IN [x IN $organisations | toLower(x)]
             })
         )
-        // Temporal filter: use publish_date when valid, fall back to created_at
+        // Temporal filter: use publish_date when valid, fall back to created_at.
+        // Regex-guard datetime() so a malformed publish_date (e.g. Python
+        // str(datetime) with a space separator) does not blow up the whole query.
         WITH r,
             CASE
               WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01')
-                THEN datetime(r.publish_date)
+                   AND toString(r.publish_date) =~ '^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}.*'
+                THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
               WHEN r.created_at IS NOT NULL THEN r.created_at
               ELSE datetime('1970-01-01')
             END AS effective_date
         WHERE effective_date >= datetime() - duration({days: $window_days})
           AND effective_date <= datetime('2100-12-31T23:59:59Z')
+          AND effective_date >= datetime('2000-01-01')
         // Exclude datasources the user has ignored
         AND ($excluded_datasources IS NULL OR size($excluded_datasources) = 0
              OR NOT r.datasource_id IN $excluded_datasources)
-        
+
         // Collect all topics and orgs for scoring
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
-        
-        WITH r, 
-             collect(DISTINCT t.name) AS all_topics, 
+
+        WITH r, effective_date,
+             collect(DISTINCT t.name) AS all_topics,
              collect(DISTINCT o.name) AS all_organisations
-        
+
         // Filter out generic content aggregators (configurable max_topics)
         WHERE size(all_topics) <= $max_topics
-        
+
         // Calculate relevance score components
-        WITH r, all_topics, all_organisations,
+        WITH r, effective_date, all_topics, all_organisations,
              // Topic specificity score: fewer topics = more focused (inverse normalized)
              CASE 
                 WHEN size(all_topics) = 0 THEN 0.0
@@ -131,10 +134,9 @@ class Neo4jContextGateway:
              // Recency score: exponential decay (14 days half-life — was 30 days).
              // Shorter half-life ensures last-week's WBA workgroup docs outrank older
              // evergreen case studies (e.g. Hamina Wireless) that have high specificity.
-             CASE
-                WHEN r.publish_date IS NULL OR r.publish_date IN ['', 'unknown'] THEN 0.2
-                ELSE exp(-duration.between(datetime(r.publish_date), datetime()).days / 14.0)
-             END AS recency_score,
+             // Reuse the validated effective_date so a malformed publish_date
+             // can't crash duration.between() here either.
+             exp(-duration.between(effective_date, datetime()).days / 14.0) AS recency_score,
 
              // Title match bonus: query topics in title indicate primary focus
              CASE
@@ -146,7 +148,7 @@ class Neo4jContextGateway:
 
         // Weighted relevance score — recency raised from 0.2 → 0.35 so fresh content
         // beats old high-specificity documents in the fallback Neo4j path.
-        WITH r, all_topics, all_organisations,
+        WITH r, effective_date, all_topics, all_organisations,
              (specificity_score * 0.3 +
               match_rate_score * 0.25 +
               recency_score * 0.35 +
@@ -271,21 +273,24 @@ class Neo4jContextGateway:
                 WHERE toLower(t.name) IN [x IN $topics | toLower(x)]
             })
         )
-        // Temporal filter: use publish_date when valid, fall back to created_at
+        // Temporal filter: use publish_date when valid, fall back to created_at.
+        // Regex-guard datetime() so a malformed publish_date (e.g. Python
+        // str(datetime) with a space separator) does not blow up the whole query.
         WITH r,
             CASE
               WHEN r.publish_date IS NOT NULL AND NOT r.publish_date IN ['', 'unknown']
-                   AND datetime(r.publish_date) >= datetime('2000-01-01')
-                THEN datetime(r.publish_date)
+                   AND toString(r.publish_date) =~ '^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}.*'
+                THEN datetime(replace(toString(r.publish_date), ' ', 'T'))
               WHEN r.created_at IS NOT NULL THEN r.created_at
               ELSE datetime('1970-01-01')
             END AS effective_date
         WHERE effective_date >= datetime() - duration({days: $window_days})
           AND effective_date <= datetime('2100-12-31T23:59:59Z')
+          AND effective_date >= datetime('2000-01-01')
         // Exclude datasources the user has ignored
         AND ($excluded_datasources IS NULL OR size($excluded_datasources) = 0
              OR NOT r.datasource_id IN $excluded_datasources)
-        
+
         // Collect orgs and topics for scoring
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
         WITH r, effective_date, collect(DISTINCT o.name) AS all_organisations
@@ -401,6 +406,9 @@ class Neo4jContextGateway:
             topics,
             organisations,
         )
+        # Regex-guard datetime() so a malformed publish_date (e.g. Python
+        # str(datetime) with a space separator) doesn't blow up the query and
+        # take out every CreatorAgent run.
         query = """
         MATCH (r:Resource)
         WHERE (
@@ -413,12 +421,16 @@ class Neo4jContextGateway:
                 WHERE toLower(org.name) IN [x IN $organisations | toLower(x)]
             })
         )
-        AND datetime(r.publish_date) >= datetime() - duration({days: $window_days})
-        // Date validation: exclude invalid future dates (beyond year 2100)
-        AND datetime(r.publish_date) <= datetime('2100-12-31T23:59:59Z')
+        AND r.publish_date IS NOT NULL
+        AND NOT r.publish_date IN ['', 'unknown']
+        AND toString(r.publish_date) =~ '^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}.*'
+        WITH r, datetime(replace(toString(r.publish_date), ' ', 'T')) AS effective_date
+        WHERE effective_date >= datetime() - duration({days: $window_days})
+          AND effective_date <= datetime('2100-12-31T23:59:59Z')
+          AND effective_date >= datetime('2000-01-01')
         OPTIONAL MATCH (r)-[:RELATES_TO]->(t:Topic)
         OPTIONAL MATCH (r)-[:MENTIONS]->(o:Organization)
-        WITH r, collect(DISTINCT t.name) AS topics, collect(DISTINCT o.name) AS organisations
+        WITH r, effective_date, collect(DISTINCT t.name) AS topics, collect(DISTINCT o.name) AS organisations
         RETURN r.title AS title,
                r.summary AS summary,
                r.publish_date AS start_date,
@@ -428,7 +440,7 @@ class Neo4jContextGateway:
                COALESCE(r.last_updated, r.publish_date) AS last_updated,
                topics,
                organisations
-        ORDER BY COALESCE(r.last_updated, r.publish_date) DESC
+        ORDER BY effective_date DESC
         LIMIT $limit
         """
         params = {
