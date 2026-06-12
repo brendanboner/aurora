@@ -1081,10 +1081,39 @@ def create_feedback(
     query = """
         INSERT INTO user_feedback (user_id, feedback_text, category)
         VALUES (%s, %s, %s)
-        RETURNING id, user_id, feedback_text, category, status, priority, 
+        RETURNING id, user_id, feedback_text, category, status, priority,
                   submitted_at, updated_at
     """
     return fetchone(query, (user_id, feedback_text, category))
+
+
+def create_survey_response(
+    user_id: str,
+    user_email: Optional[str],
+    user_display_name: Optional[str],
+    duration_seconds: Optional[int],
+    client_user_agent: Optional[str],
+    responses: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Insert one quick-feedback survey submission (login-gated /survey).
+
+    `responses` is a dict keyed by qN_<slug>; stored as JSONB so the
+    question contract can evolve without DDL.
+    """
+    query = """
+        INSERT INTO survey_responses (
+            user_id, user_email, user_display_name,
+            duration_seconds, client_user_agent, responses
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id, user_id, user_email, user_display_name,
+                  submitted_at, duration_seconds, client_user_agent, responses
+    """
+    return fetchone(
+        query,
+        (user_id, user_email, user_display_name,
+         duration_seconds, client_user_agent, Json(responses)),
+    )
 
 
 def get_all_feedback(

@@ -285,6 +285,38 @@ server.post('/internal/system-alert', async (req, res) => {
   });
 });
 
+/**
+ * POST /internal/push-survey-result
+ * Body: { user_email, user_display_name, submitted_at, duration_seconds, responses }
+ *
+ * Delivers an Adaptive Card with the survey results to every Teams channel
+ * subscribed to the `survey-feedback` slug. Internal-only — not exposed
+ * through nginx. Called by the Aurora backend after persisting the row.
+ */
+server.post('/internal/push-survey-result', async (req, res) => {
+  const body = (req.body ?? {}) as any;
+  if (!body?.responses || typeof body.responses !== 'object') {
+    res.send(400, { error: 'responses object is required' });
+    return;
+  }
+
+  console.log(
+    `[${new Date().toISOString()}] Survey result push from ${body.user_email ?? 'unknown'}`
+  );
+
+  res.json({ status: 'queued', user_email: body.user_email ?? null });
+
+  proactiveMessenger.pushSurveyResult({
+    user_email:        body.user_email ?? null,
+    user_display_name: body.user_display_name ?? null,
+    submitted_at:      body.submitted_at ?? new Date().toISOString(),
+    duration_seconds:  body.duration_seconds ?? null,
+    responses:         body.responses,
+  }).catch((err) => {
+    console.error('[internal/push-survey-result] Delivery error:', err);
+  });
+});
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('\n\n🛑 SIGTERM signal received: closing HTTP server');

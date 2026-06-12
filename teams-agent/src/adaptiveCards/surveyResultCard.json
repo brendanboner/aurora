@@ -1,0 +1,78 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "New Aurora feedback from ${user_display_name}",
+          "weight": "Bolder",
+          "size": "Medium",
+          "wrap": true
+        },
+        {
+          "type": "TextBlock",
+          "text": "${user_email} · ${submitted_at_display}",
+          "size": "Small",
+          "isSubtle": true,
+          "spacing": "None"
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "spacing": "Medium",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "${star_line}",
+          "size": "ExtraLarge",
+          "color": "Accent"
+        }
+      ]
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        { "title": "Findability",       "value": "${q2_findability}" },
+        { "title": "Speed",             "value": "${q3_speed}" },
+        { "title": "Accuracy",          "value": "${q4_accuracy}" },
+        { "title": "Citation accuracy", "value": "${q5_citation_accuracy}" },
+        { "title": "Hallucination",     "value": "${q6_hallucination}" },
+        { "title": "Worked best for",   "value": "${q7_works_best_for}" },
+        { "title": "Source coverage",   "value": "${q8_source_coverage}" },
+        { "title": "Missing sources",   "value": "${q9_missing_sources}" },
+        { "title": "Would use again",   "value": "${q11_would_use_again}" }
+      ]
+    },
+    {
+      "type": "Container",
+      "spacing": "Medium",
+      "$when": "${comment_present}",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "One thing to fix or add",
+          "weight": "Bolder",
+          "size": "Small"
+        },
+        {
+          "type": "TextBlock",
+          "text": "${q10_one_thing}",
+          "wrap": true,
+          "isSubtle": false
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "spacing": "Medium",
+      "text": "Completed in ${duration_display}",
+      "size": "Small",
+      "isSubtle": true
+    }
+  ]
+}

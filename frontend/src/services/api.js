@@ -692,6 +692,15 @@ export const submitFeedback = async (feedbackText, category) => {
   return response.data;
 };
 
+// Quick-feedback Survey (login-gated /survey route, URL-only entry)
+export const submitSurvey = async (responses, durationSeconds) => {
+  const response = await apiClient.post('/backend/survey/submit', {
+    responses,
+    duration_seconds: durationSeconds,
+  });
+  return response.data;
+};
+
 // ==================== Document Upload ====================
 
 /**

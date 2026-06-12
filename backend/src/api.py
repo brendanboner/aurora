@@ -32,6 +32,7 @@ from src.routes import admin
 from src.routes import events
 from src.routes import feedback
 from src.routes import documents
+from src.routes import survey
 
 # Initialize OpenTelemetry
 tracer, meter = init_telemetry(
@@ -78,6 +79,9 @@ app.include_router(feedback.router, prefix="")
 
 # Include documents routes
 app.include_router(documents.router, prefix="")
+
+# Include survey routes (login-gated /survey/submit)
+app.include_router(survey.router, prefix="")
 
 # Add CORS middleware
 app.add_middleware(

@@ -29,6 +29,7 @@ import DocumentUpload from './pages/DocumentUpload';
 import MyDocuments from './pages/MyDocuments';
 import UserGuide from './pages/UserGuide';
 import SubmitFeedback from './pages/SubmitFeedback';
+import Survey from './pages/Survey';
 import TeamsTab from './pages/TeamsTab';
 import { testBackendConnection } from './services/api';
 
@@ -89,6 +90,16 @@ function AppContent({ backendStatus, menuOpen, toggleMenu, closeMenu }) {
           element={
             <ProtectedRoute>
               <TeamsTab backendStatus={backendStatus} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Quick-feedback survey — full screen, no header/sidebar; URL-only entry */}
+        <Route
+          path="/survey"
+          element={
+            <ProtectedRoute>
+              <Survey />
             </ProtectedRoute>
           }
         />

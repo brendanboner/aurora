@@ -3,6 +3,17 @@ import * as ACData from 'adaptivecards-templating';
 import { conversationReferenceStore } from './conversationReferenceStore';
 import { postToWebhook } from './webhookFormatter';
 import proactiveFeedCardTemplate from '../adaptiveCards/proactiveFeedCard.json';
+import surveyResultCardTemplate from '../adaptiveCards/surveyResultCard.json';
+
+export const SURVEY_FEEDBACK_SLUG = 'survey-feedback';
+
+export interface SurveyResultPayload {
+  user_email: string | null;
+  user_display_name: string | null;
+  submitted_at: string;
+  duration_seconds: number | null;
+  responses: Record<string, unknown>;
+}
 
 export interface SystemAlertPayload {
   severity: 'critical' | 'warning' | 'info';
@@ -338,6 +349,75 @@ export class ProactiveMessenger {
 
     console.log(`[ProactiveMessenger] System alert "${payload.title}" → ${sent}/${refs.length} admin conversations`);
     return { sent, errors };
+  }
+
+  /**
+   * Push a quick-feedback survey result to every conversation subscribed to
+   * the `survey-feedback` slug (the Aurora feedback channel).
+   * One-time setup per channel: `@aurora subscribe survey-feedback`.
+   */
+  async pushSurveyResult(payload: SurveyResultPayload): Promise<{ sent: number; errors: number }> {
+    const refs = await conversationReferenceStore.getSubscribed(SURVEY_FEEDBACK_SLUG);
+    if (refs.length === 0) {
+      console.log(`[ProactiveMessenger] pushSurveyResult: no subscribers for slug "${SURVEY_FEEDBACK_SLUG}"`);
+      return { sent: 0, errors: 0 };
+    }
+
+    const card = this.buildSurveyCard(payload);
+    const activity = MessageFactory.attachment(card);
+
+    let sent = 0, errors = 0;
+    for (const ref of refs) {
+      const ok = await this.botPush(ref, activity as any, ref.conversation_id);
+      ok ? sent++ : errors++;
+    }
+
+    console.log(`[ProactiveMessenger] Survey result from ${payload.user_email ?? 'unknown'} → ${sent}/${refs.length} channels`);
+    return { sent, errors };
+  }
+
+  private buildSurveyCard(p: SurveyResultPayload): any {
+    const r = (p.responses ?? {}) as Record<string, any>;
+    const rating = Number(r.q1_overall_rating) || 0;
+    const starLine = '★'.repeat(rating) + '☆'.repeat(Math.max(0, 5 - rating));
+
+    const submittedDisplay = (() => {
+      try { return new Date(p.submitted_at).toLocaleString(); }
+      catch { return p.submitted_at; }
+    })();
+
+    const durationDisplay = p.duration_seconds == null
+      ? 'n/a'
+      : `${Math.max(1, Math.round(p.duration_seconds))}s`;
+
+    const arrOrDash = (v: any): string =>
+      Array.isArray(v) && v.length ? v.join(', ') : '—';
+
+    const text = (v: any): string =>
+      v == null || v === '' ? '—' : String(v);
+
+    const data = {
+      user_display_name:    p.user_display_name || p.user_email || 'Anonymous',
+      user_email:           p.user_email || '',
+      submitted_at_display: submittedDisplay,
+      star_line:            starLine,
+      q2_findability:       text(r.q2_findability),
+      q3_speed:             text(r.q3_speed),
+      q4_accuracy:          text(r.q4_accuracy),
+      q5_citation_accuracy: text(r.q5_citation_accuracy),
+      q6_hallucination:     text(r.q6_hallucination),
+      q7_works_best_for:    arrOrDash(r.q7_works_best_for),
+      q8_source_coverage:   text(r.q8_source_coverage),
+      q9_missing_sources:   arrOrDash(r.q9_missing_sources),
+      q10_one_thing:        String(r.q10_one_thing ?? ''),
+      comment_present:      Boolean(r.q10_one_thing && String(r.q10_one_thing).trim().length),
+      q11_would_use_again:  text(r.q11_would_use_again),
+      duration_display:     durationDisplay,
+    };
+
+    const template = new ACData.Template(surveyResultCardTemplate as any);
+    const expanded = template.expand({ $root: data });
+    return CardFactory.adaptiveCard(expanded);
   }
 }
 

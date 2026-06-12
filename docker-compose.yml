@@ -295,6 +295,9 @@ services:
       OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
       OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
       OTEL_HASH_CYPHER_QUERIES: ${OTEL_HASH_CYPHER_QUERIES:-false}
+
+      # Teams agent (for /survey results push)
+      TEAMS_AGENT_URL: ${TEAMS_AGENT_URL:-http://aurora-teams-agent:3978}
     depends_on:
       postgres:
         condition: service_healthy
