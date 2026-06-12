@@ -127,7 +127,7 @@ const QUESTIONS = [
   },
 ];
 
-const REQUIRED_KEYS = QUESTIONS.filter(q => q.required).map(q => q.key);
+const TOTAL = QUESTIONS.length;
 
 function isAnswered(q, value) {
   if (value === undefined || value === null) return false;
@@ -138,44 +138,23 @@ function isAnswered(q, value) {
 
 export default function Survey() {
   const [answers, setAnswers] = useState({});
+  const [step, setStep] = useState(0); // 0..TOTAL-1
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
   const mountedAtRef = useRef(Date.now());
 
-  const setAnswer = (key, value) => {
-    setAnswers(prev => ({ ...prev, [key]: value }));
-  };
+  const q = QUESTIONS[step];
 
-  const toggleMulti = (key, value) => {
-    setAnswers(prev => {
-      const current = Array.isArray(prev[key]) ? prev[key] : [];
-      const next = current.includes(value)
-        ? current.filter(v => v !== value)
-        : [...current, value];
-      return { ...prev, [key]: next };
-    });
-  };
-
-  const answeredCount = useMemo(
-    () => QUESTIONS.filter(q => isAnswered(q, answers[q.key])).length,
-    [answers]
-  );
-
-  const allRequiredAnswered = useMemo(
-    () => REQUIRED_KEYS.every(k => isAnswered(QUESTIONS.find(q => q.key === k), answers[k])),
-    [answers]
-  );
-
-  const handleSubmit = async () => {
+  const doSubmit = async (finalAnswers) => {
     setSubmitting(true);
     setError(null);
     try {
       const durationSeconds = Math.round((Date.now() - mountedAtRef.current) / 1000);
-      const cleaned = { ...answers };
-      QUESTIONS.forEach(q => {
-        if (!q.required && !isAnswered(q, cleaned[q.key])) {
-          delete cleaned[q.key];
+      const cleaned = { ...finalAnswers };
+      QUESTIONS.forEach(qq => {
+        if (!qq.required && !isAnswered(qq, cleaned[qq.key])) {
+          delete cleaned[qq.key];
         }
       });
       await submitSurvey(cleaned, durationSeconds);
@@ -192,21 +171,76 @@ export default function Survey() {
     }
   };
 
+  const advance = (nextAnswers) => {
+    if (step >= TOTAL - 1) {
+      doSubmit(nextAnswers);
+      return;
+    }
+    setStep(s => Math.min(s + 1, TOTAL - 1));
+  };
+
+  // Single-answer click — set + auto-advance
+  const pickSingle = (value) => {
+    const next = { ...answers, [q.key]: value };
+    setAnswers(next);
+    advance(next);
+  };
+
+  // Multi-select toggle (no auto-advance; user clicks Next)
+  const toggleMulti = (value) => {
+    setAnswers(prev => {
+      const current = Array.isArray(prev[q.key]) ? prev[q.key] : [];
+      const updated = current.includes(value)
+        ? current.filter(v => v !== value)
+        : [...current, value];
+      return { ...prev, [q.key]: updated };
+    });
+  };
+
+  const setText = (value) => {
+    setAnswers(prev => ({ ...prev, [q.key]: value }));
+  };
+
+  const handleNext = () => {
+    advance(answers);
+  };
+
+  const handleSkip = () => {
+    // Drop any partial value for this optional question, then advance.
+    const next = { ...answers };
+    delete next[q.key];
+    setAnswers(next);
+    advance(next);
+  };
+
+  const handleBack = () => {
+    if (step > 0) setStep(s => s - 1);
+  };
+
   if (submitted) {
     return (
       <div className="survey-root">
-        <div className="survey-shell survey-thanks">
-          <h1>Thanks for the feedback.</h1>
-          <p>This goes straight to the Office of the CTO. You can close this tab.</p>
+        <div className="survey-page">
+          <div className="survey-stage">
+            <div className="survey-thanks">
+              <h1>Thanks for the feedback.</h1>
+              <p>This goes straight to the Office of the CTO. You can close this tab.</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
+  const currentAnswer = answers[q.key];
+  const currentAnswered = isAnswered(q, currentAnswer);
+  const isLast = step === TOTAL - 1;
+  const progressPct = ((step) / TOTAL) * 100;
+
   return (
     <div className="survey-root">
-      <div className="survey-shell">
-        <header className="survey-header">
+      <div className="survey-page">
+        <header className="survey-top">
           <img src="/octo_logo.png" alt="Octo" />
           <div className="wordmark">
             <span className="small">Office of the CTO &mdash; Extreme Networks</span>
@@ -214,19 +248,14 @@ export default function Survey() {
           </div>
         </header>
 
-        <div className="survey-progress" aria-live="polite">
-          <span>{answeredCount} of {QUESTIONS.length} answered &middot; takes ~2 minutes</span>
-          <div className="survey-progress-bar">
-            <div style={{ width: `${(answeredCount / QUESTIONS.length) * 100}%` }} />
-          </div>
-        </div>
+        <div className="survey-stage">
+          <div className="survey-card">
+            <div className="survey-step">Question {step + 1} of {TOTAL}</div>
+            <div className="survey-progress-bar" aria-hidden="true">
+              <div style={{ width: `${progressPct}%` }} />
+            </div>
 
-        {QUESTIONS.map(q => (
-          <div className="q-card" key={q.key}>
-            <p className="q-title">
-              {q.title}
-              {q.required && <span className="req" aria-hidden="true">*</span>}
-            </p>
+            <p className="q-title">{q.title}</p>
 
             {q.type === 'stars' && (
               <div className="q-options" role="radiogroup" aria-label={q.title}>
@@ -234,9 +263,10 @@ export default function Survey() {
                   <button
                     key={n}
                     type="button"
-                    className={`q-chip star ${answers[q.key] === n ? 'selected' : ''}`}
-                    aria-pressed={answers[q.key] === n}
-                    onClick={() => setAnswer(q.key, n)}
+                    className={`q-chip star ${currentAnswer === n ? 'selected' : ''}`}
+                    aria-pressed={currentAnswer === n}
+                    onClick={() => pickSingle(n)}
+                    disabled={submitting}
                   >
                     {'★'.repeat(n)}{'☆'.repeat(5 - n)}
                   </button>
@@ -250,9 +280,10 @@ export default function Survey() {
                   <button
                     key={o.value}
                     type="button"
-                    className={`q-chip ${answers[q.key] === o.value ? 'selected' : ''}`}
-                    aria-pressed={answers[q.key] === o.value}
-                    onClick={() => setAnswer(q.key, o.value)}
+                    className={`q-chip ${currentAnswer === o.value ? 'selected' : ''}`}
+                    aria-pressed={currentAnswer === o.value}
+                    onClick={() => pickSingle(o.value)}
+                    disabled={submitting}
                   >
                     {o.label}
                   </button>
@@ -261,22 +292,40 @@ export default function Survey() {
             )}
 
             {q.type === 'multi' && (
-              <div className="q-options">
-                {q.options.map(o => {
-                  const checked = Array.isArray(answers[q.key]) && answers[q.key].includes(o.value);
-                  return (
-                    <button
-                      key={o.value}
-                      type="button"
-                      className={`q-chip ${checked ? 'selected' : ''}`}
-                      aria-pressed={checked}
-                      onClick={() => toggleMulti(q.key, o.value)}
-                    >
-                      {o.label}
+              <>
+                <div className="q-options">
+                  {q.options.map(o => {
+                    const checked = Array.isArray(currentAnswer) && currentAnswer.includes(o.value);
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        className={`q-chip ${checked ? 'selected' : ''}`}
+                        aria-pressed={checked}
+                        onClick={() => toggleMulti(o.value)}
+                        disabled={submitting}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="q-actions">
+                  {!q.required && !currentAnswered && (
+                    <button type="button" className="btn btn-ghost" onClick={handleSkip} disabled={submitting}>
+                      Skip
                     </button>
-                  );
-                })}
-              </div>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleNext}
+                    disabled={submitting || (q.required && !currentAnswered)}
+                  >
+                    {isLast ? (submitting ? 'Submitting…' : 'Submit') : 'Next'}
+                  </button>
+                </div>
+              </>
             )}
 
             {q.type === 'text' && (
@@ -284,29 +333,46 @@ export default function Survey() {
                 <textarea
                   className="q-textarea"
                   maxLength={q.maxLength}
-                  value={answers[q.key] || ''}
-                  onChange={(e) => setAnswer(q.key, e.target.value)}
+                  value={currentAnswer || ''}
+                  onChange={(e) => setText(e.target.value)}
                   placeholder="Optional"
+                  disabled={submitting}
                 />
                 <div className="q-char-count">
-                  {(answers[q.key] || '').length} / {q.maxLength}
+                  {(currentAnswer || '').length} / {q.maxLength}
+                </div>
+                <div className="q-actions">
+                  {!q.required && !currentAnswered && (
+                    <button type="button" className="btn btn-ghost" onClick={handleSkip} disabled={submitting}>
+                      Skip
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleNext}
+                    disabled={submitting || (q.required && !currentAnswered)}
+                  >
+                    {isLast ? (submitting ? 'Submitting…' : 'Submit') : 'Next'}
+                  </button>
                 </div>
               </>
             )}
+
+            {error && <div className="survey-error">{error}</div>}
           </div>
-        ))}
-
-        {error && <div className="survey-error">{error}</div>}
-
-        <div className="survey-submit">
-          <button
-            type="button"
-            disabled={!allRequiredAnswered || submitting}
-            onClick={handleSubmit}
-          >
-            {submitting ? 'Submitting…' : 'Submit feedback'}
-          </button>
         </div>
+
+        <button
+          type="button"
+          className="survey-back"
+          onClick={handleBack}
+          aria-hidden={step === 0}
+          tabIndex={step === 0 ? -1 : 0}
+          disabled={step === 0 || submitting}
+        >
+          ‹ Back
+        </button>
       </div>
     </div>
   );

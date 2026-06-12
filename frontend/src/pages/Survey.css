@@ -1,5 +1,5 @@
-/* Survey.css — independent from the main app theme. No imports.
- * Mobile-first; chip buttons wrap; comfortable line lengths.
+/* Survey.css — single-question wizard.
+ * Independent from main app theme. No imports.
  */
 
 .survey-root {
@@ -12,63 +12,81 @@
   --survey-accent-soft: #ede9fe;
   --survey-accent-fg: #ffffff;
   --survey-danger: #d63b3b;
-  --survey-radius: 12px;
+  --survey-radius: 16px;
 
   background: var(--survey-bg);
   color: var(--survey-fg);
   min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 16px;
-  line-height: 1.45;
+  font-size: 18px;
+  line-height: 1.5;
 }
 
-.survey-shell {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 0 16px 80px;
+/* Outer page layout — centered vertically + horizontally */
+.survey-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.survey-header {
+.survey-top {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 20px 0 16px;
+  padding: 24px 32px 0;
 }
 
-.survey-header img {
-  height: 40px;
-  width: 40px;
+.survey-top img {
+  height: 44px;
+  width: 44px;
   border-radius: 8px;
   object-fit: cover;
 }
 
-.survey-header .wordmark {
+.survey-top .wordmark {
   display: flex;
   flex-direction: column;
   line-height: 1.25;
 }
 
-.survey-header .wordmark .small {
-  font-size: 12px;
+.survey-top .wordmark .small {
+  font-size: 13px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--survey-muted);
 }
 
-.survey-header .wordmark .title {
-  font-size: 20px;
+.survey-top .wordmark .title {
+  font-size: 22px;
   font-weight: 600;
 }
 
-.survey-progress {
-  position: sticky;
-  top: 0;
-  background: var(--survey-bg);
-  padding: 10px 0 12px;
-  z-index: 5;
-  border-bottom: 1px solid var(--survey-border);
-  font-size: 13px;
+/* Question container — centered both axes */
+.survey-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 32px 96px;
+}
+
+.survey-card {
+  width: 100%;
+  max-width: 640px;
+  background: var(--survey-card);
+  border: 1px solid var(--survey-border);
+  border-radius: var(--survey-radius);
+  padding: 36px 36px 32px;
+  box-shadow: 0 4px 24px rgba(26, 29, 43, 0.06);
+}
+
+.survey-step {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--survey-muted);
+  margin-bottom: 10px;
+  text-align: center;
 }
 
 .survey-progress-bar {
@@ -76,51 +94,48 @@
   background: var(--survey-border);
   border-radius: 999px;
   overflow: hidden;
-  margin-top: 6px;
+  margin-bottom: 28px;
 }
 
 .survey-progress-bar > div {
   height: 100%;
   background: var(--survey-accent);
-  transition: width 200ms ease-out;
-}
-
-.q-card {
-  background: var(--survey-card);
-  border: 1px solid var(--survey-border);
-  border-radius: var(--survey-radius);
-  padding: 18px 18px 16px;
-  margin-top: 16px;
+  transition: width 250ms ease-out;
 }
 
 .q-title {
+  font-size: 24px;
   font-weight: 600;
-  margin: 0 0 12px;
-}
-
-.q-title .req {
-  color: var(--survey-danger);
-  margin-left: 2px;
+  margin: 0 0 24px;
+  text-align: center;
+  line-height: 1.3;
 }
 
 .q-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
+  justify-content: center;
 }
 
 .q-chip {
-  border: 1px solid var(--survey-border);
+  border: 1.5px solid var(--survey-border);
   background: #fff;
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 12px 22px;
   font: inherit;
+  font-size: 17px;
   cursor: pointer;
-  transition: background 120ms, border-color 120ms, color 120ms;
+  color: var(--survey-fg);
+  transition: background 120ms, border-color 120ms, color 120ms, transform 80ms;
 }
 
 .q-chip:hover {
   border-color: var(--survey-accent);
+}
+
+.q-chip:active {
+  transform: scale(0.97);
 }
 
 .q-chip.selected {
@@ -130,19 +145,20 @@
 }
 
 .q-chip.star {
-  font-size: 18px;
+  font-size: 22px;
   line-height: 1;
-  padding: 8px 12px;
-  letter-spacing: 1px;
+  padding: 12px 14px;
+  letter-spacing: 2px;
 }
 
 .q-textarea {
   width: 100%;
-  min-height: 90px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--survey-border);
+  min-height: 130px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1.5px solid var(--survey-border);
   font: inherit;
+  font-size: 17px;
   resize: vertical;
   background: #fff;
   box-sizing: border-box;
@@ -150,49 +166,99 @@
 
 .q-char-count {
   text-align: right;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--survey-muted);
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
-.survey-submit {
-  margin-top: 24px;
+.q-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
 }
 
-.survey-submit button {
-  background: var(--survey-accent);
-  color: var(--survey-accent-fg);
+.q-actions .btn {
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 12px 24px;
   font: inherit;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.survey-submit button:disabled {
-  opacity: 0.5;
+.q-actions .btn-primary {
+  background: var(--survey-accent);
+  color: var(--survey-accent-fg);
+}
+
+.q-actions .btn-primary:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+.q-actions .btn-ghost {
+  background: transparent;
+  color: var(--survey-muted);
+  font-weight: 500;
+}
+
+.q-actions .btn-ghost:hover {
+  color: var(--survey-fg);
+}
+
+/* Subtle back link bottom-left */
+.survey-back {
+  position: fixed;
+  left: 20px;
+  bottom: 16px;
+  background: transparent;
+  border: none;
+  color: var(--survey-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.survey-back:hover {
+  color: var(--survey-fg);
+}
+
+.survey-back[aria-hidden="true"] {
+  visibility: hidden;
+}
+
+/* Thanks screen */
 .survey-thanks {
   text-align: center;
-  padding: 80px 16px;
+  padding: 100px 24px;
 }
 
 .survey-thanks h1 {
-  font-size: 28px;
-  margin-bottom: 8px;
+  font-size: 32px;
+  margin-bottom: 12px;
 }
 
 .survey-thanks p {
   color: var(--survey-muted);
+  font-size: 17px;
 }
 
 .survey-error {
-  margin-top: 12px;
+  margin-top: 16px;
   color: var(--survey-danger);
-  font-size: 14px;
+  font-size: 15px;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .survey-root { font-size: 17px; }
+  .survey-top { padding: 18px 18px 0; }
+  .survey-stage { padding: 16px 18px 96px; }
+  .survey-card { padding: 28px 22px 24px; }
+  .q-title { font-size: 21px; }
+  .q-chip { padding: 11px 18px; font-size: 16px; }
 }
