@@ -27,8 +27,11 @@ CitationAccuracy = Literal["yes", "sometimes", "rarely", "na"]
 Hallucination = Literal["never", "once_or_twice", "often"]
 WorksBestFor = Literal["specs", "people_orgs", "events", "trends", "other"]
 SourceCoverage = Literal["yes", "mostly", "missing_some", "not_really"]
-MissingSource = Literal["ietf", "ieee", "vendor_blogs", "internal_docs", "other"]
-WouldUseAgain = Literal["web", "teams", "both", "no", "not_sure"]
+MissingSource = Literal[
+    "ietf", "ieee", "networking", "security", "youtube",
+    "vendor_blogs", "internal_docs", "other",
+]
+WouldUseAgain = Literal["portal", "teams", "both", "no", "not_sure"]
 
 
 class SurveyResponses(BaseModel):

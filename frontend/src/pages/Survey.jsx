@@ -100,6 +100,9 @@ const QUESTIONS = [
     options: [
       { value: 'ietf',          label: 'IETF' },
       { value: 'ieee',          label: 'IEEE' },
+      { value: 'networking',    label: 'Networking' },
+      { value: 'security',      label: 'Security' },
+      { value: 'youtube',       label: 'YouTube Channels' },
       { value: 'vendor_blogs',  label: 'Vendor blogs' },
       { value: 'internal_docs', label: 'Internal docs' },
       { value: 'other',         label: 'Other' },
@@ -118,7 +121,7 @@ const QUESTIONS = [
     required: true,
     type: 'single',
     options: [
-      { value: 'web',      label: 'Yes (web)' },
+      { value: 'portal',   label: 'Yes (Portal)' },
       { value: 'teams',    label: 'Yes (Teams)' },
       { value: 'both',     label: 'Both' },
       { value: 'no',       label: 'No' },
