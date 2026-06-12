@@ -5,7 +5,10 @@ import { postToWebhook } from './webhookFormatter';
 import proactiveFeedCardTemplate from '../adaptiveCards/proactiveFeedCard.json';
 import surveyResultCardTemplate from '../adaptiveCards/surveyResultCard.json';
 
-export const SURVEY_FEEDBACK_SLUG = 'survey-feedback';
+// Canonical slug — the bot prefixes every user-typed slug with `aurora-`, so the
+// stored subscription is `aurora-survey-feedback` even if a user types
+// `@aurora subscribe survey-feedback`. Match that.
+export const SURVEY_FEEDBACK_SLUG = 'aurora-survey-feedback';
 
 export interface SurveyResultPayload {
   user_email: string | null;
