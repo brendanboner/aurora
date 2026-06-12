@@ -10,8 +10,12 @@
   /* hamburger | brand (flex:1, overflow:hidden) | actions */
   gap: 8px;
   padding: 0 20px;
-  /* env() accounts for iPhone notch/dynamic island safe areas */
-  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  /* Default (>640px, IconRail visible): align hamburger with the IconRail
+     icon column underneath. IconRail is 52px wide with 38px icons centred
+     → icon centre at x=26. Hamburger is 34px wide; bars centred in button
+     sit at button_left + 17. So button_left = 9 → header padding-left = 9.
+     Mobile (≤640px) override below resets to drawer alignment. */
+  padding-left: max(9px, env(safe-area-inset-left, 0px));
   padding-right: max(20px, env(safe-area-inset-right, 0px));
   position: relative;
   z-index: var(--a1-z-header);
@@ -27,17 +31,15 @@
   overflow: hidden;
 }
 
-/* Hamburger button — aligned with the drawer so opening the drawer makes
-   the bars "morph" into the menu-item icons. Two things line up:
-     1. Button LEFT EDGE = drawer-item LEFT EDGE
-        = drawer.left + drawer-nav.padding-left  (= 20 desktop, 18 mobile)
-        → driven by .app-header padding-left (button has margin-left: 0).
-     2. Bar CENTRE = drawer-item icon CENTRE
-        = drawer-item LEFT + drawer-item.padding-left (12) + half-icon (9)
-        = button_left + 21
-   Bars are 16px wide; centred in the 34px button they'd sit at button_left+17.
-   Asymmetric horizontal padding (11 left / 3 right) shifts them 4px right
-   so their centre lands at button_left + 21 without changing button width. */
+/* Hamburger button — alignment target depends on whether the IconRail is
+   visible (desktop) or hidden (mobile, ≤640px):
+     • Desktop (default below): bars centred in the 34px button. With
+       header padding-left = 9, the bar centre lands at x=26 — directly
+       above the IconRail icon column underneath.
+     • Mobile (≤640px override): asymmetric padding shifts the bars 4px
+       right so the bar centre lands at the drawer-item icon centre when
+       the drawer opens (since IconRail is hidden there).
+*/
 .mobile-menu-btn {
   display: inline-flex;
   flex-direction: column;
@@ -48,7 +50,7 @@
   border: none;
   color: var(--a1-text-tertiary);
   cursor: pointer;
-  padding: 7px 3px 7px 11px;
+  padding: 7px;
   margin-left: 0;
   border-radius: var(--a1-radius-md);
   width: 34px;
@@ -223,21 +225,29 @@
 }
 
 @media (max-width: 768px) {
-  /* Drawer shifts from left:10 to left:8 (-2px). Keep the header's left
-     padding equal to drawer.left + nav.padding-left so the button's left
-     edge tracks the drawer-item left edge: 8 + 10 = 18. Right padding stays
-     14px to give the header room on narrow screens. */
-  .app-header {
-    padding: 0 14px;
-    padding-left: max(18px, env(safe-area-inset-left, 0px));
-    padding-right: max(14px, env(safe-area-inset-right, 0px));
-  }
-  /* margin-left stays 0 from the desktop rule; no override needed. */
   .header-product-name {
     font-size: 14px;
   }
   .header-by-badge {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  /* IconRail is hidden here; the drawer is the menu. Align hamburger with
+     drawer-item icon centre instead of the (now-absent) IconRail.
+     Drawer.left=8, drawer-nav.padding-left=10 → drawer-item LEFT = 18.
+     Drawer-item icon CENTRE = 18 + drawer-item.padding-left (12) + half-icon (9)
+       = 39. Header padding-left = 18 so button-left = 18; asymmetric padding
+     11/3 inside the 34px button shifts the bars 4px right so bar centre
+     lands at button_left + 21 = 39. */
+  .app-header {
+    padding: 0 14px;
+    padding-left: max(18px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+  }
+  .mobile-menu-btn {
+    padding: 7px 3px 7px 11px;
   }
 }
 
