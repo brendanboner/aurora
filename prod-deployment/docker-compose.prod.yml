@@ -277,14 +277,17 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-scraped_content}
-      
+
       # S3 Document Storage (uses IAM role, no access keys needed)
       AWS_REGION: ${AWS_REGION:-us-east-1}
       S3_DOCUMENT_BUCKET: ${S3_DOCUMENT_BUCKET:-aurora-document-uploads}
-      
+
+      # Teams agent (for /survey results push)
+      TEAMS_AGENT_URL: ${TEAMS_AGENT_URL:-http://aurora-teams-agent:3978}
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      
+
       # OpenTelemetry Configuration
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_ENDPOINT: ${OTEL_ENDPOINT:-http://otel-collector:4317}
