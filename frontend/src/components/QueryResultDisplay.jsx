@@ -92,6 +92,28 @@ const isYouTubeVideo = (doc) => {
 };
 
 /**
+ * User-uploaded files carry an opaque `s3://` URL that no browser can open.
+ * Renderers must drop the markdown link wrapper and instead attribute the
+ * uploader inline (e.g. ", Uploaded by Brendan Bonner").
+ */
+const isUserUpload = (doc) => {
+  if (!doc) return false;
+  return doc.datasource_id === 'user_upload' || (typeof doc.url === 'string' && doc.url.startsWith('s3://'));
+};
+
+/**
+ * Build the attribution suffix for a user-uploaded doc, e.g.
+ *   ", Uploaded by Brendan Bonner"
+ * Returns '' when no uploader info is available — the link is still dropped.
+ */
+const uploaderAttribution = (doc) => {
+  if (!doc) return '';
+  if (doc.uploaded_by_name) return `, Uploaded by ${doc.uploaded_by_name}`;
+  if (typeof doc.source === 'string' && doc.source.startsWith('Uploaded by ')) return `, ${doc.source}`;
+  return '';
+};
+
+/**
  * Show follow-up suggestion chips whenever the backend produced any.
  * Backend already filters via should_show_suggestions() (low confidence or
  * sparse documents), so trusting `message.suggestions` is sufficient here.
@@ -196,7 +218,14 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
       citations.forEach((c) => {
         const doc = docsByUrl.get(c.document_url);
         const date = doc?.publish_date ? ` (${doc.publish_date})` : '';
-        lines.push(`- [${c.index}] [${c.title || 'Untitled'}](${c.document_url})${date}`);
+        const title = c.title || 'Untitled';
+        // User uploads carry an opaque s3:// URL — drop the markdown link
+        // and attribute the uploader inline instead.
+        if (isUserUpload(doc || { url: c.document_url })) {
+          lines.push(`- [${c.index}] ${title}${uploaderAttribution(doc)}${date}`);
+        } else {
+          lines.push(`- [${c.index}] [${title}](${c.document_url})${date}`);
+        }
         if (c.excerpt) {
           lines.push(`  > ${c.excerpt}`);
         }
@@ -246,17 +275,26 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
   // Per-doc lookup so citation hover popovers can show publish_date alongside
   // title/excerpt (citation payload itself only has url/title/excerpt).
   const docByUrl = new Map((message.documents || []).map((d) => [d.url, d]));
-  // Citation popover payload: index → {url, title, excerpt, publish_date}
+  // Citation popover payload: index → {url, title, excerpt, publish_date,
+  // datasource_id, uploaded_by_name, source}. The latter three let
+  // renderCitationFragments drop the link for user-uploaded docs (whose
+  // url is an opaque `s3://` key) and surface the uploader attribution.
   const citationMetaMap = new Map(
-    (message.citations || []).map((citation) => [
-      String(citation.index),
-      {
-        url: citation.document_url,
-        title: citation.title,
-        excerpt: citation.excerpt,
-        publish_date: docByUrl.get(citation.document_url)?.publish_date || null,
-      },
-    ])
+    (message.citations || []).map((citation) => {
+      const doc = docByUrl.get(citation.document_url);
+      return [
+        String(citation.index),
+        {
+          url: citation.document_url,
+          title: citation.title,
+          excerpt: citation.excerpt,
+          publish_date: doc?.publish_date || null,
+          datasource_id: doc?.datasource_id || null,
+          uploaded_by_name: doc?.uploaded_by_name || null,
+          source: doc?.source || null,
+        },
+      ];
+    })
   );
 
   // Format date helper
@@ -320,6 +358,29 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
       const excerptSnippet = typeof meta.excerpt === 'string' && meta.excerpt.length > 180
         ? meta.excerpt.slice(0, 177).trimEnd() + '…'
         : meta.excerpt;
+
+      // User uploads have an opaque s3:// URL — render the citation marker
+      // as a non-clickable badge with the uploader attribution in the popover.
+      if (isUserUpload(meta)) {
+        return (
+          <span key={idx} className="citation-popover-wrap">
+            <span className="citation-ref">[{match[1]}]</span>
+            <span className="citation-popover" role="tooltip">
+              {meta.title && (
+                <span className="citation-popover-title">
+                  {meta.title}{uploaderAttribution(meta)}
+                </span>
+              )}
+              {meta.publish_date && (
+                <span className="citation-popover-date">{formatDate(meta.publish_date)}</span>
+              )}
+              {excerptSnippet && (
+                <span className="citation-popover-excerpt">“{excerptSnippet}”</span>
+              )}
+            </span>
+          </span>
+        );
+      }
 
       return (
         <span key={idx} className="citation-popover-wrap">
@@ -458,7 +519,11 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
           <div className="document-card-detailed">
             <div className="doc-header">
               <div className="doc-title">
-                {doc.url ? (
+                {isUserUpload(doc) ? (
+                  <span>
+                    {doc.title || 'Untitled Document'}{uploaderAttribution(doc)}
+                  </span>
+                ) : doc.url ? (
                   <a href={doc.url} target="_blank" rel="noopener noreferrer">
                     {doc.title || 'Untitled Document'}
                   </a>
@@ -783,9 +848,15 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                     </span>
                     <div className="reference-content">
                       <div className="reference-title-row">
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                          {doc.title || 'Untitled'}
-                        </a>
+                        {isUserUpload(doc) ? (
+                          <span className="reference-title-text">
+                            {doc.title || 'Untitled'}{uploaderAttribution(doc)}
+                          </span>
+                        ) : (
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                            {doc.title || 'Untitled'}
+                          </a>
+                        )}
                         {doc.publish_date && (
                           <span className="reference-publish-date">
                             {formatDate(doc.publish_date)}
@@ -1044,9 +1115,15 @@ const QueryResultDisplay = ({ message, isAdmin = false, onEnhance, onToggleEnhan
                     <tr key={i}>
                       <td>{i + 1}</td>
                       <td>
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                          {doc.title?.substring(0, 40) || 'Untitled'}...
-                        </a>
+                        {isUserUpload(doc) ? (
+                          <span title={uploaderAttribution(doc).slice(2) /* strip ", " */}>
+                            {doc.title?.substring(0, 40) || 'Untitled'}...
+                          </span>
+                        ) : (
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                            {doc.title?.substring(0, 40) || 'Untitled'}...
+                          </a>
+                        )}
                       </td>
                       <td>{getDatasourceName(doc) || '-'}</td>
                       <td>{Math.round((doc.relevance_score || 0) * 100)}%</td>

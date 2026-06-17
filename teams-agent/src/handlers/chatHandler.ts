@@ -17,27 +17,54 @@ interface ConvMemory {
 const convMemory = new Map<string, ConvMemory>();
 const MEMORY_TTL_MS = 30 * 60 * 1000;
 
+/** Subset of the Oracle Document fields this renderer cares about. */
+type OracleDocLike = {
+  title?: string;
+  url?: string;
+  datasource_id?: string;
+  uploaded_by_name?: string | null;
+  source?: string | null;
+};
+
+/** True when a doc is a user-uploaded file. Its `s3://` URL is opaque and
+ * non-clickable, so renderers must drop the markdown link and attribute the
+ * uploader inline instead. */
+function isUserUpload(doc: OracleDocLike): boolean {
+  return doc.datasource_id === 'user_upload' || doc.url?.startsWith('s3://') === true;
+}
+
+/** Build the attribution suffix for a user-uploaded doc, e.g. `, Uploaded by Brendan Bonner`.
+ *  Returns '' when no uploader info is available (we still drop the link). */
+function uploaderAttribution(doc: OracleDocLike): string {
+  if (doc.uploaded_by_name) return `, Uploaded by ${doc.uploaded_by_name}`;
+  // Oracle's `source` field is already "Uploaded by <Name|Email>" for user uploads.
+  if (doc.source?.startsWith('Uploaded by ')) return `, ${doc.source}`;
+  return '';
+}
+
 /** Replace [N] and [Doc N] citation markers in answer text with clickable markdown links. */
-function linkifyReferences(answer: string, docs: Array<{ url?: string; title?: string }>): string {
-  // Handle [Doc N] format — normalise to [N] and linkify
-  let result = answer.replace(/\[Doc\s+(\d+)\]/gi, (match, num) => {
+function linkifyReferences(answer: string, docs: OracleDocLike[]): string {
+  const linkify = (num: string): string => {
     const idx = parseInt(num, 10) - 1;
     const doc = docs[idx];
-    return doc?.url ? `[[${num}]](${doc.url})` : `[${num}]`;
-  });
-  // Handle plain [N] format (from fast/baseline)
-  result = result.replace(/\[(\d+)\]/g, (match, num) => {
-    const idx = parseInt(num, 10) - 1;
-    const doc = docs[idx];
-    return doc?.url ? `[[${num}]](${doc.url})` : match;
-  });
-  return result;
+    if (!doc?.url) return `[${num}]`;
+    // User uploads carry an opaque s3:// URL — keep the marker but drop the link.
+    if (isUserUpload(doc)) return `[${num}]`;
+    return `[[${num}]](${doc.url})`;
+  };
+  return answer
+    .replace(/\[Doc\s+(\d+)\]/gi, (_m, num) => linkify(num))
+    .replace(/\[(\d+)\]/g, (m, num) => {
+      const idx = parseInt(num, 10) - 1;
+      // Preserve plain [N] when out-of-range (matches prior behaviour).
+      return docs[idx]?.url ? linkify(num) : m;
+    });
 }
 
 /** Build a plain-markdown oracle response with linked references and full source list. */
 export function buildMarkdownResponse(
   answer: string,
-  docs: Array<{ title?: string; url?: string }>,
+  docs: OracleDocLike[],
   speakerPrefix?: string,
 ): string {
   const linkedAnswer = docs?.length ? linkifyReferences(answer, docs) : answer;
@@ -48,6 +75,9 @@ export function buildMarkdownResponse(
     sources = '\n\n**Sources:**\n' + docs
       .map((doc, i) => {
         const label = doc.title || `Source ${i + 1}`;
+        if (isUserUpload(doc)) {
+          return `${i + 1}. ${label}${uploaderAttribution(doc)}`;
+        }
         return doc.url ? `${i + 1}. [${label}](${doc.url})` : `${i + 1}. ${label}`;
       })
       .join('\n');

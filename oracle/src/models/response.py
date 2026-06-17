@@ -25,6 +25,7 @@ class Document(BaseModel):
     source: Optional[str] = Field(default=None, description="Source organization or website")
     category: Optional[str] = Field(default=None, description="Document category")
     datasource_id: Optional[str] = Field(default=None, description="Datasource identifier (e.g., 'wfa', 'wfa_causeway')")
+    uploaded_by_name: Optional[str] = Field(default=None, description="Display name of the user who uploaded this document (only set for datasource_id='user_upload').")
     topics: list[str] = Field(default_factory=list, description="Related topics")
     organizations: list[str] = Field(default_factory=list, description="Mentioned organizations")
     relevance_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Relevance score (0-1)")

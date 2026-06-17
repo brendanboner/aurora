@@ -300,7 +300,7 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
     """Format documents for inclusion in the answer generation prompt."""
     if not documents:
         return "No documents retrieved."
-    
+
     formatted = []
     for i, doc in enumerate(documents, 1):
         title = doc.get("title", "Untitled")
@@ -311,6 +311,19 @@ def format_documents_for_prompt(documents: list[dict]) -> str:
         orgs = ", ".join(doc.get("organizations", [])) or "None"
         datasource = doc.get("datasource_id", "Unknown source")
         category = doc.get("category", "")
+
+        # User uploads carry an opaque `s3://` URL that's useless to readers
+        # and that the model would happily embed in markdown citations.
+        # Replace it with the uploader attribution so the model has no URL
+        # to splice in, and any inline reference reads as plain prose.
+        if datasource == "user_upload" or (isinstance(url, str) and url.startswith("s3://")):
+            uploader = doc.get("uploaded_by_name") or doc.get("source") or "a user"
+            attribution = (
+                f"Uploaded by {uploader}"
+                if not str(uploader).startswith("Uploaded by ")
+                else str(uploader)
+            )
+            url = attribution
 
         # Epoch placeholder (1970-01-01) means the scraper found no real date.
         # Treat it identically to a missing date so the LLM doesn't cite "1970".

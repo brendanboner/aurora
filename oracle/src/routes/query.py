@@ -104,20 +104,27 @@ def _enrich_user_upload_sources(documents) -> None:
             """,
             parameters={"urls": user_upload_urls},
         )
-        url_to_label: dict[str, str] = {}
+        url_to_info: dict[str, dict] = {}
         for row in (rows or []):
-            label = None
-            if row.get("email"):
-                label = f"Uploaded by {row['email']}"
-            elif row.get("name"):
-                label = f"Uploaded by {row['name']}"
-            if label and row.get("url"):
-                url_to_label[row["url"]] = label
+            # Prefer the uploader's display name over their email — renderers
+            # show this verbatim to readers (e.g. "Uploaded by Brendan Bonner"
+            # is friendlier than "Uploaded by bbonner@extremenetworks.com").
+            display = row.get("name") or row.get("email")
+            if display and row.get("url"):
+                url_to_info[row["url"]] = {
+                    "label": f"Uploaded by {display}",
+                    "name": row.get("name"),
+                }
         for doc in documents:
             if getattr(doc, "datasource_id", None) == "user_upload":
-                new_source = url_to_label.get(doc.url)
-                if new_source:
-                    doc.source = new_source
+                info = url_to_info.get(doc.url)
+                if info:
+                    doc.source = info["label"]
+                    # Structured field for client renderers that want to
+                    # build their own attribution string (e.g. drop the
+                    # markdown link when source is a user upload).
+                    if hasattr(doc, "uploaded_by_name") and info["name"]:
+                        doc.uploaded_by_name = info["name"]
     except Exception as exc:
         logger.debug(f"User-upload source enrichment skipped: {exc}")
 
