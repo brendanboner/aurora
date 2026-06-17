@@ -441,6 +441,34 @@ class FastEngine:
             if user_preferred_domains:
                 plan.preferred_domains = user_preferred_domains
 
+            # Merge agent persona's expertise topics into plan.topics so the
+            # Cypher templates filter by what the agent ACTUALLY cares about,
+            # not just keywords lifted from the question text. Without this,
+            # a question like "show the latest quick start guide" sent to the
+            # OpenRoaming agent returned unrelated docs (a 2019 IMDA paper)
+            # because the persona's expertise — Passpoint, OpenRoaming — was
+            # never reaching the retrieval template.
+            #
+            # The template WHERE clause is additive (OR over topics), so
+            # this only WIDENS the candidate set; it never excludes a doc the
+            # router already found. We lowercase to match the Topic node
+            # naming convention used in this KG.
+            agent_persona = getattr(request, 'agent_persona', None)
+            if agent_persona and getattr(agent_persona, 'expertise_topics', None):
+                persona_topics = [
+                    t.strip().lower() for t in agent_persona.expertise_topics
+                    if isinstance(t, str) and t.strip()
+                ]
+                if persona_topics:
+                    existing = {t.lower() for t in (plan.topics or [])}
+                    additions = [t for t in persona_topics if t not in existing]
+                    if additions:
+                        plan.topics = list(plan.topics or []) + additions
+                        logger.info(
+                            f"[{query_id}] Merged {len(additions)} persona "
+                            f"expertise topic(s) into plan.topics: {additions}"
+                        )
+
             # Expand any parent IDs in preferred_datasources too, so a user who
             # has "joined" a parent datasource (e.g. techfieldday, wba_extranet)
             # also picks up its children. Applies to every route, not just the
