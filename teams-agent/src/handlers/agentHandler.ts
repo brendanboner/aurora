@@ -54,7 +54,7 @@ export class AgentHandler {
     ).slice(0, 10);
 
     if (filtered.length === 0) {
-      await context.sendActivity(`No agents match "@${partial}". Type \`agents\` to see the full list.`);
+      await context.sendActivity(`No agents match "@${partial}". Type \`/agents\` to see the full list.`);
       return;
     }
 
@@ -148,7 +148,7 @@ export class AgentHandler {
   /** Follow an agent by name. */
   async handleFollowAgent(context: TurnContext, agentName: string): Promise<void> {
     if (!agentName.trim()) {
-      await context.sendActivity('Please specify an agent name. Example: `follow TechWatcher`');
+      await context.sendActivity('Please specify an agent name. Example: `/follow TechWatcher`');
       return;
     }
 
@@ -160,7 +160,7 @@ export class AgentHandler {
     const agent = await agentService.findAgentByName(agentName);
     if (!agent) {
       await context.sendActivity(
-        `No agent found matching "${agentName}". Type \`agents\` to see what's available.`
+        `No agent found matching "${agentName}". Type \`/agents\` to see what's available.`
       );
       return;
     }
@@ -174,7 +174,7 @@ export class AgentHandler {
   /** Unfollow an agent by name. */
   async handleUnfollowAgent(context: TurnContext, agentName: string): Promise<void> {
     if (!agentName.trim()) {
-      await context.sendActivity('Please specify an agent name. Example: `unfollow TechWatcher`');
+      await context.sendActivity('Please specify an agent name. Example: `/unfollow TechWatcher`');
       return;
     }
 
@@ -186,7 +186,7 @@ export class AgentHandler {
     const agent = await agentService.findAgentByName(agentName);
     if (!agent) {
       await context.sendActivity(
-        `No agent found matching "${agentName}". Type \`agents\` to see what's available.`
+        `No agent found matching "${agentName}". Type \`/agents\` to see what's available.`
       );
       return;
     }
@@ -237,7 +237,7 @@ export class AgentHandler {
 
     if (!matchedAgent) {
       await context.sendActivity(
-        `No agent found matching "${rawArgs}". Type \`agents\` to see what's available.`
+        `No agent found matching "${rawArgs}". Type \`/agents\` to see what's available.`
       );
       return;
     }
@@ -427,7 +427,7 @@ export class AgentHandler {
       await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     } else {
       await context.sendActivity(
-        `No agent found for "@${teamsSlug}". Type \`agents\` to browse all available agents, or just ask Aurora directly.`
+        `No agent found for "@${teamsSlug}". Type \`/agents\` to browse all available agents, or just ask Aurora directly.`
       );
     }
   }
@@ -531,13 +531,13 @@ function buildAgentListCard(
       type: 'Action.Submit',
       title: 'talk',
       style: 'positive',
-      data: { msteams: { type: 'imBack', value: `setChannelAgent ${item.slug}` } },
+      data: { msteams: { type: 'imBack', value: `/setChannelAgent ${item.slug}` } },
     };
 
     const subscribeAction = {
       type: 'Action.Submit',
       title: 'subscribe',
-      data: { msteams: { type: 'imBack', value: `subscribe @${item.slug}` } },
+      data: { msteams: { type: 'imBack', value: `/subscribe @${item.slug}` } },
     };
 
     // Info column: @slug + description
@@ -602,7 +602,7 @@ function buildAgentListCard(
       },
       {
         type: 'TextBlock',
-        text: 'Type `@handle your question` at any time, or click **talk** to scope this conversation to an agent. Type `clear` to return to general Aurora.',
+        text: 'Type `@handle your question` at any time, or click **talk** to scope this conversation to an agent. Type `/clear` to return to general Aurora.',
         isSubtle: true,
         size: 'Small',
         wrap: true,

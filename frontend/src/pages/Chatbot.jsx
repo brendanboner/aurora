@@ -211,7 +211,7 @@ const Chatbot = ({ backendStatus }) => {
   const getWelcomeMessage = (email) => `Hello ${email}! I'm Aurora, your assistant for wireless standards and industry knowledge.
 
 **Commands** *(type exactly to trigger)*
-— \`help\` · \`agents\` · \`my agents\` · \`feed\` · \`pipeline fast\` · \`personalize on/off\` · \`about\`
+— \`/help\` · \`/agents\` · \`/myagents\` · \`/feed\` · \`pipeline fast\` · \`personalize on/off\` · \`/about\`
 
 **Example queries**
 - *"What's new with Wi-Fi 8 UHR in the last week?"*

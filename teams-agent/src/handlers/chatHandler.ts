@@ -354,7 +354,7 @@ export class ChatHandler {
     const mem = recall(convId);
 
     if (!mem) {
-      await context.sendActivity('No recent answer to enhance — conversation history is reset when the bot restarts. Ask a question first, then type `enhance` in the same session.');
+      await context.sendActivity('No recent answer to enhance — conversation history is reset when the bot restarts. Ask a question first, then type `/enhance` in the same session.');
       return;
     }
 
