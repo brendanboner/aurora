@@ -152,6 +152,86 @@ async def test_discover_communities_deduplication(scraper):
     assert len([c for c in communities if c.community_key == "aaa111"]) == 1
 
 
+def _make_url_router(url_html_map):
+    """session.get side_effect that picks HTML by URL substring match.
+
+    Each key in the map is matched as a substring of the request URL; first
+    match wins (so order entries longest-key-first if ambiguous). Anything
+    unmatched returns HTTP 404.
+    """
+    def get(url, **kwargs):
+        for key, html in url_html_map.items():
+            if key in url:
+                return AsyncCM(_mock_response(200, html))
+        return AsyncCM(_mock_response(404, ""))
+    return get
+
+
+@pytest.mark.asyncio
+async def test_discover_communities_recurses_to_subgroups(scraper):
+    """BFS finds subgroups linked only from a parent workgroup's landing page."""
+    directory_html = """
+    <html><body>
+      <a href="/communities/community-home?communitykey=parent_a">Testing &amp; Interop</a>
+      <a href="/communities/community-home?communitykey=parent_b">OpenRoaming IG</a>
+    </body></html>
+    """
+    parent_a_html = """
+    <html><body>
+      <h2>Subgroups</h2>
+      <a href="/communities/community-home?communitykey=child_a1">OpenRoaming Config</a>
+    </body></html>
+    """
+    parent_b_html = "<html><body><p>No subgroups here</p></body></html>"
+    child_a1_html = "<html><body><p>Leaf community</p></body></html>"
+
+    scraper.session.get = MagicMock(side_effect=_make_url_router({
+        "communitykey=parent_a": parent_a_html,
+        "communitykey=parent_b": parent_b_html,
+        "communitykey=child_a1": child_a1_html,
+        "dafe344a": directory_html,
+    }))
+    communities = await scraper.discover_communities()
+    keys = {c.community_key for c in communities}
+    assert {"parent_a", "parent_b", "child_a1"}.issubset(keys), (
+        f"expected subgroup discovered via BFS, got {keys}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_communities_cycle_terminates(scraper):
+    """A → B → A cycle must terminate without infinite fetches."""
+    directory_html = '<a href="/communities/community-home?communitykey=alpha">A</a>'
+    alpha_html = '<a href="/communities/community-home?communitykey=beta">B</a>'
+    beta_html = '<a href="/communities/community-home?communitykey=alpha">Back to A</a>'
+
+    scraper.session.get = MagicMock(side_effect=_make_url_router({
+        "communitykey=alpha": alpha_html,
+        "communitykey=beta": beta_html,
+        "dafe344a": directory_html,
+    }))
+    communities = await scraper.discover_communities()
+    keys = {c.community_key for c in communities}
+    assert {"alpha", "beta"}.issubset(keys)
+    # If the cycle weren't handled, this test would hang.
+
+
+@pytest.mark.asyncio
+async def test_discover_communities_caches_landing_html(scraper):
+    """BFS-fetched landing pages populate _home_html_cache so
+    parse_community_landing doesn't double-fetch."""
+    directory_html = '<a href="/communities/community-home?communitykey=widget">Widget</a>'
+    widget_html = "<html><body><p>Widget community</p></body></html>"
+
+    scraper.session.get = MagicMock(side_effect=_make_url_router({
+        "communitykey=widget": widget_html,
+        "dafe344a": directory_html,
+    }))
+    await scraper.discover_communities()
+    assert "widget" in scraper._home_html_cache
+    assert "Widget community" in scraper._home_html_cache["widget"]
+
+
 # ── landing-page parse ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

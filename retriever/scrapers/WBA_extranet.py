@@ -154,6 +154,9 @@ class WBAExtranetScraper(BaseScraper):
     # Default look-back for first run — 30 days to catch recent documents
     # like the April 28, 2026 Enterprise Security for P5G doc.
     FIRST_RUN_DAYS = 30
+    # BFS depth cap for subgroup discovery (programme → workgroup → sub-WG).
+    # Terminates early via seen-set when a level adds zero new communities.
+    MAX_DISCOVERY_DEPTH = 3
 
     def __init__(self) -> None:
         super().__init__()
@@ -728,6 +731,16 @@ class WBAExtranetScraper(BaseScraper):
             except Exception as exc:
                 logger.debug(f"API endpoint {ep} failed: {exc}")
 
+        # Strategy 4: BFS expansion through each community's landing page.
+        # Higher Logic doesn't list subgroups (programme → workgroup → sub-WG)
+        # on the global directory — they only appear linked from their parent
+        # workgroup's home page. So after seed discovery, walk each known
+        # community's landing page harvesting nested ?communitykey= links,
+        # one BFS level at a time, up to MAX_DISCOVERY_DEPTH levels deep.
+        seed_count = len(found)
+        if found:
+            found = await self._bfs_expand_communities(found, max_depth=self.MAX_DISCOVERY_DEPTH)
+
         communities = list(found.values())
         if not communities:
             logger.warning(
@@ -736,8 +749,86 @@ class WBAExtranetScraper(BaseScraper):
                 "Set WBA_EXTRANET_HLTC in .env with your browser session cookie."
             )
         else:
-            logger.info(f"Discovered {len(communities)} WBA Extranet communities")
+            via_bfs = len(communities) - seed_count
+            if via_bfs > 0:
+                logger.info(
+                    f"Discovered {len(communities)} WBA Extranet communities "
+                    f"({seed_count} via seed + {via_bfs} via BFS expansion)"
+                )
+            else:
+                logger.info(f"Discovered {len(communities)} WBA Extranet communities")
         return communities
+
+    async def _bfs_expand_communities(
+        self,
+        seed: Dict[str, CommunityRef],
+        max_depth: int = 3,
+    ) -> Dict[str, CommunityRef]:
+        """Expand the seed community set by recursively scanning each landing
+        page for nested `?communitykey=` links.
+
+        Higher Logic subgroups (e.g. "OpenRoaming Config" under "Testing &
+        Interoperability") are typically NOT linked from the global community
+        directory — they appear only on the parent workgroup's home page.
+        Without recursion, sub-WGs and their documents are silently skipped.
+
+        Args:
+            seed:      Communities already discovered (mutated and returned).
+            max_depth: Hard cap on BFS levels past the seed. Subgroup nesting
+                       in WBA is shallow (program → workgroup → sub-WG), so
+                       3 is conservative. Terminates early when a level adds
+                       zero new communities.
+
+        Returns:
+            Expanded community map keyed by community_key.
+        """
+        found = dict(seed)
+        frontier = list(seed.keys())
+
+        for level in range(max_depth):
+            next_frontier: List[str] = []
+            for key in frontier:
+                ref = found[key]
+                html = self._home_html_cache.get(key)
+                if html is None:
+                    try:
+                        async with self.session.get(
+                            ref.home_url, headers=self._headers()
+                        ) as resp:
+                            if resp.status != 200:
+                                continue
+                            html = await resp.text()
+                    except Exception as exc:
+                        logger.debug(f"BFS fetch failed for {ref.name}: {exc}")
+                        continue
+                    self._home_html_cache[key] = html
+
+                soup = BeautifulSoup(html, "html.parser")
+                for link in soup.find_all("a", href=True):
+                    child_key = self._community_key_from_url(link["href"])
+                    if not child_key or child_key in found:
+                        continue
+                    child_name = link.get_text(strip=True) or f"Community {child_key[:8]}"
+                    child_home = self._abs_url(
+                        f"{PATH_COMMUNITY_HOME}?communitykey={child_key}"
+                    )
+                    found[child_key] = CommunityRef(
+                        community_key=child_key,
+                        name=child_name,
+                        home_url=child_home,
+                        parent_name=ref.name,
+                    )
+                    next_frontier.append(child_key)
+
+            if not next_frontier:
+                break
+            logger.info(
+                f"WBA Extranet BFS level {level + 1}: {len(next_frontier)} new "
+                f"community(s) discovered (running total {len(found)})"
+            )
+            frontier = next_frontier
+
+        return found
 
     # ---- landing-page parse ----------------------------------------------- #
 
