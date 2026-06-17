@@ -132,6 +132,81 @@ PREP_CALL_PATTERN = re.compile(
     r"/discussion/call-starting-preparation", re.IGNORECASE
 )
 
+# Discussion-page date markers, in priority order.
+#   1. `class="...timeAgoFormat..."` span showing "Posted N <unit> ago" — the
+#      authoritative "thread posted" timestamp HL renders on every discussion.
+#   2. "Added MM-DD-YYYY" — when no relative time is present, an absolute date.
+#   3. URL slug containing a YYYYMMDD pattern (e.g.
+#      `getting-started-with-passpoint-20260616docx-uploaded`).
+_RELATIVE_AGO_RE = re.compile(
+    r"(\d+)\s*(second|minute|hour|day|week|month|year)s?\s+ago", re.IGNORECASE
+)
+_TIME_AGO_SPAN_RE = re.compile(
+    r"""class=["'][^"']*timeAgoFormat[^"']*["'][^>]*>([^<]+)<""",
+    re.IGNORECASE,
+)
+_ADDED_ABS_RE = re.compile(
+    r"Added\s+(\d{1,2}-\d{1,2}-\d{4})", re.IGNORECASE
+)
+# Match both YYYYMMDD ('20260616') and YYYY-MM-DD ('2026-06-11') in a slug.
+_SLUG_DATE_RE = re.compile(r"(20\d{2})-?([01]\d)-?([0-3]\d)")
+
+
+def _parse_relative_ago(text: str, now: datetime) -> Optional[datetime]:
+    """Convert 'Posted 22 hours ago' → datetime relative to ``now``."""
+    m = _RELATIVE_AGO_RE.search(text)
+    if not m:
+        return None
+    value = int(m.group(1))
+    unit = m.group(2).lower()
+    unit_seconds = {
+        "second": 1, "minute": 60, "hour": 3600, "day": 86400,
+        "week": 7 * 86400, "month": 30 * 86400, "year": 365 * 86400,
+    }
+    delta = unit_seconds.get(unit)
+    if delta is None:
+        return None
+    return now - timedelta(seconds=value * delta)
+
+
+def _extract_post_date_from_discussion_html(html: str, now: datetime) -> Optional[str]:
+    """Return ISO ``YYYY-MM-DD`` for when a WBA Extranet discussion was posted.
+
+    Tries the page-level "timeAgoFormat" span first ('Posted 22 hours ago'),
+    then 'Added MM-DD-YYYY' absolute. Returns None when neither is parseable
+    — callers fall back to the URL slug.
+    """
+    span = _TIME_AGO_SPAN_RE.search(html)
+    if span:
+        dt = _parse_relative_ago(span.group(1), now)
+        if dt is not None:
+            return dt.strftime("%Y-%m-%d")
+    added = _ADDED_ABS_RE.search(html)
+    if added:
+        try:
+            month, day, year = added.group(1).split("-")
+            return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def _extract_post_date_from_slug(url: str) -> Optional[str]:
+    """Return ISO date from a YYYYMMDD pattern in a discussion URL slug.
+
+    Many WBA Extranet upload announcements embed the upload date in the slug,
+    e.g. ``getting-started-with-passpoint-20260616docx-uploaded``. Used as a
+    fallback when the discussion page itself doesn't yield a date.
+    """
+    m = _SLUG_DATE_RE.search(url)
+    if not m:
+        return None
+    try:
+        year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return datetime(year, month, day).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
 
 # --------------------------------------------------------------------------- #
 # Data containers
@@ -1142,14 +1217,22 @@ class WBAExtranetScraper(BaseScraper):
             f"{len(disc_links)} discussion links"
         )
 
-        # Build resources directly from discussion link text + title without
-        # following each thread. Following threads changes ASP.NET session state
-        # which then causes subsequent community home pages to render without
-        # their discussion links. Instead we use the discussion permalink as the
-        # resource URL; the download URL appears inside the thread but the
-        # digester can resolve it on first ingest.
+        # For each discussion link, fetch the discussion page to extract its
+        # posting date. Every HL discussion page renders a "Posted N <unit>
+        # ago" span — without this the resource publishes with NULL
+        # publish_date and disappears from "what's new" / "latest" queries.
+        # The page-level date is authoritative; if missing we fall back to
+        # the YYYYMMDD pattern in the URL slug.
+        #
+        # The earlier `// session-state mutation` concern (following discussion
+        # links can break subsequent community home page renders) is no longer
+        # an issue: parse_community_landing already cached this community's
+        # home HTML in `_home_html_cache`, and the next community's landing
+        # fetch happens after this loop returns — i.e. we mutate state only
+        # within a community we've already finished collecting from.
         resources: List[Resource] = []
         max_links = limit or 50
+        now = datetime.now(timezone.utc)
 
         for href in disc_links[:max_links]:
             disc_url = self._abs_url(href) if href.startswith("/") else href
@@ -1171,8 +1254,34 @@ class WBAExtranetScraper(BaseScraper):
             if PREP_CALL_PATTERN.search(disc_url):
                 doc_type = "meeting-prep-call"
 
+            publish_date_iso: Optional[str] = None
+            try:
+                async with self.session.get(disc_url, headers=self._headers()) as resp:
+                    if resp.status == 200:
+                        page_html = await resp.text()
+                        publish_date_iso = _extract_post_date_from_discussion_html(page_html, now)
+                    else:
+                        logger.debug(
+                            f"Discussion {disc_url}: HTTP {resp.status} — no date extracted"
+                        )
+            except Exception as exc:
+                logger.debug(f"Discussion {disc_url}: fetch failed: {exc}")
+
+            if publish_date_iso is None:
+                publish_date_iso = _extract_post_date_from_slug(disc_url)
+
+            # since-filter: skip threads older than the requested cutoff once
+            # we have a date for them. Threads with no parseable date are
+            # kept (we can't tell how old they are).
+            if since and publish_date_iso:
+                try:
+                    if datetime.strptime(publish_date_iso, "%Y-%m-%d").replace(tzinfo=timezone.utc) < since:
+                        continue
+                except ValueError:
+                    pass
+
             metadata_hash = self._metadata_hash(
-                community_datasource_id, title, None, None, None, None
+                community_datasource_id, title, None, publish_date_iso, None, None
             )
 
             resources.append(Resource(
@@ -1182,7 +1291,7 @@ class WBAExtranetScraper(BaseScraper):
                     ext in title.lower() for ext in [".pdf", ".docx", ".pptx", ".xlsx", ".doc"]
                 ) else "discussion",
                 content="",  # body fetched by digester on first ingest
-                publish_date=None,
+                publish_date=publish_date_iso,
                 datasource_id=community_datasource_id,
                 doc_type=doc_type,
                 access_notes="WBA Extranet — login required",
@@ -1190,9 +1299,10 @@ class WBAExtranetScraper(BaseScraper):
                 summary=None,
             ))
 
+        with_date = sum(1 for r in resources if r.publish_date)
         logger.info(
             f"Community {community.name}: community home fallback yielded "
-            f"{len(resources)} resources (without inline thread fetch)"
+            f"{len(resources)} resources ({with_date} with a parsed publish_date)"
         )
         return resources
 

@@ -22,6 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scrapers.WBA_extranet import (
     WBAExtranetScraper, CommunityRef, DiscoveredLeader, DiscoveredMember,
     PREP_CALL_PATTERN,
+    _extract_post_date_from_discussion_html,
+    _extract_post_date_from_slug,
 )
 from scrapers.base import Resource
 
@@ -425,6 +427,64 @@ def test_publish_wba_metadata_skips_if_empty(scraper):
     community = CommunityRef("key1", "WG", "https://extranet.wballiance.com/...")
     scraper.publish_wba_metadata(community, "wba_extranet_key1", [], [])
     assert len(scraper._collected_messages) == 0
+
+
+# ── discussion-page publish_date extraction ──────────────────────────────────
+
+def test_extract_post_date_from_timeAgoFormat_span():
+    """The canonical HL marker — 'Posted N hours ago' inside a timeAgoFormat
+    span — must yield an ISO date relative to ``now``. This is the only
+    signal available on most upload-announcement threads."""
+    now = datetime(2026, 6, 17, 12, 0, 0, tzinfo=timezone.utc)
+    html = '''<span id="x" class="timeAgoFormat text-muted">Posted 22 hours ago</span>'''
+    assert _extract_post_date_from_discussion_html(html, now) == "2026-06-16"
+
+
+def test_extract_post_date_handles_days_and_weeks():
+    """Real HL spans use a range of units — days, weeks, months — depending
+    on age. Each must compute the right absolute date from the same now."""
+    now = datetime(2026, 6, 17, 12, 0, 0, tzinfo=timezone.utc)
+    cases = {
+        "Posted 7 days ago":   "2026-06-10",
+        "Posted 2 weeks ago":  "2026-06-03",
+        "Posted 1 month ago":  "2026-05-18",  # 30-day approximation
+    }
+    for snippet, expected in cases.items():
+        html = f'<span class="timeAgoFormat">{snippet}</span>'
+        assert _extract_post_date_from_discussion_html(html, now) == expected, (
+            f"{snippet!r} → expected {expected}, got "
+            f"{_extract_post_date_from_discussion_html(html, now)}"
+        )
+
+
+def test_extract_post_date_falls_back_to_added_absolute():
+    """When no relative-time span is on the page, HL sometimes shows
+    'Added MM-DD-YYYY'. This is the only date we can recover for older
+    threads where the timeAgoFormat span has been replaced by an absolute."""
+    now = datetime(2026, 6, 17, 12, 0, 0, tzinfo=timezone.utc)
+    html = "<div>Added 05-14-2026</div>"
+    assert _extract_post_date_from_discussion_html(html, now) == "2026-05-14"
+
+
+def test_extract_post_date_returns_none_when_nothing_matches():
+    """The caller falls back to URL-slug parsing when this returns None."""
+    now = datetime(2026, 6, 17, 12, 0, 0, tzinfo=timezone.utc)
+    assert _extract_post_date_from_discussion_html("<p>no date markers</p>", now) is None
+
+
+def test_extract_post_date_from_slug_yyyymmdd():
+    """Upload announcements often embed YYYYMMDD in the URL slug — fallback
+    when the discussion page yields nothing parseable."""
+    cases = {
+        "https://extranet.wballiance.com/discussion/getting-started-with-passpoint-20260616docx-uploaded": "2026-06-16",
+        "https://extranet.wballiance.com/discussion/wba-meeting-minutes-2026-06-11docx-uploaded": "2026-06-11",
+        "https://extranet.wballiance.com/discussion/no-date-here": None,
+        "https://extranet.wballiance.com/discussion/agenda-6-16": None,  # ambiguous year
+    }
+    for url, expected in cases.items():
+        assert _extract_post_date_from_slug(url) == expected, (
+            f"{url!r} → expected {expected}, got {_extract_post_date_from_slug(url)}"
+        )
 
 
 # ── datasource_id generation ──────────────────────────────────────────────────
