@@ -1272,12 +1272,14 @@ class WBAExtranetScraper(BaseScraper):
 
             # since-filter: skip threads older than the requested cutoff once
             # we have a date for them. Threads with no parseable date are
-            # kept (we can't tell how old they are).
+            # kept (we can't tell how old they are). Compare at the date
+            # level so naive/aware tz on `since` doesn't matter — matches
+            # how capture_document_metadata does it.
             if since and publish_date_iso:
                 try:
-                    if datetime.strptime(publish_date_iso, "%Y-%m-%d").replace(tzinfo=timezone.utc) < since:
+                    if datetime.strptime(publish_date_iso, "%Y-%m-%d").date() < since.date():
                         continue
-                except ValueError:
+                except (ValueError, AttributeError):
                     pass
 
             metadata_hash = self._metadata_hash(
