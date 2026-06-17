@@ -217,6 +217,30 @@ async def test_discover_communities_cycle_terminates(scraper):
 
 
 @pytest.mark.asyncio
+async def test_discover_communities_loose_regex_catches_non_anchor_keys(scraper):
+    """Keys embedded outside <a href> (onclick handlers, JS state blobs) must
+    still be discovered — empirically the WBA dashboard widget surfaces some
+    sub-WGs only in onclick handlers, never in plain anchor links."""
+    # Real-world-shaped UUIDs (the loose regex requires the canonical form).
+    KEY_A = "11111111-1111-4111-8111-111111111111"  # anchored
+    KEY_B = "22222222-2222-4222-8222-222222222222"  # in onclick attr only
+    KEY_C = "33333333-3333-4333-8333-333333333333"  # in inline JSON state
+    html = f"""
+    <html><body>
+      <a href="/communities/community-home?communitykey={KEY_A}">Anchored</a>
+      <button onclick="navigate('/communities/community-home?communitykey={KEY_B}')">Onclick only</button>
+      <script>window.__INITIAL_STATE__ = {{"communityKey":"{KEY_C}","name":"State only"}}</script>
+    </body></html>
+    """
+    scraper.session.get = MagicMock(side_effect=_make_url_router({"dafe344a": html}))
+    communities = await scraper.discover_communities()
+    keys = {c.community_key for c in communities}
+    assert {KEY_A, KEY_B, KEY_C}.issubset(keys), (
+        f"loose regex must catch onclick/state keys, got {keys}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_discover_communities_caches_landing_html(scraper):
     """BFS-fetched landing pages populate _home_html_cache so
     parse_community_landing doesn't double-fetch."""

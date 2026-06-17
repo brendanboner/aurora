@@ -69,6 +69,34 @@ PATH_COMMUNITY_HOME = "/communities/community-home"
 PATH_DIGEST_VIEWER = "/communities/community-home/digestviewer"
 PATH_LIBRARY = "/communities/community-home/librarydocuments"
 
+# URLs that surface community-key links beyond the single directory page.
+# Empirically, each of these returns a different (often overlapping) subset:
+# - "/"               and "/home" expose ~36 communities via the dashboard widget
+# - the directory     exposes the canonical 30
+# - "/communities/all-communities" SPA exposes a different 4 (incl. some not in the directory)
+# - "/communities/mycommunities" exposes ~26 incl. several sub-WGs (e.g. MAC
+#   Randomization Test, Passpoint Quick Start Guide) that none of the above list.
+# Scanning all of them and merging is what reliably finds every visible WG.
+DISCOVERY_SOURCE_PATHS: List[str] = [
+    "/",
+    "/home",
+    PATH_COMMUNITY_DIRECTORY,
+    PATH_ALL_COMMUNITIES,
+    "/communities/mycommunities",
+]
+
+# Loose regex for any communitykey=<uuid> pattern in HTML. Captures keys
+# embedded in <a href>, onclick handlers, JSON state blobs (e.g.
+# `"communityKey":"<uuid>"`), and anywhere else the HL UI surfaces them.
+# The separator class accepts any combination of whitespace, =, :, ", '
+# so it matches both URL-style (`communitykey=<uuid>`) and JSON-style
+# (`"communityKey":"<uuid>"`) forms.
+COMMUNITY_KEY_PATTERN = re.compile(
+    r"[Cc]ommunity[Kk]ey[\s=:'\"]+"
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+    re.IGNORECASE,
+)
+
 # Browser-flavoured headers (Higher Logic + Cloudflare are picky about UA).
 BROWSER_HEADERS: Dict[str, str] = {
     "User-Agent": (
@@ -196,6 +224,57 @@ class WBAExtranetScraper(BaseScraper):
         # 8-char prefix of the GUID is plenty for disambiguation and keeps IDs readable.
         short = community_key.replace("-", "")[:8].lower()
         return f"wba_extranet_{short}"
+
+    def _extract_community_refs_from_html(
+        self, html: str, found: Dict[str, CommunityRef],
+    ) -> None:
+        """Scan one HTML page and merge any new community references into ``found``.
+
+        Uses two passes:
+          1. BeautifulSoup over <a href="?communitykey=..."> anchors — gives
+             us the link's visible text as the community name.
+          2. Loose regex over the entire HTML for ``communitykey=<uuid>``
+             — catches keys embedded in onclick handlers, data-* attributes,
+             JSON state, and other non-anchor surfaces where HL stashes them.
+        Pass 1 wins on names; pass 2 fills in keys that pass 1 missed,
+        falling back to a "Community <short>" placeholder name.
+        """
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+        except Exception as exc:
+            logger.debug(f"BS4 parse failed during discovery: {exc}")
+            soup = None
+
+        if soup is not None:
+            for link in soup.find_all("a", href=True):
+                key = self._community_key_from_url(link["href"])
+                if not key:
+                    continue
+                key = key.lower()
+                if key in found:
+                    continue
+                name = link.get_text(strip=True)
+                if not name:
+                    parent = link.find_parent()
+                    if parent is not None:
+                        name = parent.get_text(" ", strip=True)[:200]
+                if not name:
+                    name = f"Community {key[:8]}"
+                found[key] = CommunityRef(
+                    community_key=key,
+                    name=name,
+                    home_url=self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}"),
+                )
+
+        for key in COMMUNITY_KEY_PATTERN.findall(html):
+            key = key.lower()
+            if key in found:
+                continue
+            found[key] = CommunityRef(
+                community_key=key,
+                name=f"Community {key[:8]}",
+                home_url=self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}"),
+            )
 
     @staticmethod
     def _guess_doc_type(title: str, filename: Optional[str]) -> str:
@@ -609,92 +688,46 @@ class WBAExtranetScraper(BaseScraper):
     async def discover_communities(self) -> List[CommunityRef]:
         """Enumerate every visible community / workgroup on the portal.
 
-        Higher Logic uses a React SPA that loads community data client-side,
-        so simple HTML scraping only works for unauthenticated public links.
-        With valid session cookies, the page's React config and the
-        /communities/community-home pages expose community keys.
+        Higher Logic surfaces different (and only partially overlapping)
+        community lists on different pages: the dashboard ("/" and "/home")
+        widget exposes ~36 keys; the canonical directory exposes ~30; the
+        "My Communities" page exposes another ~26 including sub-WGs (e.g.
+        MAC Randomization Test) that nothing else lists. To find every
+        visible workgroup we scan all of these and merge.
 
         Discovery strategy (in order):
-          1. Parse communityKey values from the renderReactRoot config on
-             the all-communities page (works when authenticated).
-          2. Scan all-communities HTML for any ?communitykey= links (fallback).
-          3. If still 0, try the HigherLogic API endpoints.
+          1. Multi-URL scan of DISCOVERY_SOURCE_PATHS. For each page we
+             extract community keys both from <a href="?communitykey="> and
+             from a loose regex over the whole HTML (catches keys embedded
+             in onclick handlers, data-* attributes, and JSON blobs).
+          2. Hit internal HL API endpoints and merge anything new.
+          3. BFS-expand by walking each known community's landing page for
+             nested ?communitykey= links (catches subgroups linked only
+             from their parent workgroup's home page).
         """
         found: Dict[str, CommunityRef] = {}
 
-        # Strategy 0: fetch the server-rendered community directory page.
-        # This page lists all communities as plain HTML links (?CommunityKey=…)
-        # and is far more reliable than the React SPA at /all-communities.
-        dir_url = self._abs_url(PATH_COMMUNITY_DIRECTORY)
-        logger.info(f"WBA Extranet: discovering communities via directory at {dir_url}")
-        try:
-            async with self.session.get(dir_url, headers=self._headers()) as resp:
-                if resp.status == 200:
-                    dir_soup = BeautifulSoup(await resp.text(), "html.parser")
-                    for link in dir_soup.find_all("a", href=True):
-                        key = self._community_key_from_url(link["href"])
-                        if not key or key in found:
-                            continue
-                        name = link.get_text(strip=True) or f"Community {key[:8]}"
-                        home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
-                        found[key] = CommunityRef(community_key=key, name=name, home_url=home)
-                    logger.info(f"WBA Extranet: directory page found {len(found)} communities")
-                else:
-                    logger.warning(f"WBA Extranet: directory page returned HTTP {resp.status}, falling back")
-        except Exception as exc:
-            logger.warning(f"WBA Extranet: directory page fetch failed: {exc}, falling back")
-
-        # Strategy 1 & 2: React SPA fallback — only needed if directory page failed.
-        if not found:
-            url = self._abs_url(PATH_ALL_COMMUNITIES)
-            logger.info(f"WBA Extranet: falling back to all-communities SPA at {url}")
+        for path in DISCOVERY_SOURCE_PATHS:
+            url = self._abs_url(path)
             try:
                 async with self.session.get(url, headers=self._headers()) as resp:
                     if resp.status != 200:
-                        logger.error(f"all-communities returned HTTP {resp.status}")
-                        return []
+                        logger.warning(
+                            f"WBA Extranet: discovery source {path} returned HTTP {resp.status}"
+                        )
+                        continue
                     html = await resp.text()
             except Exception as exc:
-                logger.error(f"Failed to fetch all-communities: {exc}")
-                return []
+                logger.warning(f"WBA Extranet: discovery source {path} fetch failed: {exc}")
+                continue
 
-            soup = BeautifulSoup(html, "html.parser")
-
-            # Strategy 1: parse React component configs embedded in scripts
-            import json as _json
-            for script in soup.find_all("script"):
-                text = script.get_text()
-                if "communityKey" not in text and "communitykey" not in text.lower():
-                    continue
-                key_matches = re.findall(
-                    r'["\']communityKey["\']\s*:\s*["\']([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\']',
-                    text, re.IGNORECASE
-                )
-                for key in key_matches:
-                    if key not in found:
-                        name_match = re.search(
-                            rf'["\']communityKey["\']\s*:\s*["\']{re.escape(key)}["\'].*?["\'](?:name|title|communityName)["\']\s*:\s*["\']([^"\']+)["\']',
-                            text, re.IGNORECASE | re.DOTALL
-                        )
-                        name = name_match.group(1) if name_match else f"Community {key[:8]}"
-                        home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
-                        found[key] = CommunityRef(community_key=key, name=name, home_url=home)
-
-            # Strategy 2: scan HTML links for ?communitykey= parameters
-            for link in soup.find_all("a", href=True):
-                href = link["href"]
-                key = self._community_key_from_url(href)
-                if not key or key in found:
-                    continue
-                name = link.get_text(strip=True)
-                if not name:
-                    parent = link.find_parent()
-                    if parent is not None:
-                        name = parent.get_text(" ", strip=True)[:200]
-                if not name:
-                    name = f"Community {key[:8]}"
-                home = self._abs_url(f"{PATH_COMMUNITY_HOME}?communitykey={key}")
-                found[key] = CommunityRef(community_key=key, name=name, home_url=home)
+            before = len(found)
+            self._extract_community_refs_from_html(html, found)
+            added = len(found) - before
+            logger.info(
+                f"WBA Extranet: discovery source {path} contributed {added} new "
+                f"community(s) (running total {len(found)})"
+            )
 
         # Strategy 3: always try internal HL API endpoints and merge results.
         # These work with the session cookie alone and return the full membership
