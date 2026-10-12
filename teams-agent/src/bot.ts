@@ -10,7 +10,7 @@ import { FeedHandler } from './handlers/feedHandler';
 import { ChatHandler } from './handlers/chatHandler';
 import { AgentHandler } from './handlers/agentHandler';
 import { conversationReferenceStore } from './services/conversationReferenceStore';
-import { lastPostByConv, lastDeliveredPost } from './services/proactiveMessenger';
+import { findPostInConv, formatPostForShow } from './services/proactiveMessenger';
 
 // Matches @<slug> or @aurora-<slug> at the start of a message.
 // The @ is required to avoid matching regular words as agent names.
@@ -188,16 +188,6 @@ export class AuroraBot extends TeamsActivityHandler {
             await context.sendActivity(`**Personal agents shared here:**\n\n${shared.map(s => `• ${s}`).join('\n')}\n\nTo remove: \`/unshare @handle\` or \`/unshare Agent Name\``);
           }
         }
-        // ── show — inline full post from last proactive notification ─────
-        else if (lower === 'show' || lower === 'read more' || lower === 'full post') {
-          // Try per-conv first, fall back to the most recently delivered post globally
-          const post = lastPostByConv.get(convId) || lastDeliveredPost;
-          if (!post) {
-            await context.sendActivity('No recent post to show. Subscribe to an agent and wait for a notification, then type `/show`.');
-          } else {
-            await context.sendActivity(`**${post.title}**\n*By ${post.agent_name}*\n\n${post.body}`);
-          }
-        }
         // ── my agents — list personal agents with share hints ─────────────
         else if (lower === 'my agents' || lower === 'my agent' || lower === 'myagents') {
           await this.agentHandler.handleListMyAgents(context);
@@ -223,6 +213,25 @@ export class AuroraBot extends TeamsActivityHandler {
         // ── agents / list agents ──────────────────────────────────────────
         else if (lower === 'agents' || lower === 'list agents' || lower === 'show agents') {
           await this.agentHandler.handleListAgents(context);
+        }
+        // ── show [post_id | @slug] — inline full post; defaults to most recent
+        // Placed below the specific `show feed` / `show agents` handlers so those
+        // keep working. Disambiguates when several posts arrive in quick succession:
+        // the card's "Read full post" button passes the post_id, and users can also
+        // type `/show 1234` or `/show @mister-multipath` to pick a specific update.
+        else if (/^(show|read more|full post)(\s+\S.*)?$/i.test(lower)) {
+          const m = text.match(/^(?:show|read more|full post)(?:\s+(\S.*))?$/i);
+          const query = m?.[1]?.trim();
+          const post = findPostInConv(convId, query);
+          if (!post) {
+            if (query) {
+              await context.sendActivity(`No matching post for \`${query}\`. Try \`/show\` for the latest, \`/show <post-id>\`, or \`/show @<handle>\`.`);
+            } else {
+              await context.sendActivity('No recent post to show. Subscribe to an agent and wait for a notification, then type `/show`.');
+            }
+          } else {
+            await context.sendActivity(formatPostForShow(post));
+          }
         }
         // ── follow <agent name> ────────────────────────────────────────────
         else if (lower.startsWith('follow ')) {
@@ -406,7 +415,7 @@ export class AuroraBot extends TeamsActivityHandler {
             { title: '/news', value: 'Personalised brief of updates since you last asked' },
             { title: '/feed', value: 'Your personalised content feed' },
             { title: '/workgroups [filter]', value: 'List datasources — e.g. `/workgroups wba`, `/workgroups tfd`' },
-            { title: '/show', value: 'Read the full text of the last agent notification' },
+            { title: '/show', value: 'Read the latest post — also `/show <post-id>` or `/show @handle`' },
             { title: '/enhance', value: 'Re-run the last answer with deeper source analysis' },
           ],
         },

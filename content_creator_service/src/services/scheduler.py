@@ -29,17 +29,64 @@ from .user_agent_service import UserAgentService
 logger = logging.getLogger(__name__)
 
 
+# Minimum gap between runs for each cadence. Used as a floor before the
+# next creation-time-aligned slot becomes eligible.
+CADENCE_WINDOWS: dict[str, timedelta] = {
+    "daily": timedelta(hours=23),
+    "daily-digest": timedelta(hours=23),
+    "weekly": timedelta(days=6),
+    "weekly-digest": timedelta(days=6),
+}
+
+
+def compute_next_run_at(
+    *,
+    cadence: str,
+    created_at: Optional[datetime],
+    last_run: Optional[datetime],
+) -> Optional[datetime]:
+    """Next scheduled fire time for a daily/weekly cadence.
+
+    Anchored to ``created_at``'s time-of-day (and weekday for weekly), so an
+    agent created at 09:30 keeps posting around 09:30, instead of drifting
+    earlier each day under a 23h sliding window.
+    """
+    window = CADENCE_WINDOWS.get(cadence)
+    if window is None or created_at is None:
+        return None
+    created = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+    if last_run is None:
+        base = created
+    else:
+        anchor = last_run if last_run.tzinfo else last_run.replace(tzinfo=timezone.utc)
+        base = anchor + window
+    candidate = base.replace(
+        hour=created.hour,
+        minute=created.minute,
+        second=0,
+        microsecond=0,
+    )
+    if cadence in {"weekly", "weekly-digest"}:
+        days_ahead = (created.weekday() - candidate.weekday()) % 7
+        candidate = candidate + timedelta(days=days_ahead)
+        if candidate < base:
+            candidate += timedelta(days=7)
+    else:
+        if candidate < base:
+            candidate += timedelta(days=1)
+    return candidate
+
+
 class AgentScheduler:
     def __init__(self) -> None:
         settings = get_settings()
         self._poll_interval = settings.scheduler_poll_interval_seconds
         self._per_event_cooldown = timedelta(seconds=settings.per_event_cooldown_seconds)
-        self._cadence_windows = {
-            "daily": timedelta(hours=23),
-            "daily-digest": timedelta(hours=23),
-            "weekly": timedelta(days=6),
-            "weekly-digest": timedelta(days=6),
-        }
+        self._cadence_windows = CADENCE_WINDOWS
+        # Tolerance before the scheduled slot during which a run may fire —
+        # the scheduler ticks roughly every minute, so a few minutes of slack
+        # lets us hit the slot reliably without drifting.
+        self._slot_tolerance = timedelta(minutes=5)
         self._agent_service = AgentService()
         self._user_agent_service = UserAgentService()
         self._monitor = KnowledgeMonitor()
@@ -218,6 +265,7 @@ class AgentScheduler:
                     summary=payload.get("summary") or "",
                     body=payload.get("body") or "",
                     tags=tags if isinstance(tags, list) else [],
+                    sources=payload.get("sources") or [],
                 )
             
             # Record metrics
@@ -300,13 +348,16 @@ class AgentScheduler:
             if not last_run:
                 return True
             return now - last_run >= self._per_event_cooldown
-        window = self._cadence_windows.get(cadence)
-        if not window:
+        if cadence not in self._cadence_windows:
             return True
-        anchor = agent.last_generated_at or agent.last_run_at
-        if not anchor:
+        target = compute_next_run_at(
+            cadence=cadence,
+            created_at=agent.created_at,
+            last_run=agent.last_generated_at or agent.last_run_at,
+        )
+        if target is None:
             return True
-        return now - anchor >= window
+        return now + self._slot_tolerance >= target
 
     def _event_meets_importance(self, agent: CreatorAgent, event: KnowledgeEvent) -> bool:
         hierarchy = {"low": 0, "normal": 1, "important": 2, "critical": 3}
@@ -387,15 +438,31 @@ class AgentScheduler:
 
     def _should_run_user_agent(self, agent_dict: dict, now: datetime) -> bool:
         cadence = self._normalise_cadence(agent_dict.get("cadence", "daily"))
-        window = self._cadence_windows.get(cadence, timedelta(hours=23))
-        anchor = agent_dict.get("last_generated_at") or agent_dict.get("last_run_at")
-        if not anchor:
+        if cadence not in self._cadence_windows:
             return True
-        if isinstance(anchor, str):
-            anchor = datetime.fromisoformat(anchor)
-        if anchor.tzinfo is None:
-            anchor = anchor.replace(tzinfo=timezone.utc)
-        return now - anchor >= window
+        created_at = self._coerce_dt(agent_dict.get("created_at"))
+        last_run = self._coerce_dt(
+            agent_dict.get("last_generated_at") or agent_dict.get("last_run_at")
+        )
+        target = compute_next_run_at(
+            cadence=cadence,
+            created_at=created_at,
+            last_run=last_run,
+        )
+        if target is None:
+            return True
+        return now + self._slot_tolerance >= target
+
+    @staticmethod
+    def _coerce_dt(value: Optional[object]) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        if isinstance(value, str):
+            parsed = datetime.fromisoformat(value)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return None
 
     def _execute_user_agent(self, agent_dict: dict, now: datetime) -> None:
         agent_name = agent_dict.get("name", f"user-agent-{agent_dict.get('id')}")

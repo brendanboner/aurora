@@ -1090,6 +1090,8 @@ class GenerationService:
             summary=llm_response.get("summary") or "",
             body=llm_response.get("body") or "",
             tags=llm_response.get("tags", topics) if isinstance(llm_response.get("tags", topics), list) else [],
+            sources=sources,
+            agent_slug=user_agent_dict.get("teams_slug"),
         )
         
         return {

@@ -27,8 +27,8 @@
         test-auth test-backend test-curator test-digester test-retriever test-frontend test-neo4j-init test-nginx test-oracle test-content-creator test-kg-view \
         build-push-auth build-push-backend build-push-curator build-push-digester build-push-retriever build-push-frontend build-push-neo4j-init build-push-nginx build-push-oracle build-push-content-creator build-push-kg-view build-push-teams-agent \
         ship-auth ship-backend ship-curator ship-digester ship-retriever ship-frontend ship-neo4j-init ship-nginx ship-oracle ship-content-creator ship-kg-view \
-        deploy-auth deploy-backend deploy-curator deploy-digester deploy-retriever deploy-frontend deploy-neo4j-init deploy-nginx deploy-oracle deploy-content-creator deploy-kg-view \
-        release-auth release-backend release-curator release-digester release-retriever release-frontend release-neo4j-init release-nginx release-oracle release-content-creator release-kg-view \
+        deploy-auth deploy-backend deploy-curator deploy-digester deploy-retriever deploy-frontend deploy-neo4j-init deploy-nginx deploy-oracle deploy-content-creator deploy-kg-view deploy-teams-agent \
+        release-auth release-backend release-curator release-digester release-retriever release-frontend release-neo4j-init release-nginx release-oracle release-content-creator release-kg-view release-teams-agent \
         dev
 
 # Load common configuration (colors, ECR, region)
@@ -266,6 +266,10 @@ ship-kg-view:
 	@echo "$(CYAN)Testing, building, and shipping kg-view service...$(NC)"
 	@cd kg_view && $(MAKE) ship
 
+# teams-agent has no service Makefile `ship` target; build-push is enough.
+ship-teams-agent: build-push-teams-agent
+	@echo "$(GREEN)✓ teams-agent built and pushed$(NC)"
+
 # =============================================================================
 # Deploy to Production (pull latest image + restart on EC2 via SSM)
 # =============================================================================
@@ -351,6 +355,9 @@ deploy-content-creator:
 deploy-kg-view:
 	$(call ssm-run,$(EC2_COMPOSE) pull kg-view-frontend kg-view-backend && $(EC2_COMPOSE) up -d kg-view-frontend kg-view-backend)
 
+deploy-teams-agent:
+	$(call ssm-run,$(EC2_COMPOSE) pull teams-agent && $(EC2_COMPOSE) up -d teams-agent)
+
 release-auth:          ship-auth          deploy-auth
 release-backend:       ship-backend       deploy-backend
 release-curator:       ship-curator       deploy-curator
@@ -362,6 +369,7 @@ release-nginx:         ship-nginx         deploy-nginx
 release-oracle:        ship-oracle        deploy-oracle
 release-content-creator: ship-content-creator deploy-content-creator
 release-kg-view:       ship-kg-view       deploy-kg-view
+release-teams-agent:   ship-teams-agent   deploy-teams-agent
 
 # Reset WBA Extranet child community last_scraped_at so the next scrape treats
 # every community as a first run (30-day lookback instead of 1-day incremental).

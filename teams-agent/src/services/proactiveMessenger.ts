@@ -28,6 +28,14 @@ export interface SystemAlertPayload {
   docs_count?: number;        // 0 = consecutive zero-doc run
 }
 
+export interface PostSource {
+  source_kind?: string;
+  source_identifier?: string | null;
+  url?: string | null;
+  title?: string | null;
+  confidence?: number | null;
+}
+
 export interface FeedUpdatePayload {
   agent_slug: string;
   agent_name: string;
@@ -38,6 +46,7 @@ export interface FeedUpdatePayload {
   tags: string[];
   source_url?: string;
   published_at?: string;
+  sources?: PostSource[];
 }
 
 export interface UserAgentUpdatePayload {
@@ -50,12 +59,85 @@ export interface UserAgentUpdatePayload {
   tags: string[];
   source_url?: string;
   published_at?: string;
+  sources?: PostSource[];
+  agent_slug?: string;  // optional slug for user-agent posts (used by `show @slug`)
 }
 
-// Last delivered post — any conversation can read with 'show', not scoped per convId
-export let lastDeliveredPost: { title: string; body: string; agent_name: string } | null = null;
-// Keep per-conv map as well for potential future per-user scoping
-export const lastPostByConv = new Map<string, { title: string; body: string; agent_name: string }>();
+export interface PostEntry {
+  post_id: number;
+  agent_slug: string;       // canonical aurora-<slug>; "" for legacy/empty
+  agent_name: string;
+  title: string;
+  body: string;
+  sources: PostSource[];
+  delivered_at: number;     // epoch ms
+}
+
+const MAX_HISTORY_PER_CONV = 25;
+
+// Per-conversation post history (most recent first). The `show` command
+// scans this to locate a post by id or by agent slug — disambiguates when
+// several posts arrive in quick succession.
+export const postHistoryByConv = new Map<string, PostEntry[]>();
+// Global most-recent fallback for bare `show` from a conversation that has
+// no history yet (e.g. a freshly opened DM).
+export let lastDeliveredPost: PostEntry | null = null;
+
+export function recordDelivery(convId: string, entry: PostEntry): void {
+  const list = postHistoryByConv.get(convId) ?? [];
+  list.unshift(entry);
+  if (list.length > MAX_HISTORY_PER_CONV) list.length = MAX_HISTORY_PER_CONV;
+  postHistoryByConv.set(convId, list);
+  lastDeliveredPost = entry;
+}
+
+export function findPostInConv(convId: string, query?: string): PostEntry | null {
+  const history = postHistoryByConv.get(convId) ?? [];
+  const q = (query ?? '').trim();
+
+  // No argument → most recent post in this conv, else the global last.
+  if (!q) return history[0] ?? lastDeliveredPost;
+
+  // Numeric → match by post_id (this conv first, then global last as a fallback).
+  if (/^\d+$/.test(q)) {
+    const target = Number(q);
+    const hit = history.find(p => p.post_id === target);
+    if (hit) return hit;
+    if (lastDeliveredPost && lastDeliveredPost.post_id === target) return lastDeliveredPost;
+    return null;
+  }
+
+  // @slug or slug → most recent post from that agent in this conv.
+  const wanted = q.toLowerCase().replace(/^@/, '').replace(/^aurora-/, '');
+  const slugMatch = (entry: PostEntry) =>
+    (entry.agent_slug || '').toLowerCase().replace(/^aurora-/, '') === wanted;
+  const hit = history.find(slugMatch);
+  if (hit) return hit;
+  if (lastDeliveredPost && slugMatch(lastDeliveredPost)) return lastDeliveredPost;
+  return null;
+}
+
+export function formatPostForShow(entry: PostEntry): string {
+  const lines: string[] = [];
+  lines.push(`**${entry.title}**`);
+  lines.push(`*By ${entry.agent_name}*`);
+  lines.push('');
+  lines.push(entry.body);
+  const links = (entry.sources || [])
+    .filter(s => s && typeof s.url === 'string' && s.url.length > 0)
+    .slice(0, 3);
+  if (links.length > 0) {
+    lines.push('');
+    lines.push('**Sources**');
+    for (const s of links) {
+      const label = (s.title && s.title.trim()) ? s.title.trim() : (s.url || 'Link');
+      lines.push(`• [${label}](${s.url})`);
+    }
+  }
+  lines.push('');
+  lines.push(`_Post #${entry.post_id} — re-open with \`/show ${entry.post_id}\`_`);
+  return lines.join('\n');
+}
 
 /**
  * Sends a proactive feed update to all conversations subscribed to the given agent slug.
@@ -98,6 +180,16 @@ export class ProactiveMessenger {
 
     let sent = 0, errors = 0, webhookCount = 0, botCount = 0;
 
+    const buildEntry = (): PostEntry => ({
+      post_id:      payload.post_id || 0,
+      agent_slug:   payload.agent_slug || '',
+      agent_name:   payload.agent_name,
+      title:        payload.title,
+      body:         postBody,
+      sources:      payload.sources ?? [],
+      delivered_at: Date.now(),
+    });
+
     for (const convId of allConvIds) {
       const webhookUrl = webhookMap.get(convId);
 
@@ -107,21 +199,23 @@ export class ProactiveMessenger {
         if (result.ok) {
           webhookCount++;
           sent++;
+          recordDelivery(convId, buildEntry());
         } else {
           console.warn(`[ProactiveMessenger] Webhook failed for ${convId}: ${result.error ?? result.status} — falling back to bot push`);
           // Fall through to bot push on webhook failure
-          await this.botPush(refMap.get(convId), botActivity, convId)
-            ? (botCount++, sent++) : errors++;
+          if (await this.botPush(refMap.get(convId), botActivity, convId)) {
+            botCount++; sent++;
+            recordDelivery(convId, buildEntry());
+          } else {
+            errors++;
+          }
         }
       } else {
         // Bot push via continueConversation
         const ok = await this.botPush(refMap.get(convId), botActivity, convId);
         if (ok) {
           botCount++; sent++;
-          // Store post globally + per-conv so 'show' works from any conversation
-          const postEntry = { title: payload.title, body: postBody, agent_name: payload.agent_name };
-          lastPostByConv.set(convId, postEntry);
-          lastDeliveredPost = postEntry;
+          recordDelivery(convId, buildEntry());
         } else {
           errors++;
         }
@@ -177,6 +271,7 @@ export class ProactiveMessenger {
       agent_name:      payload.agent_name,
       agent_slug:      payload.agent_slug,
       agent_slug_short: slugShort,
+      post_id:         payload.post_id || 0,
       title:           payload.title,
       summary:         payload.summary || payload.title,
       tags:            tagsStr,
@@ -227,8 +322,9 @@ export class ProactiveMessenger {
       return { sent: 0, errors: 0 };
     }
 
+    const effectiveSlug = payload.agent_slug || `user-${payload.aurora_user_id}`;
     const card = this.buildBotCard({
-      agent_slug:   `user-${payload.aurora_user_id}`,
+      agent_slug:   effectiveSlug,
       agent_name:   payload.agent_name,
       post_id:      payload.post_id,
       title:        payload.title,
@@ -246,9 +342,15 @@ export class ProactiveMessenger {
       const ok = await this.botPush(ref, activity, ref.conversation_id);
       if (ok) {
         sent++;
-        const postEntry = { title: payload.title, body: postBody, agent_name: payload.agent_name };
-        lastPostByConv.set(ref.conversation_id, postEntry);
-        lastDeliveredPost = postEntry;
+        recordDelivery(ref.conversation_id, {
+          post_id:      payload.post_id || 0,
+          agent_slug:   effectiveSlug,
+          agent_name:   payload.agent_name,
+          title:        payload.title,
+          body:         postBody,
+          sources:      payload.sources ?? [],
+          delivered_at: Date.now(),
+        });
       } else {
         errors++;
       }

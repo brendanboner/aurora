@@ -3,13 +3,31 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 _TEAMS_AGENT_URL = os.getenv("TEAMS_AGENT_URL", "")
+
+
+def _serialise_sources(sources: Optional[List[Any]]) -> List[Dict[str, Any]]:
+    """Flatten PostSource objects (or dicts) to JSON-safe dicts for the wire."""
+    if not sources:
+        return []
+    out: List[Dict[str, Any]] = []
+    for src in sources:
+        if hasattr(src, "model_dump"):
+            out.append(src.model_dump())
+        elif isinstance(src, dict):
+            out.append(src)
+        else:
+            try:
+                out.append(dict(src))
+            except Exception:
+                continue
+    return out
 
 
 def push_feed_update(
@@ -23,6 +41,7 @@ def push_feed_update(
     tags: List[str],
     source_url: Optional[str] = None,
     published_at: Optional[str] = None,
+    sources: Optional[List[Any]] = None,
 ) -> None:
     """
     Fire-and-forget: POST to teams-agent /internal/push-feed-update.
@@ -43,6 +62,7 @@ def push_feed_update(
         "tags":         tags,
         "source_url":   source_url,
         "published_at": published_at,
+        "sources":      _serialise_sources(sources),
     }
 
     try:
@@ -66,6 +86,8 @@ def push_user_agent_update(
     tags: List[str],
     source_url: Optional[str] = None,
     published_at: Optional[str] = None,
+    sources: Optional[List[Any]] = None,
+    agent_slug: Optional[str] = None,
 ) -> None:
     """
     Fire-and-forget: POST to teams-agent /internal/push-user-agent-update.
@@ -87,6 +109,8 @@ def push_user_agent_update(
         "tags":           tags,
         "source_url":     source_url,
         "published_at":   published_at,
+        "sources":        _serialise_sources(sources),
+        "agent_slug":     agent_slug,
     }
 
     try:

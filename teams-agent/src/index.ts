@@ -186,6 +186,7 @@ server.post('/internal/push-feed-update', async (req, res) => {
     tags:          body.tags         || [],
     source_url:    body.source_url,
     published_at:  body.published_at,
+    sources:       body.sources      || [],
   };
 
   proactiveMessenger.pushFeedUpdate(payload).catch((err) => {
@@ -222,6 +223,7 @@ server.post('/internal/push-user-agent-update', async (req, res) => {
     tags:           body.tags          || [],
     source_url:     body.source_url,
     published_at:   body.published_at,
+    sources:        body.sources       || [],
   };
 
   proactiveMessenger.pushUserAgentUpdate(payload).catch((err) => {
